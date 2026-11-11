@@ -15,6 +15,15 @@ pub fn build(b: *std.Build) void {
         .unwind_tables = .none,
         .single_threaded = true,
     });
+    // Feature flags (see src/config.zig). -Dprofile=core disables every optional feature.
+    const profile = b.option([]const u8, "profile", "feature preset: full (default) | core") orelse "full";
+    const full = !std.mem.eql(u8, profile, "core");
+    const flags = b.addOptions();
+    inline for (.{ "tw", "css", "html", "svg", "woff", "variable_fonts", "cff", "color_fonts", "complex_text", "animation", "extra_codecs" }) |name| {
+        flags.addOption(bool, name, b.option(bool, name, "enable optional feature " ++ name) orelse full);
+    }
+    wasm_mod.addOptions("build_options", flags);
+
     const wasm = b.addExecutable(.{ .name = "bm_engine", .root_module = wasm_mod });
     wasm.entry = .disabled;
     wasm.rdynamic = true;
@@ -28,6 +37,7 @@ pub fn build(b: *std.Build) void {
         .target = native_target,
         .optimize = .debug,
     });
+    test_mod.addOptions("build_options", flags);
     const tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);

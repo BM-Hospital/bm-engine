@@ -65,9 +65,9 @@ Phase 2 ports the remaining takumi features and fixes the places where we lose. 
     local approximations unless precision truly matters.
   - The per-render allocator is a bump arena: `free` only reclaims the most recent allocation; allocate long-lived
     outputs last so they can grow in place.
-- Size discipline: every feature must report its `.small` wasm cost. Big optional features must be compilable out through
-  a comptime flag: read `@import("build_options")`-style flags ONLY via a file `src/config.zig` (integrator-owned; it
-  exposes e.g. `pub const enable_svg = true;`). Guard your module's entry points so that when the flag is false no code
-  from the module is referenced. Ask for a new flag name in your final report rather than editing `src/config.zig`.
+- Size discipline: every feature must report its `.small` wasm cost (build a tiny wasm root that references your
+  public API, compare against an empty baseline). Optional features are compiled out by the INTEGRATOR, who guards the
+  call sites with flags from `src/config.zig`; you do not read flags yourself. What you must guarantee: a narrow entry
+  API, no global mutable state, and nothing that forces your code into the binary when the entry points are unused.
 - Final report: public API (signatures), what is implemented vs. missing (honest), tests + exact command + result line,
   wasm size cost, oracle comparison numbers where applicable, and integration notes for the painter/renderer.
