@@ -117,7 +117,8 @@ pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
         const ckh = maxO(clampO(cb.size[1], cb.min[1], cb.max[1]), cb.pb[1]);
         // width: explicit, else from a definite height through the aspect ratio, else fill the container
         const ckw = orElse(orElse(cb.size[0], t.ratio(cs, &cb, 0, ckh)), inner_w - ms);
-        const ck: [2]f32 = .{ @max(clampO(ckw, cb.min[0], cb.max[0]), cb.pb[0]), ckh };
+        // (width: min-/max-/fit-content does not fill: the child sizes itself against the available width)
+        const ck: [2]f32 = .{ if (cs.size[0].isKeyword()) NONE else @max(clampO(ckw, cb.min[0], cb.max[0]), cb.pb[0]), ckh };
         const o = try t.computeNode(ch, .{ .known = ck, .parent = parent, .avail = .{ inner_w, MAXC }, .layout = true, .collapse = true });
 
         const top_set = o.top_margin.with(cb.margin[1]);
@@ -127,8 +128,8 @@ pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
         const free_x = @max(inner_w - o.size[0] - ms, 0);
         const n_auto: f32 = @floatFromInt(@as(u8, @intFromBool(cb.margin_auto[0])) + @intFromBool(cb.margin_auto[2]));
         if (n_auto > 0) {
-            if (cb.margin_auto[0]) cb.margin[0] = free_x / n_auto;
-            if (cb.margin_auto[2]) cb.margin[2] = free_x / n_auto;
+            if (cb.margin_auto[0]) cb.margin[0] = t.div(free_x, n_auto);
+            if (cb.margin_auto[2]) cb.margin[2] = t.div(free_x, n_auto);
         }
         cb.margin[1] = top_set.resolve();
         cb.margin[3] = bottom_set.resolve();

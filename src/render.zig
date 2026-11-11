@@ -10,6 +10,7 @@ const font = @import("font/font.zig");
 const raster = @import("raster/raster.zig");
 const codec = @import("codec/codec.zig");
 const paint = @import("paint.zig");
+const bump = @import("bump.zig");
 
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
@@ -65,7 +66,7 @@ pub const Options = struct {
 
 pub const Renderer = struct {
     gpa: Allocator,
-    arena: std.heap.ArenaAllocator,
+    arena: bump.Bump,
     fonts: font.FontCollection = .{},
     font_blobs: std.ArrayList([]u8) = .empty,
     images: std.ArrayList(ImageEntry) = .empty,
@@ -83,7 +84,7 @@ pub const Renderer = struct {
 
     pub fn create(gpa: Allocator) ?*Renderer {
         const self = gpa.create(Renderer) catch return null;
-        self.* = .{ .gpa = gpa, .arena = std.heap.ArenaAllocator.init(gpa), .rast = raster.Rasterizer.init(gpa) };
+        self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa) };
         return self;
     }
 
@@ -131,7 +132,7 @@ pub const Renderer = struct {
 
     /// Takes ownership of `data` (allocated with `gpa`). Returns a JSON description in the arena.
     pub fn registerFont(self: *Renderer, data: []u8, name: []const u8, weight: u16, italic: i32) Error![]const u8 {
-        _ = self.arena.reset(.retain_capacity);
+        self.arena.reset();
         const id = self.fonts.register(self.gpa, data, .{
             .family = if (name.len > 0) name else null,
             .weight = if (weight > 0) weight else null,
@@ -187,13 +188,13 @@ pub const Renderer = struct {
 
     pub fn releaseResult(self: *Renderer) void {
         self.result = "";
-        _ = self.arena.reset(.retain_capacity);
+        self.arena.reset();
     }
 
     fn beginCall(self: *Renderer) void {
         self.result = "";
         self.err = "";
-        _ = self.arena.reset(.retain_capacity);
+        self.arena.reset();
         if (self.glyph_bytes > glyph_budget) self.clearGlyphs();
         if (self.img_cache_bytes > image_budget) self.clearImageCache();
     }
@@ -207,7 +208,7 @@ pub const Renderer = struct {
 
         var pm = raster.Pixmap.init(a, f.canvas_w, f.canvas_h) catch return error.OutOfMemory;
         try paint.paintFrame(&f, &pm);
-        pm.toStraightAlpha();
+        unpremultiply(pm.data);
 
         self.result = switch (opts.format) {
             .raw => pm.data,
@@ -349,6 +350,72 @@ pub const Renderer = struct {
 fn dimOpt(n: f32) u32 {
     if (!(n >= 1)) return 0;
     return @intFromFloat(@min(n, 16384));
+}
+
+/// 2^32 / (2a), rounded up: `(n * recip[a]) >> 32 == n / (2a)` for every n < 2^17.
+const recip: [256]u32 = blk: {
+    @setEvalBranchQuota(4000);
+    var t: [256]u32 = undefined;
+    t[0] = 0;
+    for (1..256) |a| t[a] = @intCast(((@as(u64, 1) << 32) + 2 * @as(u64, a) - 1) / (2 * @as(u64, a)));
+    break :blk t;
+};
+
+/// In-place premultiplied -> straight alpha with takumi's rounding `(c*510 + a) / (2a)`.
+pub fn unpremultiply(data: []u8) void {
+    var i: usize = 0;
+    const n = data.len & ~@as(usize, 3);
+    var lut: [256]u8 = undefined;
+    var lut_a: u32 = 256; // alpha the LUT was built for
+    var prev_a: u32 = 256;
+    while (i < n) {
+        // fast skip over fully opaque / fully transparent runs, two pixels at a time
+        while (i + 8 <= n) {
+            const two = @as(*align(1) const u64, @ptrCast(data[i..].ptr)).* & 0xFF000000_FF000000;
+            if (two != 0xFF000000_FF000000 and two != 0) break;
+            i += 8;
+        }
+        if (i >= n) break;
+        const a: u32 = data[i + 3];
+        if (a == 0) {
+            data[i] = 0;
+            data[i + 1] = 0;
+            data[i + 2] = 0;
+        } else if (a != 255) {
+            if (a == lut_a) {
+                data[i] = lut[data[i]];
+                data[i + 1] = lut[data[i + 1]];
+                data[i + 2] = lut[data[i + 2]];
+            } else {
+                const m: u64 = recip[a];
+                if (a == prev_a) {
+                    // a run of the same alpha: build a per-alpha table once
+                    for (&lut, 0..) |*e, c| e.* = @intCast(@min(255, (@as(u64, @as(u32, @intCast(c)) * 510 + a) * m) >> 32));
+                    lut_a = a;
+                }
+                inline for (0..3) |k| {
+                    const v: u32 = @intCast((@as(u64, @as(u32, data[i + k]) * 510 + a) * m) >> 32);
+                    data[i + k] = @intCast(@min(v, 255));
+                }
+            }
+        }
+        prev_a = a;
+        i += 4;
+    }
+}
+
+test "unpremultiply matches the division formula" {
+    var buf: [4]u8 = undefined;
+    var a: u32 = 1;
+    while (a < 256) : (a += 1) {
+        var c: u32 = 0;
+        while (c < 256) : (c += 1) {
+            buf = .{ @intCast(c), @intCast(c), @intCast(c), @intCast(a) };
+            unpremultiply(&buf);
+            const want: u32 = @min(255, (c * 510 + a) / (2 * a));
+            try std.testing.expectEqual(want, @as(u32, buf[0]));
+        }
+    }
 }
 
 fn premultiply(data: []u8) void {
@@ -950,12 +1017,16 @@ fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
 
 fn dimLp(lp: style.LP) layout.Dim {
     if (lp.pct == 0) return .{ .px = lp.px };
-    return .{ .percent = lp.pct };
+    if (lp.px == 0) return .{ .percent = lp.pct };
+    return .{ .calc = .{ .px = lp.px, .percent = lp.pct } };
 }
 
 fn dimSize(s: style.Size) layout.Dim {
     return switch (s) {
         .lp => |lp| dimLp(lp),
+        .min_content => .min_content,
+        .max_content => .max_content,
+        .fit_content => .fit_content,
         else => .auto,
     };
 }
@@ -969,7 +1040,8 @@ fn dimAuto(s: style.LengthAuto) layout.Dim {
 
 fn lpOf(lp: style.LP) layout.LengthPercentage {
     if (lp.pct == 0) return .{ .px = lp.px };
-    return .{ .percent = lp.pct };
+    if (lp.px == 0) return .{ .percent = lp.pct };
+    return .{ .calc = .{ .px = lp.px, .percent = lp.pct } };
 }
 
 fn alignOf(al: style.Align) ?layout.Align {
@@ -1070,6 +1142,9 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.flex_shrink = cs.flex_shrink;
     s.flex_basis = switch (cs.flex_basis) {
         .lp => |lp| dimLp(lp),
+        .min_content => .min_content,
+        .max_content => .max_content,
+        .fit_content => .fit_content,
         else => .auto,
     };
     s.align_items = alignOf(cs.align_items);

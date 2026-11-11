@@ -48,7 +48,7 @@ fn lp(v: J) L.LengthPercentage {
     return switch (dim(v)) {
         .percent => |p| .{ .percent = p },
         .px => |p| .{ .px = p },
-        .auto => .{ .px = 0 },
+        else => .{ .px = 0 },
     };
 }
 fn dimEdges(v: J) L.Edges(Dim) {
@@ -105,7 +105,7 @@ fn oneTrack(s: []const u8) L.Track {
         return L.Track.fitContent(switch (d) {
             .percent => |p| .{ .percent = p },
             .px => |p| .{ .px = p },
-            .auto => .{ .px = 0 },
+            else => .{ .px = 0 },
         });
     }
     const b = breadth(s);
@@ -302,7 +302,7 @@ fn lpOf(d: Dim) L.LengthPercentage {
     return switch (d) {
         .percent => |p| .{ .percent = p },
         .px => |p| .{ .px = p },
-        .auto => .{ .px = 0 },
+        else => .{ .px = 0 },
     };
 }
 
@@ -859,7 +859,7 @@ fn compareExact(t: *const Tree, id: L.NodeId, ox: f32, oy: f32, exp: J, bad: *us
 }
 
 // How many fixtures agree with takumi to the exact 1/64 px LayoutUnit in quantize64 mode.
-const exact_verbose: usize = 0;
+const exact_verbose: usize = 5;
 test "oracle fixtures, exact LayoutUnit agreement (quantize64)" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
@@ -894,4 +894,67 @@ test "oracle fixtures, exact LayoutUnit agreement (quantize64)" {
         }
     }
     std.debug.print("exact LayoutUnit agreement: {d}/{d} fixtures\n", .{ exact, total });
+}
+
+test "calc() lengths and intrinsic sizing keywords" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try t.addNode(.{ .display = .block, .size = sz(300, 200), .padding = .all(.{ .calc = .{ .px = 5, .percent = 0.05 } }) });
+    // padding = 5 + 5% of the 400px viewport = 25 -> content box 250 x 150
+    const k = try mk(&t, root, &.{
+        .{ .display = .block, .size = .{ .{ .calc = .{ .px = -20, .percent = 1 } }, .{ .calc = .{ .px = 10, .percent = 0.25 } } } },
+        .{ .size = .{ .max_content, .auto } },
+        .{ .size = .{ .min_content, .auto }, .flex_wrap = .wrap },
+        .{ .size = .{ .fit_content, .auto }, .flex_wrap = .wrap },
+    });
+    _ = try mk(&t, k[1], &.{ .{ .size = sz(200, 10), .flex_shrink = 0 }, .{ .size = sz(200, 10), .flex_shrink = 0 } });
+    _ = try mk(&t, k[2], &.{ .{ .size = sz(70, 10) }, .{ .size = sz(50, 10) } });
+    _ = try mk(&t, k[3], &.{ .{ .size = sz(200, 10) }, .{ .size = sz(200, 10) } });
+    try run(&t, root);
+    try expectRect(&t, k[0], 25, 25, 230, 47.5);
+    try expectRect(&t, k[1], 25, 72.5, 400, 10); // max-content overflows instead of filling
+    try expectRect(&t, k[2], 25, 82.5, 70, 20); // min-content: one item per line
+    try expectRect(&t, k[3], 25, 102.5, 250, 20); // fit-content: clamped to the available width
+
+    // as flex items: no cross-axis stretch, max-content basis
+    var t2 = Tree.init(testing.allocator);
+    defer t2.deinit();
+    const r2 = try t2.addNode(.{ .size = sz(300, 100), .flex_direction = .column });
+    const k2 = try mk(&t2, r2, &.{ .{ .size = .{ .max_content, .auto } }, .{} });
+    _ = try mk(&t2, k2[0], &.{.{ .size = sz(80, 10) }});
+    try run(&t2, r2);
+    try expectRect(&t2, k2[0], 0, 0, 80, 10);
+    try expectRect(&t2, k2[1], 0, 10, 300, 0);
+}
+
+test "quantize64: Blink layout-unit arithmetic" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    // 908 px split 1fr : 2fr -> 302.65625 / 605.34375 (remainder handed to the next track)
+    const cols = [_]L.Track{ L.Track.fr(1), L.Track.fr(2) };
+    const root = try t.addNode(.{ .display = .grid, .size = sz(908, 50), .grid_template_columns = &cols });
+    const k = try mk(&t, root, &.{ .{}, .{} });
+    try t.compute(root, vp400, &dummy, noMeasure, .{ .quantize64 = true });
+    try testing.expectEqual(@as(f32, 302.65625), t.layout(k[0]).w);
+    try testing.expectEqual(@as(f32, 605.34375), t.layout(k[1]).w);
+
+    // centring halves in whole layout units: (300 - 100.4 -> 100.390625) / 2 truncates
+    var t2 = Tree.init(testing.allocator);
+    defer t2.deinit();
+    const r2 = try t2.addNode(.{ .size = sz(300, 100), .justify_content = .center, .align_items = .center });
+    const k2 = try mk(&t2, r2, &.{.{ .size = sz(100.4, 33.3) }});
+    try t2.compute(r2, vp400, &dummy, noMeasure, .{ .quantize64 = true });
+    try testing.expectEqual(@as(f32, 100.390625), t2.layout(k2[0]).w);
+    try testing.expectEqual(@as(f32, 99.796875), t2.layout(k2[0]).x);
+    try testing.expectEqual(@as(f32, 33.34375), t2.layout(k2[0]).y);
+
+    // flex-grow: the last item takes its rounded share first, the first one gets what is left
+    var t3 = Tree.init(testing.allocator);
+    defer t3.deinit();
+    const r3 = try t3.addNode(.{ .size = sz(100, 50) });
+    const k3 = try mk(&t3, r3, &.{ .{ .flex_grow = 1 }, .{ .flex_grow = 1 }, .{ .flex_grow = 1 } });
+    try t3.compute(r3, vp400, &dummy, noMeasure, .{ .quantize64 = true });
+    try testing.expectEqual(@as(f32, 33.328125), t3.layout(k3[0]).w);
+    try testing.expectEqual(@as(f32, 33.34375), t3.layout(k3[1]).w);
+    try testing.expectEqual(@as(f32, 33.328125), t3.layout(k3[2]).w);
 }

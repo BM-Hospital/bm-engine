@@ -30,6 +30,8 @@ const Item = struct {
     basis: f32,
     inner_basis: f32,
     violation: f32,
+    /// share of the remaining free space (Blink's free_space_fraction)
+    frac: f64,
     min_main: f32,
     /// hypothetical border-box size
     hyp: [2]f32,
@@ -54,38 +56,57 @@ const Line = struct {
     off: f32 = 0,
 };
 
-/// Distribution fallback (css-align) for content alignment.
-pub fn alignFallback(free: f32, n: usize, mode: st.Align) st.Align {
-    if (n <= 1 or free <= 0) {
-        return switch (mode) {
-            .stretch, .space_between => .flex_start,
-            .space_around, .space_evenly => if (free <= 0) .start else mode,
-            else => mode,
-        };
+/// Blink's LayoutUnitDiffuser: `size` split into `n` buckets that differ by at most one layout unit
+/// (exact division when not laying out on the 1/64 px grid).
+pub const Diffuser = struct {
+    q: bool = false,
+    base: f32 = 0,
+    dx: u64 = 0,
+    dy: u64 = 0,
+    x: u64 = 0,
+    y: u64 = 0,
+
+    pub fn init(q: bool, size: f32, n: usize) Diffuser {
+        if (n == 0 or !(size > 0)) return .{};
+        if (!q) return .{ .base = size / @as(f32, @floatFromInt(n)) };
+        const raw: u64 = @intFromFloat(@min(@trunc(size * 64), 2.0e9));
+        return .{ .q = true, .base = @as(f32, @floatFromInt(raw / n)) / 64, .dx = (raw % n) * 2, .dy = n * 2, .y = n };
     }
-    return mode;
+    pub fn next(d: *Diffuser) f32 {
+        if (!d.q) return d.base;
+        d.x += d.dx;
+        if (d.x >= d.y) {
+            d.y += d.dy;
+            return d.base + 1.0 / 64.0;
+        }
+        return d.base;
+    }
+};
+
+/// Blink's InitialContentPositionOffset: offset of the first item/line for a content alignment.
+pub fn firstOffset(t: *const Tree, free: f32, n: usize, mode: st.Align, reversed: bool) f32 {
+    const flow_start: f32 = if (reversed) free else 0;
+    const nf: f32 = @floatFromInt(n);
+    return switch (mode) {
+        .space_between => if (free > 0 and n > 1) 0 else flow_start,
+        .space_around => if (free > 0 and n > 0) t.div(free, 2 * nf) else @max(t.div(free, 2), 0),
+        .space_evenly => if (free > 0 and n > 0) t.div(free, nf + 1) else @max(t.div(free, 2), 0),
+        .center => t.div(free, 2),
+        .start => 0,
+        .end => free,
+        .flex_end => if (reversed) 0 else free,
+        else => flow_start,
+    };
 }
 
-/// Offset of an item/line relative to the previous one (or the start edge when `first`).
-pub fn alignOffset(free: f32, n: usize, gap: f32, mode: st.Align, reversed: bool, first: bool) f32 {
-    const nf: f32 = @floatFromInt(n);
-    if (first) {
-        return switch (mode) {
-            .flex_start => if (reversed) free else 0,
-            .end => free,
-            .flex_end => if (reversed) 0 else free,
-            .center => free / 2,
-            .space_around => if (free >= 0) free / nf / 2 else free / 2,
-            .space_evenly => if (free >= 0) free / (nf + 1) else free / 2,
-            else => 0,
-        };
-    }
-    const f = @max(free, 0);
-    return gap + switch (mode) {
-        .space_between => f / (nf - 1),
-        .space_around => f / nf,
-        .space_evenly => f / (nf + 1),
-        else => 0,
+/// Blink's ContentDistributionSpace: the extra space between adjacent items/lines.
+pub fn spacing(t: *const Tree, free: f32, n: usize, mode: st.Align) Diffuser {
+    if (!(free > 0) or n <= 1) return .{};
+    return switch (mode) {
+        .space_between => Diffuser.init(t.q64, free, n - 1),
+        .space_evenly => Diffuser.init(t.q64, free, n + 1),
+        .space_around => Diffuser.init(t.q64, free, n),
+        else => .{},
     };
 }
 
@@ -250,7 +271,7 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
         const adj: f32 = if (cs.box_sizing == .content_box) b.pb[m] else 0;
         var basis = t.dim(cs.flex_basis, pct[m]) + adj;
         // a percentage basis against an indefinite main size behaves as `content`
-        if (!has(basis) and !(cs.flex_basis == .percent)) basis = b.size[m];
+        if (!has(basis) and !cs.flex_basis.hasPercent()) basis = b.size[m];
         it.basis_definite = has(basis);
         // is the item height a definite size for the percentages of its own children?
         it.indef = cs.aspect_ratio == null and (if (m == 1) !has(pct[1]) and !has(basis) else !has(b.size[1]));
@@ -356,66 +377,71 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
     }
     const inner_main = inner[m];
 
-    // 6. Resolve flexible lengths
+    // 6. Resolve flexible lengths (after Blink's LineFlexer, which distributes in layout units)
     for (lines) |ln| {
         const li = items[ln.start..ln.end];
-        const total_gap = gapSum(gap[m], li.len);
-        var hyp_sum: f32 = total_gap;
+        var hyp_sum: f32 = gapSum(gap[m], li.len);
         for (li) |*it| hyp_sum += it.hyp[m] + it.box.marginSum(m);
         const growing = hyp_sum < inner_main;
-        const shrinking = hyp_sum > inner_main;
-        var unfrozen: usize = 0;
         for (li) |*it| {
-            it.target[m] = it.hyp[m];
             const factor = if (growing) it.grow else it.shrink;
-            if ((!growing and !shrinking) or factor == 0 or (growing and it.basis > it.hyp[m]) or (shrinking and it.basis < it.hyp[m])) {
-                it.frozen = true;
-            } else unfrozen += 1;
+            it.frozen = factor == 0 or (if (growing) it.basis > it.hyp[m] else it.basis < it.hyp[m]);
+            it.target[m] = it.hyp[m];
         }
-        if (unfrozen == 0) continue;
-        var initial_free: f32 = inner_main - total_gap;
-        for (li) |*it| initial_free -= (if (it.frozen) it.target[m] else it.basis) + it.box.marginSum(m);
+        var initial_free: f32 = 0;
+        var round: usize = 0;
+        while (round <= li.len) : (round += 1) {
+            // sums over the unfrozen items; each takes its fraction of what the items after it leave
+            var total_factor: f64 = 0;
+            var total_weighted: f64 = 0;
+            var free: f32 = inner_main;
+            for (li) |*it| {
+                const ms = it.box.marginSum(m);
+                if (it.frozen) {
+                    free -= it.target[m] + ms + gap[m];
+                    continue;
+                }
+                it.target[m] = it.hyp[m];
+                const factor: f64 = if (growing) it.grow else it.shrink;
+                total_factor += factor;
+                if (growing) {
+                    it.frac = factor / total_factor;
+                } else {
+                    const w = factor * @as(f64, it.inner_basis);
+                    total_weighted += w;
+                    it.frac = w / total_weighted;
+                }
+                free -= it.basis + ms + gap[m];
+            }
+            free += gap[m];
+            if (round == 0) initial_free = free;
+            if (total_factor > 0 and total_factor < 1) {
+                const fractional = t.qt(@floatCast(@as(f64, initial_free) * total_factor));
+                if (@abs(fractional) < @abs(free)) free = fractional;
+            }
+            if (if (growing) free <= 0 else free >= 0) break;
 
-        var guard: usize = 0;
-        while (unfrozen > 0 and guard <= li.len) : (guard += 1) {
-            var used: f32 = total_gap;
-            var sum_factor: f32 = 0;
-            var sum_scaled: f32 = 0;
-            for (li) |*it| {
-                used += (if (it.frozen) it.target[m] else it.basis) + it.box.marginSum(m);
-                if (!it.frozen) {
-                    sum_factor += if (growing) it.grow else it.shrink;
-                    sum_scaled += it.inner_basis * it.shrink;
-                }
-            }
-            var free = inner_main - used;
-            if (sum_factor < 1) {
-                const scaled = initial_free * sum_factor;
-                if (@abs(scaled) < @abs(free)) free = scaled;
-            }
             var total_violation: f32 = 0;
-            for (li) |*it| {
+            var i = li.len;
+            while (i > 0) {
+                i -= 1;
+                const it = &li[i];
                 if (it.frozen) continue;
-                var tgt = it.basis;
-                if (free != 0 and std.math.isFinite(free)) {
-                    if (growing and sum_factor > 0) {
-                        tgt += free * (it.grow / sum_factor);
-                    } else if (shrinking and sum_scaled > 0) {
-                        tgt += free * (it.inner_basis * it.shrink / sum_scaled);
-                    }
+                var extra: f32 = free;
+                if (it.frac != 1.0) {
+                    const e = @as(f64, free) * it.frac;
+                    extra = if (std.math.isFinite(e)) (if (t.q64) @floatCast(@round(e * 64) / 64) else @floatCast(e)) else 0;
                 }
-                const clamped = @max(@max(minO(tgt, it.box.max[m]), it.min_main), 0);
-                it.violation = clamped - tgt;
+                free -= extra;
+                const size = it.basis + extra;
+                const clamped = @max(minO(size, it.box.max[m]), it.min_main);
                 it.target[m] = clamped;
+                it.violation = clamped - size;
                 total_violation += it.violation;
             }
+            if (total_violation == 0) break;
             for (li) |*it| {
-                if (it.frozen) continue;
-                const freeze = if (total_violation > 0) it.violation > 0 else if (total_violation < 0) it.violation < 0 else true;
-                if (freeze) {
-                    it.frozen = true;
-                    unfrozen -= 1;
-                }
+                if (!it.frozen and it.violation != 0 and (it.violation < 0) == (total_violation < 0)) it.frozen = true;
             }
         }
     }
@@ -497,8 +523,9 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
         // stretch lines against the definite cross size, or against a min-size that exceeds the content
         const target_inner = if (def_cross) inner[x] else orElse(min_inner[x], 0);
         if (wrap and align_content == .stretch and total_cross + cross_gap_total < target_inner) {
-            const add = (target_inner - total_cross - cross_gap_total) / @as(f32, @floatFromInt(lines.len));
-            for (lines) |*ln| ln.cross += add;
+            var add = Diffuser.init(t.q64, target_inner - total_cross - cross_gap_total, lines.len);
+            // (in visual order: Blink has applied the wrap-reverse reversal by now)
+            for (0..lines.len) |i| lines[if (wrap_rev) lines.len - 1 - i else i].cross += add.next();
             total_cross = target_inner - cross_gap_total;
         }
     }
@@ -532,18 +559,19 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
         }
         const free = inner_main - used;
         if (free > 0 and n_auto > 0) {
-            const mg = free / n_auto;
-            for (li) |*it| {
-                if (it.box.margin_auto[m]) it.box.margin[m] = mg;
-                if (it.box.margin_auto[m + 2]) it.box.margin[m + 2] = mg;
+            var mg = Diffuser.init(t.q64, free, @intFromFloat(n_auto));
+            for (0..li.len) |i| {
+                const it = &li[if (reverse) li.len - 1 - i else i];
+                if (it.box.margin_auto[m]) it.box.margin[m] = mg.next();
+                if (it.box.margin_auto[m + 2]) it.box.margin[m + 2] = mg.next();
             }
             // items pack from the main-start edge
             for (li, 0..) |*it, i| it.off_main = if (i == (if (reverse) li.len - 1 else 0)) 0 else gap[m];
         } else {
-            const mode = alignFallback(free, li.len, justify);
+            var between = spacing(t, free, li.len, justify);
             for (0..li.len) |i| {
                 const it = &li[if (reverse) li.len - 1 - i else i];
-                it.off_main = alignOffset(free, li.len, gap[m], mode, reverse, i == 0);
+                it.off_main = if (i == 0) firstOffset(t, free, li.len, justify, reverse) else gap[m] + between.next();
             }
         }
     }
@@ -561,8 +589,8 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
             if (sa or ea) {
                 const f = @max(free, 0);
                 if (sa and ea) {
-                    b.margin[x] = f / 2;
-                    b.margin[x + 2] = f / 2;
+                    b.margin[x] = t.div(f, 2);
+                    b.margin[x + 2] = t.div(f, 2);
                 } else if (sa) {
                     b.margin[x] = f;
                 } else b.margin[x + 2] = f;
@@ -572,7 +600,7 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
                 .start => 0,
                 .end => free,
                 .flex_end => if (wrap_rev) 0 else free,
-                .center => free / 2,
+                .center => t.div(free, 2),
                 .baseline => if (wrap_rev) free - (max_bl - it.baseline) else max_bl - it.baseline,
                 else => if (wrap_rev) free else 0,
             };
@@ -587,10 +615,11 @@ fn impl(t: *Tree, node: u32, in: In, box_: *const Box, phase_a: bool, floor_h: f
     // 16. align-content
     {
         const free = inner[x] - total_cross - cross_gap_total;
-        const mode = alignFallback(free, lines.len, if (wrap) align_content else .stretch);
+        const mode: st.Align = if (wrap) align_content else .stretch;
+        var between = spacing(t, free, lines.len, mode);
         for (0..lines.len) |i| {
             const ln = &lines[if (wrap_rev) lines.len - 1 - i else i];
-            ln.off = alignOffset(free, lines.len, gap[x], mode, wrap_rev, i == 0);
+            ln.off = if (i == 0) firstOffset(t, free, lines.len, mode, wrap_rev) else gap[x] + between.next();
         }
     }
 

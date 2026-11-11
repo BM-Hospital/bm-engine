@@ -7,6 +7,7 @@ test {
     _ = json;
     _ = render;
     _ = paint;
+    _ = @import("bump.zig");
     _ = @import("style/style.zig");
     _ = @import("layout/layout.zig");
     _ = @import("font/font.zig");

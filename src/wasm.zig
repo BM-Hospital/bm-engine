@@ -2,7 +2,7 @@
 const std = @import("std");
 const render = @import("render.zig");
 
-const gpa = std.heap.wasm_allocator;
+const gpa = @import("pages.zig").allocator;
 const Renderer = render.Renderer;
 
 var last_error: []const u8 = "";

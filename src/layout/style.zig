@@ -1,18 +1,46 @@
 //! Style inputs for the layout engine. Plain data; the integrator maps parsed CSS onto `Style`.
 //! Defaults follow what takumi containers need most often (flex, border-box), NOT the CSS initial values.
 
+/// `calc()` reduced to a length plus a percentage: px + percent * basis.
+pub const Calc = struct {
+    px: f32 = 0,
+    /// 0..1 fraction
+    percent: f32 = 0,
+};
+
 /// Size-like value: `auto`, pixels, or a fraction (0..1) of the containing dimension.
 pub const Dim = union(enum) {
     auto,
     px: f32,
     /// 0..1 fraction (50% == 0.5)
     percent: f32,
+    /// px + percent * basis; behaves as auto where a percentage would (indefinite basis)
+    calc: Calc,
+    /// Intrinsic sizing keywords. Only meaningful for `size` (width/height) and `flex_basis`; as a height,
+    /// min/max size, margin or inset they behave as `auto`.
+    min_content,
+    max_content,
+    fit_content,
+
+    /// true when the value depends on the containing size
+    pub fn hasPercent(d: Dim) bool {
+        return d == .percent or (d == .calc and d.calc.percent != 0);
+    }
+    pub fn isKeyword(d: Dim) bool {
+        return d == .min_content or d == .max_content or d == .fit_content;
+    }
 };
 
 /// Length or percentage (fraction 0..1). Used for padding and gap.
 pub const LengthPercentage = union(enum) {
     px: f32,
     percent: f32,
+    /// px + percent * basis (the percentage part is 0 against an indefinite basis)
+    calc: Calc,
+
+    pub fn hasPercent(d: LengthPercentage) bool {
+        return d == .percent or (d == .calc and d.calc.percent != 0);
+    }
 };
 
 pub fn Edges(comptime T: type) type {

@@ -180,6 +180,7 @@ fn initTrack(tk: st.Track, inner: f32) Track {
             r.max_v = switch (l) {
                 .px => |v| @max(orElse(tr.fin(v), 0), 0),
                 .percent => |p| @max(orElse(tr.fin(p * inner), MAXC), 0),
+                .calc => |c| @max(orElse(tr.fin(c.px + c.percent * inner), MAXC), 0),
             };
         },
         .auto => {},
@@ -202,6 +203,12 @@ fn resetTracks(g: *G, a: usize, s: *const st.Style, tmpl: []const st.Track, neg:
             src = autos[@intCast(idx)];
         }
         tk.* = initTrack(src, inner);
+        if (g.t.q64) {
+            tk.min_v = g.t.qt(tk.min_v);
+            if (tk.max_kind != .flex and tk.max_v != MAXC) tk.max_v = g.t.qt(tk.max_v);
+            tk.base = g.t.qt(tk.base);
+            if (tk.limit != MAXC) tk.limit = g.t.qt(tk.limit);
+        }
         if (e >= fit_range[0] and e < fit_range[1] and !used[i]) {
             tk.* = .{ .min_kind = .fixed, .max_kind = .fixed, .min_v = 0, .max_v = 0, .base = 0, .limit = 0, .collapsed = true };
         }
@@ -466,8 +473,20 @@ fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
                 if (crosses) fr = @max(fr, findFr(sl, gap, try contrib(g, it, a, 1)));
             }
         }
+        // (on the layout-unit grid each track truncates and hands its remainder to the next one)
+        var leftover: f32 = 0;
         for (ts) |*tk| {
-            if (tk.max_kind == .flex) tk.base = @max(tk.base, fr * tk.max_v);
+            if (tk.max_kind != .flex) continue;
+            if (!g.t.q64) {
+                tk.base = @max(tk.base, fr * tk.max_v);
+                continue;
+            }
+            const share = fr * 64 * tk.max_v + leftover;
+            const expanded = @trunc(share + std.math.floatEps(f32));
+            if (expanded / 64 >= tk.base) {
+                tk.base = expanded / 64;
+                leftover = @max(share - expanded, 0);
+            }
         }
     }
 
@@ -480,8 +499,14 @@ fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
             if (tk.max_kind == .auto) n += 1;
         }
         if (avail - sum > eps and n > 0) {
+            // equal shares, each taken from what is left (integer layout units when quantized)
+            var extra = avail - sum;
             for (ts) |*tk| {
-                if (tk.max_kind == .auto) tk.base += (avail - sum) / n;
+                if (tk.max_kind != .auto) continue;
+                const share = g.t.div(extra, n);
+                tk.base += share;
+                extra -= share;
+                n -= 1;
             }
         }
     }
@@ -514,20 +539,42 @@ fn usedSize(cs: *const st.Style, b: *const Box, a: usize, area: f32, al: st.Alig
     return NONE;
 }
 
-/// Content alignment: assigns the track offsets (relative to the container's border-box origin).
+/// Content alignment (Blink's ComputeSetGeometry): assigns the track offsets (relative to the container's
+/// border-box origin).
 fn placeTracks(g: *G, a: usize, inner: f32, start: f32, al: st.Align) void {
+    const t = g.t;
     const ts = g.tracks[a];
-    var n: usize = 0;
-    for (ts) |*tk| n += @intFromBool(!tk.collapsed);
+    var n: f32 = 0;
+    for (ts) |*tk| n += @floatFromInt(@intFromBool(!tk.collapsed));
     const free = inner - total(ts, g.gap[a]);
-    var mode = flex.alignFallback(free, n, al);
-    if (mode == .flex_start or mode == .stretch) mode = .start;
-    if (mode == .flex_end) mode = .end;
     var pos = start;
+    var gutter = g.gap[a];
+    switch (al) {
+        .space_between => if (n >= 2 and free >= 0) {
+            gutter += t.div(free, n - 1);
+        },
+        .space_around => if (free >= 0) {
+            if (n < 1) {
+                pos += t.div(free, 2);
+            } else {
+                const space = t.div(free, n);
+                pos += t.div(space, 2);
+                gutter += space;
+            }
+        },
+        .space_evenly => if (free >= 0) {
+            const space = t.div(free, n + 1);
+            pos += space;
+            gutter += space;
+        },
+        .center => pos += t.div(free, 2),
+        .end, .flex_end => pos += free,
+        else => {},
+    }
     var first = true;
     for (ts) |*tk| {
         if (!tk.collapsed) {
-            pos += flex.alignOffset(free, n, g.gap[a], mode, false, first);
+            if (!first) pos += gutter;
             first = false;
         }
         tk.off = pos;
@@ -760,7 +807,7 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
     var auto_h: f32 = NONE;
     if (!has(inner_h)) {
         // percentage rows and gaps resolve against the content-based height in a second pass
-        var pct = s.gap[1] == .percent;
+        var pct = s.gap[1].hasPercent();
         for (tmpl[1]) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
         for (s.grid_auto_rows) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
         if (pct) {
@@ -803,8 +850,8 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
             if (sa or ea) {
                 const f = @max(free, 0);
                 if (sa and ea) {
-                    b.margin[a] = f / 2;
-                    b.margin[a + 2] = f / 2;
+                    b.margin[a] = t.div(f, 2);
+                    b.margin[a + 2] = t.div(f, 2);
                 } else if (sa) {
                     b.margin[a] = f;
                 } else b.margin[a + 2] = f;
@@ -812,7 +859,7 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
             const start = if (a == 0) ax[0] else ay[0];
             pos[a] = start + b.margin[a] + (if (sa or ea) 0 else switch (al[a]) {
                 .end => free,
-                .center => free / 2,
+                .center => t.div(free, 2),
                 else => 0,
             });
         }

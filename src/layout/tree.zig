@@ -58,15 +58,17 @@ pub inline fn fin(v: f32) f32 {
 
 pub fn resolveDim(d: st.Dim, base: f32) f32 {
     return switch (d) {
-        .auto => NONE,
         .px => |v| fin(v),
         .percent => |p| fin(p * base),
+        .calc => |c| fin(if (c.percent != 0) c.px + c.percent * base else c.px),
+        else => NONE,
     };
 }
 pub fn resolveLp(d: st.LengthPercentage, base: f32) f32 {
     return switch (d) {
         .px => |v| orElse(fin(v), 0),
         .percent => |p| orElse(fin(p * base), 0),
+        .calc => |c| orElse(fin(c.px + orElse(c.percent * base, 0)), 0),
     };
 }
 
@@ -149,8 +151,11 @@ pub const BaselineFn = *const fn (ctx: *anyopaque, node: NodeId, content_size: [
 pub const Options = struct {
     /// taffy-style rounding to whole pixels (edges are rounded in absolute space, sizes derived from them)
     round: bool = false,
-    /// snap all positions/sizes to the 1/64 px grid (Blink LayoutUnit) in absolute space; ignored when `round`
-    /// (round-to-nearest; Blink itself truncates at every step, so values can differ by 1/64)
+    /// Lay out on Blink's 1/64 px LayoutUnit grid, reproducing its arithmetic where it rounds: lengths and
+    /// percentages truncate toward zero, flex free space is distributed in rounded units with the remainder
+    /// carried (LineFlexer), centring halves by integer division, distributed alignment spreads remainders
+    /// (LayoutUnitDiffuser), grid fr tracks truncate and carry. Ignored when `round` is set.
+    /// Measured sizes are used as returned: return them on the 1/64 grid for exact parity.
     quantize64: bool = false,
     /// called for measured leaves during the final layout pass; without it a leaf's baseline is its bottom
     baseline: ?BaselineFn = null,
@@ -332,10 +337,10 @@ fn stylePlain(s: *const Style) bool {
 
 fn stylePct(s: *const Style) bool {
     inline for (.{ s.size, s.min_size, s.max_size }) |v| {
-        if (v[0] == .percent or v[1] == .percent) return true;
+        if (v[0].hasPercent() or v[1].hasPercent()) return true;
     }
     inline for (.{ "top", "right", "bottom", "left" }) |f| {
-        if (@field(s.margin, f) == .percent or @field(s.padding, f) == .percent) return true;
+        if (@field(s.margin, f).hasPercent() or @field(s.padding, f).hasPercent()) return true;
     }
     return false;
 }
@@ -472,7 +477,7 @@ pub const Tree = struct {
         const b = self.rbox(s, parent);
         var in: In = .{ .parent = parent, .avail = av, .layout = true };
         in.known = styledKnown(in, &b);
-        if (!has(in.known[0]) and has(parent[0])) {
+        if (!has(in.known[0]) and has(parent[0]) and !s.size[0].isKeyword()) {
             // block-level stretch fit (the root is blockified)
             if (has(in.known[1])) in.known[0] = clampO(self.ratio(s, &b, 0, in.known[1]), b.min[0], b.max[0]);
             if (!has(in.known[0])) in.known[0] = clampO(parent[0] - b.marginSum(0), b.min[0], b.max[0]);
@@ -637,6 +642,14 @@ pub const Tree = struct {
         const c = &self.caches.items[node];
         var in = in_;
         if (n.plain) in.content_sizing = false;
+        if (!has(in.known[0])) {
+            // width: min-content / max-content size the box under that constraint whatever the space is
+            switch (n.style.size[0]) {
+                .min_content => in.avail[0] = MINC,
+                .max_content => in.avail[0] = MAXC,
+                else => {},
+            }
+        }
         if (!in.content_sizing or (has(in.known[0]) and has(in.known[1]))) in.cs_axis = 0;
         if (!has(in.known[1])) in.indef_h = false;
         // The available height never influences a result (auto heights are content-based) and a known
@@ -822,7 +835,7 @@ pub const Tree = struct {
             if (!has(known[a]) and (both or (sp.stretch[a] and !has(ins[a]) and !has(ins[a + 2])))) {
                 // stretch between the insets unless the other axis + aspect ratio determines this one
                 const o = 1 - a;
-                if (s.aspect_ratio != null and has(known[o])) continue;
+                if ((s.aspect_ratio != null and has(known[o])) or s.size[a].isKeyword()) continue;
                 known[a] = clampO(avail[a], b.min[a], b.max[a]);
             }
         }
@@ -851,8 +864,8 @@ pub const Tree = struct {
                 const cnt: f32 = @floatFromInt(@as(u8, @intFromBool(b.margin_auto[a])) + @intFromBool(b.margin_auto[e]));
                 if (cnt > 0) {
                     if (free >= 0 or a == 1) {
-                        if (b.margin_auto[a]) b.margin[a] = free / cnt;
-                        if (b.margin_auto[e]) b.margin[e] = free / cnt;
+                        if (b.margin_auto[a]) b.margin[a] = self.div(free, cnt);
+                        if (b.margin_auto[e]) b.margin[e] = self.div(free, cnt);
                     } else if (b.margin_auto[e]) b.margin[e] = free;
                 }
             }
@@ -865,7 +878,7 @@ pub const Tree = struct {
                 const rs = sp.rect[a + 2];
                 pos[a] = switch (sp.al[a]) {
                     0 => r0 + b.margin[a],
-                    1 => r0 + (rs - size[a] + b.margin[a] - b.margin[e]) / 2,
+                    1 => r0 + self.div(rs - size[a] + b.margin[a] - b.margin[e], 2),
                     else => r0 + rs - size[a] - b.margin[e],
                 };
             }
