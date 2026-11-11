@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) void {
     wasm.entry = .disabled;
     wasm.rdynamic = true;
     wasm.import_memory = false;
-    wasm.stack_size = 256 * 1024;
+    wasm.stack_size = (b.option(u64, "stack-kib", "wasm shadow stack size in KiB (default 1024)") orelse 1024) * 1024;
     b.installArtifact(wasm);
 
     const native_target = b.standardTargetOptions(.{});

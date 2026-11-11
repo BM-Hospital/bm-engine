@@ -15,6 +15,9 @@ const bump = @import("bump.zig");
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
 pub const none: u32 = std.math.maxInt(u32);
+/// Maximum node nesting. Layout and paint recurse per level on the 1 MiB wasm shadow stack
+/// (verified with a ReleaseSafe build, whose frames are larger than the shipped one).
+pub const max_node_depth = 128;
 
 pub const Error = error{ OutOfMemory, Invalid };
 
@@ -573,7 +576,7 @@ pub const Frame = struct {
         const cw: f32 = if (o.width) |w| @floatFromInt(w) else @floor(rl.x + rl.w + rl.margin.right + 0.5);
         const ch: f32 = if (o.height) |h| @floatFromInt(h) else @floor(rl.y + rl.h + rl.margin.bottom + 0.5);
         if (!(cw >= 1) or !(ch >= 1)) return f.fail("invalid viewport: content has zero size and no width/height was given", "");
-        if (cw > 16384 or ch > 16384 or cw * ch > 64.0e6) return f.fail("canvas too large", "");
+        if (cw > 16384 or ch > 16384 or cw * ch > 40.0e6) return f.fail("canvas too large", "");
         f.canvas_w = @intFromFloat(cw);
         f.canvas_h = @intFromFloat(ch);
     }
@@ -609,7 +612,7 @@ pub const Frame = struct {
     }
 
     fn buildElement(f: *Frame, v: json.Value, parent_cs: ?*const CS, parent: u32, depth: u32) Error!u32 {
-        if (depth > 200) return f.fail("node tree is nested too deeply", "");
+        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
         if (v != .object) return f.fail("node must be an object", "");
         const kind = try f.typeOf(v);
         var cs = try f.computeStyle(v, parent_cs);
@@ -686,7 +689,7 @@ pub const Frame = struct {
     }
 
     fn collectRuns(f: *Frame, v: json.Value, parent_cs: *const CS, out: *std.ArrayList(font.Run), depth: u32) Error!void {
-        if (depth > 200) return f.fail("node tree is nested too deeply", "");
+        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
         const kind = try f.typeOf(v);
         const cs = try f.computeStyle(v, parent_cs);
         if (cs.display == .none) return;
@@ -1118,7 +1121,8 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.box_sizing = if (cs.box_sizing == .border_box) .border_box else .content_box;
     s.overflow_x = mapOverflow(cs.overflow_x);
     s.overflow_y = mapOverflow(cs.overflow_y);
-    s.inset = .{ .top = dimAuto(cs.inset[0]), .right = dimAuto(cs.inset[1]), .bottom = dimAuto(cs.inset[2]), .left = dimAuto(cs.inset[3]) };
+    // inset properties do not apply to position: static
+    if (cs.position != .static) s.inset = .{ .top = dimAuto(cs.inset[0]), .right = dimAuto(cs.inset[1]), .bottom = dimAuto(cs.inset[2]), .left = dimAuto(cs.inset[3]) };
     s.size = .{ dimSize(cs.width), dimSize(cs.height) };
     s.min_size = .{ dimSize(cs.min_width), dimSize(cs.min_height) };
     s.max_size = .{ dimSize(cs.max_width), dimSize(cs.max_height) };
@@ -1186,4 +1190,21 @@ test "writeNum" {
     try out.append(a, ' ');
     try writeNum(a, &out, 300);
     try std.testing.expectEqualStrings("12.5 -0.015625 300", out.items);
+}
+
+fn testRender(node: []const u8, opts: []const u8) !void {
+    const gpa = std.testing.allocator;
+    const r = Renderer.create(gpa).?;
+    defer r.destroy();
+    const font_bytes = @embedFile("font/testdata/Inter-Regular.ttf");
+    _ = try r.registerFont(try gpa.dupe(u8, font_bytes), "", 0, -1);
+    _ = r.render(node, opts) catch |e| switch (e) {
+        error.Invalid => {},
+        else => return e,
+    };
+}
+
+test "regression: text shifted above the canvas by a relative offset" {
+    const node = "{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"container\",\"style\":{\"borderTop\":\"6px solid green\"},\"children\":[{\"type\":\"container\",\"style\":{\"bottom\":20},\"children\":[{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"text\",\"text\":\"Xin ch\u{00e0}o Vi\u{1ec7}t Nam \u{2014} ti\u{1ebf}ng Vi\u{1ec7}t c\u{00f3} d\u{1ea5}u\",\"style\":{}}]},{\"type\":\"container\",\"style\":{},\"children\":[]}]}]}]}]}";
+    try testRender(node, "{\"height\":1,\"format\":\"raw\"}");
 }

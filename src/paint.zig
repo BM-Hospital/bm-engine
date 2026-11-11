@@ -161,7 +161,7 @@ const Painter = struct {
         } else p.path.addRect(p.a, r) catch return error.OutOfMemory;
     }
 
-    fn fillRRect(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, pt: *const Paint) Error!void {
+    noinline fn fillRRect(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, pt: *const Paint) Error!void {
         if (!(r.w > 0) or !(r.h > 0)) return;
         if (radii == null and ctx.plain()) {
             raster.fillRect(ctx.dst, r, pt, ctx.clip);
@@ -221,7 +221,7 @@ const Painter = struct {
     }
 
     /// New clip = current clip ∩ (rounded) rect, allocated in the arena.
-    fn makeClip(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii) Error!*const ClipMask {
+    noinline fn makeClip(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii) Error!*const ClipMask {
         var c: ClipMask = undefined;
         if (radii == null and ctx.plain()) {
             c = ClipMask.fromRect(toIRect(r).intersect(ctx.dst.bounds()));
@@ -246,7 +246,7 @@ const Painter = struct {
         return out;
     }
 
-    fn gradientPaint(p: *Painter, g: *const style.Gradient, tile: Rect, cur: style.Color, tf: Affine) Error!?Paint {
+    noinline fn gradientPaint(p: *Painter, g: *const style.Gradient, tile: Rect, cur: style.Color, tf: Affine) Error!?Paint {
         const w = tile.w;
         const h = tile.h;
         if (!(w > 0) or !(h > 0) or g.stops.len == 0) return null;
@@ -375,7 +375,7 @@ const Painter = struct {
 
     // ---- images
 
-    fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect) void {
+    noinline fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect) void {
         if (!(dest.w > 0) or !(dest.h > 0) or pm.width == 0 or pm.height == 0) return;
         const tw: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.w))));
         const th: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.h))));
@@ -398,7 +398,7 @@ const Painter = struct {
         };
     }
 
-    fn paintBackground(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    noinline fn paintBackground(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         const col = cs.resolveColor(cs.background_color);
         if (col.a != 0) {
             const ar = area(g, cs.bgColorClip());
@@ -504,7 +504,7 @@ const Painter = struct {
         return if (det > 0) @sqrt(det) else 1;
     }
 
-    fn paintOuterShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    noinline fn paintOuterShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         var i = cs.box_shadow.len;
         while (i > 0) {
             i -= 1;
@@ -552,7 +552,7 @@ const Painter = struct {
         }
     }
 
-    fn paintInsetShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    noinline fn paintInsetShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         var any = false;
         for (cs.box_shadow) |sh| {
             if (sh.inset) any = true;
@@ -595,7 +595,7 @@ const Painter = struct {
 
     // ---- border
 
-    fn paintBorder(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    noinline fn paintBorder(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         const bw = g.bw;
         if (bw[0] <= 0 and bw[1] <= 0 and bw[2] <= 0 and bw[3] <= 0) return;
         var cols: [4]style.Color = undefined;
@@ -697,7 +697,7 @@ const Painter = struct {
 
     /// Coverage mask of a glyph. synth bit1 = fake bold: the outline grown by half of Skia's
     /// fake-bold stroke width, approximated as the per-pixel max over 9 offset copies.
-    fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
+    noinline fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
         if (!p.buildGlyph(face, gid, size, ox, oy, synth, tf)) return null;
         if (synth & 2 == 0) return p.sampled(out, window);
         const base = p.sampled(p.a, window) orelse return null;
@@ -765,7 +765,7 @@ const Painter = struct {
         }
     }
 
-    fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2, synth: u2) ?render.GlyphMask {
+    noinline fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2, synth: u2) ?render.GlyphMask {
         const r = p.f.r;
         const key: u64 = (@as(u64, synth) << 62) | (@as(u64, face & 0xFFF) << 50) | (@as(u64, gid) << 34) | (@as(u64, sub) << 32) | @as(u32, @bitCast(size));
         if (r.glyphs.get(key)) |gm| return gm;
@@ -780,7 +780,7 @@ const Painter = struct {
         return gm;
     }
 
-    fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
+    noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
         const para = n.para orelse return;
         const tl = para.layout(p.a, cw) catch return error.OutOfMemory;
         const f = p.f;
