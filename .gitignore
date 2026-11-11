@@ -1,0 +1,6 @@
+ref/
+node_modules/
+.zig-cache/
+zig-out/
+bench/out/
+*.tmp
