@@ -23,10 +23,14 @@ const ptext = @import("paint_text.zig");
 const pborder = @import("paint_border.zig");
 const pfx = @import("paint_fx.zig");
 const psvg = @import("paint_svg.zig");
+const ptable = @import("paint_table.zig");
 
 /// Optional features (the integrator points these at `config.zig`).
 pub const enable_color_fonts = @import("config.zig").enable_color_fonts;
 pub const enable_svg = @import("config.zig").enable_svg;
+/// clip-path, mask-image, mix-/background-blend-mode, backdrop-filter, isolation.
+pub const enable_effects = @import("config.zig").enable_effects;
+pub const enable_tables = @import("config.zig").enable_tables;
 
 const Frame = render.Frame;
 const Node = render.Node;
@@ -258,9 +262,9 @@ pub const Painter = struct {
     layers: std.ArrayList(*Pixmap) = .empty,
     /// outlines waiting for the end of their stacking context
     outlines: std.ArrayList(Deferred) = .empty,
-    /// colour glyph offscreens of this render
-    color_glyphs: std.ArrayList(ptext.ColorGlyph) = .empty,
     layer_depth: usize = 0,
+    /// table parts by render node id (allocated when the first table is painted; paint_table.zig)
+    tparts: []ptable.Part = &.{},
 
     pub fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
@@ -599,7 +603,7 @@ pub const Painter = struct {
         };
     }
 
-    noinline fn paintBackground(p: *Painter, ctx_in: *const Ctx, id: u32, g: *const Geom, x: f32, y: f32) Error!void {
+    pub noinline fn paintBackground(p: *Painter, ctx_in: *const Ctx, id: u32, g: *const Geom, x: f32, y: f32) Error!void {
         const cs = p.f.nodes.items[id].cs;
         const col = cs.resolveColor(cs.background_color);
         if (col.a == 0 and cs.background_image.len == 0) return;
@@ -621,9 +625,9 @@ pub const Painter = struct {
             if (cm.bounds.isEmpty()) return;
         }
         var blended = false;
-        for (cs.background_blend_mode) |bm| {
+        if (comptime enable_effects) for (cs.background_blend_mode) |bm| {
             if (bm != .normal) blended = true;
-        }
+        };
         if (blended and cs.background_image.len > 0) return p.paintBackgroundBlended(&ctx, cs, g, col);
         if (col.a != 0) {
             const ar = area(g, cs.bgColorClip());
@@ -773,10 +777,38 @@ pub const Painter = struct {
 
         var c2 = ctx.*;
         c2.clip = try p.makeClip(ctx, pa.rect, pa.radii);
-        const px0 = pa.rect.x;
-        const py0 = pa.rect.y;
-        const px1 = pa.rect.x + pa.rect.w;
-        const py1 = pa.rect.y + pa.rect.h;
+        var px0 = pa.rect.x;
+        var py0 = pa.rect.y;
+        var px1 = pa.rect.x + pa.rect.w;
+        var py1 = pa.rect.y + pa.rect.h;
+        {
+            // only the tiles that can reach the visible region (its bounds mapped back into the box's space):
+            // a huge clip box would otherwise spend the tile budget far off-canvas
+            const reg = region(&c2);
+            if (reg.isEmpty()) return;
+            const inv = ctx.tf.invert() orelse return;
+            const rx0: f32 = @floatFromInt(reg.x);
+            const ry0: f32 = @floatFromInt(reg.y);
+            const rx1: f32 = rx0 + @as(f32, @floatFromInt(reg.w));
+            const ry1: f32 = ry0 + @as(f32, @floatFromInt(reg.h));
+            var vx0: f32 = std.math.floatMax(f32);
+            var vy0: f32 = vx0;
+            var vx1: f32 = -vx0;
+            var vy1: f32 = -vx0;
+            for ([4]raster.Point{ .{ .x = rx0, .y = ry0 }, .{ .x = rx1, .y = ry0 }, .{ .x = rx1, .y = ry1 }, .{ .x = rx0, .y = ry1 } }) |q| {
+                const l = inv.apply(q);
+                vx0 = @min(vx0, l.x);
+                vy0 = @min(vy0, l.y);
+                vx1 = @max(vx1, l.x);
+                vy1 = @max(vy1, l.y);
+            }
+            if (!(vx1 >= vx0) or !(vy1 >= vy0)) return;
+            px0 = @max(px0, vx0 - 1);
+            py0 = @max(py0, vy0 - 1);
+            px1 = @min(px1, vx1 + 1);
+            py1 = @min(py1, vy1 + 1);
+            if (!(px1 > px0) or !(py1 > py0)) return;
+        }
         var yy = if (rep_y) ty - @ceil((ty - py0) / th) * th else ty;
         var count: u32 = 0;
         while (yy < py1 and count < 20000) : (yy += th) {
@@ -805,7 +837,7 @@ pub const Painter = struct {
         return if (det > 0) @sqrt(det) else 1;
     }
 
-    noinline fn paintOuterShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    pub noinline fn paintOuterShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         var i = cs.box_shadow.len;
         while (i > 0) {
             i -= 1;
@@ -851,7 +883,7 @@ pub const Painter = struct {
         }
     }
 
-    noinline fn paintInsetShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    pub noinline fn paintInsetShadows(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
         var any = false;
         for (cs.box_shadow) |sh| {
             if (sh.inset) any = true;
@@ -1020,6 +1052,7 @@ pub const Painter = struct {
         const cs = n.cs;
         if (n.kind != .anon_text and cs.display == .none) return;
         if (depth > 600) return;
+        if (enable_tables and id < p.tparts.len and p.tparts[id].hidden) return;
         const l = f.tree.layout(n.lid);
         var x = ox + l.x;
         var y = oy + l.y;
@@ -1061,9 +1094,9 @@ pub const Painter = struct {
         const g = geomOf(cs, l, x, y, ctx);
         var comp = ClipMask.fromRect(reg);
         if (ctx.clip) |c| comp = raster.clipIntersect(p.a, c.*, comp) catch return error.OutOfMemory;
-        if (cs.clip_path) |cp| {
+        if (comptime enable_effects) if (cs.clip_path) |cp| {
             if (try pfx.clipPathMask(p, ctx, cp, cs, .{ .x = x, .y = y, .w = l.w, .h = l.h }, &g, reg)) |m| comp = try pfx.clipAnd(p, comp, &m);
-        }
+        };
         if (pfx.hasMask(cs)) {
             const m = try pfx.maskImageMask(p, ctx, cs, &g, reg);
             comp = try pfx.clipAnd(p, comp, &m);
@@ -1078,7 +1111,7 @@ pub const Painter = struct {
         defer p.endLayer();
         const reg_clip = ClipMask.fromRect(reg);
         var lctx: Ctx = .{ .dst = layer, .tf = ctx.tf, .clip = &reg_clip };
-        if (cs.backdrop_filter.len > 0) {
+        if ((comptime enable_effects) and cs.backdrop_filter.len > 0) {
             try pfx.backdrop(p, ctx, cs, &g, layer, reg);
             const content = try p.beginLayer(ctx, reg);
             defer p.endLayer();
@@ -1107,7 +1140,7 @@ pub const Painter = struct {
                 @memcpy(layer.data[off..][0..rb], sub.data[ry * rb ..][0..rb]);
             }
         }
-        const mode = pfx.blendMode(cs.mix_blend_mode);
+        const mode: raster.BlendMode = if (comptime enable_effects) pfx.blendMode(cs.mix_blend_mode) else .normal;
         const op = @min(cs.opacity, 1);
         if (mode == .normal) {
             compositeLayer(ctx.dst, layer, reg, op, &comp);
@@ -1284,11 +1317,20 @@ pub const Painter = struct {
 
         const g = geomOf(cs, l, x, y, ctx);
 
+        // a table, or a part of the table painted around it, paints its decorations as one
+        var tg: ?*const ptable.TG = null;
+        var as_part = false;
+        if (enable_tables) {
+            tg = f.tree.tableGeom(n.lid);
+            if (tg != null or p.tparts.len != 0) as_part = try ptable.decorations(p, ctx, id, x, y, &g, tg);
+        }
         if (cs.visibility == .visible) {
-            if (cs.box_shadow.len > 0) try p.paintOuterShadows(ctx, cs, &g);
-            try p.paintBackground(ctx, id, &g, x, y);
-            if (cs.box_shadow.len > 0) try p.paintInsetShadows(ctx, cs, &g);
-            try pborder.paintBorder(p, ctx, cs, &g);
+            if (!as_part) {
+                if (cs.box_shadow.len > 0) try p.paintOuterShadows(ctx, cs, &g);
+                try p.paintBackground(ctx, id, &g, x, y);
+                if (cs.box_shadow.len > 0) try p.paintInsetShadows(ctx, cs, &g);
+                try pborder.paintBorder(p, ctx, cs, &g);
+            }
             if (cs.outline_style != .none and cs.outline_style != .hidden) {
                 try p.outlines.append(p.a, .{ .cs = cs, .g = g, .tf = ctx.tf, .clip = ctx.clip });
             }
@@ -1313,10 +1355,14 @@ pub const Painter = struct {
         if (!special) {
             c = n.first_child;
             while (c != none) : (c = f.nodes.items[c].next) try p.paintNode(c, x, y, &cctx, depth + 1);
-            return;
+        } else {
+            const items = try p.sortedChildren(n);
+            for (items) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
         }
-        const items = try p.sortedChildren(n);
-        for (items) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
+        // collapsed borders follow every box inside the table
+        if (enable_tables) {
+            if (tg) |t| if (t.collapse) try ptable.paintCollapsed(p, ctx, id, x, y, t);
+        }
     }
 
     /// Painted in the positioned / stacking-context phase.

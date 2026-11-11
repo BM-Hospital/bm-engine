@@ -121,5 +121,13 @@ const fx = [
       c({ width: 150, height: 150, backgroundImage: "url(\"data:image/svg+xml;base64," + Buffer.from(svgBg).toString("base64") + "\")", backgroundSize: "contain", backgroundRepeat: "no-repeat" }),
       c({ width: 240, height: 150, backgroundColor: "#f1f5f9", backgroundImage: "url(\"data:image/svg+xml;base64," + Buffer.from(svgBg).toString("base64") + "\")", backgroundSize: "60px 60px" }),
     ]) },
+  { id: "pfx-inline-boxes-many", feature: "inline-box", title: "many decorated inline spans across paragraphs (more than 24 in the frame), nested spans, wrapping (no inline-axis padding / border: those do not advance the text in bm yet)", width: W, height: 300,
+    node: `<style>
+      .pg { font-family: Inter; font-size: 15px; line-height: 26px; width: 100%; height: 100%; background: #fff; color: #0f172a; padding: 12px 16px; }
+      p { margin: 0 0 8px 0; }
+      .a { background: #fde68a; } .b { border-top: 1px solid #2563eb; border-bottom: 1px solid #2563eb; }
+      .c { background: #bbf7d0; border-bottom: 2px solid #15803d; } .d { background: #fecaca; padding: 2px 0; border-radius: 6px; }
+      .o { background: #e0e7ff; padding: 2px 0; } .i { background: #a5b4fc; border-top: 1px solid #3730a3; border-bottom: 1px solid #3730a3; } .k { color: #be123c; background: #ffe4e6; }
+    </style><div class="pg">${[0, 1, 2, 3].map((p) => `<p>${Array.from({ length: 9 }, (_, i) => `word${p}${i} <span class="${"abcd"[(i + p) % 4]}">tag ${p}.${i}</span>`).join(" ")} <span class="o">outer <span class="i">inner <span class="k">deep</span> box</span> wraps onto the next line here</span></p>`).join("")}</div>` },
 ];
 export default fx;

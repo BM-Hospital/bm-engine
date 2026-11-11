@@ -697,14 +697,14 @@ inline fn storeV(p: PxPtr, v: VU) void {
     @as(*align(1) [VL]u32, @ptrCast(p)).* = v;
 }
 
-/// Vector form of `types.scalePx` (exact per-channel `round(x * c / 255)`).
+/// Vector form of `types.scalePx` (per-channel `div255(x * c)`).
 inline fn scalePxV(p: VU, c: VU) VU {
     const m: VU = @splat(0x00FF00FF);
     const bias: VU = @splat(0x00800080);
-    var rb = (p & m) * c + bias;
-    rb = ((rb + ((rb >> sh8) & m)) >> sh8) & m;
-    var ga = ((p >> sh8) & m) * c + bias;
-    ga = (ga + ((ga >> sh8) & m)) & @as(VU, @splat(0xFF00FF00));
+    var rb = (p & m) * c;
+    rb = ((rb + bias + ((rb >> sh8) & m)) >> sh8) & m;
+    var ga = ((p >> sh8) & m) * c;
+    ga = (ga + bias + ((ga >> sh8) & m)) & @as(VU, @splat(0xFF00FF00));
     return rb | ga;
 }
 

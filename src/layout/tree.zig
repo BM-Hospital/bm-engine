@@ -188,6 +188,8 @@ const Node = struct {
     /// set by table.zig for a `border-collapse: collapse` table it laid out: `Layout.border` / `.padding`
     /// hold the used (collapsed) values it wrote, which `setLayout` then keeps
     table_box: bool = false,
+    /// index into Tree.table_geoms of this table's record (validated by `tableGeom`)
+    table_geom: u32 = no_node,
 };
 
 const Entry = struct {
@@ -425,6 +427,8 @@ pub fn TreeWith(comptime cfg: Config) type {
         bfc: ?*fl.Bfc = null,
         bfc_org: [2]f32 = .{ 0, 0 },
         float_rects: std.ArrayList(fl.Rect) = .empty,
+        /// paint geometry of the tables laid out by the last `compute` (see `tableGeom`)
+        table_geoms: std.ArrayList(table.Geom) = .empty,
         /// statistics of the last `compute`: number of MeasureFn invocations / node computations (cache misses)
         measure_calls: u32 = 0,
         node_computes: u32 = 0,
@@ -440,6 +444,8 @@ pub fn TreeWith(comptime cfg: Config) type {
             self.caches.deinit(self.alloc);
             self.pending.deinit(self.alloc);
             self.float_rects.deinit(self.alloc);
+            self.clearTableGeoms();
+            self.table_geoms.deinit(self.alloc);
             self.scratch.deinit(self.alloc);
             self.* = undefined;
         }
@@ -505,6 +511,28 @@ pub fn TreeWith(comptime cfg: Config) type {
             return if (node < self.layouts.items.len) &self.layouts.items[node] else &zero_layout;
         }
 
+        fn clearTableGeoms(self: *Self) void {
+            for (self.table_geoms.items) |*g| {
+                self.alloc.free(g.cols);
+                self.alloc.free(g.colels);
+                self.alloc.free(g.secs);
+                self.alloc.free(g.rows);
+                self.alloc.free(g.cells);
+            }
+            self.table_geoms.clearRetainingCapacity();
+        }
+
+        /// Paint geometry of the table laid out at `node` by the last `compute`: a table / inline-table node, or a
+        /// row / row-group node that is not inside a table (the anonymous table around it). Null for any other
+        /// node, when tables are compiled out, and for tables no final layout pass reached.
+        pub fn tableGeom(self: *const Self, node: NodeId) ?*const table.Geom {
+            if (!cfg.tables or node >= self.nodes.items.len) return null;
+            const gi = self.nodes.items[node].table_geom;
+            if (gi >= self.table_geoms.items.len) return null;
+            const g = &self.table_geoms.items[gi];
+            return if (g.node == node) g else null;
+        }
+
         pub inline fn firstChild(self: *const Self, node: u32) u32 {
             return self.nodes.items[node].first_child;
         }
@@ -521,6 +549,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             if (root >= self.nodes.items.len) return error.InvalidNode;
             for (self.caches.items) |*c| c.valid = 0;
             self.pending.clearRetainingCapacity();
+            self.clearTableGeoms();
             self.root = root;
             self.ctx = ctx;
             self.measure_fn = measure;

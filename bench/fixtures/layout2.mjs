@@ -78,6 +78,85 @@ const tables = [
       <tr><td class="a">x</td><td class="b">y</td><td>z</td></tr>
     </table>`),
   },
+  {
+    id: "layout2-table-collapse-conflicts", feature: "table", title: "border-collapse conflict resolution: width, style rank, box order (cell > row > group > column > table), spans", width: 600, height: 300,
+    node: page(tableCss + `
+      table { border-collapse: collapse; border: 3px solid #0f172a; }
+      td { border: 1px solid #94a3b8; }
+      .wide { border: 5px solid #2563eb; }
+      .dbl { border: 4px double #dc2626; }
+      .dash { border: 3px dashed #16a34a; }
+      .dot { border: 3px dotted #9333ea; }
+      .ridge { border: 4px ridge #0891b2; }
+      .row { border: 3px solid #f59e0b; }
+      .col { border: 3px solid #db2777; background: #fdf2f8; }
+      tbody { border: 3px solid #64748b; }
+    `, `<table>
+      <colgroup><col><col class="col"><col><col></colgroup>
+      <tbody>
+        <tr><td>a</td><td class="wide">wide</td><td>c</td><td class="dbl">double</td></tr>
+        <tr class="row"><td class="dash">dashed</td><td>row</td><td class="dot">dotted</td><td>h</td></tr>
+        <tr><td colspan="2" class="ridge">ridge, colspan 2</td><td rowspan="2" class="wide">rowspan 2</td><td>l</td></tr>
+        <tr><td>m</td><td>n</td><td>p</td></tr>
+      </tbody>
+    </table>`),
+  },
+  {
+    id: "layout2-table-col-backgrounds", feature: "table", title: "column / column-group / row-group / row / cell backgrounds in the table layer order, border-spacing gaps", width: 600, height: 260,
+    node: page(tableCss + `
+      table { border-spacing: 6px; background: #f8fafc; border: 2px solid #334155; }
+      .cg { background: #fde68a; }
+      .c2 { background: #bfdbfe; }
+      .c4 { background: linear-gradient(180deg, #bbf7d0, #fecaca); }
+      thead { background: rgba(15, 23, 42, 0.15); }
+      .r2 { background: rgba(220, 38, 38, 0.35); }
+      .cell { background: #ffffff; }
+    `, `<table>
+      <colgroup class="cg"><col><col class="c2"></colgroup><col><col class="c4">
+      <thead><tr><td>Name</td><td>Group</td><td>Plain</td><td>Gradient</td></tr></thead>
+      <tbody>
+        <tr><td>alpha</td><td>one</td><td>x</td><td>1</td></tr>
+        <tr class="r2"><td>beta</td><td class="cell">cell</td><td>y</td><td>2</td></tr>
+        <tr><td colspan="2">gamma spans two</td><td>z</td><td>3</td></tr>
+      </tbody>
+    </table>`),
+  },
+  {
+    id: "layout2-table-empty-cells", feature: "table", title: "empty-cells: hide (separated borders) next to show, and visibility: collapse on a row", width: 600, height: 240,
+    node: page(tableCss + `
+      table { border-spacing: 5px; margin-bottom: 12px; }
+      td { background: #fbcfe8; border: 2px solid #9d174d; min-width: 40px; }
+      .hide { empty-cells: hide; }
+      .gone { visibility: collapse; }
+      tr { background: #e0f2fe; }
+    `, `<table class="hide">
+      <tr><td>a</td><td></td><td>c</td></tr>
+      <tr><td></td><td>e</td><td></td></tr>
+    </table>
+    <table>
+      <tr><td>a</td><td></td><td>c</td></tr>
+      <tr class="gone"><td>collapsed</td><td>row</td><td>x</td></tr>
+      <tr><td></td><td>e</td><td></td></tr>
+    </table>`),
+  },
+  {
+    id: "layout2-table-caption-bottom", feature: "table", title: "table decorations (background, border, radius, shadow) cover the grid only: captions top and bottom", width: 600, height: 300,
+    node: page(tableCss + `
+      table { background: #e0e7ff; border: 3px solid #3730a3; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35); margin: 0 0 22px 8px; }
+      caption { padding: 6px; color: #3730a3; }
+      .b caption { caption-side: bottom; font-size: 13px; }
+      .c { border-collapse: collapse; border-radius: 0; }
+      .c td { border: 1px solid #6366f1; }
+      .c .low { caption-side: bottom; }
+    `, `<table class="b">
+      <caption>caption below the grid</caption>
+      <tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr>
+    </table>
+    <table class="c">
+      <caption>top</caption><caption class="low">and bottom, collapsed borders</caption>
+      <tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr>
+    </table>`),
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------ floats

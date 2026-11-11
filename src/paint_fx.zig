@@ -22,12 +22,14 @@ const ClipMask = raster.ClipMask;
 const Error = render.Error;
 
 pub fn hasMask(cs: *const CS) bool {
+    if (comptime !pm.enable_effects) return false;
     for (cs.mask_image) |im| if (im != .none) return true;
     return false;
 }
 
 /// takumi `EffectKind::Group` / `Filter`: the element paints into an offscreen layer.
 pub fn needsGroup(cs: *const CS) bool {
+    if (comptime !pm.enable_effects) return cs.opacity < 1 or cs.filter.len > 0;
     return cs.opacity < 1 or cs.filter.len > 0 or cs.backdrop_filter.len > 0 or cs.mix_blend_mode != .normal or
         cs.isolation == .isolate or cs.clip_path != null or hasMask(cs);
 }

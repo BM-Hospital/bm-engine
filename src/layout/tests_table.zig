@@ -125,6 +125,7 @@ test "table oracle fixtures, exact LayoutUnit agreement (quantize64)" {
 // ---------------------------------------------------------------------------------------------------
 // hand-written unit tests
 
+const tree_no_node = @import("tree.zig").no_node;
 const vp400: [2]L.AvailableSpace = .{ .{ .definite = 400 }, .{ .definite = 300 } };
 
 fn px(v: f32) L.Dim {
@@ -267,6 +268,151 @@ test "table: collapsed borders are reported as used borders" {
     try testing.expectEqual(@as(f32, 6), t.layout(tbl).border.left);
     try testing.expectEqual(@as(f32, 9), t.layout(tbl).padding.left);
     try testing.expectEqual(@as(f32, 4), t.layout(b).border.left);
+}
+
+test "table: paint geometry (tableGeom) of a table with a caption, a column group, spans and a collapsed row" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try add(&t, null, .{ .display = .block, .size = .{ px(300), .auto } });
+    const tbl = try add(&t, root, .{ .display = .table, .border_spacing = .{ 4, 6 }, .border = .all(2) });
+    const cap = try add(&t, tbl, .{ .display = .table_caption });
+    _ = try boxIn(&t, cap, 30, 10);
+    const cg = try add(&t, tbl, .{ .display = .table_column_group });
+    const c0 = try add(&t, cg, .{ .display = .table_column });
+    const c1 = try add(&t, cg, .{ .display = .table_column });
+    const c2 = try add(&t, tbl, .{ .display = .table_column });
+    const body = try add(&t, tbl, .{ .display = .table_row_group });
+    const r0 = try add(&t, body, .{ .display = .table_row });
+    const a = try add(&t, r0, .{ .display = .table_cell, .col_span = 2 });
+    _ = try boxIn(&t, a, 50, 20);
+    const b = try add(&t, r0, .{ .display = .table_cell, .row_span = 2 });
+    _ = try boxIn(&t, b, 30, 20);
+    const r1 = try add(&t, body, .{ .display = .table_row });
+    const c = try add(&t, r1, .{ .display = .table_cell });
+    _ = try boxIn(&t, c, 20, 12);
+    const d = try add(&t, r1, .{ .display = .table_cell }); // empty
+    const r2 = try add(&t, body, .{ .display = .table_row, .visibility_collapse = true });
+    const e = try add(&t, r2, .{ .display = .table_cell });
+    _ = try boxIn(&t, e, 20, 12);
+    // an anonymous cell around a stray block
+    const stray = try boxIn(&t, r1, 10, 5);
+    _ = stray;
+
+    try testing.expect(t.tableGeom(tbl) == null); // nothing laid out yet
+    for (0..2) |_| {
+        try t.compute(root, vp400, &T.dummy, T.noMeasure, .{});
+        const g = t.tableGeom(tbl).?;
+        try testing.expect(t.tableGeom(body) == null and t.tableGeom(r0) == null and t.tableGeom(root) == null);
+        try testing.expectEqual(@as(usize, 1), t.table_geoms.items.len);
+        try testing.expect(g.is_table and !g.collapse and g.n_bcols == 0);
+        // the grid box excludes the caption
+        try testing.expectEqual(@as(f32, 10), g.grid_y);
+        try testing.expectEqual(t.layout(tbl).h - 10, g.grid_h);
+        // sections start past the border and the horizontal spacing
+        try testing.expectEqual(@as(f32, 2 + 4), g.sec_x);
+        try testing.expectEqual(@as(usize, 1), g.secs.len);
+        try testing.expect(g.secs[0].node == body and g.secs[0].start == 0 and g.secs[0].n_rows == 3);
+        try testing.expectEqual(t.layout(body).y, g.secs[0].y);
+        try testing.expectEqual(t.layout(body).h, g.secs[0].h);
+        // rows
+        try testing.expectEqual(@as(usize, 3), g.rows.len);
+        try testing.expect(g.rows[0].node == r0 and g.rows[1].node == r1 and g.rows[2].node == r2);
+        try testing.expect(!g.rows[0].collapsed and g.rows[2].collapsed and g.rows[2].h == 0);
+        try testing.expectEqual(t.layout(r1).y, g.rows[1].y);
+        try testing.expectEqual(t.layout(r1).h, g.rows[1].h);
+        // cells: grid position and border box in the table's coordinates
+        try testing.expectEqual(@as(usize, 6), g.cells.len);
+        const ga = g.cells[0];
+        try testing.expect(ga.node == a and ga.row == 0 and ga.col == 0 and ga.colspan == 2 and ga.rowspan == 1 and !ga.anon and !ga.hidden);
+        try testing.expectEqual(g.sec_x + t.layout(a).x, ga.x);
+        try testing.expectEqual(t.layout(body).y + t.layout(r0).y + t.layout(a).y, ga.y);
+        try testing.expectEqual(t.layout(a).w, ga.w);
+        try testing.expectEqual(t.layout(a).h, ga.h);
+        const gb = g.cells[1];
+        try testing.expect(gb.node == b and gb.col == 2 and gb.rowspan == 2 and gb.has_content);
+        try testing.expectEqual(t.layout(b).h, gb.h);
+        try testing.expect(g.cells[2].node == c and g.cells[2].row == 1 and g.cells[2].col == 0);
+        try testing.expect(g.cells[3].node == d and g.cells[3].col == 1 and !g.cells[3].has_content);
+        // the stray block is an anonymous cell after the rowspanning one
+        try testing.expect(g.cells[4].anon and g.cells[4].row == 1 and g.cells[4].col == 3);
+        // the cell of the collapsed row is hidden
+        try testing.expect(g.cells[5].node == e and g.cells[5].hidden);
+        // columns: a cell starts at its column's edge
+        try testing.expectEqual(@as(usize, 4), g.cols.len);
+        try testing.expectEqual(@as(f32, 0), g.cols[0].x);
+        try testing.expectEqual(t.layout(d).x, g.cols[1].x);
+        try testing.expectEqual(t.layout(b).x, g.cols[2].x);
+        try testing.expectEqual(t.layout(b).w, g.cols[2].w);
+        // <colgroup> before its <col>s, then the lone <col>
+        try testing.expectEqual(@as(usize, 4), g.colels.len);
+        try testing.expect(g.colels[0].node == cg and g.colels[0].group and g.colels[0].start == 0 and g.colels[0].span == 2);
+        try testing.expect(g.colels[1].node == c0 and !g.colels[1].group and g.colels[1].start == 0 and g.colels[1].span == 1);
+        try testing.expect(g.colels[2].node == c1 and g.colels[2].start == 1);
+        try testing.expect(g.colels[3].node == c2 and g.colels[3].start == 2 and !g.colels[3].group);
+    }
+}
+
+test "table: paint geometry of collapsed borders and of the anonymous table around a lone row" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try add(&t, null, .{ .display = .block, .size = .{ px(300), .auto } });
+    const tbl = try add(&t, root, .{ .display = .table, .border_collapse = true, .border = .all(6) });
+    const row = try add(&t, tbl, .{ .display = .table_row });
+    const a = try add(&t, row, .{ .display = .table_cell, .border = .all(2) });
+    _ = try boxIn(&t, a, 40, 20);
+    const b = try add(&t, row, .{ .display = .table_cell, .border = .all(4), .visibility_collapse = false });
+    _ = try boxIn(&t, b, 60, 20);
+    // a row straight in a block: an anonymous table whose geometry is keyed by the row node
+    const lone = try add(&t, root, .{ .display = .table_row });
+    const la = try add(&t, lone, .{ .display = .table_cell });
+    _ = try boxIn(&t, la, 25, 10);
+    try t.compute(root, vp400, &T.dummy, T.noMeasure, .{});
+    const g = t.tableGeom(tbl).?;
+    try testing.expect(g.collapse and g.n_bcols == 2 and g.grid_y == 0);
+    try testing.expectEqual(t.layout(tbl).h, g.grid_h);
+    // one anonymous section; column edges are the grid lines (no spacing)
+    try testing.expect(g.secs.len == 1 and g.secs[0].node == tree_no_node and g.rows[0].node == row);
+    try testing.expectEqual(@as(f32, 3), g.sec_x);
+    try testing.expectEqual(@as(f32, 0), g.cols[0].x);
+    try testing.expectEqual(@as(f32, 45), g.cols[1].x);
+    try testing.expectEqual(@as(f32, 65), g.cols[1].w);
+    try testing.expectEqual(@as(f32, 3), g.cells[0].x);
+    try testing.expectEqual(@as(f32, 48), g.cells[1].x);
+    const lg = t.tableGeom(lone).?;
+    try testing.expect(!lg.is_table and lg.node == lone and lg.rows.len == 1 and lg.rows[0].node == lone and lg.secs[0].node == tree_no_node);
+    try testing.expect(lg.cells.len == 1 and lg.cells[0].node == la and lg.cells[0].x == 0 and lg.cells[0].y == 0);
+    try testing.expectEqual(@as(usize, 2), t.table_geoms.items.len);
+    // a second compute drops the records of the first
+    try t.compute(root, vp400, &T.dummy, T.noMeasure, .{});
+    try testing.expectEqual(@as(usize, 2), t.table_geoms.items.len);
+    try testing.expect(t.tableGeom(tbl).?.node == tbl);
+}
+
+test "table: a hidden border wins its collapsed edge and takes no space" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try add(&t, null, .{ .display = .block, .size = .{ px(300), .auto } });
+    const tbl = try add(&t, root, .{ .display = .table, .border_collapse = true, .border = .all(6) });
+    const row = try add(&t, tbl, .{ .display = .table_row });
+    const a = try add(&t, row, .{ .display = .table_cell, .border = .all(2) });
+    _ = try boxIn(&t, a, 40, 20);
+    // every side of b is `hidden`: it suppresses the table's border on its outer edges and a's on the shared one
+    const b = try add(&t, row, .{ .display = .table_cell, .border_hidden = .all(true) });
+    _ = try boxIn(&t, b, 60, 20);
+    try t.compute(root, vp400, &T.dummy, T.noMeasure, .{});
+    try testing.expectEqual(@as(f32, 3), t.layout(a).border.left);
+    try testing.expectEqual(@as(f32, 0), t.layout(a).border.right);
+    try testing.expectEqual(@as(f32, 0), t.layout(b).border.left);
+    try testing.expectEqual(@as(f32, 0), t.layout(b).border.right);
+    try testing.expectEqual(@as(f32, 0), t.layout(b).border.top);
+    // a keeps the table's 6px edge above it
+    try testing.expectEqual(@as(f32, 3), t.layout(a).border.top);
+    try expectRect(&t, a, 0, 0, 3 + 40, 26);
+    try expectRect(&t, b, 43, 0, 60, 26);
+    // the table's own used border is the widest half edge along each side
+    try testing.expectEqual(@as(f32, 3), t.layout(tbl).border.top);
+    try testing.expectEqual(@as(f32, 0), t.layout(tbl).border.right);
+    try expectRect(&t, tbl, 0, 0, 3 + 43 + 60 + 0, 32);
 }
 
 test "table: vertical-align shifts are not applied twice when the tree is laid out again" {

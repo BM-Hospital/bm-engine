@@ -101,10 +101,8 @@ fn lineIdx(l: i16, explicit: i32) i32 {
 }
 
 fn resolvePlace(pl: st.Placement, explicit: i32) Place {
-    var s = pl.start;
-    var e = pl.end;
-    if (s == .line and s.line == 0) s = .auto;
-    if (e == .line and e.line == 0) e = .auto;
+    const s = pl.start;
+    const e = pl.end;
     const spanOf = struct {
         fn f(l: st.Line) i32 {
             return switch (l) {

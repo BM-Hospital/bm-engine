@@ -101,6 +101,8 @@ fn stripUrl(a: []const u8) []const u8 {
 
 fn parseInterpolation(g: *Gradient, l: *Lexer) Error!void {
     const m = colorm.parseInterpolationMethod(l) orelse return error.InvalidStyleValue;
+    // without modern colour support the method is accepted and ignored (sRGB interpolation)
+    if (comptime !colorm.modern_color) return;
     g.space = m.space;
     g.hue = m.hue;
 }
@@ -398,6 +400,7 @@ pub fn resolveStops(arena: std.mem.Allocator, stops: []const Stop, line_length: 
 /// that the plain stops are returned). Hint stops keep takumi's 50% premultiplied-sRGB colour.
 pub fn resolveGradientStops(arena: std.mem.Allocator, g: *const Gradient, line_length: f32, current: Color) Error![]ResolvedStop {
     const base = try resolveStops(arena, g.stops, line_length, current);
+    if (comptime !colorm.modern_color) return base;
     if (g.space == .srgb or base.len < 2) return base;
     const step: f32 = if (g.kind == .conic) 1 else 3;
     var out: tok.List(ResolvedStop) = .{};
@@ -481,11 +484,20 @@ test "gradient stops and hints" {
     try T.expect(g.stops[4].color == .current and g.stops[4].pos == null);
     const bad = [_][]const u8{
         "linear-gradient(10%)",
-        "linear-gradient(red,, blue)",     "linear-gradient(45deg)",
-        "linear-gradient(to middle, red, blue)", "linear-gradient(to left right, red, blue)", "linear-gradient(in srgb longer hue, red, blue)",
-        "linear-gradient(in foo, red, blue)", "linear-gradient(in oklch longer, red, blue)", "linear-gradient(in, red, blue)",
-        "linear-gradient(red 10px 20px 30px, blue)", "linear-gradient(45, red, blue)", "radial-gradient(circle 10% , red, blue)",
-        "radial-gradient(ellipse 10px, red, blue)", "radial-gradient(circle 1px 2px, red, blue)", "conic-gradient(from 10px, red, blue)",
+        "linear-gradient(red,, blue)",
+        "linear-gradient(45deg)",
+        "linear-gradient(to middle, red, blue)",
+        "linear-gradient(to left right, red, blue)",
+        "linear-gradient(in srgb longer hue, red, blue)",
+        "linear-gradient(in foo, red, blue)",
+        "linear-gradient(in oklch longer, red, blue)",
+        "linear-gradient(in, red, blue)",
+        "linear-gradient(red 10px 20px 30px, blue)",
+        "linear-gradient(45, red, blue)",
+        "radial-gradient(circle 10% , red, blue)",
+        "radial-gradient(ellipse 10px, red, blue)",
+        "radial-gradient(circle 1px 2px, red, blue)",
+        "conic-gradient(from 10px, red, blue)",
         "linear-gradient(red, blue,)",
     };
     for (bad) |s| {

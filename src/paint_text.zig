@@ -84,7 +84,8 @@ fn bucketOf(tf: Affine) ?Bucket {
 /// bit1 = the fake-bold stroke mask (drawn on top of the plain fill, as takumi does).
 noinline fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2, synth: u2) ?render.GlyphMask {
     const r = p.f.r;
-    const key: u64 = (@as(u64, synth) << 62) | (@as(u64, face & 0xFFF) << 50) | (@as(u64, gid) << 34) | (@as(u64, sub) << 32) | @as(u32, @bitCast(size));
+    // (u128: variable-font instance ids are >= 0x8000 and must not collide)
+    const key: u128 = (@as(u128, synth) << 66) | (@as(u128, face) << 50) | (@as(u128, gid) << 34) | (@as(u128, sub) << 32) | @as(u32, @bitCast(size));
     if (r.glyphs.get(key)) |gm| return gm;
     const big: IRect = .{ .x = -8192, .y = -8192, .w = 16384, .h = 16384 };
     const stroke: f32 = if (synth & 2 != 0) emboldenWidth(size) else 0;
@@ -232,28 +233,33 @@ fn clipMaskNode(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y: f32, mask: *ra
 
 // ---- colour glyphs
 
-pub const ColorGlyph = struct { face: font.FaceId, gid: u16, size: f32, fg: u32, pix: Pixmap, ox: i32, oy: i32 };
-
 /// COLR / bitmap glyph: rendered once per (face, gid, size, foreground) into a glyph-sized
-/// offscreen kept for the rest of the render, then composited (never emboldened or skewed).
+/// offscreen kept in the renderer's colour-glyph cache (`Renderer.color_glyphs`, counted against
+/// the glyph budget and dropped with the glyph masks), then composited (never emboldened or skewed).
 noinline fn paintColorGlyph(p: *Painter, ctx: *const Ctx, g: *const font.PositionedGlyph, gx: f32, gy: f32, fg: style.Color) Error!void {
     if (comptime !pm.enable_color_fonts) return;
     if (fg.a == 0 or !(g.size > 0) or g.size > 400) return;
     const fgbits: u32 = @as(u32, fg.r) | (@as(u32, fg.g) << 8) | (@as(u32, fg.b) << 16) | (@as(u32, fg.a) << 24);
-    var hit: ?*const ColorGlyph = null;
-    for (p.color_glyphs.items) |*cg| {
-        if (cg.face == g.face and cg.gid == g.gid and cg.size == g.size and cg.fg == fgbits) hit = cg;
-    }
-    if (hit == null) {
-        const fnt = p.f.r.fonts.font(g.face);
-        const ct = color.ColorTables.init(fnt);
-        const kind = ct.kind(g.gid);
+    const r = p.f.r;
+    const fnt = r.fonts.font(g.face);
+    const ct = color.ColorTables.init(fnt);
+    const kind = ct.kind(g.gid);
+    const is_bitmap = kind == .bitmap_png;
+    // key: glyph and size; the foreground only matters to COLR glyphs (an odd multiplier keeps
+    // distinct foregrounds of one glyph apart)
+    var key: u64 = (@as(u64, g.face) << 48) | (@as(u64, g.gid) << 32) | @as(u32, @bitCast(g.size));
+    if (!is_bitmap) key ^= @as(u64, fgbits | 0xFF000000) *% 0x9E3779B97F4A7C15;
+    var cg: render.ColorGlyphEntry = undefined;
+    if (r.color_glyphs.get(key)) |e| {
+        cg = e;
+    } else {
         // box around the origin: x in [-0.5, 2] em, y in [-1.5, 0.75] em
         const ox: i32 = @intFromFloat(@ceil(g.size * 0.5) + 1);
         const oy: i32 = @intFromFloat(@ceil(g.size * 1.5) + 1);
         const w: u32 = @intCast(ox + @as(i32, @intFromFloat(@ceil(g.size * 2))) + 1);
         const h: u32 = @intCast(oy + @as(i32, @intFromFloat(@ceil(g.size * 0.75))) + 1);
-        var pix = Pixmap.init(p.a, w, h) catch return error.OutOfMemory;
+        var pix = Pixmap.init(r.gpa, w, h) catch return error.OutOfMemory;
+        errdefer pix.deinit(r.gpa);
         @memset(pix.data, 0);
         const fx: f32 = @floatFromInt(ox);
         const fy: f32 = @floatFromInt(oy);
@@ -266,11 +272,10 @@ noinline fn paintColorGlyph(p: *Painter, ctx: *const Ctx, g: *const font.Positio
             },
             else => {},
         }
-        try p.color_glyphs.append(p.a, .{ .face = g.face, .gid = g.gid, .size = g.size, .fg = fgbits, .pix = pix, .ox = ox, .oy = oy });
-        hit = &p.color_glyphs.items[p.color_glyphs.items.len - 1];
+        cg = .{ .pix = pix, .ox = ox, .oy = oy };
+        r.color_glyphs.put(r.gpa, key, cg) catch return error.OutOfMemory;
+        r.color_glyph_bytes += pix.data.len;
     }
-    const cg = hit.?;
-    const is_bitmap = color.glyphKind(p.f.r.fonts.font(g.face), g.gid) == .bitmap_png;
     const op: f32 = if (is_bitmap) 1 else @as(f32, @floatFromInt(fg.a)) / 255.0;
     var m = ctx.tf.mul(Affine.translate(gx - @as(f32, @floatFromInt(cg.ox)), gy - @as(f32, @floatFromInt(cg.oy))));
     if (ctx.plain()) {
@@ -569,13 +574,50 @@ fn isElementStyle(p: *Painter, cs: *const CS) bool {
 /// `box-decoration-break: clone`.
 noinline fn paintInlineBoxes(p: *Painter, ctx: *const Ctx, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32) Error!void {
     const f = p.f;
-    var boxes: [24]BoxRef = undefined;
+    var fixed: [24]BoxRef = undefined;
+    var boxes: []BoxRef = &fixed;
     var nb: usize = 0;
     if (comptime has_inline_boxes) {
-        for (f.inline_boxes.items, 0..) |ib, bi| {
-            if (nb < boxes.len and isInlineBox(ib.cs) and ib.cs.visibility == .visible) {
-                boxes[nb] = .{ .cs = ib.cs, .id = @intCast(bi) };
-                nb += 1;
+        // the boxes this paragraph's runs lie in (innermost box of each run and its ancestors), in
+        // tree order: a box is created before the boxes inside it, so ascending ids paint outer first
+        const ibs = f.inline_boxes.items;
+        var lo: u32 = none;
+        var hi: u32 = 0;
+        for (0..2) |pass| {
+            var seen: []bool = &.{};
+            if (pass == 1) {
+                if (lo == none) return;
+                seen = try p.a.alloc(bool, hi - lo + 1);
+                @memset(seen, false);
+            }
+            var prev: u32 = none;
+            for (tl.glyphs) |g| {
+                if (g.user == prev or g.user >= f.run_box.items.len) continue;
+                prev = g.user;
+                var b = f.run_box.items[g.user];
+                var guard: u32 = 0;
+                while (b != none and b < ibs.len and guard < 64) : (guard += 1) {
+                    if (pass == 0) {
+                        lo = @min(lo, b);
+                        hi = @max(hi, b);
+                    } else if (seen[b - lo]) break else {
+                        seen[b - lo] = true;
+                        if (isInlineBox(ibs[b].cs) and ibs[b].cs.visibility == .visible) nb += 1;
+                    }
+                    b = ibs[b].parent;
+                }
+            }
+            if (pass == 1) {
+                if (nb == 0) return;
+                if (nb > fixed.len) boxes = try p.a.alloc(BoxRef, nb);
+                nb = 0;
+                for (seen, 0..) |sn, k| {
+                    const bi: u32 = lo + @as(u32, @intCast(k));
+                    if (sn and isInlineBox(ibs[bi].cs) and ibs[bi].cs.visibility == .visible) {
+                        boxes[nb] = .{ .cs = ibs[bi].cs, .id = bi };
+                        nb += 1;
+                    }
+                }
             }
         }
     } else {
@@ -585,7 +627,7 @@ noinline fn paintInlineBoxes(p: *Painter, ctx: *const Ctx, n: *const Node, tl: *
             if (g.user == prev or g.user >= rs.len) continue;
             prev = g.user;
             const cs = rs[g.user];
-            if (cs == n.cs or nb == boxes.len or cs.display != .@"inline" or cs.visibility != .visible or !isInlineBox(cs)) continue;
+            if (cs == n.cs or nb == fixed.len or cs.display != .@"inline" or cs.visibility != .visible or !isInlineBox(cs)) continue;
             var seen = false;
             for (boxes[0..nb]) |b| {
                 if (b.cs == cs) seen = true;

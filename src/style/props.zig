@@ -16,6 +16,18 @@ const Env = values.Env;
 const S = c.ComputedStyle;
 const ColorValue = colorm.ColorValue;
 
+/// Build feature switches (src/config.zig via the root module; everything on in standalone tests).
+/// A property of a compiled-out feature is accepted and ignored (its value is not parsed).
+const cfg = struct {
+    const root = @import("root");
+    const on = @hasDecl(root, "bm_config");
+    const animation = if (on) root.bm_config.enable_animation else true;
+    const effects = if (on) root.bm_config.enable_effects else true;
+    const generated = if (on) root.bm_config.enable_generated_content else true;
+    const tables = if (on) root.bm_config.enable_tables else true;
+    const variable_fonts = if (on) root.bm_config.enable_variable_fonts else true;
+};
+
 pub const Prop = enum(u16) {
     WebkitBackdropFilter,
     WebkitBoxDecorationBreak,
@@ -349,7 +361,7 @@ pub fn lookup(name: []const u8) ?Prop {
     while (lo < hi) {
         const mid = (lo + hi) / 2;
         switch (std.mem.order(u8, prop_pack[prop_off[mid]..prop_off[mid + 1]], name)) {
-            .eq => return @enumFromInt(mid),
+            .eq => return @fromBackingInt(@intCast(mid)),
             .lt => lo = mid + 1,
             .gt => hi = mid,
         }
@@ -375,9 +387,9 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .WebkitTextStroke => &.{ fr("webkit_text_stroke_width"), fr("webkit_text_stroke_color") },
         .WebkitTextStrokeColor => &.{fr("webkit_text_stroke_color")},
         .WebkitTextStrokeWidth => &.{fr("webkit_text_stroke_width")},
-        .alignContent => &.{fr("align_content")},
-        .alignItems => &.{fr("align_items")},
-        .alignSelf => &.{fr("align_self")},
+        .alignContent => &.{ fr("align_content"), fi("align_safe", 2) },
+        .alignItems => &.{ fr("align_items"), fi("align_safe", 0) },
+        .alignSelf => &.{ fr("align_self"), fi("align_safe", 1) },
         .aspectRatio => &.{fr("aspect_ratio")},
         .background => &.{ fr("background_color"), fr("background_image"), fr("background_size"), fr("background_position"), fr("background_repeat"), fr("background_clip"), fr("background_origin") },
         .backgroundClip => &.{fr("background_clip")},
@@ -457,9 +469,9 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .maxWidth => &.{fr("max_width")},
         .maxHeight => &.{fr("max_height")},
         .imageRendering => &.{fr("image_rendering")},
-        .justifyContent => &.{fr("justify_content")},
-        .justifyItems => &.{fr("justify_items")},
-        .justifySelf => &.{fr("justify_self")},
+        .justifyContent => &.{ fr("justify_content"), fi("align_safe", 3) },
+        .justifyItems => &.{ fr("justify_items"), fi("align_safe", 4) },
+        .justifySelf => &.{ fr("justify_self"), fi("align_safe", 5) },
         .letterSpacing => &.{fr("letter_spacing")},
         .lineHeight => &.{fr("line_height")},
         .margin => &.{fr("margin")},
@@ -486,9 +498,9 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .overflowX => &.{fr("overflow_x")},
         .overflowY => &.{fr("overflow_y")},
         .overflowWrap, .wordWrap => &.{fr("overflow_wrap")},
-        .placeContent => &.{ fr("align_content"), fr("justify_content") },
-        .placeItems => &.{ fr("align_items"), fr("justify_items") },
-        .placeSelf => &.{ fr("align_self"), fr("justify_self") },
+        .placeContent => &.{ fr("align_content"), fr("justify_content"), fi("align_safe", 2), fi("align_safe", 3) },
+        .placeItems => &.{ fr("align_items"), fr("justify_items"), fi("align_safe", 0), fi("align_safe", 4) },
+        .placeSelf => &.{ fr("align_self"), fr("justify_self"), fi("align_safe", 1), fi("align_safe", 5) },
         .position => &.{fr("position")},
         .rotate => &.{fr("rotate")},
         .scale => &.{fr("scale")},
@@ -616,7 +628,7 @@ fn rangeOf(comptime f: FieldRef) Range {
 const n_ranges = blk: {
     @setEvalBranchQuota(200000);
     var total: usize = 0;
-    for (0..n_props) |i| total += fieldsOf(@enumFromInt(i)).len;
+    for (0..n_props) |i| total += fieldsOf(@fromBackingInt(@intCast(i))).len;
     break :blk total;
 };
 const range_list: [n_ranges]Range = blk: {
@@ -624,7 +636,7 @@ const range_list: [n_ranges]Range = blk: {
     var ranges: [n_ranges]Range = undefined;
     var k: usize = 0;
     for (0..n_props) |i| {
-        for (fieldsOf(@enumFromInt(i))) |f| {
+        for (fieldsOf(@fromBackingInt(@intCast(i)))) |f| {
             ranges[k] = rangeOf(f);
             k += 1;
         }
@@ -637,7 +649,7 @@ const range_starts: [n_props + 1]u16 = blk: {
     var k: usize = 0;
     for (0..n_props) |i| {
         starts[i] = k;
-        k += fieldsOf(@enumFromInt(i)).len;
+        k += fieldsOf(@fromBackingInt(@intCast(i))).len;
     }
     starts[n_props] = k;
     break :blk starts;
@@ -645,7 +657,7 @@ const range_starts: [n_props + 1]u16 = blk: {
 
 /// Copies every field `p` writes from `src` into `dst`.
 pub fn copyProp(p: Prop, dst: *S, src: *const S) void {
-    const i = @intFromEnum(p);
+    const i = @backingInt(p);
     const db = std.mem.asBytes(dst);
     const sb = std.mem.asBytes(src);
     for (range_list[range_starts[i]..range_starts[i + 1]]) |r| {
@@ -656,7 +668,7 @@ pub fn copyProp(p: Prop, dst: *S, src: *const S) void {
 /// Copies all inherited properties from parent.
 pub fn inheritAll(dst: *S, parent: *const S) void {
     for (0..n_props) |i| {
-        const p: Prop = @enumFromInt(i);
+        const p: Prop = @fromBackingInt(@intCast(i));
         if (isInherited(p)) copyProp(p, dst, parent);
     }
     dst.custom_props = parent.custom_props;
@@ -710,8 +722,12 @@ fn lineWidth(cx: *Cx, t: Token) Error!?f32 {
         if (ieq(t.text, "thin")) return 1 * d;
         if (ieq(t.text, "medium")) return 3 * d;
         if (ieq(t.text, "thick")) return 5 * d;
+        // takumi's line width is a <length>, whose `auto` resolves to 0
+        if (ieq(t.text, "auto")) return 0;
         return null;
     }
+    // (a percentage resolves against 0 in takumi: `to_border_px(sizing, 0.0)`)
+    if (t.kind == .percentage) return if (t.num < 0) bad else 0;
     const v = (values.length(t, &cx.env)) orelse return null;
     if (v < 0) return bad;
     return v;
@@ -743,35 +759,52 @@ fn fourTokens(l: *Lexer) Error![4]Token {
 const AMask = u32;
 fn amask(comptime tags: []const c.Align) AMask {
     var m: AMask = 0;
-    for (tags) |t| m |= @as(AMask, 1) << @as(u5, @intCast(@intFromEnum(t)));
+    for (tags) |t| m |= @as(AMask, 1) << @as(u5, @intCast(@backingInt(t)));
     return m;
 }
-const content_mask = amask(&.{ .normal, .stretch, .start, .end, .flex_start, .flex_end, .center, .baseline, .last_baseline, .space_between, .space_around, .space_evenly, .left, .right });
-const items_mask = amask(&.{ .normal, .stretch, .start, .end, .flex_start, .flex_end, .center, .baseline, .last_baseline, .self_start, .self_end, .left, .right });
-const self_mask = items_mask | amask(&.{.auto});
+// The keyword sets are takumi's (`declare_box_alignment_enum_impl!`), narrower than CSS: no `left` /
+// `right` / `legacy` / `first baseline` / `last baseline`, no `auto` for the *-self properties, and
+// `safe` / `unsafe` only before a positional keyword. `flow-start` / `flow-end` (content properties) are the
+// start / end of the flow: stored as flex-start / flex-end.
+const positional_mask = amask(&.{ .start, .end, .flex_start, .flex_end, .center, .self_start, .self_end });
+const content_mask = amask(&.{ .normal, .stretch, .start, .end, .flex_start, .flex_end, .center, .space_between, .space_around, .space_evenly });
+const items_mask = amask(&.{ .normal, .stretch, .start, .end, .flex_start, .flex_end, .center, .baseline, .self_start, .self_end });
+const self_mask = items_mask;
 
-fn parseAlign(l: *Lexer, mask: AMask) Error!c.Align {
+/// Indexes of `ComputedStyle.align_safe`.
+const safe_align_items = 0;
+const safe_align_self = 1;
+const safe_align_content = 2;
+const safe_justify_content = 3;
+const safe_justify_items = 4;
+const safe_justify_self = 5;
+
+const Aligned = struct { v: c.Align, safe: bool };
+
+fn parseAlign(l: *Lexer, mask: AMask, content: bool) Error!Aligned {
     var t = l.next();
-    if (t.isIdent("safe") or t.isIdent("unsafe")) t = l.next();
-    var v: c.Align = undefined;
-    if (t.isIdent("first") or t.isIdent("last")) {
-        const last = t.isIdent("last");
-        if (!l.next().isIdent("baseline")) return bad;
-        v = if (last) .last_baseline else .baseline;
-    } else if (t.isIdent("legacy")) {
-        // `legacy [left|right|center]` (justify-items) -> treat as normal / the given keyword
-        const n = l.peek();
-        if (n.kind == .ident) {
-            _ = l.next();
-            v = tok.kw(c.Align, n) orelse return bad;
-        } else v = .normal;
-    } else {
-        v = tok.kw(c.Align, t) orelse return bad;
-        if (v == .last_baseline) return bad;
-        if ((v == .left or v == .right or v == .center) and l.peek().isIdent("legacy")) _ = l.next();
+    var safe = false;
+    if (t.isIdent("safe") or t.isIdent("unsafe")) {
+        safe = t.isIdent("safe");
+        t = l.next();
     }
-    if (mask & (@as(AMask, 1) << @as(u5, @intCast(@intFromEnum(v)))) == 0) return bad;
-    return v;
+    if (t.kind != .ident) return bad;
+    var v: c.Align = undefined;
+    if (content and t.isIdent("flow-start")) {
+        v = .flex_start;
+    } else if (content and t.isIdent("flow-end")) {
+        v = .flex_end;
+    } else v = tok.kw(c.Align, t) orelse return bad;
+    const bit = @as(AMask, 1) << @as(u5, @intCast(@backingInt(v)));
+    if (mask & bit == 0) return bad;
+    // (`unsafe` is skipped before any keyword; `safe` needs a positional one)
+    if (safe and positional_mask & bit == 0) return bad;
+    return .{ .v = v, .safe = safe };
+}
+
+fn setAlign(s: *S, field: *c.Align, comptime idx: usize, a: Aligned) void {
+    field.* = a.v;
+    s.align_safe[idx] = a.safe;
 }
 
 /// A plain negative number/dimension/percentage token (not calc()).
@@ -1018,43 +1051,31 @@ fn parseAutoTracks(cx: *Cx, l: *Lexer) Error![]const c.Track {
 
 const LineSpec = struct { line: c.GridLine = .auto, ref: c.GridLineRef = .{}, ident_only: bool = false };
 
-/// `auto | <custom-ident> | [<integer> && <custom-ident>?] | [span && [<integer> || <custom-ident>]]`
+/// One grid line as takumi parses it (`GridPlacement::from_css`), which is narrower than CSS:
+/// `auto | span <integer> | span <custom-ident> | <custom-ident> | <number>`.
+///  * `<integer> <custom-ident>` and `span <integer> <custom-ident>` (any order) are rejected
+///  * `span` must come first; `span n` with n < 1 is `span 1`
+///  * a number is truncated to an integer and wrapped to i16; 0 is kept (`GridLine.line` = 0)
 fn gridLine(l: *Lexer) Error!LineSpec {
-    if (l.peek().isIdent("auto")) {
-        _ = l.next();
-        return .{};
+    const t = l.next();
+    if (t.kind == .ident) {
+        if (t.isIdent("auto")) return .{};
+        if (t.isIdent("span")) {
+            const u = l.peek();
+            if (u.kind == .ident) {
+                _ = l.next();
+                return .{ .ref = .{ .name = u.text, .n = 1, .span = true } };
+            }
+            const v = try need(i32, values.integer(u));
+            _ = l.next();
+            return .{ .line = .{ .span = @intCast(std.math.clamp(v, 1, 65535)) } };
+        }
+        return .{ .ref = .{ .name = t.text, .n = 1 }, .ident_only = true };
     }
-    var span = false;
-    var num: ?i32 = null;
-    var name: ?[]const u8 = null;
-    var n: usize = 0;
-    while (true) {
-        const t = l.peek();
-        if (t.kind == .eof or t.kind == .slash) break;
-        _ = l.next();
-        n += 1;
-        if (t.isIdent("span") and !span) {
-            span = true;
-        } else if (t.kind == .ident and name == null and !isReservedLineName(t)) {
-            name = t.text;
-        } else if (num == null and t.kind != .ident) {
-            num = try need(i32, values.integer(t));
-        } else return bad;
-    }
-    if (n == 0) return bad;
-    if (span and num == null and name == null) return bad;
-    if (name) |nm| {
-        const k = num orelse 1;
-        if (k == 0 or (span and k < 0)) return bad;
-        return .{ .ref = .{ .name = nm, .n = k, .span = span }, .ident_only = !span and num == null };
-    }
-    const v = num orelse return bad;
-    if (v == 0) return .{}; // takumi accepts 0 (behaves as auto)
-    if (span) {
-        if (v < 0) return bad;
-        return .{ .line = .{ .span = @intCast(v) } };
-    }
-    return .{ .line = .{ .line = v } };
+    if (t.kind != .number or !std.math.isFinite(t.num)) return bad;
+    const iv: i32 = @intFromFloat(std.math.clamp(@trunc(t.num), -2147483648.0, 2147483520.0));
+    const w: i16 = @truncate(iv);
+    return .{ .line = .{ .line = w } };
 }
 
 /// `<line> [/ <line>]*` up to `max` parts; `got` = number written.
@@ -1073,7 +1094,7 @@ fn gridLines(l: *Lexer, comptime max: usize, got: *usize) Error![max]LineSpec {
     return out;
 }
 
-/// Omitted end lines copy a lone custom-ident start (CSS Grid §8.4), else auto.
+/// grid-area: omitted lines copy a lone custom-ident (CSS Grid §8.4), else auto.
 fn identOr(s: LineSpec) LineSpec {
     return if (s.ident_only) s else .{};
 }
@@ -1285,7 +1306,7 @@ fn autoFlowKw(l: *Lexer, flow: *c.GridAutoFlow) Error!void {
 // ------------------------------------------------------------------ borders / backgrounds
 const BorderParts = struct { w: f32, st: c.BorderStyle, col: ColorValue };
 
-fn borderParts(cx: *Cx, l: *Lexer, allow_auto_style: bool) Error!BorderParts {
+fn borderParts(cx: *Cx, l: *Lexer) Error!BorderParts {
     var w: ?f32 = null;
     var st: ?c.BorderStyle = null;
     var col: ?ColorValue = null;
@@ -1293,27 +1314,19 @@ fn borderParts(cx: *Cx, l: *Lexer, allow_auto_style: bool) Error!BorderParts {
     while (!l.atEnd()) {
         const t = l.next();
         n += 1;
-        if (w == null) {
-            if (try lineWidth(cx, t)) |v| {
-                w = v;
-                continue;
-            }
+        // takumi's `Border::from_css`: each token is tried as width, style, colour in that order, and a
+        // repeated component replaces the earlier one (`auto` is a width: 0)
+        if (try lineWidth(cx, t)) |v| {
+            w = v;
+            continue;
         }
-        if (st == null) {
-            if (tok.kw(c.BorderStyle, t)) |v| {
-                st = v;
-                continue;
-            }
-            if (allow_auto_style and t.isIdent("auto")) {
-                st = .solid;
-                continue;
-            }
+        if (tok.kw(c.BorderStyle, t)) |v| {
+            st = v;
+            continue;
         }
-        if (col == null) {
-            if (colorm.fromToken(t)) |v| {
-                col = v;
-                continue;
-            }
+        if (colorm.fromToken(t)) |v| {
+            col = v;
+            continue;
         }
         return bad;
     }
@@ -1739,7 +1752,7 @@ fn parseTransform(cx: *Cx, l: *Lexer) Error![]const c.TransformOp {
 
 // ------------------------------------------------------------------ fonts / text
 const font_size_kw = [_]struct { []const u8, f32 }{
-    .{ "xx-small", 9 }, .{ "x-small", 10 }, .{ "small", 13 }, .{ "medium", 16 },
+    .{ "xx-small", 9 }, .{ "x-small", 10 }, .{ "small", 13 },    .{ "medium", 16 },
     .{ "large", 18 },   .{ "x-large", 24 }, .{ "xx-large", 32 }, .{ "xxx-large", 48 },
 };
 
@@ -2149,7 +2162,7 @@ fn kwEntryOf(comptime p: Prop) ?KwEntry {
 const kw_count = blk: {
     var n: usize = 0;
     for (0..n_props) |i| {
-        if (kwEntryOf(@enumFromInt(i)) != null) n += 1;
+        if (kwEntryOf(@fromBackingInt(@intCast(i))) != null) n += 1;
     }
     break :blk n;
 };
@@ -2158,7 +2171,7 @@ const kw_entries: [kw_count]KwEntry = blk: {
     var o: [kw_count]KwEntry = undefined;
     var n: usize = 0;
     for (0..n_props) |i| {
-        if (kwEntryOf(@enumFromInt(i))) |e| {
+        if (kwEntryOf(@fromBackingInt(@intCast(i)))) |e| {
             o[n] = e;
             n += 1;
         }
@@ -2171,7 +2184,7 @@ const kw_index: [n_props]u8 = blk: {
     var o: [n_props]u8 = undefined;
     var n: usize = 0;
     for (0..n_props) |i| {
-        if (kwEntryOf(@enumFromInt(i)) != null) {
+        if (kwEntryOf(@fromBackingInt(@intCast(i))) != null) {
             o[i] = n;
             n += 1;
         } else o[i] = 0xff;
@@ -2185,24 +2198,24 @@ const kw_index: [n_props]u8 = blk: {
 pub fn physicalProps(p: Prop, rtl: bool, buf: *[4]Prop) []const Prop {
     const Map = struct { Prop, Prop, Prop }; // logical, ltr, rtl
     const singles = [_]Map{
-        .{ .marginInlineStart, .marginLeft, .marginRight },        .{ .marginInlineEnd, .marginRight, .marginLeft },
-        .{ .marginBlockStart, .marginTop, .marginTop },            .{ .marginBlockEnd, .marginBottom, .marginBottom },
-        .{ .paddingInlineStart, .paddingLeft, .paddingRight },     .{ .paddingInlineEnd, .paddingRight, .paddingLeft },
-        .{ .paddingBlockStart, .paddingTop, .paddingTop },         .{ .paddingBlockEnd, .paddingBottom, .paddingBottom },
-        .{ .insetInlineStart, .left, .right },                     .{ .insetInlineEnd, .right, .left },
-        .{ .insetBlockStart, .top, .top },                         .{ .insetBlockEnd, .bottom, .bottom },
-        .{ .inlineSize, .width, .width },                          .{ .blockSize, .height, .height },
-        .{ .minInlineSize, .minWidth, .minWidth },                 .{ .minBlockSize, .minHeight, .minHeight },
-        .{ .maxInlineSize, .maxWidth, .maxWidth },                 .{ .maxBlockSize, .maxHeight, .maxHeight },
-        .{ .borderInlineStart, .borderLeft, .borderRight },        .{ .borderInlineEnd, .borderRight, .borderLeft },
-        .{ .borderBlockStart, .borderTop, .borderTop },            .{ .borderBlockEnd, .borderBottom, .borderBottom },
-        .{ .borderInlineStartWidth, .borderLeftWidth, .borderRightWidth }, .{ .borderInlineEndWidth, .borderRightWidth, .borderLeftWidth },
-        .{ .borderInlineStartStyle, .borderLeftStyle, .borderRightStyle }, .{ .borderInlineEndStyle, .borderRightStyle, .borderLeftStyle },
-        .{ .borderInlineStartColor, .borderLeftColor, .borderRightColor }, .{ .borderInlineEndColor, .borderRightColor, .borderLeftColor },
-        .{ .borderBlockStartWidth, .borderTopWidth, .borderTopWidth },     .{ .borderBlockEndWidth, .borderBottomWidth, .borderBottomWidth },
-        .{ .borderBlockStartStyle, .borderTopStyle, .borderTopStyle },     .{ .borderBlockEndStyle, .borderBottomStyle, .borderBottomStyle },
-        .{ .borderBlockStartColor, .borderTopColor, .borderTopColor },     .{ .borderBlockEndColor, .borderBottomColor, .borderBottomColor },
-        .{ .borderStartStartRadius, .borderTopLeftRadius, .borderTopRightRadius }, .{ .borderStartEndRadius, .borderTopRightRadius, .borderTopLeftRadius },
+        .{ .marginInlineStart, .marginLeft, .marginRight },                            .{ .marginInlineEnd, .marginRight, .marginLeft },
+        .{ .marginBlockStart, .marginTop, .marginTop },                                .{ .marginBlockEnd, .marginBottom, .marginBottom },
+        .{ .paddingInlineStart, .paddingLeft, .paddingRight },                         .{ .paddingInlineEnd, .paddingRight, .paddingLeft },
+        .{ .paddingBlockStart, .paddingTop, .paddingTop },                             .{ .paddingBlockEnd, .paddingBottom, .paddingBottom },
+        .{ .insetInlineStart, .left, .right },                                         .{ .insetInlineEnd, .right, .left },
+        .{ .insetBlockStart, .top, .top },                                             .{ .insetBlockEnd, .bottom, .bottom },
+        .{ .inlineSize, .width, .width },                                              .{ .blockSize, .height, .height },
+        .{ .minInlineSize, .minWidth, .minWidth },                                     .{ .minBlockSize, .minHeight, .minHeight },
+        .{ .maxInlineSize, .maxWidth, .maxWidth },                                     .{ .maxBlockSize, .maxHeight, .maxHeight },
+        .{ .borderInlineStart, .borderLeft, .borderRight },                            .{ .borderInlineEnd, .borderRight, .borderLeft },
+        .{ .borderBlockStart, .borderTop, .borderTop },                                .{ .borderBlockEnd, .borderBottom, .borderBottom },
+        .{ .borderInlineStartWidth, .borderLeftWidth, .borderRightWidth },             .{ .borderInlineEndWidth, .borderRightWidth, .borderLeftWidth },
+        .{ .borderInlineStartStyle, .borderLeftStyle, .borderRightStyle },             .{ .borderInlineEndStyle, .borderRightStyle, .borderLeftStyle },
+        .{ .borderInlineStartColor, .borderLeftColor, .borderRightColor },             .{ .borderInlineEndColor, .borderRightColor, .borderLeftColor },
+        .{ .borderBlockStartWidth, .borderTopWidth, .borderTopWidth },                 .{ .borderBlockEndWidth, .borderBottomWidth, .borderBottomWidth },
+        .{ .borderBlockStartStyle, .borderTopStyle, .borderTopStyle },                 .{ .borderBlockEndStyle, .borderBottomStyle, .borderBottomStyle },
+        .{ .borderBlockStartColor, .borderTopColor, .borderTopColor },                 .{ .borderBlockEndColor, .borderBottomColor, .borderBottomColor },
+        .{ .borderStartStartRadius, .borderTopLeftRadius, .borderTopRightRadius },     .{ .borderStartEndRadius, .borderTopRightRadius, .borderTopLeftRadius },
         .{ .borderEndStartRadius, .borderBottomLeftRadius, .borderBottomRightRadius }, .{ .borderEndEndRadius, .borderBottomRightRadius, .borderBottomLeftRadius },
     };
     for (singles) |m| if (m[0] == p) {
@@ -2210,10 +2223,10 @@ pub fn physicalProps(p: Prop, rtl: bool, buf: *[4]Prop) []const Prop {
         return buf[0..1];
     };
     const pairs = [_]Map{
-        .{ .marginInline, .marginInlineStart, .marginInlineEnd },       .{ .marginBlock, .marginBlockStart, .marginBlockEnd },
-        .{ .paddingInline, .paddingInlineStart, .paddingInlineEnd },    .{ .paddingBlock, .paddingBlockStart, .paddingBlockEnd },
-        .{ .insetInline, .insetInlineStart, .insetInlineEnd },          .{ .insetBlock, .insetBlockStart, .insetBlockEnd },
-        .{ .borderInline, .borderInlineStart, .borderInlineEnd },       .{ .borderBlock, .borderBlockStart, .borderBlockEnd },
+        .{ .marginInline, .marginInlineStart, .marginInlineEnd },                .{ .marginBlock, .marginBlockStart, .marginBlockEnd },
+        .{ .paddingInline, .paddingInlineStart, .paddingInlineEnd },             .{ .paddingBlock, .paddingBlockStart, .paddingBlockEnd },
+        .{ .insetInline, .insetInlineStart, .insetInlineEnd },                   .{ .insetBlock, .insetBlockStart, .insetBlockEnd },
+        .{ .borderInline, .borderInlineStart, .borderInlineEnd },                .{ .borderBlock, .borderBlockStart, .borderBlockEnd },
         .{ .borderInlineWidth, .borderInlineStartWidth, .borderInlineEndWidth }, .{ .borderBlockWidth, .borderBlockStartWidth, .borderBlockEndWidth },
         .{ .borderInlineStyle, .borderInlineStartStyle, .borderInlineEndStyle }, .{ .borderBlockStyle, .borderBlockStartStyle, .borderBlockEndStyle },
         .{ .borderInlineColor, .borderInlineStartColor, .borderInlineEndColor }, .{ .borderBlockColor, .borderBlockStartColor, .borderBlockEndColor },
@@ -2588,10 +2601,10 @@ fn parsePaintOrder(l: *Lexer) Error!c.PaintOrder {
     if (t.isIdent("normal")) return .normal;
     const first = tok.kw(c.PaintOrder, t) orelse return bad;
     if (first == .normal) return bad;
-    var seen: u8 = @as(u8, 1) << @intCast(@intFromEnum(first));
+    var seen: u8 = @as(u8, 1) << @intCast(@backingInt(first));
     while (!l.atEnd()) {
         const x = tok.kw(c.PaintOrder, l.next()) orelse return bad;
-        const bit = @as(u8, 1) << @intCast(@intFromEnum(x));
+        const bit = @as(u8, 1) << @intCast(@backingInt(x));
         if (x == .normal or seen & bit != 0) return bad;
         seen |= bit;
     }
@@ -2700,11 +2713,11 @@ fn variantKw(v: *Variants, t: Token, which: u8) Error!bool {
         13 => v.num.fraction = .stacked,
         14 => v.num.ordinal = true,
         15 => v.num.slashed_zero = true,
-        16...21 => v.ea.form = @enumFromInt(i - 15),
+        16...21 => v.ea.form = @fromBackingInt(@intCast(i - 15)),
         22 => v.ea.width = .full,
         23 => v.ea.width = .proportional,
         24 => v.ea.ruby = true,
-        25...30 => v.caps = @enumFromInt(i - 24),
+        25...30 => v.caps = @fromBackingInt(@intCast(i - 24)),
         31 => v.pos = .sub,
         else => v.pos = .super,
     }
@@ -2789,7 +2802,7 @@ fn timingFn(cx: *Cx, t: Token) Error!?c.TimingFunction {
             const p = l.next();
             const i = tok.matchPacked(p.text, "jump-start\x00jump-end\x00jump-none\x00jump-both\x00start\x00end") orelse return bad;
             if (p.kind != .ident) return bad;
-            pos = @enumFromInt(if (i == 4) 0 else if (i == 5) 1 else i);
+            pos = @fromBackingInt(@intCast(if (i == 4) 0 else if (i == 5) 1 else i));
             if (!l.atEnd()) return bad;
         }
         if (n < 1 or (pos == .jump_none and n < 2)) return bad;
@@ -3025,7 +3038,7 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
     var pbuf: [4]Prop = undefined;
     const phys = physicalProps(p, s.direction == .rtl, &pbuf);
     if (phys.len != 1 or phys[0] != p) return applyLogical(cx, p, l, phys);
-    const ki = kw_index[@intFromEnum(p)];
+    const ki = kw_index[@backingInt(p)];
     if (ki < kw_count) {
         const e = kw_entries[ki];
         const t = l.next();
@@ -3109,24 +3122,39 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
             s.flex_direction = d orelse .row;
             s.flex_wrap = w orelse .nowrap;
         },
-        .justifyContent => s.justify_content = try parseAlign(l, content_mask),
-        .alignContent => s.align_content = try parseAlign(l, content_mask),
-        .alignItems => s.align_items = try parseAlign(l, items_mask),
-        .justifyItems => s.justify_items = try parseAlign(l, items_mask),
-        .alignSelf => s.align_self = try parseAlign(l, self_mask),
-        .justifySelf => s.justify_self = try parseAlign(l, self_mask),
-        .placeContent => {
-            s.align_content = try parseAlign(l, content_mask);
-            s.justify_content = if (l.atEnd()) s.align_content else try parseAlign(l, content_mask);
-            if (l.atEnd() and (s.justify_content == .baseline or s.justify_content == .last_baseline)) s.justify_content = .start;
+        .justifyContent, .alignContent, .alignItems, .justifyItems, .alignSelf, .justifySelf => {
+            const content = p == .justifyContent or p == .alignContent;
+            const mask: AMask = if (content) content_mask else if (p == .alignItems or p == .justifyItems) items_mask else self_mask;
+            const a = try parseAlign(l, mask, content);
+            switch (p) {
+                .justifyContent => setAlign(s, &s.justify_content, safe_justify_content, a),
+                .alignContent => setAlign(s, &s.align_content, safe_align_content, a),
+                .alignItems => setAlign(s, &s.align_items, safe_align_items, a),
+                .justifyItems => setAlign(s, &s.justify_items, safe_justify_items, a),
+                .alignSelf => setAlign(s, &s.align_self, safe_align_self, a),
+                else => setAlign(s, &s.justify_self, safe_justify_self, a),
+            }
         },
-        .placeItems => {
-            s.align_items = try parseAlign(l, items_mask);
-            s.justify_items = if (l.atEnd()) s.align_items else try parseAlign(l, items_mask);
-        },
-        .placeSelf => {
-            s.align_self = try parseAlign(l, self_mask);
-            s.justify_self = if (l.atEnd()) s.align_self else try parseAlign(l, self_mask);
+        .placeContent, .placeItems, .placeSelf => {
+            // `<align> <justify>?`: one value sets both
+            const content = p == .placeContent;
+            const mask: AMask = if (content) content_mask else if (p == .placeItems) items_mask else self_mask;
+            const a = try parseAlign(l, mask, content);
+            const j = if (l.atEnd()) a else try parseAlign(l, mask, content);
+            switch (p) {
+                .placeContent => {
+                    setAlign(s, &s.align_content, safe_align_content, a);
+                    setAlign(s, &s.justify_content, safe_justify_content, j);
+                },
+                .placeItems => {
+                    setAlign(s, &s.align_items, safe_align_items, a);
+                    setAlign(s, &s.justify_items, safe_justify_items, j);
+                },
+                else => {
+                    setAlign(s, &s.align_self, safe_align_self, a);
+                    setAlign(s, &s.justify_self, safe_justify_self, j);
+                },
+            }
         },
         .order => s.order = try need(i32, values.integer(l.next())),
         .gridTemplateColumns => s.grid_template_columns = try parseTemplate(cx, l),
@@ -3166,7 +3194,8 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
             const v = try gridLines(l, 2, &n);
             const base: usize = if (p == .gridRow) 0 else 1;
             setLine(s, base, v[0]);
-            setLine(s, base + 2, if (n > 1) v[1] else identOr(v[0]));
+            // (takumi: an omitted end line is auto even after a lone custom-ident; grid-area copies it)
+            setLine(s, base + 2, if (n > 1) v[1] else .{});
         },
         .gridArea => {
             var n: usize = 0;
@@ -3181,28 +3210,62 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .gridTemplate => try parseGridTemplate(cx, l),
         .grid => try parseGrid(cx, l),
         .backgroundPositionX, .backgroundPositionY => try parsePosAxis(cx, l, p == .backgroundPositionY),
-        .backgroundBlendMode => s.background_blend_mode = try listOf(c.BlendMode, cx, l, blendItem),
+        .backgroundBlendMode => if (comptime cfg.effects) {
+            s.background_blend_mode = try listOf(c.BlendMode, cx, l, blendItem);
+        } else ignoreRest(l),
         .backgroundAttachment, .willChange, .pointerEvents, .cursor, .userSelect, .WebkitUserSelect, .transitionBehavior, .maskComposite, .WebkitMaskComposite => ignoreRest(l),
-        .borderSpacing => s.border_spacing = try parseBorderSpacing(cx, l),
+        .borderSpacing => if (comptime cfg.tables) {
+            s.border_spacing = try parseBorderSpacing(cx, l);
+        } else ignoreRest(l),
         .verticalAlign => s.vertical_align = try parseVerticalAlign(cx, l.next()),
         .contain => s.contain = try parseContain(l),
-        .content => s.content = try parseContent(l),
-        .counterReset => s.counter_reset = try parseCounters(l),
-        .counterIncrement => s.counter_increment = try parseCounters(l),
-        .counterSet => s.counter_set = try parseCounters(l),
-        .listStyle => try parseListStyle(cx, l),
-        .listStyleType => s.list_style_type = try need(c.ListStyleType, try listStyleTypeValue(l.next())),
-        .listStyleImage => s.list_style_image = try need(c.Image, try gradient.image(cx.a, l.next(), env)),
-        .backdropFilter, .WebkitBackdropFilter => s.backdrop_filter = try parseFilter(cx, l),
-        .clipPath, .WebkitClipPath => s.clip_path = try parseClipPath(cx, l),
-        .mask, .WebkitMask => try parseBackground(cx, l, true),
-        .maskImage, .WebkitMaskImage => s.mask_image = try listOf(c.Image, cx, l, imageItem),
-        .maskSize, .WebkitMaskSize => s.mask_size = try bgList(c.BgSize, .size, cx, l),
-        .maskPosition, .WebkitMaskPosition => s.mask_position = try bgList([2]LP, .position, cx, l),
-        .maskRepeat, .WebkitMaskRepeat => s.mask_repeat = try bgList([2]c.BgRepeat, .repeat, cx, l),
-        .maskClip, .WebkitMaskClip => s.mask_clip = try listOf(c.BgBox, cx, l, maskBoxItem),
-        .maskOrigin, .WebkitMaskOrigin => s.mask_origin = try listOf(c.BgBox, cx, l, maskBoxItem),
-        .maskMode => s.mask_mode = try listOf(c.MaskMode, cx, l, maskModeItem),
+        .content => if (comptime cfg.generated) {
+            s.content = try parseContent(l);
+        } else ignoreRest(l),
+        .counterReset => if (comptime cfg.generated) {
+            s.counter_reset = try parseCounters(l);
+        } else ignoreRest(l),
+        .counterIncrement => if (comptime cfg.generated) {
+            s.counter_increment = try parseCounters(l);
+        } else ignoreRest(l),
+        .counterSet => if (comptime cfg.generated) {
+            s.counter_set = try parseCounters(l);
+        } else ignoreRest(l),
+        .listStyle => if (comptime cfg.generated) try parseListStyle(cx, l) else ignoreRest(l),
+        .listStyleType => if (comptime cfg.generated) {
+            s.list_style_type = try need(c.ListStyleType, try listStyleTypeValue(l.next()));
+        } else ignoreRest(l),
+        .listStyleImage => if (comptime cfg.generated) {
+            s.list_style_image = try need(c.Image, try gradient.image(cx.a, l.next(), env));
+        } else ignoreRest(l),
+        .backdropFilter, .WebkitBackdropFilter => if (comptime cfg.effects) {
+            s.backdrop_filter = try parseFilter(cx, l);
+        } else ignoreRest(l),
+        .clipPath, .WebkitClipPath => if (comptime cfg.effects) {
+            s.clip_path = try parseClipPath(cx, l);
+        } else ignoreRest(l),
+        .mask, .WebkitMask => if (comptime cfg.effects) try parseBackground(cx, l, true) else ignoreRest(l),
+        .maskImage, .WebkitMaskImage => if (comptime cfg.effects) {
+            s.mask_image = try listOf(c.Image, cx, l, imageItem);
+        } else ignoreRest(l),
+        .maskSize, .WebkitMaskSize => if (comptime cfg.effects) {
+            s.mask_size = try bgList(c.BgSize, .size, cx, l);
+        } else ignoreRest(l),
+        .maskPosition, .WebkitMaskPosition => if (comptime cfg.effects) {
+            s.mask_position = try bgList([2]LP, .position, cx, l);
+        } else ignoreRest(l),
+        .maskRepeat, .WebkitMaskRepeat => if (comptime cfg.effects) {
+            s.mask_repeat = try bgList([2]c.BgRepeat, .repeat, cx, l);
+        } else ignoreRest(l),
+        .maskClip, .WebkitMaskClip => if (comptime cfg.effects) {
+            s.mask_clip = try listOf(c.BgBox, cx, l, maskBoxItem);
+        } else ignoreRest(l),
+        .maskOrigin, .WebkitMaskOrigin => if (comptime cfg.effects) {
+            s.mask_origin = try listOf(c.BgBox, cx, l, maskBoxItem);
+        } else ignoreRest(l),
+        .maskMode => if (comptime cfg.effects) {
+            s.mask_mode = try listOf(c.MaskMode, cx, l, maskModeItem);
+        } else ignoreRest(l),
         .textUnderlineOffset => {
             const t = l.next();
             s.text_underline_offset = if (t.isIdent("auto")) null else (try lp(cx, t)).resolve(s.font_size);
@@ -3212,7 +3275,9 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .paintOrder => s.paint_order = try parsePaintOrder(l),
         .fontStretch => s.font_stretch = try need(f32, fontStretchValue(l.next())),
         .fontFeatureSettings => s.font_feature_settings = try parseFeatures(cx, l),
-        .fontVariationSettings => s.font_variation_settings = try parseVariations(cx, l),
+        .fontVariationSettings => if (comptime cfg.variable_fonts) {
+            s.font_variation_settings = try parseVariations(cx, l);
+        } else ignoreRest(l),
         .fontVariant, .fontVariantLigatures, .fontVariantNumeric, .fontVariantEastAsian => {
             const which: u8 = switch (p) {
                 .fontVariant => 0x1f,
@@ -3237,28 +3302,52 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
                 else => s.font_synthesis.small_caps = on,
             }
         },
-        .animation => try parseAnimation(cx, l, false),
-        .animationName => s.animation_name = try listOf([]const u8, cx, l, nameItem),
-        .animationDuration => s.animation_duration = try listOf(f32, cx, l, durItem),
-        .animationTimingFunction => s.animation_timing_function = try listOf(c.TimingFunction, cx, l, timingItem),
-        .animationDelay => s.animation_delay = try listOf(f32, cx, l, delayItem),
-        .animationIterationCount => s.animation_iteration_count = try listOf(f32, cx, l, countItem),
-        .animationDirection => s.animation_direction = try listOf(c.AnimDirection, cx, l, dirItem),
-        .animationFillMode => s.animation_fill_mode = try listOf(c.FillMode, cx, l, fillItem),
-        .animationPlayState => s.animation_play_state = try listOf(c.PlayState, cx, l, playItem),
-        .transition => try parseAnimation(cx, l, true),
-        .transitionProperty => s.transition_property = try listOf([]const u8, cx, l, propItem),
-        .transitionDuration => s.transition_duration = try listOf(f32, cx, l, durItem),
-        .transitionTimingFunction => s.transition_timing_function = try listOf(c.TimingFunction, cx, l, timingItem),
-        .transitionDelay => s.transition_delay = try listOf(f32, cx, l, delayItem),
+        .animation => if (comptime cfg.animation) try parseAnimation(cx, l, false) else ignoreRest(l),
+        .animationName => if (comptime cfg.animation) {
+            s.animation_name = try listOf([]const u8, cx, l, nameItem);
+        } else ignoreRest(l),
+        .animationDuration => if (comptime cfg.animation) {
+            s.animation_duration = try listOf(f32, cx, l, durItem);
+        } else ignoreRest(l),
+        .animationTimingFunction => if (comptime cfg.animation) {
+            s.animation_timing_function = try listOf(c.TimingFunction, cx, l, timingItem);
+        } else ignoreRest(l),
+        .animationDelay => if (comptime cfg.animation) {
+            s.animation_delay = try listOf(f32, cx, l, delayItem);
+        } else ignoreRest(l),
+        .animationIterationCount => if (comptime cfg.animation) {
+            s.animation_iteration_count = try listOf(f32, cx, l, countItem);
+        } else ignoreRest(l),
+        .animationDirection => if (comptime cfg.animation) {
+            s.animation_direction = try listOf(c.AnimDirection, cx, l, dirItem);
+        } else ignoreRest(l),
+        .animationFillMode => if (comptime cfg.animation) {
+            s.animation_fill_mode = try listOf(c.FillMode, cx, l, fillItem);
+        } else ignoreRest(l),
+        .animationPlayState => if (comptime cfg.animation) {
+            s.animation_play_state = try listOf(c.PlayState, cx, l, playItem);
+        } else ignoreRest(l),
+        .transition => if (comptime cfg.animation) try parseAnimation(cx, l, true) else ignoreRest(l),
+        .transitionProperty => if (comptime cfg.animation) {
+            s.transition_property = try listOf([]const u8, cx, l, propItem);
+        } else ignoreRest(l),
+        .transitionDuration => if (comptime cfg.animation) {
+            s.transition_duration = try listOf(f32, cx, l, durItem);
+        } else ignoreRest(l),
+        .transitionTimingFunction => if (comptime cfg.animation) {
+            s.transition_timing_function = try listOf(c.TimingFunction, cx, l, timingItem);
+        } else ignoreRest(l),
+        .transitionDelay => if (comptime cfg.animation) {
+            s.transition_delay = try listOf(f32, cx, l, delayItem);
+        } else ignoreRest(l),
         .border => {
-            const b = try borderParts(cx, l, false);
+            const b = try borderParts(cx, l);
             s.border_width = @splat(b.w);
             s.border_style = @splat(b.st);
             s.border_color = @splat(b.col);
         },
         .borderTop, .borderRight, .borderBottom, .borderLeft => {
-            const b = try borderParts(cx, l, false);
+            const b = try borderParts(cx, l);
             const i = sideIndex(p);
             s.border_width[i] = b.w;
             s.border_style[i] = b.st;
@@ -3278,7 +3367,7 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .borderRadius => s.border_radius = try parseBorderRadius(cx, l),
         .borderTopLeftRadius, .borderTopRightRadius, .borderBottomRightRadius, .borderBottomLeftRadius => s.border_radius[sideIndex(p)] = try radiusPair(cx, l),
         .outline => {
-            const b = try borderParts(cx, l, true);
+            const b = try borderParts(cx, l);
             s.outline_width = b.w;
             s.outline_style = b.st;
             s.outline_color = b.col;
@@ -3286,13 +3375,19 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .outlineWidth => s.outline_width = try need(f32, try lineWidth(cx, l.next())),
         .outlineStyle => {
             const t = l.next();
-            s.outline_style = if (t.isIdent("auto")) .solid else tok.kw(c.BorderStyle, t) orelse return bad;
+            // (takumi has no `outline-style: auto`)
+            s.outline_style = tok.kw(c.BorderStyle, t) orelse return bad;
         },
         .outlineColor => {
             const t = l.next();
-            s.outline_color = if (t.isIdent("auto")) .current else try colorOf(t);
+            // (takumi has no outline-color: auto)
+            s.outline_color = try colorOf(t);
         },
-        .outlineOffset => s.outline_offset = try len(cx, l.next()),
+        .outlineOffset => {
+            // (a <length> in takumi, whose auto is 0; its percentages, of the box width, are not supported)
+            const t = l.next();
+            s.outline_offset = if (t.isIdent("auto")) 0 else try len(cx, t);
+        },
         .backgroundColor => s.background_color = try colorOf(l.next()),
         .backgroundImage => s.background_image = try bgList(c.Image, .image, cx, l),
         .backgroundSize => s.background_size = try bgList(c.BgSize, .size, cx, l),

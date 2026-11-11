@@ -889,6 +889,25 @@ pub noinline fn paintBorder(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *con
     try paintSpec(p, ctx, &spec);
 }
 
+/// One straight border side filling the rectangle (x1, y1)-(x2, y2) in `st`, without mitres (takumi
+/// `BoxSideRect::paint`; used for collapsed table borders). `side`: 0 top, 1 right, 2 bottom, 3 left.
+pub noinline fn paintSideRect(p: *Painter, ctx: *const Ctx, side: usize, x1: f32, y1: f32, x2: f32, y2: f32, st: BStyle, col: Color) Error!void {
+    if (col.a == 0 or !(x2 > x1) or !(y2 > y1)) return;
+    const spec: Spec = .{ .x = 0, .y = 0, .w = x2, .h = y2, .bw = .{ 0, 0, 0, 0 }, .st = .{ st, st, st, st }, .col = .{ col, col, col, col }, .radii = pm.zero_radii };
+    var b: B = .{
+        .p = p,
+        .ctx = ctx.*,
+        .s = &spec,
+        .tf = ctx.tf,
+        .window = Painter.region(ctx),
+        .inner_radii = pm.zero_radii,
+        .rounded = false,
+        .inner_renderable = true,
+    };
+    if (b.window.isEmpty()) return;
+    try b.rectPaint(side, x1, y1, x2, y2, st, col, 0, 0, 0);
+}
+
 fn snapWidth(v: f32) f32 {
     const t = @trunc(v);
     if (t == 0 and v != 0) return if (v > 0) 1 else -1;

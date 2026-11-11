@@ -272,6 +272,7 @@ const S = struct {
     did_layout: bool,
     has_collapsed: bool,
     dry: bool,
+    grid_ok: bool,
     spacing: [2]f32,
 
     secs: []Sec,
@@ -356,6 +357,163 @@ fn zeroBox(b: *Box) void {
 fn setBorder(b: *Box, border: [4]f32) void {
     b.border = border;
     b.pb = .{ b.padding[0] + b.padding[2] + border[0] + border[2], b.padding[1] + b.padding[3] + border[1] + border[3] };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// paint geometry (what a painter needs of a laid-out table: Blink's table fragment data)
+
+/// A column of the grid: inline-start edge relative to the sections' inline start, inline size (0 for a
+/// collapsed / merged column).
+pub const GeomCol = struct { x: f32, w: f32, collapsed: bool };
+/// A `<col>` / `<colgroup>` node and the columns it covers, in tree order (a group before its columns).
+pub const GeomColEl = struct { node: u32, start: u32, span: u32, group: bool };
+/// A row group. `node` = `no_node` for an anonymous one (when the laid-out node is itself a row group, that
+/// node). `y` is its block offset in the table node's border box, `h` its block size.
+pub const GeomSec = struct { node: u32, start: u32, n_rows: u32, y: f32, h: f32 };
+/// A row of section `sec`, holding `cells[first..first + n]`. `node` = `no_node` for an anonymous one. `y` is
+/// relative to its section.
+pub const GeomRow = struct { node: u32, sec: u32, first: u32, n: u32, y: f32, h: f32, collapsed: bool };
+/// A cell: `node` is the cell node (for an anonymous cell the first node of its run, `anon` set); grid position
+/// (`row` = table row index, `rowspan` / `colspan` held to the section / grid); border box in the table node's
+/// border-box coordinates. `hidden`: its row is collapsed or every column it spans is.
+pub const GeomCell = struct { node: u32, row: u32, col: u32, rowspan: u32, colspan: u32, x: f32, y: f32, w: f32, h: f32, anon: bool, has_content: bool, hidden: bool };
+/// Geometry of one laid-out table (or of the anonymous table around a row / row group node), recorded by
+/// the final layout pass; see `Tree.tableGeom`. All slices live in the tree's allocator.
+pub const Geom = struct {
+    /// the table node (a row / row-group node for an anonymous table)
+    node: u32 = no_node,
+    is_table: bool = false,
+    /// `border-collapse: collapse` with a resolved edge grid (`Layout.border` of the cells are half edges)
+    collapse: bool = false,
+    /// columns of the collapsed-border grid (Blink's table_column_count); 0 unless `collapse`
+    n_bcols: u32 = 0,
+    /// the table box (everything but the captions) in the node's border box: block offset and size
+    grid_y: f32 = 0,
+    grid_h: f32 = 0,
+    /// inline offset of the sections in the node's border box, their inline size
+    sec_x: f32 = 0,
+    sec_w: f32 = 0,
+    cols: []GeomCol = &.{},
+    colels: []GeomColEl = &.{},
+    secs: []GeomSec = &.{},
+    rows: []GeomRow = &.{},
+    cells: []GeomCell = &.{},
+};
+
+fn geomSlice(t: anytype, comptime T: type, old: []T, n: usize) Error![]T {
+    if (old.len == n) return old;
+    const new = t.alloc.alloc(T, n) catch return error.OutOfMemory;
+    t.alloc.free(old);
+    return new;
+}
+
+/// Records the `Geom` of the table just laid out (final pass). A repeated final layout of the same node
+/// reuses its record.
+noinline fn recordGeom(t: anytype, c: *S) Error!void {
+    const node = c.node;
+    var gi = t.nodes.items[node].table_geom;
+    if (gi >= t.table_geoms.items.len or t.table_geoms.items[gi].node != node) {
+        gi = @intCast(t.table_geoms.items.len);
+        t.table_geoms.append(t.alloc, .{}) catch return error.OutOfMemory;
+        t.nodes.items[node].table_geom = gi;
+    }
+    const g = &t.table_geoms.items[gi];
+    g.node = node;
+    g.is_table = c.is_table;
+    g.collapse = c.collapse and c.grid_ok;
+    g.n_bcols = if (g.collapse) c.bc else 0;
+    g.grid_y = c.top_h;
+    g.grid_h = c.bottom_y - c.top_h;
+    g.sec_x = c.sec_x;
+    g.sec_w = c.sec_w;
+    g.cols = try geomSlice(t, GeomCol, g.cols, c.n_cols);
+    for (g.cols, c.cols[0..c.n_cols]) |*o, *col| o.* = .{ .x = col.off[1] - c.spacing[0], .w = col.w[1], .collapsed = col.collapsed };
+    g.secs = try geomSlice(t, GeomSec, g.secs, c.n_secs);
+    for (g.secs, c.secs[0..c.n_secs]) |*o, *sec| o.* = .{ .node = sec.node, .start = sec.start, .n_rows = sec.n_rows, .y = sec.y, .h = sec.hf };
+    g.rows = try geomSlice(t, GeomRow, g.rows, c.n_rows);
+    g.cells = try geomSlice(t, GeomCell, g.cells, c.n_cells);
+    for (c.secs[0..c.n_secs], 0..) |*sec, si| {
+        for (0..sec.n_rows) |k| {
+            const ri = sec.start + k;
+            const row = &c.rows[ri];
+            g.rows[ri] = .{ .node = row.node, .sec = @intCast(si), .first = row.first, .n = row.n, .y = row.y, .h = row.h, .collapsed = row.collapsed };
+            for (row.first..row.first + row.n) |i| {
+                const cell = &c.cells[i];
+                var hidden = row.collapsed;
+                if (!hidden and c.n_cols > 0) {
+                    // Blink's is_hidden_due_to_layout: every column the cell spans is collapsed
+                    const last = c.n_cols - 1;
+                    var k2 = @min(cell.col, last);
+                    const end = @min(cell.col +| (cell.colspan -| 1), last);
+                    hidden = true;
+                    while (k2 <= end) : (k2 += 1) {
+                        if (!c.cols[k2].collapsed) {
+                            hidden = false;
+                            break;
+                        }
+                    }
+                }
+                g.cells[i] = .{
+                    .node = cell.node,
+                    .row = @intCast(ri),
+                    .col = cell.col,
+                    .rowspan = cell.eff,
+                    .colspan = cell.colspan,
+                    .x = c.sec_x + cell.x,
+                    .y = sec.y + row.y,
+                    .w = cell.w,
+                    .h = cell.h,
+                    .anon = cell.anon,
+                    .has_content = cell.has_content,
+                    .hidden = hidden,
+                };
+            }
+        }
+    }
+    // <col> / <colgroup> elements (the walk of `visitCols`)
+    var n_el: usize = 0;
+    for (0..2) |pass| {
+        if (pass == 1) g.colels = try geomSlice(t, GeomColEl, g.colels, n_el);
+        n_el = 0;
+        if (!c.is_table or c.n_cols == 0) continue;
+        const limit = c.n_cols;
+        var cur: u32 = 0;
+        var ch = t.firstChild(node);
+        while (ch != no_node and cur < limit) : (ch = t.nextSibling(ch)) {
+            const s = styleOf(t, ch);
+            if (s.position.isOut()) continue;
+            if (s.display == .table_column) {
+                const span = @min(colSpanOf(s), limit - cur);
+                if (pass == 1) g.colels[n_el] = .{ .node = ch, .start = cur, .span = span, .group = false };
+                n_el += 1;
+                cur += span;
+                continue;
+            }
+            if (s.display != .table_column_group) continue;
+            const start = cur;
+            const slot = n_el;
+            n_el += 1;
+            var any = false;
+            var total: u32 = 0;
+            var k = t.firstChild(ch);
+            while (k != no_node) : (k = t.nextSibling(k)) {
+                const ks = styleOf(t, k);
+                if (ks.display != .table_column) continue;
+                any = true;
+                const span = @min(colSpanOf(ks), limit - cur);
+                if (pass == 1) g.colels[n_el] = .{ .node = k, .start = cur, .span = span, .group = false };
+                n_el += 1;
+                cur += span;
+                total += span;
+                if (cur >= limit) break;
+            }
+            if (!any) {
+                total = @min(colSpanOf(s), limit - cur);
+                cur += total;
+            }
+            if (pass == 1) g.colels[slot] = .{ .node = ch, .start = start, .span = total, .group = true };
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -640,7 +798,7 @@ fn visitCols(t: anytype, c: *S, limit: u32, mode: u2) u32 {
             }
             cur += total;
         }
-        if (mode == 3) markEdges(c, 0, start, c.n_rows, total, s.border, false, c.dry);
+        if (mode == 3) markEdges(c, 0, start, c.n_rows, total, s, false, c.dry);
     }
     return cur;
 }
@@ -649,7 +807,7 @@ fn colVisit(c: *S, mode: u2, s: *const st.Style, default: f32, start: u32, span:
         const col = colOf(c.q, s, default, c.fixed);
         for (start..start + span) |i| c.cols[i] = col;
     } else if (mode == 2) {
-        for (start..start + span) |i| markEdges(c, 0, @intCast(i), c.n_rows, 1, s.border, false, c.dry);
+        for (start..start + span) |i| markEdges(c, 0, @intCast(i), c.n_rows, 1, s, false, c.dry);
     }
 }
 
@@ -660,7 +818,8 @@ fn colVisit(c: *S, mode: u2, s: *const st.Style, default: f32, start: u32, span:
 // and the edge at its top, 2k + 1) and one row of edges more than the last row a border reaches. As in
 // Blink the grid only grows as far as a border (or a spanning cell) needs it, and reading the borders of a
 // cell past that wraps into the next row of edges: reproduced, since it decides sizes.
-// Edge values: 0 = empty, > 0 = the widest border merged so far, NaN = inside a spanning cell (never filled).
+// Edge values: 0 = empty, > 0 = the widest border merged so far, NaN = inside a spanning cell (never filled),
+// -1 = a `hidden` border (`Style.border_hidden`), which wins the edge for good and takes no space.
 
 fn bw(c: *const S, v: f32) f32 {
     return if (v > 0 and std.math.isFinite(v)) lu(c.q, v) else 0;
@@ -671,17 +830,23 @@ fn fitEdges(c: *S, row: u32, col: u32) void {
     c.erows = @max(c.erows, @as(usize, row) + 2);
 }
 fn putEdge(c: *S, i: usize, w: f32) void {
-    if (i < c.edges.len and w > c.edges[i]) c.edges[i] = w;
+    if (i >= c.edges.len) return;
+    const e = c.edges[i];
+    if (w < 0) {
+        if (e == e) c.edges[i] = -1;
+    } else if (e >= 0 and w > e) c.edges[i] = w;
 }
 /// Blink's MergeBorders for a box covering rows r0..r0+rs, columns c0..c0+cs. `dry`: only size the grid.
-fn markEdges(c: *S, r0: u32, c0: u32, rs: u32, cs_in: u32, b: st.Edges(f32), is_cell: bool, dry: bool) void {
+fn markEdges(c: *S, r0: u32, c0: u32, rs: u32, cs_in: u32, s: *const st.Style, is_cell: bool, dry: bool) void {
     if (rs == 0 or cs_in == 0) return;
     const cs = @min(cs_in, c.bc -| c0);
     if (cs == 0) return;
-    const wl = bw(c, b.left);
-    const wt = bw(c, b.top);
-    const wr = bw(c, b.right);
-    const wb = bw(c, b.bottom);
+    const b = s.border;
+    const hid = s.border_hidden;
+    const wl: f32 = if (hid.left) -1 else bw(c, b.left);
+    const wt: f32 = if (hid.top) -1 else bw(c, b.top);
+    const wr: f32 = if (hid.right) -1 else bw(c, b.right);
+    const wb: f32 = if (hid.bottom) -1 else bw(c, b.bottom);
     const inner = is_cell and (rs > 1 or cs > 1);
     if (inner) {
         fitEdges(c, r0 + rs - 1, c0 + cs - 1);
@@ -692,16 +857,16 @@ fn markEdges(c: *S, r0: u32, c0: u32, rs: u32, cs_in: u32, b: st.Edges(f32), is_
     }
     if (dry) return;
     const epr = c.epr;
-    if (wt > 0) {
+    if (wt != 0) {
         for (0..cs) |k| putEdge(c, epr * r0 + (c0 + k) * 2 + 1, wt);
     }
-    if (wb > 0) {
+    if (wb != 0) {
         for (0..cs) |k| putEdge(c, epr * (@as(usize, r0) + rs) + (c0 + k) * 2 + 1, wb);
     }
-    if (wl > 0) {
+    if (wl != 0) {
         for (0..rs) |k| putEdge(c, epr * (r0 + k) + @as(usize, c0) * 2, wl);
     }
-    if (wr > 0) {
+    if (wr != 0) {
         for (0..rs) |k| putEdge(c, epr * (r0 + k) + (@as(usize, c0) + cs) * 2, wr);
     }
     if (inner) {
@@ -753,20 +918,20 @@ fn mergeBorders(t: anytype, c: *S, dry: bool) void {
             const ri: u32 = sec.start + @as(u32, @intCast(k));
             const row = &c.rows[ri];
             for (c.cells[row.first .. row.first + row.n]) |*cell| {
-                if (!cell.anon) markEdges(c, ri, cell.col, cell.eff, cell.colspan, styleOf(t, cell.node).border, true, dry);
+                if (!cell.anon) markEdges(c, ri, cell.col, cell.eff, cell.colspan, styleOf(t, cell.node), true, dry);
             }
         }
     }
     for (c.rows[0..c.n_rows], 0..) |*row, ri| {
-        if (row.node != no_node) markEdges(c, @intCast(ri), 0, 1, c.bc, styleOf(t, row.node).border, false, dry);
+        if (row.node != no_node) markEdges(c, @intCast(ri), 0, 1, c.bc, styleOf(t, row.node), false, dry);
     }
     for (c.secs[0..c.n_secs]) |*sec| {
-        if (sec.node != no_node) markEdges(c, sec.start, 0, sec.n_rows, c.bc, styleOf(t, sec.node).border, false, dry);
+        if (sec.node != no_node) markEdges(c, sec.start, 0, sec.n_rows, c.bc, styleOf(t, sec.node), false, dry);
     }
     c.dry = dry;
     _ = visitCols(t, c, c.bc, 2);
     _ = visitCols(t, c, c.bc, 3);
-    if (c.is_table) markEdges(c, 0, 0, c.n_rows, c.bc, styleOf(t, c.node).border, false, dry);
+    if (c.is_table) markEdges(c, 0, 0, c.n_rows, c.bc, styleOf(t, c.node), false, dry);
 }
 
 /// Blink's ComputeTableBorders: the used border of every cell (and the grid for the table's own).
@@ -2025,6 +2190,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.did_layout = false;
     c.has_collapsed = false;
     c.dry = false;
+    c.grid_ok = false;
     c.content = .{ 0, 0 };
     c.bc = 0;
     c.spacing = .{ 0, 0 };
@@ -2077,6 +2243,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
         }
         c.bc = @max(nm, c.n_cellcols);
         const grid_ok = try computeBorders(t, c);
+        c.grid_ok = grid_ok;
         if (!grid_ok) {
             for (c.cells) |*cell| {
                 if (cell.anon) continue;
@@ -2317,5 +2484,6 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
         t.layouts.items[node].border = tr.toEdges(box.border);
         t.layouts.items[node].padding = .all(0);
     }
+    try recordGeom(t, c);
     out.* = .{ .size = .{ c.tbl_w, c.block_size }, .content = c.content, .baseline = first_bl };
 }

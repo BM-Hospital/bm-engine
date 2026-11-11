@@ -149,18 +149,21 @@ pub const Affine = struct {
     }
 };
 
-/// Exact `round(x * a / 255)` for x, a in 0..255.
+/// `v / 255` for a product of two bytes, as takumi's `div_255` (`style/math.rs`, used by all of its
+/// compositing: `mul_div_255`): `(v + 128 + (v >> 8)) >> 8`. Rounds to nearest except for 126 of the
+/// 65536 byte products, where it is one off the exact rounding `((v + 128) + ((v + 128) >> 8)) >> 8`
+/// (e.g. 236 * 208 -> 192, exact 193). Those cases are visible as 1-level differences on AA edges, so
+/// every byte product of the compositor goes through this.
 pub inline fn div255(v: u32) u32 {
-    const t = v + 128;
-    return (t + (t >> 8)) >> 8;
+    return (v + 128 + (v >> 8)) >> 8;
 }
 
-/// Scales all four channels of a packed pixel by `c / 255` (exact rounding).
+/// Scales all four channels of a packed pixel by `c / 255` (`div255` per channel).
 pub inline fn scalePx(p: u32, c: u32) u32 {
-    var rb = (p & 0x00FF00FF) * c + 0x00800080;
-    rb = ((rb + ((rb >> 8) & 0x00FF00FF)) >> 8) & 0x00FF00FF;
-    var ga = ((p >> 8) & 0x00FF00FF) * c + 0x00800080;
-    ga = (ga + ((ga >> 8) & 0x00FF00FF)) & 0xFF00FF00;
+    var rb = (p & 0x00FF00FF) * c;
+    rb = ((rb + 0x00800080 + ((rb >> 8) & 0x00FF00FF)) >> 8) & 0x00FF00FF;
+    var ga = ((p >> 8) & 0x00FF00FF) * c;
+    ga = (ga + 0x00800080 + ((ga >> 8) & 0x00FF00FF)) & 0xFF00FF00;
     return rb | ga;
 }
 

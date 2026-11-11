@@ -54,6 +54,13 @@ pub fn fromToken(t: Token) ?ColorValue {
 
 const max_color_depth = 8;
 
+/// Build switch `modern_color` (src/config.zig via the root module; on in standalone tests): without
+/// it lab()/lch()/oklab()/oklch()/color()/color-mix()/light-dark() are invalid colours.
+pub const modern_color = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_modern_color else true;
+};
+
 fn colorOf(t: Token, depth: u32) ?Color {
     switch (t.kind) {
         .hash => return parseHex(t.text),
@@ -65,7 +72,7 @@ fn colorOf(t: Token, depth: u32) ?Color {
                 0, 1 => parseFunc(t.args, .rgb),
                 2, 3 => parseFunc(t.args, .hsl),
                 4 => parseFunc(t.args, .hwb),
-                else => if (depth >= max_color_depth) null else parseModern(fi - 5, t.args, depth),
+                else => if (comptime !modern_color) null else if (depth >= max_color_depth) null else parseModern(fi - 5, t.args, depth),
             };
         },
         else => return null,
@@ -81,8 +88,6 @@ pub fn isModernColorToken(t: Token) bool {
     const i = tok.matchPacked(t.text, func_names) orelse return false;
     return i >= 5 and i <= 10;
 }
-
-
 
 /// Parses a whole string as one colour (whitespace allowed around it).
 pub fn parse(s: []const u8) Error!ColorValue {
@@ -240,7 +245,7 @@ const space_names = "srgb\x00srgb-linear\x00display-p3\x00a98-rgb\x00prophoto-rg
 pub fn spaceFromIdent(t: Token) ?Space {
     if (t.kind != .ident) return null;
     const i = tok.matchPacked(t.text, space_names) orelse return null;
-    return if (i == 14) .xyz_d65 else @enumFromInt(i);
+    return if (i == 14) .xyz_d65 else @fromBackingInt(@intCast(i));
 }
 
 pub fn isCylindrical(s: Space) bool {
@@ -258,7 +263,7 @@ pub fn parseInterpolationMethod(l: *Lexer) ?struct { space: Space, hue: HueMetho
             _ = l.next();
             if (!l.next().isIdent("hue")) return null;
             if (!isCylindrical(space)) return null;
-            hue = @enumFromInt(h);
+            hue = @fromBackingInt(@intCast(h));
         }
     }
     return .{ .space = space, .hue = hue };
@@ -430,7 +435,7 @@ noinline fn toXyz(s: Space, c0: [3]f64) [3]f64 {
         },
         else => {},
     }
-    const d = rgb_defs[@intFromEnum(rgb)];
+    const d = rgb_defs[@backingInt(rgb)];
     for (&c) |*x| x.* = transfer(d.gamma, x.*, true);
     if (d.to) |m| c = mul3(m, c);
     return if (d.d50) mul3(&d50_to_d65, c) else c;
@@ -448,7 +453,7 @@ noinline fn fromXyz(s: Space, v: [3]f64) [3]f64 {
         .hsl, .hwb => .srgb,
         else => s,
     };
-    const d = rgb_defs[@intFromEnum(rgb)];
+    const d = rgb_defs[@backingInt(rgb)];
     var c = if (d.d50) mul3(&d65_to_d50, v) else v;
     if (d.from) |m| c = mul3(m, c);
     for (&c) |*x| x.* = transfer(d.gamma, x.*, false);
@@ -649,7 +654,7 @@ noinline fn parseModern(fi: usize, args: []const u8, depth: u32) ?Color {
             const st = l.next();
             if (st.kind != .ident) return null;
             const space = spaceFromIdent(st) orelse return null;
-            if (@intFromEnum(space) > @intFromEnum(Space.xyz_d65)) return null;
+            if (@backingInt(space) > @backingInt(Space.xyz_d65)) return null;
             const v = modernArgs(&l, .{ 1, 1, 1 }, false) orelse return null;
             return toColor(space, .{ v[0], v[1], v[2] }, v[3]);
         },
@@ -891,10 +896,9 @@ test "colour vectors" {
 
 test "colour errors" {
     const bad = [_][]const u8{
-        "#ff",       "#fffff",              "#ggg",                "rgb(1,2)",               "rgb(1 2 3 4)",
-        "rgb(1,2 3)", "rgb(1, 2, 3, 4, 5)", "rgb(1px 2 3)",       "hsl(1%, 2%, 3%)",
-        "notacolor", "rgb(1 2 3 /)",
-        "hwb(1, 2%, 3%)", "rgb()",          "red blue",            "rgb(1 2 3 / 4 / 5)",
+        "#ff",          "#fffff",             "#ggg",         "rgb(1,2)",        "rgb(1 2 3 4)",
+        "rgb(1,2 3)",   "rgb(1, 2, 3, 4, 5)", "rgb(1px 2 3)", "hsl(1%, 2%, 3%)", "notacolor",
+        "rgb(1 2 3 /)", "hwb(1, 2%, 3%)",     "rgb()",        "red blue",        "rgb(1 2 3 / 4 / 5)",
     };
     for (bad) |s| {
         if (parse(s)) |v| {
@@ -1023,9 +1027,9 @@ test "modern colour vectors (oracle-checked)" {
     for (modern_vectors) |v| try expectColor(v[0], v[1], v[2], v[3], v[4]);
     for (modern_bad) |b| try t_.expectError(error.InvalidStyleValue, parse(b));
     const more_bad = [_][]const u8{
-        "lab(50 20 30 40)", "lab(50, 20, 30)", "oklch(0.5 0.1 20deg / 1 / 1)", "color(srgb 1 1)", "color(lab 1 1 1)",
-        "color-mix(in srgb, red)", "color-mix(srgb, red, blue)", "color-mix(in srgb, red, blue, green)", "color-mix(in srgb red, blue)",
-        "light-dark(red)", "lab(calc(10) 1 1)", "color-mix(in srgb, red -10%, blue)", "lch(50 20 30%)",
+        "lab(50 20 30 40)",        "lab(50, 20, 30)",                    "oklch(0.5 0.1 20deg / 1 / 1)",         "color(srgb 1 1)",              "color(lab 1 1 1)",
+        "color-mix(in srgb, red)", "color-mix(srgb, red, blue)",         "color-mix(in srgb, red, blue, green)", "color-mix(in srgb red, blue)", "light-dark(red)",
+        "lab(calc(10) 1 1)",       "color-mix(in srgb, red -10%, blue)", "lch(50 20 30%)",
     };
     for (more_bad) |b| try t_.expectError(error.InvalidStyleValue, parse(b));
     // currentColor is still a top-level colour; nesting depth is bounded
@@ -1070,7 +1074,7 @@ test "fuzz: modern colour parsers never crash" {
     var prng = std.Random.DefaultPrng.init(0xc010);
     const rnd = prng.random();
     const seeds = [_][]const u8{
-        "lab(50 20 30 / 0.5)", "oklch(0.7 0.15 30deg)", "color(display-p3 1 0 0)", "color-mix(in oklch longer hue, red 20%, lab(50 1 2))",
+        "lab(50 20 30 / 0.5)",   "oklch(0.7 0.15 30deg)",      "color(display-p3 1 0 0)",     "color-mix(in oklch longer hue, red 20%, lab(50 1 2))",
         "light-dark(red, blue)", "lch(none none none / none)", "color(xyz-d50 1e30 -1e30 0)", "color-mix(in hsl, color-mix(in lab, red, blue), 50% white)",
     };
     const alphabet = "()/,% .-0123456789e+nonedegturnlabchoksrgbxyz";

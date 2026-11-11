@@ -21,8 +21,19 @@ pub const Visibility = enum(u8) { visible, hidden, collapse };
 pub const FlexDirection = enum(u8) { row, row_reverse, column, column_reverse };
 pub const FlexWrap = enum(u8) { nowrap, wrap, wrap_reverse };
 /// Box-alignment keyword (justify-*/align-*). `normal` and `auto` are kept distinct.
-/// `first baseline` = baseline; `safe`/`unsafe` prefixes are accepted and dropped.
+/// The parser only produces takumi's keywords (no left / right / last_baseline, no `auto` from a declaration:
+/// `auto` is the initial value of the *-self properties). `safe` is kept in `ComputedStyle.align_safe`.
 pub const Align = enum(u8) { normal, stretch, start, end, flex_start, flex_end, center, baseline, space_between, space_around, space_evenly, auto, left, right, self_start, self_end, last_baseline };
+/// `safe` alignment flags, bit-compatible with the layout engine's `AlignSafe`.
+pub const AlignSafe = packed struct(u8) {
+    align_items: bool = false,
+    align_self: bool = false,
+    align_content: bool = false,
+    justify_content: bool = false,
+    justify_items: bool = false,
+    justify_self: bool = false,
+    _pad: u2 = 0,
+};
 pub const FlexBasis = union(enum) { auto, content, lp: LP, min_content, max_content, fit_content };
 
 /// One side of a grid track's sizing function.
@@ -48,6 +59,8 @@ pub const LineName = struct { name: []const u8, line: u16, in_repeat: bool = fal
 pub const GridAutoFlow = packed struct(u8) { column: bool = false, dense: bool = false, _pad: u6 = 0 };
 /// grid-row/column-start/end. A named reference (`foo`, `2 foo`, `span foo`) is stored as `.auto`
 /// here and described by the matching `ComputedStyle.grid_line_names` entry.
+/// `line` is 1-based, negative = from the end of the explicit grid; 0 (accepted by takumi) is the line one
+/// track past the end of the explicit grid (`explicit tracks + 1`, 0-based).
 pub const GridLine = union(enum) { auto, line: i32, span: u32 };
 /// Named grid-line reference: `name` "" = none (use the GridLine). `n` = the integer (default 1,
 /// may be negative); `span` = `span ...` form. An area name `foo` used as a start line means the
@@ -265,6 +278,10 @@ pub const ComputedStyle = struct {
     align_content: Align = .normal,
     justify_items: Align = .normal,
     justify_self: Align = .auto,
+    /// `safe` overflow alignment per property (an overflowing item / content falls back to `start`), in the
+    /// order of `AlignSafe`: align-items, align-self, align-content, justify-content, justify-items, justify-self.
+    /// `unsafe` and no keyword behave alike in takumi and are not distinguished. See `alignSafe()`.
+    align_safe: [6]bool = .{ false, false, false, false, false, false },
     grid_auto_flow: GridAutoFlow = .{},
     /// null = auto
     z_index: ?i32 = null,
@@ -585,6 +602,13 @@ pub const ComputedStyle = struct {
 
     /// Used border widths (Blink rule): 0 when the side's style is none/hidden, otherwise the
     /// specified width floored to whole device px, but never below 1 when non-zero.
+    /// `align_safe` as a packed struct with the layout engine's `layout.AlignSafe` bit layout
+    /// (`layout_style.safe = @bitCast(cs.alignSafe())`).
+    pub fn alignSafe(s: *const ComputedStyle) AlignSafe {
+        const a = s.align_safe;
+        return .{ .align_items = a[0], .align_self = a[1], .align_content = a[2], .justify_content = a[3], .justify_items = a[4], .justify_self = a[5] };
+    }
+
     pub fn usedBorderWidths(s: *const ComputedStyle) [4]f32 {
         var out: [4]f32 = undefined;
         for (0..4) |i| out[i] = usedLineWidth(s.border_width[i], s.border_style[i]);

@@ -192,7 +192,8 @@ pub const AutoRepeat = struct {
 
 pub const Line = union(enum) {
     auto,
-    /// 1-based grid line; negative counts from the end of the explicit grid; 0 is treated as auto
+    /// 1-based grid line; negative counts from the end of the explicit grid (-1 = its last line); 0 is one line
+    /// further (the takumi oracle resolves `grid-column: 0` so: Blink's ResolveGridPosition with integer 0)
     line: i16,
     span: u16,
 };
@@ -277,6 +278,9 @@ pub const Style = struct {
     /// [horizontal, vertical] px
     border_spacing: [2]f32 = .{ 0, 0 },
     border_collapse: bool = false,
+    /// sides whose border-style is `hidden` (their `border` width is 0): in a collapsing table a hidden border
+    /// suppresses every other border on its edge (CSS 2.1 §17.6.2.1)
+    border_hidden: Edges(bool) = .all(false),
     /// `table-layout: fixed`
     table_fixed: bool = false,
     /// `caption-side: bottom` (on a table-caption box)

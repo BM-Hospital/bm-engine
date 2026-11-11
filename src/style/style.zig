@@ -1129,14 +1129,43 @@ test "alignment" {
     defer t.deinit();
     const s = try t.style(null,
         \\{"justifyContent": "space-between", "alignItems": "center", "alignSelf": "flex-end", "alignContent": "space-evenly",
-        \\ "justifyItems": "start", "justifySelf": "auto"}
+        \\ "justifyItems": "start", "justifySelf": "self-end"}
     );
     try T.expect(s.justify_content == .space_between and s.align_items == .center and s.align_self == .flex_end);
-    try T.expect(s.align_content == .space_evenly and s.justify_items == .start and s.justify_self == .auto);
+    try T.expect(s.align_content == .space_evenly and s.justify_items == .start and s.justify_self == .self_end);
     try T.expect((try t.one("alignItems", "normal")).align_items == .normal);
-    try T.expect((try t.one("alignItems", "last baseline")).align_items == .last_baseline);
-    try T.expect((try t.one("alignItems", "first baseline")).align_items == .baseline);
-    try T.expect((try t.one("justifyContent", "safe center")).justify_content == .center);
+    try T.expect((try t.one("alignItems", "baseline")).align_items == .baseline);
+    // takumi's keyword sets (oracle: bench/probe/f2/align.mjs)
+    try t.bad("alignItems", "last baseline");
+    try t.bad("alignItems", "first baseline");
+    try t.bad("alignItems", "left");
+    try t.bad("justifyItems", "legacy center");
+    try t.bad("alignSelf", "auto");
+    try t.bad("justifySelf", "auto");
+    try t.bad("justifyContent", "right");
+    try t.bad("justifyContent", "baseline");
+    try t.bad("justifyContent", "self-start");
+    try t.bad("alignItems", "flow-start");
+    try T.expect((try t.one("justifyContent", "flow-end")).justify_content == .flex_end);
+    try T.expect((try t.one("alignContent", "unsafe flow-start")).align_content == .flex_start);
+    // safe / unsafe: only before a positional keyword; `safe` is kept per property
+    var sf = try t.one("justifyContent", "safe center");
+    try T.expect(sf.justify_content == .center and sf.align_safe[3] and sf.alignSafe().justify_content and !sf.alignSafe().align_items);
+    sf = try t.one("justifyContent", "unsafe center");
+    try T.expect(sf.justify_content == .center and !sf.align_safe[3]);
+    sf = try t.one("alignSelf", "SAFE self-end");
+    try T.expect(sf.align_self == .self_end and sf.align_safe[1] and @as(u8, @bitCast(sf.alignSafe())) == 2);
+    sf = try t.one("placeItems", "safe center unsafe end");
+    try T.expect(sf.align_items == .center and sf.justify_items == .end and sf.align_safe[0] and !sf.align_safe[4]);
+    sf = try t.one("placeContent", "safe end");
+    try T.expect(sf.align_safe[2] and sf.align_safe[3]);
+    try t.bad("alignItems", "safe stretch");
+    try t.bad("alignItems", "safe baseline");
+    try t.bad("alignItems", "safe normal");
+    try t.bad("justifyContent", "safe space-between");
+    try t.bad("justifyContent", "safe safe center");
+    try t.bad("justifyContent", "center safe");
+    try t.bad("justifyContent", "safe");
     try t.bad("alignItems", "space-between");
     try t.bad("justifyContent", "auto");
     const p = try t.one("placeItems", "center end");
@@ -1194,10 +1223,12 @@ test "grid" {
     try T.expect(s.grid_row_start.line == 2 and s.grid_column_start.line == 3 and s.grid_row_end == .auto);
     s = try t.style(null, "{\"gridColumnStart\": 2, \"gridColumnEnd\": \"span 2\", \"gridRowStart\": \"auto\", \"gridRowEnd\": \"3\"}");
     try T.expect(s.grid_column_start.line == 2 and s.grid_column_end.span == 2 and s.grid_row_end.line == 3);
-    // takumi accepts 0 and named lines; named lines are unsupported here and become auto
-    try T.expect((try t.one("gridColumn", "0")).grid_column_start == .auto);
+    // takumi keeps line 0 (one line past the explicit grid), truncates numbers, clamps spans to >= 1
+    try T.expect((try t.one("gridColumn", "0")).grid_column_start.line == 0);
+    try T.expect((try t.one("gridColumn", "2.9")).grid_column_start.line == 2);
     try T.expect((try t.one("gridColumn", "header / span 2")).grid_column_start == .auto);
-    try t.bad("gridColumn", "span -1");
+    try T.expect((try t.one("gridColumn", "span -1")).grid_column_start.span == 1);
+    try T.expect((try t.one("gridColumn", "span 0")).grid_column_start.span == 1);
     try t.bad("gridArea", "1/2/3/4/5");
 }
 
@@ -1230,13 +1261,26 @@ test "borders and outline" {
     try T.expectEqual([4]computed.BorderStyle{ .solid, .none, .groove, .none }, s.border_style);
     s = try t.one("borderColor", "red green blue yellow");
     try T.expect(s.border_color[3].rgba.eql(.{ .r = 255, .g = 255, .a = 255 }));
-    try t.bad("border", "2px 3px");
-    try t.bad("border", "solid dashed");
+    // takumi's border shorthand: a repeated component replaces the earlier one; a line width is a <length>
+    // whose `auto` and percentages are 0 (oracle: bench/probe/f2/accept2.mjs)
+    s = try t.one("border", "2px 3px solid");
+    try T.expectEqual([4]f32{ 6, 6, 6, 6 }, s.border_width);
+    s = try t.one("border", "solid dashed");
+    try T.expect(s.border_style[0] == .dashed);
+    s = try t.one("border", "auto solid red");
+    try T.expect(s.border_width[0] == 0 and s.border_style[0] == .solid);
+    s = try t.one("borderWidth", "10% auto");
+    try T.expectEqual([4]f32{ 0, 0, 0, 0 }, s.border_width);
     try t.bad("borderWidth", "-1px");
-    try t.bad("borderWidth", "10%");
+    try t.bad("borderWidth", "-10%");
     try t.bad("borderStyle", "wavy");
+    try t.bad("borderStyle", "auto");
+    // `auto` in the outline shorthand is a width (0), not a style; outline-style / outline-color have no auto
     s = try t.one("outline", "3px auto");
-    try T.expect(s.outline_style == .solid and s.outline_width == 6);
+    try T.expect(s.outline_style == .none and s.outline_width == 0);
+    try t.bad("outlineStyle", "auto");
+    try t.bad("outlineColor", "auto");
+    try T.expect((try t.one("outlineOffset", "auto")).outline_offset == 0);
     s = try t.style(null, "{\"outlineColor\": \"red\", \"outlineOffset\": \"-2px\", \"outlineStyle\": \"dashed\", \"outlineWidth\": \"thin\"}");
     try T.expect(s.outline_offset == -4 and s.outline_style == .dashed and s.outline_width == 2);
     try T.expectEqual(@as(f32, 2), s.usedOutlineWidth());
@@ -1740,12 +1784,22 @@ test "grid: areas, names, shorthands" {
     s = try t.one("gridArea", "main");
     for (s.grid_line_names) |r| try T.expectEqualStrings("main", r.name);
     try T.expect(s.grid_row_start == .auto);
-    s = try t.one("gridColumn", "2 col / span col");
-    try T.expect(s.grid_line_names[1].n == 2 and s.grid_line_names[3].span);
+    // grid-row / grid-column: the end stays auto after a lone name (takumi; grid-area copies it)
+    s = try t.one("gridColumn", "main");
+    try T.expectEqualStrings("main", s.grid_line_names[1].name);
+    try T.expect(s.grid_line_names[3].name.len == 0 and s.grid_column_end == .auto);
+    s = try t.one("gridColumn", "col / span col");
+    try T.expect(s.grid_line_names[1].n == 1 and s.grid_line_names[3].span);
+    // takumi rejects <integer> <name> and span <integer> <name> in any order
+    try t.bad("gridColumn", "2 col / span col");
+    try t.bad("gridColumn", "col 2");
+    try t.bad("gridRowStart", "span 3 x");
+    try t.bad("gridRowStart", "span x 3");
+    try t.bad("gridRowStart", "x span");
+    try t.bad("gridRowStart", "2 span");
+    try t.bad("gridArea", "1 / 2 a");
     s = try t.one("gridRow", "1 / span 2");
     try T.expect(s.grid_row_start.line == 1 and s.grid_row_end.span == 2 and s.grid_line_names[0].name.len == 0);
-    s = try t.one("gridRowStart", "span 3 x");
-    try T.expect(s.grid_line_names[0].span and s.grid_line_names[0].n == 3);
     try t.bad("gridRow", "span");
     try t.bad("gridRow", "0 x");
     s = try t.one("gridTemplate", "[top] \"a a\" 40px [mid] \"b c\" / 1fr 2fr");

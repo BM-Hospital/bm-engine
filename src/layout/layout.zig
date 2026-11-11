@@ -62,6 +62,7 @@ pub const Tree = tree.Tree;
 pub const TreeWith = tree.TreeWith;
 pub const Config = tree.Config;
 pub const Layout = tree.Layout;
+pub const TableGeom = @import("table.zig").Geom;
 pub const MeasureFn = tree.MeasureFn;
 pub const BaselineFn = tree.BaselineFn;
 pub const Options = tree.Options;
