@@ -415,34 +415,40 @@ pub fn encode(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, opts: 
     }
     const rb: usize = if (use_pal) (@as(usize, w) * depth + 7) / 8 else @as(usize, w) * bpp;
     const stride = rb + 1;
-    const raw = try alloc.alloc(u8, stride * h);
-    defer alloc.free(raw);
+    var rows = Rows{ .rgba = rgba, .w = w, .bpp = bpp, .rb = rb, .pal = if (use_pal) &pal else null, .depth = depth };
 
-    var filtered = false;
-    if (use_pal) {
-        pal.indexRows(rgba, w, h, depth, raw, stride);
-    } else {
-        var strat = opts.filter;
-        if (strat == .auto) strat = try pickStrategy(alloc, rgba, w, h, bpp);
-        filtered = strat != .none;
-        try filterImage(alloc, rgba, w, h, bpp, strat, raw, stride, 0, h);
+    // Scratch, allocated first: 3 rows (prev, cur, filtered). Everything else streams.
+    const bufs = try alloc.alloc(u8, 3 * rb + 1);
+    defer alloc.free(bufs);
+
+    var strat: FilterStrategy = .none;
+    if (!use_pal) {
+        strat = opts.filter;
+        if (strat == .auto) strat = try pickStrategy(alloc, &rows, h, bufs);
     }
-    const level = opts.level orelse if (filtered) deflate.Level.fast else deflate.Level.default;
-    const z = try deflate.compressEx(alloc, raw, .{ .level = level, .dist_hints = .{ @intCast(bpp), @intCast(stride) } });
-    defer alloc.free(z);
+    const level = opts.level orelse if (strat != .none) deflate.Level.fast else deflate.Level.default;
 
-    // assemble file
+    // Chunks before the IDAT data are written into a reserved prefix of the output buffer.
     const pal_bytes: usize = if (use_pal) 12 + pal.n * 3 else 0;
     const trns_n: usize = if (use_pal) pal.ntrans else 0;
     const trns_bytes: usize = if (trns_n > 0) 12 + trns_n else 0;
-    const total = 8 + 25 + pal_bytes + trns_bytes + 12 + z.len + 12;
-    const out = try alloc.alloc(u8, total);
+    const prefix = 8 + 25 + pal_bytes + trns_bytes + 8;
+    const raw_len = stride * @as(usize, h);
+    var s = try deflate.Stream.init(alloc, .{ .level = level, .dist_hints = .{ @intCast(bpp), @intCast(stride) } }, @max(raw_len / 8, 4096), prefix, true);
+    errdefer s.deinit();
+    try streamRows(&rows, &s, strat, 0, h, bufs);
+    try s.finish();
+
+    const zlen = s.w.pos - prefix;
+    if (zlen > std.math.maxInt(i32)) return error.InvalidInput;
+    try s.w.ensure(24);
+    const out = s.w.buf;
     var o: usize = 0;
     @memcpy(out[0..8], &signature);
     o = 8;
     var ihdr: [13]u8 = undefined;
-    std.mem.writeInt(u32, ihdr[0..4], w, .big);
-    std.mem.writeInt(u32, ihdr[4..8], h, .big);
+    byt.putBe32(&ihdr, 0, w);
+    byt.putBe32(&ihdr, 4, h);
     ihdr[8] = depth;
     ihdr[9] = ct;
     ihdr[10] = 0;
@@ -459,10 +465,16 @@ pub fn encode(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, opts: 
         o = putChunk(out, o, "PLTE", plte[0 .. pal.n * 3]);
         if (trns_n > 0) o = putChunk(out, o, "tRNS", trns[0..trns_n]);
     }
-    o = putChunk(out, o, "IDAT", z);
-    o = putChunk(out, o, "IEND", "");
-    std.debug.assert(o == total);
-    return out;
+    byt.putBe32(out, o, @intCast(zlen));
+    @memcpy(out[o + 4 ..][0..4], "IDAT");
+    o += 8;
+    std.debug.assert(o == prefix);
+    var e = s.w.pos;
+    byt.putBe32(out, e, checksum.crc32(0, out[prefix - 4 .. e]));
+    e += 4;
+    e = putChunk(out, e, "IEND", "");
+    s.w.pos = e;
+    return s.takeOutput();
 }
 
 fn putChunk(out: []u8, at: usize, typ: *const [4]u8, data: []const u8) usize {
@@ -558,73 +570,77 @@ const Palette = struct {
         return true;
     }
 
-    fn indexRows(p: *Palette, rgba: []const u8, w: u32, h: u32, depth: u8, raw: []u8, stride: usize) void {
-        var last: u32 = std.mem.readInt(u32, rgba[0..4], .little);
-        var last_idx: u8 = p.lookup(last).?;
-        for (0..h) |y| {
-            const row = raw[y * stride ..][0..stride];
-            row[0] = 0;
-            const dst = row[1..];
-            @memset(dst, 0);
-            const src = rgba[y * w * 4 ..][0 .. w * 4];
-            for (0..w) |x| {
+};
+
+/// Source rows converted to the packed scanline pixel format (RGBA, RGB or palette indices).
+const Rows = struct {
+    rgba: []const u8,
+    w: usize,
+    bpp: usize, // bytes per pixel for filtering (1 for palette)
+    rb: usize, // packed row bytes
+    pal: ?*Palette,
+    depth: u8,
+    last: u32 = 0,
+    last_idx: u8 = 0,
+    have_last: bool = false,
+
+    fn pack(r: *Rows, y: usize, dst: []u8) void {
+        const src = r.rgba[y * r.w * 4 ..][0 .. r.w * 4];
+        if (r.pal) |p| {
+            if (!r.have_last) {
+                r.last = byt.le32(src, 0);
+                r.last_idx = p.lookup(r.last).?;
+                r.have_last = true;
+            }
+            if (r.depth != 8) @memset(dst, 0);
+            for (0..r.w) |x| {
                 const k = byt.le32(src, x * 4);
-                if (k != last) {
-                    last = k;
-                    last_idx = p.lookup(k).?;
+                if (k != r.last) {
+                    r.last = k;
+                    r.last_idx = p.lookup(k) orelse 0;
                 }
-                if (depth == 8) {
-                    dst[x] = last_idx;
+                if (r.depth == 8) {
+                    dst[x] = r.last_idx;
                 } else {
-                    const bit = x * depth;
-                    dst[bit >> 3] |= last_idx << @intCast(8 - depth - (bit & 7));
+                    const bit = x * r.depth;
+                    dst[bit >> 3] |= r.last_idx << @intCast(8 - r.depth - (bit & 7));
                 }
+            }
+        } else if (r.bpp == 4) {
+            @memcpy(dst, src);
+        } else {
+            for (0..r.w) |i| {
+                dst[i * 3] = src[i * 4];
+                dst[i * 3 + 1] = src[i * 4 + 1];
+                dst[i * 3 + 2] = src[i * 4 + 2];
             }
         }
     }
 };
 
-/// Fills scanlines [y0, y1) of `raw` (each `stride` bytes: filter byte + row).
-fn filterImage(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, bpp: usize, strat: FilterStrategy, raw: []u8, stride: usize, y0: usize, y1: usize) EncodeError!void {
-    _ = h;
-    const rb = stride - 1;
-    const bufs = try alloc.alloc(u8, rb * 2);
-    defer alloc.free(bufs);
+/// Filters rows [y0, y1) and feeds the scanlines to `s`. `bufs`: 3*rb+1 bytes of scratch.
+/// The row above y0 (when y0 > 0) is used as predictor, as in the full image.
+fn streamRows(r: *Rows, s: *deflate.Stream, strat: FilterStrategy, y0: usize, y1: usize, bufs: []u8) deflate.Error!void {
+    const rb = r.rb;
     var prev: []u8 = bufs[0..rb];
-    var cur: []u8 = bufs[rb..];
-    if (y0 == 0) @memset(prev, 0) else packRow(prev, rgba[(y0 - 1) * w * 4 ..][0 .. w * 4], bpp);
+    var cur: []u8 = bufs[rb..][0..rb];
+    const out = bufs[2 * rb ..][0 .. rb + 1];
+    if (y0 == 0) @memset(prev, 0) else r.pack(y0 - 1, prev);
     for (y0..y1) |y| {
-        const src = rgba[y * w * 4 ..][0 .. w * 4];
-        const c: []const u8 = if (bpp == 4) src else blk: {
-            packRow(cur, src, bpp);
-            break :blk cur;
-        };
-        const out = raw[(y - y0) * stride ..][0..stride];
+        r.pack(y, cur);
         const ft: u8 = switch (strat) {
             .none => 0,
             .up => 2,
             .paeth => 4,
-            .adaptive, .adaptive_fast, .auto => choose(c, prev, bpp, strat == .adaptive),
+            .adaptive, .adaptive_fast, .auto => choose(cur, prev, r.bpp, strat == .adaptive),
         };
         out[0] = ft;
-        applyFilter(ft, out[1..], c, prev, bpp);
-        if (bpp == 4) {
-            @memcpy(prev, c);
-        } else {
-            const t = prev;
-            prev = cur;
-            cur = t;
-        }
+        applyFilter(ft, out[1..], cur, prev, r.bpp);
+        try s.write(out);
+        const t = prev;
+        prev = cur;
+        cur = t;
     }
-}
-
-fn packRow(dst: []u8, src: []const u8, bpp: usize) void {
-    if (bpp == 4) {
-        @memcpy(dst, src);
-        return;
-    }
-    const n = dst.len / 3;
-    for (0..n) |i| dst[i * 3 ..][0..3].* = src[i * 4 ..][0..3].*;
 }
 
 const VL = 16;
@@ -734,32 +750,29 @@ fn choose(c: []const u8, prev: []const u8, bpp: usize, full: bool) u8 {
 
 /// Picks the filter strategy by deflating a sample of the image with each candidate:
 /// 3 bands of 17 consecutive rows (or the whole image when small) at `.fast`.
-fn pickStrategy(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, bpp: usize) EncodeError!FilterStrategy {
-    const rb = @as(usize, w) * bpp;
-    const stride = rb + 1;
+fn pickStrategy(alloc: std.mem.Allocator, rows: *Rows, h: u32, bufs: []u8) EncodeError!FilterStrategy {
+    const stride = rows.rb + 1;
     // Each band is 1 context row + 16 rows; unfiltered data needs the row above as LZ history
     // just like filtered data needs it as predictor, so both get it.
     const band = 17;
     const nbands: usize = if (h <= 3 * band * 2) 1 else 3;
-    const rows: usize = if (nbands == 1) h else nbands * band;
-    const buf = try alloc.alloc(u8, stride * rows);
-    defer alloc.free(buf);
     const cands = [_]FilterStrategy{ .none, .up, .adaptive_fast };
     var best = cands[0];
     var best_size: usize = std.math.maxInt(usize);
-    for (cands) |s| {
+    for (cands) |c| {
+        var s = try deflate.Stream.init(alloc, .{ .level = .fast, .dist_hints = .{ @intCast(rows.bpp), @intCast(stride) } }, 64 << 10, 0, true);
+        defer s.deinit();
         if (nbands == 1) {
-            try filterImage(alloc, rgba, w, h, bpp, s, buf, stride, 0, h);
+            try streamRows(rows, &s, c, 0, h, bufs);
         } else for (0..nbands) |k| {
             const y0 = (2 * k + 1) * h / (2 * nbands) - band / 2;
-            try filterImage(alloc, rgba, w, h, bpp, s, buf[k * band * stride ..][0 .. band * stride], stride, y0, y0 + band);
+            try streamRows(rows, &s, c, y0, y0 + band, bufs);
         }
-        const z = try deflate.compressEx(alloc, buf, .{ .level = .fast, .dist_hints = .{ @intCast(bpp), @intCast(stride) } });
-        if (z.len < best_size) {
-            best_size = z.len;
-            best = s;
+        try s.finish();
+        if (s.w.pos < best_size) {
+            best_size = s.w.pos;
+            best = c;
         }
-        alloc.free(z);
     }
     return best;
 }

@@ -48,32 +48,144 @@ pub fn compress(alloc: std.mem.Allocator, input: []const u8, level: Level) Error
 
 /// zlib-wrapped DEFLATE of `input` with extra options.
 pub fn compressEx(alloc: std.mem.Allocator, input: []const u8, opts: Options) Error![]u8 {
-    const level = opts.level;
-    var w = try Writer.init(alloc, input.len / 2 + 64);
-    errdefer w.deinit();
-    const flags: u8 = switch (level) {
-        .fastest => 0x01,
-        .fast => 0x5E,
-        .default => 0x9C,
-        .best => 0xDA,
-    };
-    w.buf[0] = 0x78;
-    w.buf[1] = flags;
-    w.pos = 2;
-    try deflateInto(alloc, &w, input, opts);
-    try w.ensure(4);
-    bytes.putBe32(w.buf, w.pos, checksum.adler32(1, input));
-    w.pos += 4;
-    return w.finish();
+    var s = try Stream.init(alloc, opts, input.len / 2 + 64, 0, true);
+    errdefer s.deinit();
+    try s.write(input);
+    try s.finish();
+    return s.takeOutput();
 }
 
 /// Raw DEFLATE (no zlib wrapper) of `input`.
 pub fn deflateRaw(alloc: std.mem.Allocator, input: []const u8, level: Level) Error![]u8 {
-    var w = try Writer.init(alloc, input.len / 2 + 64);
-    errdefer w.deinit();
-    try deflateInto(alloc, &w, input, .{ .level = level });
-    return w.finish();
+    var s = try Stream.init(alloc, .{ .level = level }, input.len / 2 + 64, 0, false);
+    errdefer s.deinit();
+    try s.write(input);
+    try s.finish();
+    return s.takeOutput();
 }
+
+const win_size = 4 * wsize;
+
+fn rebase(t: []u32, k: u32) void {
+    const V = @Vector(16, u32);
+    const kv: V = @splat(k);
+    var i: usize = 0;
+    while (i + 16 <= t.len) : (i += 16) {
+        const p: *align(4) V = @ptrCast(t[i..][0..16]);
+        p.* = p.* -| kv;
+    }
+    while (i < t.len) : (i += 1) t[i] -|= k;
+}
+const lookahead = 262; // 258 (max match) + 4 (hash/lazy): streamed output equals one-shot output
+
+/// Streaming compressor: feed data with `write` (any chunk sizes), then `finish`.
+/// Scratch: hash heads 128 KB + chains 128 KB + symbols 64 KB + 128 KB window, all allocated in
+/// `init` BEFORE the output buffer, so the output (the most recent allocation) can grow in
+/// place in a bump arena; `deinit` frees in LIFO order.
+pub const Stream = struct {
+    alloc: std.mem.Allocator,
+    st: State,
+    win: []u8,
+    w: Writer,
+    adler: u32 = 1,
+    zlib: bool,
+    total: usize = 0,
+
+    /// `out_cap`: initial output capacity guess. `prefix`: bytes reserved at the start of the
+    /// output for the caller (e.g. PNG chunks before the IDAT data); compressed data follows.
+    pub fn init(alloc: std.mem.Allocator, opts: Options, out_cap: usize, prefix: usize, zlib: bool) Error!Stream {
+        const head = try alloc.alloc(u32, 1 << hash_bits);
+        errdefer alloc.free(head);
+        const prev = try alloc.alloc(u32, wsize);
+        errdefer alloc.free(prev);
+        const syms = try alloc.alloc(u32, block_syms);
+        errdefer alloc.free(syms);
+        const win = try alloc.alloc(u8, win_size);
+        errdefer alloc.free(win);
+        var w = try Writer.init(alloc, prefix + out_cap + 16);
+        @memset(head, 0);
+        w.pos = prefix;
+        if (zlib) {
+            w.buf[prefix] = 0x78;
+            w.buf[prefix + 1] = switch (opts.level) {
+                .fastest => 0x01,
+                .fast => 0x5E,
+                .default => 0x9C,
+                .best => 0xDA,
+            };
+            w.pos += 2;
+        }
+        var st = State{ .src = win[0..0], .cfg = cfgOf(opts.level), .hints = opts.dist_hints, .head = head, .prev = prev, .syms = syms };
+        if (st.cfg.min3) st.mask = 0xFFFFFF;
+        return .{ .alloc = alloc, .st = st, .win = win, .w = w, .zlib = zlib };
+    }
+
+    pub fn write(s: *Stream, data: []const u8) Error!void {
+        var d = data;
+        if (s.zlib) s.adler = checksum.adler32(s.adler, d);
+        s.total += d.len;
+        while (d.len > 0) {
+            var fill = s.st.src.len;
+            if (fill == s.win.len) {
+                try process(&s.w, &s.st, fill - lookahead, false);
+                // keep exactly one window of history before the next position
+                const k = (s.st.pos - wsize) & ~@as(usize, wmask);
+                // window 128K, pos >= 128K - 262  =>  k = 64K and fill - k = 64K: no overlap
+                @memcpy(s.win[0 .. fill - k], s.win[k..fill]);
+                // Chain entries are window-relative (pos+1): rebase, dropping what fell out.
+                // k is a multiple of wsize, so prev[] slot indices (pos & wmask) stay valid.
+                rebase(s.st.head, @intCast(k));
+                rebase(s.st.prev, @intCast(k));
+                s.st.base += k;
+                s.st.pos -= k;
+                s.st.ins -= k;
+                fill -= k;
+            }
+            const n = @min(d.len, s.win.len - fill);
+            @memcpy(s.win[fill..][0..n], d[0..n]);
+            s.st.src = s.win[0 .. fill + n];
+            d = d[n..];
+        }
+    }
+
+    /// Emits the final block (and the zlib trailer). Output is `w.buf[0..w.pos]`.
+    pub fn finish(s: *Stream) Error!void {
+        if (s.total == 0) {
+            try s.w.ensure(4);
+            s.w.put(0b011, 3); // final, fixed
+            s.w.put(0, 7); // EOB
+        } else try process(&s.w, &s.st, s.st.src.len, true);
+        s.w.alignByte();
+        if (s.zlib) {
+            try s.w.ensure(4);
+            bytes.putBe32(s.w.buf, s.w.pos, s.adler);
+            s.w.pos += 4;
+        }
+    }
+
+    /// Frees the scratch tables (most recent first); the output in `w` is kept.
+    pub fn freeScratch(s: *Stream) void {
+        if (s.win.len == 0) return;
+        s.alloc.free(s.win);
+        s.alloc.free(s.st.syms);
+        s.alloc.free(s.st.prev);
+        s.alloc.free(s.st.head);
+        s.win = &.{};
+    }
+
+    /// Frees everything, output first (LIFO).
+    pub fn deinit(s: *Stream) void {
+        s.w.deinit();
+        s.freeScratch();
+    }
+
+    /// Finished output shrunk to size (caller owns it); scratch is freed.
+    pub fn takeOutput(s: *Stream) Error![]u8 {
+        const out = try s.w.finish();
+        s.freeScratch();
+        return out;
+    }
+};
 
 // ------------------------------------------------------------------ bit writer
 
@@ -93,7 +205,7 @@ const Writer = struct {
     }
 
     /// Guarantees `n` more bytes of room (plus 8 for the bit flusher).
-    fn ensure(w: *Writer, n: usize) Error!void {
+    pub fn ensure(w: *Writer, n: usize) Error!void {
         const need = w.pos + n + 16;
         if (need <= w.buf.len) return;
         const new_len = @max(need, w.buf.len + w.buf.len / 2);
@@ -201,8 +313,10 @@ const State = struct {
     nsyms: usize = 0,
     lit_freq: [286]u32 = @splat(0),
     dist_freq: [30]u32 = @splat(0),
-    block_start: usize = 0,
-    ins: usize = 0, // next position to insert into the hash chains
+    block_start: usize = 0, // ABSOLUTE stream offset of the current block
+    ins: usize = 0, // next position to insert into the hash chains (window-relative)
+    pos: usize = 0, // next position to encode (window-relative)
+    base: usize = 0, // absolute stream offset of src[0]
     mask: u32 = 0xFFFFFFFF, // 0xFFFFFF when 3-byte matches are enabled
 
     inline fn insert(st: *State, p: usize) u32 {
@@ -271,31 +385,22 @@ const State = struct {
     }
 };
 
-fn deflateInto(alloc: std.mem.Allocator, w: *Writer, src: []const u8, opts: Options) Error!void {
-    if (src.len == 0) {
-        try w.ensure(4);
-        w.put(0b011, 3); // final, fixed
-        w.put(0, 7); // EOB
-        w.alignByte();
-        return;
-    }
-    const head = try alloc.alloc(u32, 1 << hash_bits);
-    defer alloc.free(head);
-    const prev = try alloc.alloc(u32, wsize);
-    defer alloc.free(prev);
-    const syms = try alloc.alloc(u32, block_syms);
-    defer alloc.free(syms);
-    @memset(head, 0);
-    var st = State{ .src = src, .cfg = cfgOf(opts.level), .hints = opts.dist_hints, .head = head, .prev = prev, .syms = syms };
-    if (st.cfg.min3) st.mask = 0xFFFFFF;
-
+/// Encodes window positions [st.pos, upto). Non-final calls leave >= `lookahead` bytes unread
+/// so every match search sees the same data a one-shot call would.
+fn process(w: *Writer, stp: *State, upto: usize, final: bool) Error!void {
+    // Work on a local copy: through a pointer, every field would be reloaded after each
+    // store to head/prev/syms (possible aliasing), which cost ~20% in the hot loop.
+    var local = stp.*;
+    const st = &local;
+    defer stp.* = local;
+    const src = st.src;
     const n = src.len;
-    var p: usize = 0;
+    var p = st.pos;
     // Positions >= limit cannot start a 4-byte hash.
     const limit = if (n >= 4) n - 3 else 0;
-    while (p < n) {
+    while (p < upto) {
         if (st.nsyms >= block_syms - 2) {
-            try emitBlock(w, &st, p, false);
+            try emitBlock(w, st, p, false);
         }
         if (p >= limit) {
             st.lit(src[p]);
@@ -329,7 +434,8 @@ fn deflateInto(alloc: std.mem.Allocator, w: *Writer, src: []const u8, opts: Opti
         st.ins = end;
         p = end;
     }
-    try emitBlock(w, &st, n, true);
+    st.pos = p;
+    if (final) try emitBlock(w, st, n, true);
 }
 
 /// Encodes the buffered symbols covering src[block_start..end] as one block.
@@ -431,14 +537,16 @@ fn emitBlock(w: *Writer, st: *State, end: usize, final: bool) Error!void {
     }
     dyn += extra;
     fixed += extra;
-    const raw = end - st.block_start;
+    const raw = st.base + end - st.block_start;
     const nstored = @max(1, (raw + 65534) / 65535);
-    const stored: u64 = (raw + 4 * nstored) * 8 + 3 * nstored + 7;
+    // A stored block needs its raw bytes, which must still be in the window.
+    const can_store = st.block_start >= st.base;
+    const stored: u64 = if (can_store) (raw + 4 * nstored) * 8 + 3 * nstored + 7 else std.math.maxInt(u64);
 
-    try w.ensure(st.nsyms * 6 + raw + 5 * nstored + 400);
+    try w.ensure(st.nsyms * 6 + (if (can_store) raw + 5 * nstored else 0) + 400);
     const fb: u32 = @intFromBool(final);
     if (stored <= dyn and stored <= fixed) {
-        var rest = st.src[st.block_start..end];
+        var rest = st.src[st.block_start - st.base .. end];
         while (true) {
             const take = @min(rest.len, 65535);
             const last = take == rest.len;
@@ -493,7 +601,7 @@ fn emitBlock(w: *Writer, st: *State, end: usize, final: bool) Error!void {
     st.nsyms = 0;
     st.lit_freq = @splat(0);
     st.dist_freq = @splat(0);
-    st.block_start = end;
+    st.block_start = st.base + end;
 }
 
 fn writeSyms(w: *Writer, syms: []const u32, lc: *const [288]u16, ll: *const [288]u8, dc: *const [30]u16, dl: *const [30]u8) void {
@@ -588,5 +696,30 @@ test "deflate round trips at every level" {
         const alpha = 1 + rnd.uintLessThan(u8, 6);
         for (big[0..len]) |*b| b.* = rnd.uintLessThan(u8, alpha);
         _ = try roundTrip(big[0..len], levels[rnd.uintLessThan(usize, 4)]);
+    }
+}
+
+test "streamed writes in random chunks give the same bytes as one-shot" {
+    var prng = std.Random.DefaultPrng.init(5);
+    const rnd = prng.random();
+    const data = try testing.allocator.alloc(u8, 400_000);
+    defer testing.allocator.free(data);
+    for (data, 0..) |*b, i| b.* = @truncate((i % 1201) / 7 + (if (rnd.uintLessThan(u8, 20) == 0) rnd.int(u8) else 0));
+    for ([_]Level{ .fastest, .fast, .default, .best }) |lv| {
+        const one = try compressEx(testing.allocator, data, .{ .level = lv, .dist_hints = .{ 3, 1201 } });
+        defer testing.allocator.free(one);
+        var s = try Stream.init(testing.allocator, .{ .level = lv, .dist_hints = .{ 3, 1201 } }, 100, 0, true);
+        defer s.deinit();
+        var rest: []const u8 = data;
+        while (rest.len > 0) {
+            const k = @min(rest.len, 1 + rnd.uintLessThan(usize, 70_000));
+            try s.write(rest[0..k]);
+            rest = rest[k..];
+        }
+        try s.finish();
+        try testing.expectEqualSlices(u8, one, s.w.buf[0..s.w.pos]);
+        const back = try inflate.zlibDecompressAlloc(testing.allocator, one, data.len, .{ .verify_checksum = true });
+        defer testing.allocator.free(back);
+        try testing.expectEqualSlices(u8, data, back);
     }
 }
