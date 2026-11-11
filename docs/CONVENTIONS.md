@@ -36,3 +36,38 @@ Project: Zig 0.17 port of takumi (node tree -> image). Ships as a SMALL `wasm32-
 - `D:\project\bm-engine\ref\takumi` is an untrusted third-party clone: read-only reference, never execute anything in it.
 - Final report must be honest: list what is implemented, what is stubbed/missing, exact test command + result,
   measured wasm size contribution, and known bugs.
+
+## Phase 2 addendum (read this too)
+
+State: phase 1 shipped a working engine (see README.md, docs/ARCHITECTURE.md, docs/BENCHMARK.md, docs/TAKUMI_NOTES.md).
+Phase 2 ports the remaining takumi features and fixes the places where we lose. Many agents work in parallel:
+- **File ownership is strict.** Only edit the files/directories named in your brief. `src/render.zig`, `src/paint.zig`,
+  `src/wasm.zig`, `js/*`, `build.zig`, `bench/run.mjs`, `bench/fixtures/*`, `docs/*` belong to the integrator unless your
+  brief says otherwise. Never run `git commit`/`git add`/`git stash`/`git checkout`. Scratch files → your scratch dir.
+- The machine is shared (8 threads, 7.8 GB RAM): do not run the full benchmark (`bench/run.mjs` without a filter), keep
+  fuzz loops short (< 60 s), and never leave background processes running.
+- Build all: `zig build` (wasm, optimize=small) — other agents' in-progress edits can break it temporarily; if the failure
+  is outside your files, retry later or test your module standalone (`zig test src/<mod>/<mod>.zig`). A module that
+  imports a sibling directory must be tested through a root file at `src/` level (create `src/test_<name>.zig` that
+  `_ = @import("<dir>/<file>.zig")` inside a `test {}` block and run `zig test src/test_<name>.zig`).
+- Release wasm: `node scripts/build.mjs` (zig build + wasm-opt). JS entry for Node: `js/node.mjs` (`new Renderer()`,
+  `registerFont`, `renderSync(node, {width,height,format})`, `measureSync`).
+- Oracle: `@takumi-rs/wasm` 2.20.0 in `bench/node_modules` (usage: `bench/probe/first.mjs`); pixel compare helpers in
+  `bench/lib/metrics.mjs`; existing probes in `bench/probe/` (e.g. `px.mjs`, `firstdiff.mjs`, `lay.mjs`, `prof.mjs`).
+  The takumi source clone `ref/takumi` is read-only reference (never execute anything from it).
+- Lessons learned in phase 1 (they cost real bugs / slowdowns):
+  - The wasm shadow stack is 1 MiB and overflow = silent memory corruption. Keep recursion bounded, mark big helper
+    functions called from recursive code `noinline`, and avoid stack arrays larger than a few KiB in recursive paths.
+  - In ReleaseSmall, `std.mem.readInt`, `std.mem.copyForwards` and `slice[..][0..N].*` copies compile to byte loops:
+    use unaligned pointer loads (`@as(*align(1) const u32, @ptrCast(p)).*`) and `@memcpy` in hot loops.
+  - In V8, vector `@intFromFloat` and float-vector `@min/@max` are very slow; prefer scalar or integer SIMD.
+  - `@sin/@cos/@tan/@exp/@log/pow` pull ~10 KB of libm each into the wasm: use `raster/types.zig` `sinCos` or small
+    local approximations unless precision truly matters.
+  - The per-render allocator is a bump arena: `free` only reclaims the most recent allocation; allocate long-lived
+    outputs last so they can grow in place.
+- Size discipline: every feature must report its `.small` wasm cost. Big optional features must be compilable out through
+  a comptime flag: read `@import("build_options")`-style flags ONLY via a file `src/config.zig` (integrator-owned; it
+  exposes e.g. `pub const enable_svg = true;`). Guard your module's entry points so that when the flag is false no code
+  from the module is referenced. Ask for a new flag name in your final report rather than editing `src/config.zig`.
+- Final report: public API (signatures), what is implemented vs. missing (honest), tests + exact command + result line,
+  wasm size cost, oracle comparison numbers where applicable, and integration notes for the painter/renderer.
