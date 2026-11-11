@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>bm-engine playground</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body data-ready="0">
+<header class="top">
+  <div class="brand">
+    <h1 data-i18n="title">bm-engine playground</h1>
+    <p class="sub" data-i18n="subtitle"></p>
+  </div>
+  <div class="top-controls">
+    <label class="inline"><span data-i18n="profile">Profile</span>
+      <select id="profile">
+        <option value="core">core</option>
+        <option value="standard">standard</option>
+        <option value="full">full</option>
+      </select>
+    </label>
+    <span id="binInfo" class="chip muted" data-i18n="loading"></span>
+    <label class="inline"><span data-i18n="language">Language</span>
+      <select id="lang"><option value="en">EN</option><option value="vi">VI</option></select>
+    </label>
+  </div>
+  <div id="featChips" class="chips" aria-label="features"></div>
+</header>
+
+<main class="layout">
+  <section class="pane editor" aria-label="editor">
+    <div class="row">
+      <label class="grow"><span class="lbl" data-i18n="template">Template</span>
+        <select id="template"></select>
+      </label>
+    </div>
+    <p id="templateHint" class="hint" hidden></p>
+
+    <div class="tabs" role="tablist" id="tabs">
+      <button type="button" role="tab" data-kind="json" id="tab-json"><span data-i18n="tabJson">Node JSON</span><i class="miss" hidden>x</i></button>
+      <button type="button" role="tab" data-kind="html" id="tab-html"><span data-i18n="tabHtml">HTML</span><i class="miss" hidden>x</i></button>
+      <button type="button" role="tab" data-kind="tw" id="tab-tw"><span data-i18n="tabTw">Tailwind</span><i class="miss" hidden>x</i></button>
+    </div>
+    <textarea id="src" class="code" spellcheck="false" autocapitalize="off" autocomplete="off" rows="16" aria-label="source"></textarea>
+    <p id="kindNote" class="note warn" hidden></p>
+
+    <details open id="cssBox"><summary><span data-i18n="css">CSS</span> <i id="cssMiss" class="miss" hidden>x</i></summary>
+      <textarea id="css" class="code" spellcheck="false" rows="7" aria-label="css"></textarea>
+      <p class="note" data-i18n="cssNote"></p>
+    </details>
+
+    <details open><summary data-i18n="options">Options</summary>
+      <div class="grid">
+        <label><span class="lbl" data-i18n="width">Width</span><input id="width" type="number" min="1" max="4096" step="1" /></label>
+        <label><span class="lbl" data-i18n="height">Height</span><input id="height" type="number" min="1" max="4096" step="1" /></label>
+        <label><span class="lbl" data-i18n="dpr">DPR</span><input id="dpr" type="number" min="0.25" max="4" step="0.25" /></label>
+        <label><span class="lbl" data-i18n="format">Format</span>
+          <select id="format">
+            <option value="png">png</option><option value="jpeg">jpeg</option><option value="webp">webp</option>
+            <option value="raw" data-i18n="fmtRaw">raw</option><option value="svg" data-i18n="fmtSvg">svg</option>
+            <option value="anim-webp" data-i18n="fmtAwebp">anim webp</option><option value="anim-apng" data-i18n="fmtApng">anim apng</option><option value="anim-gif" data-i18n="fmtGif">anim gif</option>
+          </select>
+        </label>
+        <label class="wide" id="qualityBox"><span class="lbl"><span data-i18n="quality">Quality</span>: <b id="qualityVal">80</b></span><input id="quality" type="range" min="1" max="100" step="1" /></label>
+        <label class="wide" id="timeBox"><span class="lbl"><span data-i18n="timeMs">timeMs</span>: <b id="timeVal">0</b></span><input id="timeMs" type="range" min="0" max="4000" step="10" /></label>
+        <label id="fpsBox"><span class="lbl" data-i18n="fps">FPS</span><input id="fps" type="number" min="1" max="50" step="1" /></label>
+        <label id="durBox"><span class="lbl" data-i18n="duration">Duration</span><input id="duration" type="number" min="100" max="10000" step="100" /></label>
+      </div>
+    </details>
+
+    <details id="fontsBox"><summary data-i18n="fonts">Fonts</summary>
+      <ul id="fontList" class="list"></ul>
+      <div class="row">
+        <label class="btn" for="fontInput" data-i18n="uploadFont">Upload font</label>
+        <input id="fontInput" class="hidden-file" type="file" accept=".ttf,.otf,.ttc,.woff,.woff2" multiple />
+      </div>
+      <p id="fontsNote" class="note"></p>
+      <p id="fontMsg" class="note" role="status"></p>
+    </details>
+
+    <details id="imagesBox"><summary data-i18n="images">Images</summary>
+      <ul id="imageList" class="list"></ul>
+      <div class="row">
+        <label class="btn" for="imageInput" data-i18n="uploadImage">Upload image</label>
+        <input id="imageInput" class="hidden-file" type="file" accept="image/*" multiple />
+      </div>
+      <p class="note" data-i18n="imagesNote"></p>
+    </details>
+  </section>
+
+  <section class="pane preview" aria-label="preview">
+    <div class="toolbar">
+      <button id="renderBtn" class="primary" type="button"><span data-i18n="render">Render</span> <kbd>Ctrl+Enter</kbd></button>
+      <button id="downloadBtn" type="button" data-i18n="download" disabled>Download</button>
+      <button id="copyBtn" type="button" data-i18n="copyDataUrl" disabled>Copy data URL</button>
+      <button id="shareBtn" type="button" data-i18n="share">Share link</button>
+      <label class="check"><input id="measureToggle" type="checkbox" /> <span data-i18n="measure">measure()</span></label>
+      <label class="check"><input id="autoRender" type="checkbox" checked /> <span data-i18n="autoRender">Auto render</span></label>
+      <span id="toast" class="toast" role="status" aria-live="polite"></span>
+    </div>
+    <div id="errorPanel" class="error" role="alert" hidden>
+      <b data-i18n="error">Error</b>
+      <pre id="errorText"></pre>
+      <div id="errorHint" class="err-hint" hidden></div>
+    </div>
+    <div id="stage" class="stage">
+      <p id="empty" class="empty" data-i18n="empty">Nothing rendered yet.</p>
+      <div id="frame" class="frame" hidden>
+        <img id="outImg" alt="render output" />
+        <canvas id="outCanvas" hidden></canvas>
+        <div id="overlay" class="overlay" hidden></div>
+      </div>
+    </div>
+    <dl id="stats" class="stats">
+      <div><dt data-i18n="renderTime">Render</dt><dd id="stTime">-</dd></div>
+      <div><dt data-i18n="size">Size</dt><dd id="stBytes">-</dd></div>
+      <div><dt data-i18n="dims">Pixels</dt><dd id="stDims">-</dd></div>
+      <div><dt data-i18n="memory">wasm memory</dt><dd id="stMem">-</dd></div>
+    </dl>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
