@@ -12,6 +12,7 @@ export function renderOpts(k, format = "raw") {
   const o = { width: k.width, height: k.height, format, devicePixelRatio: 1 };
   if (k.images) o.images = k.images;
   if (format === "jpeg") o.quality = 85;
+  if (k.opts) Object.assign(o, k.opts); // per-case extra render options (css, lang, ...)
   return o;
 }
 

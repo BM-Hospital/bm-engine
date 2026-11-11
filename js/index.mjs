@@ -7,7 +7,9 @@
 //   r.registerFont(fontBytes);
 //   const png = r.renderSync(node, { width: 1200, height: 630 });
 //
-// The node format and render options follow takumi (`@takumi-rs/wasm`), so the same input renders on both.
+// The node format and render options follow takumi (`@takumi-rs/wasm`), so the same input renders on both:
+// a source is a node object, `{ json: string }`, or a string of HTML; `css`, `tw`, `className` etc. are honoured
+// when the wasm build includes them (see renderSync).
 
 /** @type {WebAssembly.Exports & Record<string, any>} */
 let wasm = null;
@@ -108,8 +110,10 @@ export class Renderer {
   }
 
   /**
-   * Register a font (static TrueType .ttf/.ttc). Accepts raw bytes or `{ name, data, weight, style }`.
-   * Returns `{ name, weight, style }` as resolved from the font tables.
+   * Register a font: TTF/OTF/TTC (every face of a collection), variable fonts, and WOFF/WOFF2 when the
+   * build includes them. Accepts raw bytes or `{ name, data, weight, style }`.
+   * Returns takumi's `RegisteredFamily[]`: `[{ name, faces: [{ weight, style, width, index }], weight, style }]`
+   * (`weight`/`style` = the family's first face, kept for compatibility).
    */
   registerFont(font) {
     const details = isBinary(font) || ArrayBuffer.isView(font) ? { data: font } : font;
@@ -126,6 +130,14 @@ export class Renderer {
   /** takumi-compatible alias. */
   loadFont(font) {
     return this.registerFont(font);
+  }
+
+  /** Removes every face of `family`. Returns true when something was removed. */
+  unregisterFont(family) {
+    const [nptr, nlen, ncap] = copyInString(String(family));
+    const r = wasm.bm_unregister_font(this.#h, nptr, nlen);
+    wasm.bm_free(nptr, ncap);
+    return r !== 0;
   }
 
   clearFonts() {
@@ -156,12 +168,17 @@ export class Renderer {
     check(status);
   }
 
-  /** Serialises the node tree; binary image sources are moved into wasm and replaced by ids. */
+  /**
+   * Serialises the source; binary image sources are moved into wasm and replaced by ids.
+   * Returns [text, kind] with kind 0 = JSON node tree, 1 = HTML markup.
+   */
   #prepare(node, options) {
     wasm.bm_clear_images(this.#h);
     let json;
+    let kind = 0;
     let own = false; // true when we produced the JSON ourselves (so escaping is predictable)
-    if (typeof node === "string") json = node;
+    // takumi semantics: every JS string is HTML; a JSON tree as text is passed as { json }.
+    if (typeof node === "string") { json = node; kind = 1; }
     else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
     else {
       own = true;
@@ -183,23 +200,45 @@ export class Renderer {
       const needle = JSON.stringify(String(img.src)).slice(1, -1);
       if (!own || json.includes(needle)) this.#putImage(img.src, img.data);
     }
-    return json;
+    return [json, kind];
   }
 
-  #call(fn, node, options) {
-    const json = this.#prepare(node, options);
-    const { images: _i, ...rest } = options;
+  #call(which, node, options) {
+    const [json, kind] = this.#prepare(node, options);
+    // `images` were copied in above; `fonts`/`signal` are JS-side takumi options (not supported here).
+    const { images: _i, fonts: _f, signal: _s, ...rest } = options;
     const [jptr, jlen, jcap] = copyInString(json);
     const [optr, olen, ocap] = copyInString(JSON.stringify(rest));
-    const status = fn(this.#h, jptr, jlen, optr, olen);
+    const fn = which === "render" ? wasm.bm_render_src : wasm.bm_measure_src;
+    // (older binaries without the *_src exports accept JSON only)
+    const status = fn ? fn(this.#h, kind, jptr, jlen, optr, olen)
+      : kind === 0 ? (which === "render" ? wasm.bm_render : wasm.bm_measure)(this.#h, jptr, jlen, optr, olen)
+      : -1;
+    if (status === -1) {
+      wasm.bm_free(jptr, jcap);
+      wasm.bm_free(optr, ocap);
+      throw new Error("bm-engine: this wasm build does not accept HTML sources");
+    }
     wasm.bm_free(jptr, jcap);
     wasm.bm_free(optr, ocap);
     check(status);
   }
 
-  /** Render synchronously. Returns a fresh Uint8Array (PNG by default; `format: "raw"` = straight RGBA8). */
+  /**
+   * Render synchronously. Returns a fresh Uint8Array (PNG by default; `format: "raw"` = straight RGBA8).
+   *
+   * `source`: a takumi node object, `{ json: string }` (a node tree as JSON text), or a STRING = HTML
+   * markup (`<style>` elements are honoured), exactly like `@takumi-rs/wasm`.
+   * `options` (takumi RenderOptions): `width`, `height`, `format` ("png"|"jpeg"|"webp"|"raw"), `quality`,
+   * `devicePixelRatio`, `images` ([{src, data}] or {sources}), `css` (array of stylesheet strings and/or
+   * takumi rule objects), `stylesheets` (deprecated: strings, used when `css` is absent), `keyframes`
+   * (deprecated keyframes map/list; parsed, animation not rendered yet), `fontFamilies` (root
+   * font-family fallback stack), `lang` (root language for `:lang()`), `timeMs` (stored),
+   * `drawDebugBorder` / `dithering` (accepted, ignored). Node fields `tw`, `className`, `id`,
+   * `tagName`, `attributes`, `dir`, `lang`, `preset`, `style` are honoured.
+   */
   renderSync(node, options = {}) {
-    this.#call(wasm.bm_render, node, options);
+    this.#call("render", node, options);
     const ptr = wasm.bm_result_ptr(this.#h);
     const len = wasm.bm_result_len(this.#h);
     const out = u8().slice(ptr, ptr + len);
@@ -223,7 +262,7 @@ export class Renderer {
 
   /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */
   measureSync(node, options = {}) {
-    this.#call(wasm.bm_measure, node, options);
+    this.#call("measure", node, options);
     const out = JSON.parse(this.#takeString());
     wasm.bm_release_result(this.#h);
     return out;

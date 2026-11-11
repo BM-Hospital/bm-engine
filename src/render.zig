@@ -1,4 +1,10 @@
-//! Render pipeline: JSON node tree -> computed styles -> layout -> paint -> encode.
+//! Render pipeline: source (JSON node tree | HTML) -> element model (dom.zig) -> cascade
+//! (preset < presentation hints < Tailwind < stylesheet rules < inline style, `!important`
+//! reversed per CSS) -> render nodes (inline runs merged into paragraphs, `::before`/`::after`
+//! boxes) -> layout -> paint -> encode.
+//!
+//! Optional front-end modules (css, tw, html) are referenced only behind comptime `config` flags,
+//! so a `-Dprofile=core` build does not link them.
 //!
 //! Memory model: `Renderer.gpa` is long-lived (fonts, image + glyph caches); `Renderer.arena` holds
 //! everything of one render (including the returned bytes) and is reset at the start of the next call.
@@ -11,6 +17,11 @@ const raster = @import("raster/raster.zig");
 const codec = @import("codec/codec.zig");
 const paint = @import("paint.zig");
 const bump = @import("bump.zig");
+const config = @import("config.zig");
+const dom_mod = @import("dom.zig");
+const css = @import("css/css.zig");
+const twc = @import("tw/tw.zig");
+const html = @import("html/html.zig");
 
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
@@ -59,12 +70,28 @@ pub const GlyphMask = struct { x: i32, y: i32, w: u32, h: u32, data: []u8 };
 
 pub const Format = enum { png, jpeg, webp, raw };
 
+/// How the `source` bytes of a render are interpreted (C ABI `kind` argument).
+pub const SourceKind = enum(u8) { json = 0, html = 1 };
+
+/// Render options (takumi `RenderOptions`). JSON-valued entries live in the per-call arena.
 pub const Options = struct {
     width: ?u32 = null,
     height: ?u32 = null,
     format: Format = .png,
     quality: ?u8 = null,
     dpr: f32 = 1,
+    /// `css`: array of stylesheet strings / takumi rule objects (or one string).
+    css: ?json.Value = null,
+    /// deprecated `stylesheets` (strings), used when `css` is absent.
+    stylesheets: ?json.Value = null,
+    /// deprecated `keyframes` option (KeyframesMap / KeyframesRuleList).
+    keyframes: ?json.Value = null,
+    /// root language (`:lang()` fallback for the root element).
+    lang: []const u8 = "",
+    /// root font-family fallback stack (used when the root sets no `font-family`).
+    font_families: []const []const u8 = &.{},
+    /// animation timeline position in ms (stored for the animation pass; not used yet).
+    time_ms: f32 = 0,
 };
 
 pub const Renderer = struct {
@@ -80,6 +107,8 @@ pub const Renderer = struct {
     rast: raster.Rasterizer,
     glyphs: std.AutoHashMapUnmanaged(u64, GlyphMask) = .empty,
     glyph_bytes: usize = 0,
+    /// `fonts.instanceEvictions()` at the last frame (glyph cache flushed when it changes).
+    font_evictions: u32 = 0,
     /// Canvas pixels, kept between renders (so the per-render arena can be recycled before encoding).
     canvas: []u8 = &.{},
     result: []const u8 = "",
@@ -113,9 +142,9 @@ pub const Renderer = struct {
         self.gpa.destroy(self);
     }
 
-    pub fn setErr(self: *Renderer, comptime prefix: []const u8, detail: []const u8) void {
+    pub fn setErr(self: *Renderer, prefix: []const u8, detail: []const u8) void {
         var n: usize = 0;
-        for (prefix) |c| {
+        for (prefix[0..@min(prefix.len, 128)]) |c| {
             self.err_buf[n] = c;
             n += 1;
         }
@@ -141,10 +170,30 @@ pub const Renderer = struct {
         self.img_cache_bytes = 0;
     }
 
-    /// Takes ownership of `data` (allocated with `gpa`). Returns a JSON description in the arena.
-    pub fn registerFont(self: *Renderer, data: []u8, name: []const u8, weight: u16, italic: i32) Error![]const u8 {
+    /// Takes ownership of `data` (allocated with `gpa`): TTF/OTF/TTC (every face of a collection is
+    /// registered) or, with WOFF support compiled in, WOFF/WOFF2 (decoded to sfnt, the container is
+    /// freed). Returns takumi's `RegisteredFamily[]` JSON in the arena: `[{name, faces:[{weight, style,
+    /// width, index}], weight, style}]` (`weight`/`style` of the first face kept for compatibility).
+    pub fn registerFont(self: *Renderer, data_in: []u8, name: []const u8, weight: u16, italic: i32) Error![]const u8 {
         self.arena.reset();
-        const id = self.fonts.register(self.gpa, data, .{
+        var data = data_in;
+        if (comptime config.enable_woff) {
+            const woff = @import("woff/woff.zig");
+            switch (woff.sniff(data)) {
+                .woff, .woff2 => {
+                    const dec = woff.decode(self.gpa, data) catch |e| {
+                        self.gpa.free(data);
+                        if (e == error.OutOfMemory) return error.OutOfMemory;
+                        self.setErr("invalid WOFF/WOFF2 font data", "");
+                        return error.Invalid;
+                    };
+                    self.gpa.free(data);
+                    data = dec;
+                },
+                else => {},
+            }
+        }
+        const reg = self.fonts.registerAll(self.gpa, data, .{
             .family = if (name.len > 0) name else null,
             .weight = if (weight > 0) weight else null,
             .italic = if (italic < 0) null else italic != 0,
@@ -152,22 +201,60 @@ pub const Renderer = struct {
             self.gpa.free(data);
             switch (e) {
                 error.OutOfMemory => return error.OutOfMemory,
-                error.UnsupportedFontFormat => self.setErr("unsupported font format (only static TrueType .ttf/.ttc is supported)", ""),
+                error.UnsupportedFontFormat => self.setErr("unsupported font format", ""),
+                error.WoffContainer, error.Woff2Container => self.setErr("WOFF/WOFF2 fonts are not supported by this build", ""),
                 else => self.setErr("invalid font data", ""),
             }
             return error.Invalid;
         };
         self.font_blobs.append(self.gpa, data) catch return error.OutOfMemory;
-        const face = self.fonts.face(id);
+        // the families this call touched, in registration order
         const a = self.arena.allocator();
+        const fams = self.fonts.families(a) catch return error.OutOfMemory;
         var out: std.ArrayList(u8) = .empty;
-        try out.appendSlice(a, "{\"name\":");
-        try writeJsonString(a, &out, face.family);
-        try out.appendSlice(a, ",\"weight\":");
-        try writeNum(a, &out, @floatFromInt(face.weight));
-        try out.appendSlice(a, if (face.italic) ",\"style\":\"italic\"}" else ",\"style\":\"normal\"}");
+        try out.append(a, '[');
+        var first = true;
+        for (fams) |fam| {
+            var touched = false;
+            var k: u16 = 0;
+            while (k < reg.count) : (k += 1) {
+                if (std.ascii.eqlIgnoreCase(self.fonts.face(reg.first + k).family, fam.name)) touched = true;
+            }
+            if (!touched) continue;
+            if (!first) try out.append(a, ',');
+            first = false;
+            try out.appendSlice(a, "{\"name\":");
+            try writeJsonString(a, &out, fam.name);
+            try out.appendSlice(a, ",\"faces\":[");
+            for (fam.faces, 0..) |fc, i| {
+                if (i != 0) try out.append(a, ',');
+                try out.appendSlice(a, "{\"weight\":");
+                try writeNum(a, &out, @floatFromInt(fc.weight));
+                try out.appendSlice(a, if (fc.italic) ",\"style\":\"italic\"" else ",\"style\":\"normal\"");
+                try out.appendSlice(a, ",\"width\":");
+                try writeNum(a, &out, fc.width);
+                try out.appendSlice(a, ",\"index\":");
+                try writeNum(a, &out, @floatFromInt(fc.index));
+                try out.append(a, '}');
+            }
+            try out.append(a, ']');
+            if (fam.faces.len > 0) {
+                try out.appendSlice(a, ",\"weight\":");
+                try writeNum(a, &out, @floatFromInt(fam.faces[0].weight));
+                try out.appendSlice(a, if (fam.faces[0].italic) ",\"style\":\"italic\"" else ",\"style\":\"normal\"");
+            }
+            try out.append(a, '}');
+        }
+        try out.append(a, ']');
         self.result = out.items;
         return self.result;
+    }
+
+    /// takumi `unregisterFont(family)`: removes every face of `family`; true when any was removed.
+    pub fn unregisterFont(self: *Renderer, family: []const u8) bool {
+        const any = self.fonts.unregisterFamily(self.gpa, family);
+        if (any) self.clearGlyphs();
+        return any;
     }
 
     pub fn clearFonts(self: *Renderer) void {
@@ -206,16 +293,29 @@ pub const Renderer = struct {
         self.result = "";
         self.err = "";
         self.arena.reset();
+        self.fonts.beginFrame();
+        // variable-font instance ids are recycled: cached glyph masks keyed by them go stale
+        const ev = self.fonts.instanceEvictions();
+        if (ev != self.font_evictions) {
+            self.font_evictions = ev;
+            self.clearGlyphs();
+        }
         if (self.glyph_bytes > glyph_budget) self.clearGlyphs();
         if (self.img_cache_bytes > image_budget) self.clearImageCache();
     }
 
+    /// Renders a JSON node tree (takumi `{json}` source).
     pub fn render(self: *Renderer, node_json: []const u8, opts_json: []const u8) Error![]const u8 {
+        return self.renderSource(.json, node_json, opts_json);
+    }
+
+    /// Renders `source` (a JSON node tree or HTML markup) with the JSON options `opts_json`.
+    pub fn renderSource(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
-        try f.prepare(node_json);
+        try f.prepare(kind, source);
 
         const need = @as(usize, f.canvas_w) * f.canvas_h * 4;
         if (self.canvas.len != need) {
@@ -241,11 +341,15 @@ pub const Renderer = struct {
     }
 
     pub fn measure(self: *Renderer, node_json: []const u8, opts_json: []const u8) Error![]const u8 {
+        return self.measureSource(.json, node_json, opts_json);
+    }
+
+    pub fn measureSource(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
-        try f.prepare(node_json);
+        try f.prepare(kind, source);
         var out: std.ArrayList(u8) = .empty;
         try f.writeMeasured(&out, f.root, 0, 0);
         self.result = out.items;
@@ -284,6 +388,39 @@ pub const Renderer = struct {
                 return error.Invalid;
             }
         };
+        if (v.get("css")) |x| if (x != .null) {
+            o.css = x;
+        };
+        if (v.get("stylesheets")) |x| if (x != .null) {
+            o.stylesheets = x;
+        };
+        if (v.get("keyframes")) |x| if (x != .null) {
+            o.keyframes = x;
+        };
+        if (v.get("lang")) |x| if (x.asString()) |s| {
+            o.lang = s;
+        };
+        if (v.get("timeMs")) |x| if (x.asNumber()) |n| {
+            o.time_ms = @max(0, n);
+        };
+        if (v.get("fontFamilies")) |x| switch (x) {
+            .string => |s| {
+                const l = try self.arena.allocator().alloc([]const u8, 1);
+                l[0] = s;
+                o.font_families = l;
+            },
+            .array => |arr| {
+                const l = try self.arena.allocator().alloc([]const u8, arr.len);
+                var n: usize = 0;
+                for (arr) |e| if (e.asString()) |s| {
+                    l[n] = s;
+                    n += 1;
+                };
+                o.font_families = l[0..n];
+            },
+            else => {},
+        };
+        // `drawDebugBorder` and `dithering` are accepted and ignored.
         return o;
     }
 
@@ -553,13 +690,36 @@ pub const Frame = struct {
     lroot: u32 = none,
     canvas_w: u32 = 0,
     canvas_h: u32 = 0,
+    /// Source elements (JSON or HTML) with their computed styles.
+    dom: dom_mod.Dom = .{},
+    /// Generated boxes (`::before` / `::after`, and the own text of a text element that has them).
+    pseudos: std.ArrayList(Pseudo) = .empty,
+    /// Stylesheet rules are active (selector matching runs for every element).
+    css_on: bool = false,
+    cssx: CssState = .{},
 
-    fn fail(f: *Frame, comptime msg: []const u8, detail: []const u8) Error {
+    pub const Pseudo = struct { cs: *const CS, text: []const u8 };
+
+    const CssState = if (config.enable_css) struct {
+        m: css.Matcher = .{},
+        scratch: css.Scratch = undefined,
+        decls: std.ArrayList(css.Declaration) = .empty,
+        vt: css.Dom = undefined,
+    } else struct {};
+
+    fn fail(f: *Frame, msg: []const u8, detail: []const u8) Error {
         f.r.setErr(msg, detail);
         return error.Invalid;
     }
 
-    fn prepare(f: *Frame, node_json: []const u8) Error!void {
+    /// Keyframes of `name` from the stylesheet (`@keyframes`) or the deprecated `keyframes` option;
+    /// null when undefined or when CSS support is compiled out. For the animation pass.
+    pub fn keyframes(f: *const Frame, name: []const u8) if (config.enable_css) ?[]const css.Keyframe else ?void {
+        if (comptime !config.enable_css) return null;
+        return css.keyframes(&f.cssx.m, name);
+    }
+
+    fn prepare(f: *Frame, kind: SourceKind, source: []const u8) Error!void {
         const o = f.opts;
         f.ctx = .{
             .dpr = o.dpr,
@@ -567,12 +727,32 @@ pub const Frame = struct {
             .viewport_h = if (o.height) |h| @floatFromInt(h) else 0,
             .root_font_size = 16 * o.dpr,
         };
-        const v = json.parse(f.a, node_json) catch |e| switch (e) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.JsonTooDeep => return f.fail("node tree is nested too deeply", ""),
-            else => return f.fail("invalid node JSON", ""),
-        };
-        f.root = try f.buildElement(v, null, none, 0);
+        f.dom = .{ .lang = o.lang, .max_depth = max_node_depth };
+        switch (kind) {
+            .json => {
+                const v = json.parse(f.a, source) catch |e| switch (e) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.JsonTooDeep => return f.fail("node tree is nested too deeply", ""),
+                    else => return f.fail("invalid node JSON", ""),
+                };
+                f.dom.fromJson(f.a, v) catch |e| return f.domError(e);
+            },
+            .html => {
+                if (comptime !config.enable_html) return f.fail("HTML input is not supported by this build", "");
+                const doc = html.parse(f.a, source) catch |e| switch (e) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.TooDeep => return f.fail("node tree is nested too deeply", ""),
+                };
+                f.dom.fromHtml(f.a, html, &doc) catch |e| return f.domError(e);
+            },
+        }
+        if (comptime config.enable_css) {
+            try f.prepareCss();
+        } else if (nonEmpty(o.css) or nonEmpty(o.stylesheets)) {
+            return f.fail("the `css` option is not supported by this build", "");
+        }
+        try f.styleTree(f.dom.root, null, 0);
+        f.root = try f.buildElement(f.dom.root, none, 0);
 
         // Initial containing block.
         var icb: layout.Style = .{ .display = .block };
@@ -610,46 +790,333 @@ pub const Frame = struct {
         return id;
     }
 
-    fn computeStyle(f: *Frame, v: json.Value, parent: ?*const CS) Error!*const CS {
-        var diag: style.Diagnostics = .{};
-        const cs = try f.a.create(CS);
-        cs.* = style.compute(f.a, &f.ctx, parent, v.get("preset"), v.get("style"), &diag) catch |e| switch (e) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.InvalidStyleValue => return f.fail("invalid value for style property ", diag.property),
+    fn domError(f: *Frame, e: dom_mod.Error) Error {
+        return switch (e) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.Invalid => f.fail(f.dom.err_msg, f.dom.err_detail),
         };
-        return cs;
     }
 
-    fn typeOf(f: *Frame, v: json.Value) Error!Kind {
-        const t = (v.get("type") orelse return f.fail("node is missing `type`", "")).asString() orelse return f.fail("node `type` must be a string", "");
-        if (std.mem.eql(u8, t, "container")) return .container;
-        if (std.mem.eql(u8, t, "text")) return .text;
-        if (std.mem.eql(u8, t, "image")) return .image;
-        return f.fail("unknown node type: ", t);
+    fn nonEmpty(v: ?json.Value) bool {
+        const x = v orelse return false;
+        return switch (x) {
+            .array => |arr| arr.len > 0,
+            .string => |s| s.len > 0,
+            .null => false,
+            else => true,
+        };
     }
 
-    fn buildElement(f: *Frame, v: json.Value, parent_cs: ?*const CS, parent: u32, depth: u32) Error!u32 {
+    // ---- stylesheet (css option + HTML <style>)
+
+    noinline fn prepareCss(f: *Frame) Error!void {
+        if (comptime !config.enable_css) return;
+        const a = f.a;
+        const o = f.opts;
+        var buf: std.ArrayList(u8) = .empty;
+        // takumi: every `css` entry (or the deprecated `stylesheets` when `css` is absent) written out
+        // as CSS text and concatenated, followed by the HTML source's <style> texts; parsed once.
+        if (o.css orelse o.stylesheets) |list| switch (list) {
+            .array => |arr| for (arr) |e| {
+                if (e == .null) continue;
+                css.writeCssInput(a, &buf, e) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.InvalidRule => return f.fail("invalid css rule object", ""),
+                };
+            },
+            .string => |s| try buf.appendSlice(a, s),
+            else => return f.fail("the `css` option must be an array", ""),
+        };
+        for (f.dom.styles) |s| try buf.appendSlice(a, s);
+        var sheet: css.Stylesheet = .{};
+        if (buf.items.len > 0) try css.parse(a, buf.items, &sheet);
+        if (o.keyframes) |k| css.addKeyframesJson(a, &sheet, k) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidRule => return f.fail("invalid keyframes option", ""),
+        };
+        if (sheet.rules.items.len == 0 and sheet.keyframes.items.len == 0 and sheet.extra_keyframes.items.len == 0 and !sheet.preflight) return;
+        const st = &f.cssx;
+        st.m = try css.prepare(a, &sheet, .{
+            .viewport_w = if (o.width) |w| @floatFromInt(w) else null,
+            .viewport_h = if (o.height) |h| @floatFromInt(h) else null,
+            .dpr = o.dpr,
+            .supports = cssSupports,
+        });
+        st.scratch = css.Scratch.init(a);
+        st.vt = CssDom.vtable(&f.dom);
+        f.css_on = st.m.rules.len > 0;
+    }
+
+    fn cssSupports(name: []const u8, value: []const u8) bool {
+        _ = value;
+        if (name.len > 2 and name[0] == '-' and name[1] == '-') return true;
+        return style.propertyId(name) != null;
+    }
+
+    /// Matched declarations of element `i` (or its pseudo-element) as style declarations, in cascade
+    /// order with `important` flags (the style module orders normal < important itself).
+    fn cssDecls(f: *Frame, i: u32, pseudo: css.Pseudo, sets_content: ?*bool) Error![]const style.Declaration {
+        const st = &f.cssx;
+        st.decls.clearRetainingCapacity();
+        const r = try css.match(&st.m, &st.scratch, &st.vt, i, pseudo, &st.decls);
+        if (sets_content) |p| p.* = r.sets_content;
+        return convertDecls(f.a, st.decls.items);
+    }
+
+    /// Tailwind declarations of element `i` for `target` (lenient layer).
+    fn twDecls(f: *Frame, i: u32, target: twc.Target) Error![]const style.Declaration {
+        const el = f.dom.at(i);
+        var env: twc.Env = .{ .viewport_w = f.ctx.viewport_w, .viewport_h = f.ctx.viewport_h, .dpr = f.opts.dpr, .target = target };
+        // every variant contains ':'; only then is the structural information needed
+        if (std.mem.indexOfScalar(u8, el.tw, ':') != null) {
+            const info = f.dom.elementInfo(i);
+            env.element = .{ .index = info.index, .count = info.count, .type_index = info.type_index, .type_count = info.type_count, .empty = info.empty };
+        }
+        var out: std.ArrayList(twc.Declaration) = .empty;
+        twc.compile(f.a, el.tw, env, &out) catch return error.OutOfMemory;
+        return convertDecls(f.a, out.items);
+    }
+
+    // ---- style pass: every element's style exactly once, top-down
+
+    fn styleTree(f: *Frame, i: u32, parent_cs: ?*const CS, depth: u32) Error!void {
         if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
-        if (v != .object) return f.fail("node must be an object", "");
-        const kind = try f.typeOf(v);
-        var cs = try f.computeStyle(v, parent_cs);
-        if (parent == none) f.ctx.root_font_size = cs.font_size;
-        switch (kind) {
-            .text => {
-                const text = (v.get("text") orelse return f.fail("text node is missing `text`", "")).asString() orelse return f.fail("`text` must be a string", "");
+        try f.styleElement(i, parent_cs);
+        const cs = f.dom.at(i).cs;
+        var c = f.dom.at(i).first;
+        while (c != none) : (c = f.dom.at(c).next) try f.styleTree(c, cs, depth + 1);
+    }
+
+    fn styleFail(f: *Frame, e: style.Error, diag: *const style.Diagnostics) Error {
+        return switch (e) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.InvalidStyleValue => f.fail("invalid value for style property ", diag.property),
+        };
+    }
+
+    fn jsonOf(s: dom_mod.Src) ?json.Value {
+        return switch (s) {
+            .json => |v| v,
+            else => null,
+        };
+    }
+
+    /// Declarations of a preset / inline-style source and whether the layer is lenient.
+    fn srcLayer(f: *Frame, s: dom_mod.Src, diag: *style.Diagnostics) Error!style.Layer {
+        return switch (s) {
+            .none => .{ .decls = &.{} },
+            .json => |v| .{ .decls = style.jsonDecls(f.a, v, diag) catch |e| return f.styleFail(e, diag) },
+            // CSS-text sources only come from HTML input
+            .text => |t| if (comptime config.enable_html) .{ .decls = try parseBlock(f.a, t), .lenient = true } else .{ .decls = &.{} },
+        };
+    }
+
+    noinline fn styleElement(f: *Frame, i: u32, parent_cs: ?*const CS) Error!void {
+        const a = f.a;
+        const el = f.dom.at(i);
+        var diag: style.Diagnostics = .{};
+        const cs = try a.create(CS);
+        const has_tw = config.enable_tw and el.tw.len > 0;
+        const from_html = config.enable_html and (el.preset == .text or el.style == .text or el.pres.len > 0);
+        const general = !el.run and (f.css_on or has_tw or from_html or el.dir != .none);
+        if (!general) {
+            // fast path (JSON source, no stylesheet, no tw): exactly the phase-1 computation
+            cs.* = style.compute(a, &f.ctx, parent_cs, jsonOf(el.preset), jsonOf(el.style), &diag) catch |e| return f.styleFail(e, &diag);
+        } else {
+            // preset (UA) < presentation hints < tw utilities < stylesheet rules < inline style
+            var layers: [5]style.Layer = undefined;
+            var n: usize = 0;
+            layers[n] = try f.srcLayer(el.preset, &diag);
+            n += 1;
+            if (el.pres.len > 0 or el.dir != .none) {
+                var list: std.ArrayList(style.Declaration) = .empty;
+                if (comptime config.enable_html) if (el.pres.len > 0) try list.appendSlice(a, try parseBlock(a, el.pres));
+                if (el.dir != .none) try list.append(a, .{ .name = "direction", .value = if (el.dir == .rtl) "rtl" else "ltr" });
+                layers[n] = .{ .decls = list.items, .lenient = true };
+                n += 1;
+            }
+            if (comptime config.enable_tw) if (has_tw) {
+                layers[n] = .{ .decls = try f.twDecls(i, .element), .lenient = true };
+                n += 1;
+            };
+            if (comptime config.enable_css) if (f.css_on) {
+                layers[n] = .{ .decls = try f.cssDecls(i, .none, null), .lenient = true };
+                n += 1;
+            };
+            layers[n] = try f.srcLayer(el.style, &diag);
+            n += 1;
+            cs.* = style.computeLayers(a, &f.ctx, parent_cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
+        }
+        if (parent_cs == null) {
+            if (f.opts.font_families.len > 0 and cs.font_family.len == 0) cs.font_family = f.opts.font_families;
+            f.ctx.root_font_size = cs.font_size;
+        }
+        el.cs = cs;
+        if (el.run or el.kind == .image) return;
+        if (comptime config.enable_css or config.enable_tw) {
+            el.before = try f.pseudoBox(i, .before);
+            el.after = try f.pseudoBox(i, .after);
+            if (el.kind == .text and (el.before != none or el.after != none)) {
+                // the element's own text moves into an anonymous box between the generated ones
+                const own = try a.create(CS);
+                own.* = style.compute(a, &f.ctx, cs, null, null, &diag) catch |e| return f.styleFail(e, &diag);
+                try f.pseudos.append(a, .{ .cs = own, .text = el.text });
+                el.own = @intCast(f.pseudos.items.len - 1);
+            }
+        }
+    }
+
+    /// Creates the `::before` / `::after` box of element `i` when a stylesheet rule or a Tailwind
+    /// `before:` / `after:` utility sets `content` to something other than none/normal.
+    fn pseudoBox(f: *Frame, i: u32, which: enum { before, after }) Error!u32 {
+        const el = f.dom.at(i);
+        var layers: [2]style.Layer = undefined;
+        var n: usize = 0;
+        if (comptime config.enable_tw) {
+            const key = if (which == .before) "before:" else "after:";
+            if (el.tw.len > 0 and std.mem.indexOf(u8, el.tw, key) != null) {
+                const d = try f.twDecls(i, if (which == .before) .before else .after);
+                if (d.len > 0) {
+                    layers[n] = .{ .decls = d, .lenient = true };
+                    n += 1;
+                }
+            }
+        }
+        if (comptime config.enable_css) if (f.css_on and (if (which == .before) f.cssx.m.has_before else f.cssx.m.has_after)) {
+            var sets = false;
+            const d = try f.cssDecls(i, if (which == .before) .before else .after, &sets);
+            if (sets) {
+                layers[n] = .{ .decls = d, .lenient = true };
+                n += 1;
+            }
+        };
+        if (n == 0) return none;
+        var diag: style.Diagnostics = .{};
+        const pcs = try f.a.create(CS);
+        pcs.* = style.computeLayers(f.a, &f.ctx, el.cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
+        if (pcs.display == .none) return none;
+        const text = (try dom_mod.contentText(f.a, pcs.content, &f.dom, i)) orelse return none;
+        try f.pseudos.append(f.a, .{ .cs = pcs, .text = text });
+        return @intCast(f.pseudos.items.len - 1);
+    }
+
+    // ---- render nodes
+
+    /// A child item of a box: a source element, or a generated box (index into `pseudos`).
+    const Item = union(enum) { el: u32, ps: u32 };
+
+    /// Iterates `::before`, own text (text elements with generated content), children, `::after`.
+    const Items = struct {
+        f: *const Frame,
+        el: u32,
+        stage: u8 = 0,
+        cur: u32 = none,
+
+        fn next(it: *Items) ?Item {
+            const e = it.f.dom.at(it.el);
+            while (true) switch (it.stage) {
+                0 => {
+                    it.stage = 1;
+                    if (e.before != none) return .{ .ps = e.before };
+                },
+                1 => {
+                    it.stage = 2;
+                    it.cur = e.first;
+                    if (e.own != none) return .{ .ps = e.own };
+                },
+                2 => {
+                    if (it.cur != none) {
+                        const c = it.cur;
+                        it.cur = it.f.dom.at(c).next;
+                        return .{ .el = c };
+                    }
+                    it.stage = 3;
+                },
+                3 => {
+                    it.stage = 4;
+                    if (e.after != none) return .{ .ps = e.after };
+                },
+                else => return null,
+            };
+        }
+    };
+
+    fn hasGenerated(el: *const dom_mod.El) bool {
+        return el.before != none or el.after != none;
+    }
+
+    /// True when the item joins its parent's paragraph: inline, in flow, and (for boxes) holding only
+    /// inline-level content.
+    fn isInlineLevel(f: *const Frame, item: Item, depth: u32) bool {
+        switch (item) {
+            .ps => |p| return inFlowInline(f.pseudos.items[p].cs),
+            .el => |i| {
+                const el = f.dom.at(i);
+                if (depth > 64 or !inFlowInline(el.cs)) return false;
+                if (el.run) return true;
+                switch (el.kind) {
+                    .image => return false,
+                    .text => if (!hasGenerated(el)) return true,
+                    .container => {},
+                }
+                var it: Items = .{ .f = f, .el = i };
+                var any = false;
+                while (it.next()) |c| {
+                    if (!f.isInlineLevel(c, depth + 1)) return false;
+                    any = true;
+                }
+                return any;
+            },
+        }
+    }
+
+    fn inFlowInline(cs: *const CS) bool {
+        return cs.display == .@"inline" and cs.position != .absolute and cs.position != .fixed;
+    }
+
+    fn isBlankRun(f: *const Frame, item: Item) bool {
+        const i = switch (item) {
+            .el => |i| i,
+            .ps => return false,
+        };
+        const el = f.dom.at(i);
+        if (!el.run or el.cs.white_space_collapse != .collapse) return false;
+        for (el.text) |c| if (c != ' ' and c != '\n' and c != '\t' and c != '\r' and c != 0x0c) return false;
+        return true;
+    }
+
+    fn buildPseudo(f: *Frame, p: u32, parent: u32) Error!u32 {
+        const ps = f.pseudos.items[p];
+        const id = try f.addNode(.{ .kind = .text, .cs = ps.cs, .parent = parent });
+        var runs: [1]font.Run = .{try f.makeRun(ps.text, ps.cs)};
+        f.nodes.items[id].para = try f.makeParagraph(&runs, ps.cs);
+        return id;
+    }
+
+    fn buildItem(f: *Frame, item: Item, parent: u32, depth: u32) Error!void {
+        switch (item) {
+            .el => |c| _ = try f.buildElement(c, parent, depth),
+            .ps => |p| _ = try f.buildPseudo(p, parent),
+        }
+    }
+
+    fn buildElement(f: *Frame, i: u32, parent: u32, depth: u32) Error!u32 {
+        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
+        const el = f.dom.at(i);
+        var cs = el.cs;
+        switch (el.kind) {
+            .text => if (!hasGenerated(el)) {
                 const id = try f.addNode(.{ .kind = .text, .cs = cs, .parent = parent });
-                var runs: [1]font.Run = .{try f.makeRun(text, cs)};
+                var runs: [1]font.Run = .{try f.makeRun(el.text, cs)};
                 f.nodes.items[id].para = try f.makeParagraph(&runs, cs);
                 return id;
             },
             .image => {
                 var img: ?*const raster.Pixmap = null;
-                if (v.get("src")) |s| {
-                    if (s.asString()) |src| img = f.r.resolveImage(src);
-                } else return f.fail("image node is missing `src`", "");
+                if (el.src) |src| img = f.r.resolveImage(src);
                 // `width` / `height` attributes act as a low-priority size preset.
-                const wa = if (v.get("width")) |x| x.asNumber() else null;
-                const ha = if (v.get("height")) |x| x.asNumber() else null;
+                const wa = el.width;
+                const ha = el.height;
                 if ((wa != null and cs.width == .auto) or (ha != null and cs.height == .auto)) {
                     const m = try f.a.create(CS);
                     m.* = cs.*;
@@ -667,20 +1134,21 @@ pub const Frame = struct {
             else => {},
         }
         const id = try f.addNode(.{ .kind = .container, .cs = cs, .parent = parent });
-        const children: []json.Value = if (v.get("children")) |c| (if (c == .array) c.array else &.{}) else &.{};
         const inline_ctx = switch (cs.display) {
             .flex, .inline_flex, .grid, .inline_grid => false,
             else => true,
         };
         var pending: std.ArrayList(font.Run) = .empty;
-        for (children) |cv| {
-            if (cv == .null) continue;
-            if (inline_ctx and isInlineLevel(cv, 0)) {
-                try f.collectRuns(cv, cs, &pending, depth + 1);
+        var it: Items = .{ .f = f, .el = i };
+        while (it.next()) |c| {
+            if (inline_ctx and f.isInlineLevel(c, 0)) {
+                try f.collectRuns(c, &pending, depth + 1);
                 continue;
             }
+            // white-space-only text between boxes generates nothing
+            if (f.isBlankRun(c)) continue;
             try f.flushRuns(&pending, cs, id);
-            _ = try f.buildElement(cv, cs, id, depth + 1);
+            try f.buildItem(c, id, depth + 1);
         }
         try f.flushRuns(&pending, cs, id);
         return id;
@@ -705,27 +1173,41 @@ pub const Frame = struct {
         f.nodes.items[id].para = try f.makeParagraph(pending.items, cs);
     }
 
-    fn collectRuns(f: *Frame, v: json.Value, parent_cs: *const CS, out: *std.ArrayList(font.Run), depth: u32) Error!void {
+    fn collectRuns(f: *Frame, item: Item, out: *std.ArrayList(font.Run), depth: u32) Error!void {
         if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
-        const kind = try f.typeOf(v);
-        const cs = try f.computeStyle(v, parent_cs);
-        if (cs.display == .none) return;
-        if (kind == .text) {
-            const text = (v.get("text") orelse return f.fail("text node is missing `text`", "")).asString() orelse return f.fail("`text` must be a string", "");
-            try out.append(f.a, try f.makeRun(text, cs));
-            return;
+        switch (item) {
+            .ps => |p| {
+                const ps = f.pseudos.items[p];
+                if (ps.cs.display == .none) return;
+                try out.append(f.a, try f.makeRun(ps.text, ps.cs));
+            },
+            .el => |i| {
+                const el = f.dom.at(i);
+                if (el.cs.display == .none) return;
+                if (el.kind == .text and !hasGenerated(el)) {
+                    try out.append(f.a, try f.makeRun(el.text, el.cs));
+                    return;
+                }
+                var it: Items = .{ .f = f, .el = i };
+                while (it.next()) |c| try f.collectRuns(c, out, depth + 1);
+            },
         }
-        if (v.get("children")) |c| if (c == .array) {
-            for (c.array) |cv| if (cv != .null) try f.collectRuns(cv, cs, out, depth + 1);
-        };
     }
 
     fn makeRun(f: *Frame, text: []const u8, cs: *const CS) Error!font.Run {
         try f.run_styles.append(f.a, cs);
-        return .{
-            .text = try transformText(f.a, text, cs.text_transform),
-            .style = textStyle(cs, @intCast(f.run_styles.items.len - 1)),
-        };
+        var st = textStyle(cs, @intCast(f.run_styles.items.len - 1));
+        if (comptime @hasField(font.TextStyle, "features")) {
+            // font-variant-* / font-kerning / font-feature-settings as OpenType features
+            const feats = try cs.fontFeatures(f.a);
+            if (feats.len > 0) {
+                const Fs = @typeInfo(@TypeOf(st.features)).pointer.child;
+                const out = try f.a.alloc(Fs, feats.len);
+                for (feats, out) |x, *o| o.* = .{ .tag = x.tag, .value = @intCast(@min(x.value, 0xFFFF)) };
+                st.features = out;
+            }
+        }
+        return .{ .text = try transformText(f.a, text, cs.text_transform), .style = st };
     }
 
     fn makeParagraph(f: *Frame, runs: []const font.Run, cs: *const CS) Error!*font.Paragraph {
@@ -902,31 +1384,68 @@ pub const Frame = struct {
     }
 };
 
-fn jsonDisplay(v: json.Value) ?[]const u8 {
-    if (v.get("style")) |s| if (s.get("display")) |d| return d.asString() orelse "";
-    if (v.get("preset")) |s| if (s.get("display")) |d| return d.asString() orelse "";
-    return null;
+fn parseBlock(a: Allocator, text: []const u8) Error![]const style.Declaration {
+    return style.parseDeclarationBlock(a, text) catch error.OutOfMemory;
 }
 
-/// True when `v` is inline-level content that joins the parent's paragraph: a text node, or a
-/// "span" (container whose descendants are all inline-level), with `display` unset or `inline`.
-fn isInlineLevel(v: json.Value, depth: u32) bool {
-    if (v != .object or depth > 64) return false;
-    if (jsonDisplay(v)) |d| if (!std.mem.eql(u8, d, "inline")) return false;
-    const t = (v.get("type") orelse return false).asString() orelse return false;
-    if (std.mem.eql(u8, t, "text")) return true;
-    if (!std.mem.eql(u8, t, "container")) return false;
-    const c = v.get("children") orelse return false;
-    if (c != .array or c.array.len == 0) return false;
-    for (c.array) |cv| {
-        if (cv == .null) continue;
-        if (!isInlineLevel(cv, depth + 1)) return false;
-    }
-    return true;
+/// css / tw declarations (kebab-case name, value text, important flag) -> style declarations.
+fn convertDecls(a: Allocator, src: anytype) Error![]const style.Declaration {
+    if (src.len == 0) return &.{};
+    const out = try a.alloc(style.Declaration, src.len);
+    for (src, out) |d, *o| o.* = .{ .name = d.name, .value = d.value, .important = d.important };
+    return out;
 }
+
+/// `css.Dom` callbacks over the element model (only ELEMENTS are visible; bare text runs skipped).
+const CssDom = struct {
+    fn d(ctx: *const anyopaque) *const dom_mod.Dom {
+        return @ptrCast(@alignCast(ctx));
+    }
+    fn e(x: usize) u32 {
+        return @intCast(x);
+    }
+    fn tag(ctx: *const anyopaque, x: usize) []const u8 {
+        return d(ctx).at(e(x)).tag;
+    }
+    fn id(ctx: *const anyopaque, x: usize) []const u8 {
+        return d(ctx).at(e(x)).id;
+    }
+    fn classes(ctx: *const anyopaque, x: usize) []const u8 {
+        return d(ctx).at(e(x)).class;
+    }
+    fn attr(ctx: *const anyopaque, x: usize, name: []const u8) ?[]const u8 {
+        return d(ctx).attr(e(x), name);
+    }
+    fn parent(ctx: *const anyopaque, x: usize) ?usize {
+        const p = d(ctx).at(e(x)).parent;
+        return if (p == none) null else p;
+    }
+    fn prev(ctx: *const anyopaque, x: usize) ?usize {
+        return if (d(ctx).prevEl(e(x))) |v| v else null;
+    }
+    fn next(ctx: *const anyopaque, x: usize) ?usize {
+        return if (d(ctx).nextEl(e(x))) |v| v else null;
+    }
+    fn first(ctx: *const anyopaque, x: usize) ?usize {
+        return if (d(ctx).firstEl(e(x))) |v| v else null;
+    }
+    fn empty(ctx: *const anyopaque, x: usize) bool {
+        return d(ctx).isEmpty(e(x));
+    }
+    fn dir(ctx: *const anyopaque, x: usize) css.Dir {
+        return switch (d(ctx).at(e(x)).dir) {
+            .none => .none,
+            .ltr => .ltr,
+            .rtl => .rtl,
+        };
+    }
+    fn vtable(dm: *const dom_mod.Dom) css.Dom {
+        return .{ .ctx = dm, .tag = tag, .id = id, .classes = classes, .attr = attr, .parent = parent, .prev_sibling = prev, .next_sibling = next, .first_child = first, .is_empty = empty, .dir = dir };
+    }
+};
 
 pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
-    return .{
+    var ts: font.TextStyle = .{
         .families = cs.font_family,
         .weight = cs.font_weight,
         .italic = cs.font_style != .normal,
@@ -935,6 +1454,16 @@ pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
         .word_spacing = cs.word_spacing,
         .user = user,
     };
+    if (comptime @hasField(font.TextStyle, "stretch")) ts.stretch = cs.font_stretch;
+    if (comptime @hasField(font.TextStyle, "optical_sizing")) ts.optical_sizing = cs.font_optical_sizing != .none;
+    if (comptime @hasField(font.TextStyle, "variations")) {
+        // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
+        const V = @typeInfo(@TypeOf(ts.variations)).pointer.child;
+        comptime std.debug.assert(@sizeOf(V) == @sizeOf(style.computed.FontVariation));
+        const vs = cs.font_variation_settings;
+        ts.variations = @as([*]const V, @ptrCast(vs.ptr))[0..vs.len];
+    }
+    return ts;
 }
 
 fn decodeCp(s: []const u8, i: *usize) u21 {
@@ -1224,4 +1753,218 @@ fn testRender(node: []const u8, opts: []const u8) !void {
 test "regression: text shifted above the canvas by a relative offset" {
     const node = "{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"container\",\"style\":{\"borderTop\":\"6px solid green\"},\"children\":[{\"type\":\"container\",\"style\":{\"bottom\":20},\"children\":[{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"container\",\"style\":{},\"children\":[{\"type\":\"text\",\"text\":\"Xin ch\u{00e0}o Vi\u{1ec7}t Nam \u{2014} ti\u{1ebf}ng Vi\u{1ec7}t c\u{00f3} d\u{1ea5}u\",\"style\":{}}]},{\"type\":\"container\",\"style\":{},\"children\":[]}]}]}]}]}";
     try testRender(node, "{\"height\":1,\"format\":\"raw\"}");
+}
+
+// ---- front-end integration tests (cascade order, HTML mapping, generated content)
+
+const TestFrame = struct {
+    r: *Renderer,
+    f: Frame,
+
+    fn init(kind: SourceKind, src: []const u8, opts: []const u8) !*TestFrame {
+        const gpa = std.testing.allocator;
+        const r = Renderer.create(gpa).?;
+        errdefer r.destroy();
+        _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+        r.beginCall();
+        const a = r.arena.allocator();
+        const t = try a.create(TestFrame);
+        t.r = r;
+        t.f = .{ .r = r, .a = a, .opts = try r.parseOptions(opts), .tree = layout.Tree.init(a), .ctx = undefined };
+        t.f.prepare(kind, src) catch |e| {
+            if (e == error.Invalid) std.debug.print("render error: {s}\n", .{r.err});
+            return e;
+        };
+        return t;
+    }
+    fn deinit(t: *TestFrame) void {
+        t.r.destroy();
+    }
+    fn el(t: *TestFrame, i: u32) *dom_mod.El {
+        return t.f.dom.at(i);
+    }
+    /// First element with `id`.
+    fn byId(t: *TestFrame, id: []const u8) *dom_mod.El {
+        for (t.f.dom.els.items) |*e| if (std.mem.eql(u8, e.id, id)) return e;
+        @panic("no such id");
+    }
+};
+
+fn bgOf(cs: *const CS) style.Color {
+    return switch (cs.background_color) {
+        .rgba => |c| c,
+        else => .{},
+    };
+}
+
+fn pxOf(s: style.Size) f32 {
+    return switch (s) {
+        .lp => |lp| lp.px,
+        else => -1,
+    };
+}
+
+test "cascade order: preset < tw < stylesheet < inline style; !important reverses" {
+    if (comptime !(config.enable_css and config.enable_tw)) return error.SkipZigTest;
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","children":[
+        \\ {"type":"container","id":"a","className":"x","tw":"bg-[#000001] w-[1px]",
+        \\  "preset":{"backgroundColor":"#000002","width":2,"height":2,"opacity":0.5},"style":{"height":3}},
+        \\ {"type":"container","id":"b","className":"x","style":{"height":"5px !important","backgroundColor":"#000009"}},
+        \\ {"type":"container","id":"c","tw":"!w-[7px] h-[8px]","style":{"width":6,"height":9}},
+        \\ {"type":"container","id":"d","className":"y bogus","style":{}}
+        \\]}
+    ,
+        \\{"width":100,"height":100,"css":[".x{background-color:#000003;height:4px !important}",
+        \\ {"selector":".y","style":{"width":"banana","height":"11px"}}]}
+    );
+    defer t.deinit();
+    const a = t.byId("a").cs;
+    try std.testing.expectEqual(@as(u8, 3), bgOf(a).b); // css beats tw beats preset
+    try std.testing.expectEqual(@as(f32, 1), pxOf(a.width)); // tw beats preset
+    try std.testing.expectEqual(@as(f32, 4), pxOf(a.height)); // css !important beats inline normal
+    try std.testing.expectEqual(@as(f32, 0.5), a.opacity); // preset survives
+    const b = t.byId("b").cs;
+    try std.testing.expectEqual(@as(f32, 5), pxOf(b.height)); // inline !important beats css !important
+    try std.testing.expectEqual(@as(u8, 9), bgOf(b).b); // inline normal beats css normal
+    const c = t.byId("c").cs;
+    try std.testing.expectEqual(@as(f32, 7), pxOf(c.width)); // tw !important beats inline normal
+    try std.testing.expectEqual(@as(f32, 9), pxOf(c.height)); // inline beats tw
+    const d = t.byId("d").cs;
+    try std.testing.expectEqual(@as(f32, 11), pxOf(d.height)); // invalid rule value dropped alone (lenient)
+    try std.testing.expect(d.width == .auto);
+}
+
+test "strict inline style still fails; tw / css / html never do" {
+    const gpa = std.testing.allocator;
+    const r = Renderer.create(gpa).?;
+    defer r.destroy();
+    try std.testing.expectError(error.Invalid, r.render("{\"type\":\"container\",\"style\":{\"width\":\"banana\"}}", "{\"width\":10,\"height\":10,\"format\":\"raw\"}"));
+    try std.testing.expect(std.mem.indexOf(u8, r.err, "width") != null);
+    _ = try r.render("{\"type\":\"container\",\"tw\":\"w-[banana] p-[1px_2px_3px_4px_5px]\",\"className\":\"q\"}", "{\"width\":10,\"height\":10,\"format\":\"raw\",\"css\":[\".q{width:banana}\"]}");
+    if (comptime config.enable_html) _ = try r.renderSource(.html, "<div style=\"width:banana;height:5px\">x</div>", "{\"width\":10,\"height\":10,\"format\":\"raw\"}");
+}
+
+test "html -> elements: fragment collapse, document wrappers, presets, text elements" {
+    if (comptime !config.enable_html) return error.SkipZigTest;
+    {
+        const t = try TestFrame.init(.html, "\n  <p id=\"p\">Hello <b>bold</b><br>x</p>\n  <h1 id=\"h\" style=\"color:#00ff00\">Title</h1><img src=\"\" width=\"10\" height=\"50%\"><style>.c{}</style>", "{\"width\":200,\"height\":100}");
+        defer t.deinit();
+        const root = t.el(t.f.dom.root);
+        try std.testing.expect(root.tag.len == 0 and root.kind == .container); // several roots -> wrapper
+        try std.testing.expect(root.style == .text);
+        const p = t.byId("p");
+        try std.testing.expectEqual(dom_mod.Kind.container, p.kind);
+        try std.testing.expect(t.el(p.first).run); // "Hello "
+        const h = t.byId("h");
+        try std.testing.expectEqual(dom_mod.Kind.text, h.kind); // element holding only text
+        try std.testing.expectEqualStrings("Title", h.text);
+        try std.testing.expectEqual(@as(f32, 32), h.cs.font_size); // preset font-size: 2em
+        try std.testing.expectEqual(@as(u16, 700), h.cs.font_weight);
+        try std.testing.expectEqual(@as(u8, 255), h.cs.color.g); // style attribute
+        try std.testing.expectEqual(style.Display.block, h.cs.display);
+        // <br> is a text element "\n"; <img> an image with a px width preset and a % height hint
+        var saw_br = false;
+        var saw_img = false;
+        for (t.f.dom.els.items) |*e| {
+            if (std.mem.eql(u8, e.tag, "br")) saw_br = e.kind == .text and std.mem.eql(u8, e.text, "\n");
+            if (std.mem.eql(u8, e.tag, "img")) {
+                saw_img = e.kind == .image and e.width.? == 10 and e.height == null and std.mem.eql(u8, e.pres, "height:50%;");
+            }
+            try std.testing.expect(!std.mem.eql(u8, e.tag, "style")); // unrendered
+        }
+        try std.testing.expect(saw_br and saw_img);
+        try std.testing.expectEqual(@as(usize, 1), t.f.dom.styles.len);
+    }
+    {
+        const t = try TestFrame.init(.html, "<!doctype html><html lang=\"vi\"><body class=\"b\"><div>x</div></body></html>", "{\"width\":200,\"height\":100}");
+        defer t.deinit();
+        const root = t.el(t.f.dom.root);
+        try std.testing.expectEqualStrings("html", root.tag);
+        try std.testing.expectEqualStrings("vi", root.lang);
+        const body = t.el(root.first);
+        try std.testing.expectEqualStrings("body", body.tag);
+        try std.testing.expectEqualStrings("b", body.class);
+        try std.testing.expectEqual(@as(f32, 8), body.cs.margin[0].lp.px);
+    }
+    {
+        const t = try TestFrame.init(.html, "  ", "{\"width\":20,\"height\":10}");
+        defer t.deinit();
+        try std.testing.expectEqual(@as(usize, 1), t.f.dom.els.items.len); // empty container
+    }
+}
+
+test "pseudo-elements: ::before/::after from css and tw, content parsing, own text box" {
+    if (comptime !(config.enable_css and config.enable_tw)) return error.SkipZigTest;
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","children":[
+        \\ {"type":"text","id":"t","className":"s","text":"mid","attributes":{"data-n":"7"}},
+        \\ {"type":"container","id":"c","className":"s"},
+        \\ {"type":"container","id":"n","className":"none"},
+        \\ {"type":"image","id":"i","className":"s","src":"x"},
+        \\ {"type":"container","id":"w","tw":"after:content-['tw'] after:text-[#ff0000]"}
+        \\]}
+    ,
+        \\{"width":100,"height":100,"css":[".s::before{content:'<' attr(data-n);color:#0000ff}.s::after{content:\">\";display:block} .none::before{content:none}"]}
+    );
+    defer t.deinit();
+    const tx = t.byId("t");
+    try std.testing.expect(tx.before != none and tx.after != none and tx.own != none);
+    try std.testing.expectEqualStrings("<7", t.f.pseudos.items[tx.before].text);
+    try std.testing.expectEqual(@as(u8, 255), t.f.pseudos.items[tx.before].cs.color.b);
+    try std.testing.expectEqualStrings(">", t.f.pseudos.items[tx.after].text);
+    try std.testing.expectEqual(style.Display.block, t.f.pseudos.items[tx.after].cs.display);
+    try std.testing.expectEqualStrings("mid", t.f.pseudos.items[tx.own].text);
+    const c = t.byId("c");
+    try std.testing.expectEqualStrings("<", t.f.pseudos.items[c.before].text);
+    try std.testing.expect(t.byId("n").before == none); // content: none
+    try std.testing.expect(t.byId("i").before == none); // never for images
+    const w = t.byId("w");
+    try std.testing.expect(w.before == none and w.after != none);
+    try std.testing.expectEqualStrings("tw", t.f.pseudos.items[w.after].text);
+    try std.testing.expectEqual(@as(u8, 255), t.f.pseudos.items[w.after].cs.color.r);
+    // render nodes: text element "t" becomes a container: one paragraph (before + own text), then the block ::after
+    var tn: u32 = none;
+    for (t.f.nodes.items, 0..) |n, k| {
+        if (n.cs == tx.cs and tn == none) tn = @intCast(k);
+    }
+    try std.testing.expect(tn != none);
+    try std.testing.expectEqual(Kind.container, t.f.nodes.items[tn].kind);
+    const first = t.f.nodes.items[tn].first_child;
+    try std.testing.expectEqual(Kind.anon_text, t.f.nodes.items[first].kind);
+    try std.testing.expectEqual(Kind.text, t.f.nodes.items[t.f.nodes.items[first].next].kind);
+}
+
+test "stylesheet selectors see takumi's element tree; options" {
+    if (comptime !config.enable_css) return error.SkipZigTest;
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","children":[
+        \\ {"type":"text","id":"t1","className":"i","text":"a"},
+        \\ {"type":"container","id":"c1","className":"i"},
+        \\ {"type":"container","id":"c2","className":"i","tagName":"section","lang":"vi"}
+        \\]}
+    ,
+        \\{"width":100,"height":100,"lang":"en","fontFamilies":["Inter"],"timeMs":5,
+        \\ "css":[".i:first-child{opacity:0.5} section:last-child{opacity:0.25} :root:lang(en){opacity:0.75} :lang(vi){order:3}"]}
+    );
+    defer t.deinit();
+    try std.testing.expectEqual(@as(f32, 0.5), t.byId("t1").cs.opacity); // untagged text: its own first child
+    try std.testing.expectEqual(@as(f32, 0.5), t.byId("c1").cs.opacity); // text sibling skipped
+    try std.testing.expectEqual(@as(f32, 0.25), t.byId("c2").cs.opacity);
+    try std.testing.expectEqual(@as(i32, 3), t.byId("c2").cs.order);
+    try std.testing.expectEqual(@as(f32, 0.75), t.el(t.f.dom.root).cs.opacity); // `lang` option on the root
+    try std.testing.expectEqualStrings("Inter", t.el(t.f.dom.root).cs.font_family[0]);
+    try std.testing.expectEqual(@as(f32, 5), t.f.opts.time_ms);
+}
+
+test "keyframes option is parsed and exposed" {
+    if (comptime !config.enable_css) return error.SkipZigTest;
+    const t = try TestFrame.init(.json, "{\"type\":\"container\"}",
+        \\{"width":10,"height":10,"keyframes":{"spin":{"from":{"opacity":0},"to":{"opacity":1}}},
+        \\ "css":["@keyframes fade{0%{opacity:0}100%{opacity:1}}"]}
+    );
+    defer t.deinit();
+    try std.testing.expect(t.f.keyframes("spin") != null);
+    try std.testing.expect(t.f.keyframes("fade") != null);
+    try std.testing.expect(t.f.keyframes("nope") == null);
 }

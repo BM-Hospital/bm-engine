@@ -6,6 +6,7 @@ pub const paint = @import("paint.zig");
 test {
     _ = json;
     _ = render;
+    _ = @import("dom.zig");
     _ = paint;
     _ = @import("bump.zig");
     _ = @import("style/style.zig");

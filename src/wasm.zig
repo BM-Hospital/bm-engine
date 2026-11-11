@@ -40,10 +40,16 @@ export fn bm_renderer_free(r: *Renderer) void {
     r.destroy();
 }
 
-/// Takes ownership of the font bytes (`ptr` must come from bm_alloc(len)).
+/// Takes ownership of the font bytes (`ptr` must come from bm_alloc(len)). Result (bm_result_*):
+/// takumi `RegisteredFamily[]` JSON.
 export fn bm_register_font(r: *Renderer, ptr: [*]u8, len: usize, name: [*]const u8, name_len: usize, weight: u32, italic: i32) u32 {
     _ = r.registerFont(ptr[0..len], name[0..name_len], @intCast(@min(weight, 1000)), italic) catch |e| return fail(r, e);
     return 0;
+}
+
+/// Removes every face of a family; returns 1 when any was removed, else 0.
+export fn bm_unregister_font(r: *Renderer, name: [*]const u8, name_len: usize) u32 {
+    return @intFromBool(r.unregisterFont(name[0..name_len]));
 }
 
 export fn bm_clear_fonts(r: *Renderer) void {
@@ -75,6 +81,20 @@ export fn bm_render(r: *Renderer, node: [*]const u8, node_len: usize, opts: [*]c
 
 export fn bm_measure(r: *Renderer, node: [*]const u8, node_len: usize, opts: [*]const u8, opts_len: usize) u32 {
     _ = r.measure(node[0..node_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+
+/// Like bm_render, with an explicit source kind: 0 = JSON node tree, 1 = HTML markup.
+export fn bm_render_src(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    const k: render.SourceKind = if (kind == 1) .html else .json;
+    _ = r.renderSource(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+
+/// Like bm_measure, with an explicit source kind (see bm_render_src).
+export fn bm_measure_src(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    const k: render.SourceKind = if (kind == 1) .html else .json;
+    _ = r.measureSource(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
     return 0;
 }
 
