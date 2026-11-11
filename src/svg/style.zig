@@ -1,0 +1,183 @@
+//! Computed (inherited) style used while walking the render tree.
+const std = @import("std");
+const raster = @import("../raster/raster.zig");
+const dom = @import("dom.zig");
+const num = @import("num.zig");
+const color = @import("color.zig");
+const stroke = @import("stroke.zig");
+const Color = raster.Color;
+
+pub const PaintKind = enum(u8) { none, color, current, server };
+
+pub const SPaint = struct {
+    kind: PaintKind,
+    color: Color = Color.black,
+    /// `url(...)` text for servers
+    ref: []const u8 = "",
+    /// fallback after the url (`none`, a colour or currentColor); null = none
+    fallback: PaintKind = .none,
+};
+
+pub fn parsePaint(s_in: []const u8) ?SPaint {
+    const s = num.trim(s_in);
+    if (s.len == 0) return null;
+    if (std.mem.eql(u8, s, "none")) return .{ .kind = .none };
+    if (num.eqlIgnoreCase(s, "currentColor")) return .{ .kind = .current };
+    if (std.mem.startsWith(u8, s, "url(")) {
+        const e = std.mem.indexOfScalar(u8, s, ')') orelse return null;
+        var p: SPaint = .{ .kind = .server, .ref = s[0 .. e + 1] };
+        const rest = num.trim(s[e + 1 ..]);
+        if (rest.len > 0) {
+            if (num.eqlIgnoreCase(rest, "currentColor")) {
+                p.fallback = .current;
+            } else if (color.parse(rest)) |c| {
+                p.fallback = .color;
+                p.color = c;
+            }
+        }
+        return p;
+    }
+    if (std.mem.startsWith(u8, s, "context-")) return .{ .kind = .none };
+    const c = color.parse(s) orelse return null;
+    return .{ .kind = .color, .color = c };
+}
+
+pub const Style = struct {
+    fill: SPaint = .{ .kind = .color },
+    stroke: SPaint = .{ .kind = .none },
+    fill_opacity: f32 = 1,
+    stroke_opacity: f32 = 1,
+    fill_rule: raster.FillRule = .nonzero,
+    clip_rule: raster.FillRule = .nonzero,
+    stroke_width: num.Length = .{ .v = 1 },
+    miter_limit: f32 = 4,
+    cap: stroke.Cap = .butt,
+    join: stroke.Join = .miter,
+    dasharray: []const u8 = "",
+    dashoffset: num.Length = .{ .v = 0 },
+    color: Color = Color.black,
+    visible: bool = true,
+    /// paint order: 3 x 2-bit codes (0 fill, 1 stroke, 2 markers), first in low bits
+    paint_order: u8 = 0 | (1 << 2) | (2 << 4),
+    marker_start: []const u8 = "",
+    marker_mid: []const u8 = "",
+    marker_end: []const u8 = "",
+    font_size: f32 = 16,
+    font_family: []const u8 = "",
+    font_weight: []const u8 = "",
+    text_anchor: []const u8 = "",
+    linear_rgb_filters: bool = true,
+
+    /// Applies the inherited properties declared on `n` (unknown / invalid values are ignored,
+    /// which keeps the inherited value, as CSS does for invalid declarations).
+    pub fn apply(st: *Style, n: *const dom.Node) void {
+        for (n.decls) |d| {
+            if (!d.prop.inherited()) continue;
+            const v = num.trim(d.value);
+            if (std.mem.eql(u8, v, "inherit")) continue;
+            st.applyOne(d.prop, v);
+        }
+    }
+
+    fn applyOne(st: *Style, p: dom.Prop, v: []const u8) void {
+        switch (p) {
+            .fill => st.fill = parsePaint(v) orelse return,
+            .stroke => st.stroke = parsePaint(v) orelse return,
+            .fill_opacity => st.fill_opacity = opacity(v) orelse return,
+            .stroke_opacity => st.stroke_opacity = opacity(v) orelse return,
+            .fill_rule => st.fill_rule = rule(v) orelse return,
+            .clip_rule => st.clip_rule = rule(v) orelse return,
+            .stroke_width => {
+                const l = num.parseLength(v) orelse return;
+                if (l.v < 0) return;
+                st.stroke_width = l;
+            },
+            .stroke_miterlimit => {
+                const m = num.parseNumber(v) orelse return;
+                if (m < 1) return;
+                st.miter_limit = m;
+            },
+            .stroke_linecap => st.cap = std.meta.stringToEnum(stroke.Cap, v) orelse return,
+            .stroke_linejoin => st.join = if (std.mem.eql(u8, v, "miter-clip") or std.mem.eql(u8, v, "arcs")) .miter else std.meta.stringToEnum(stroke.Join, v) orelse return,
+            .stroke_dasharray => st.dasharray = v,
+            .stroke_dashoffset => st.dashoffset = num.parseLength(v) orelse return,
+            .color => {
+                if (num.eqlIgnoreCase(v, "currentColor")) return;
+                st.color = color.parse(v) orelse return;
+            },
+            .visibility => st.visible = std.mem.eql(u8, v, "visible"),
+            .paint_order => st.paint_order = paintOrder(v) orelse return,
+            .marker_start => st.marker_start = v,
+            .marker_mid => st.marker_mid = v,
+            .marker_end => st.marker_end = v,
+            .font_size => {
+                const l = num.parseLength(v) orelse return;
+                const fs = switch (l.unit) {
+                    .percent => l.v * st.font_size / 100,
+                    .em => l.v * st.font_size,
+                    .ex => l.v * st.font_size / 2,
+                    else => num.resolve(l, 0, st.font_size),
+                };
+                if (fs >= 0 and fs < 1e5) st.font_size = fs;
+            },
+            .font_family => st.font_family = v,
+            .font_weight => st.font_weight = v,
+            .text_anchor => st.text_anchor = v,
+            .color_interpolation_filters => {
+                if (std.mem.eql(u8, v, "sRGB")) st.linear_rgb_filters = false else if (std.mem.eql(u8, v, "linearRGB") or std.mem.eql(u8, v, "auto")) st.linear_rgb_filters = true;
+            },
+            else => {},
+        }
+    }
+};
+
+pub fn opacity(v: []const u8) ?f32 {
+    const f = num.parseFraction(v) orelse return null;
+    return std.math.clamp(f, 0, 1);
+}
+
+fn rule(v: []const u8) ?raster.FillRule {
+    if (std.mem.eql(u8, v, "nonzero")) return .nonzero;
+    if (std.mem.eql(u8, v, "evenodd")) return .evenodd;
+    return null;
+}
+
+fn paintOrder(v: []const u8) ?u8 {
+    if (std.mem.eql(u8, v, "normal")) return 0 | (1 << 2) | (2 << 4);
+    var order: [3]u8 = undefined;
+    var n: usize = 0;
+    var seen: [3]bool = .{ false, false, false };
+    var it = std.mem.tokenizeAny(u8, v, " \t\r\n");
+    while (it.next()) |t| {
+        const k: u8 = if (std.mem.eql(u8, t, "fill")) 0 else if (std.mem.eql(u8, t, "stroke")) 1 else if (std.mem.eql(u8, t, "markers")) 2 else return null;
+        if (seen[k] or n >= 3) return null;
+        seen[k] = true;
+        order[n] = k;
+        n += 1;
+    }
+    for (0..3) |k| if (!seen[k]) {
+        order[n] = @intCast(k);
+        n += 1;
+    };
+    return order[0] | (order[1] << 2) | (order[2] << 4);
+}
+
+test "style" {
+    var st: Style = .{};
+    const decls = [_]dom.Decl{
+        .{ .prop = .fill, .value = "url(#g) red" },
+        .{ .prop = .stroke_linejoin, .value = "round" },
+        .{ .prop = .paint_order, .value = "stroke" },
+        .{ .prop = .font_size, .value = "2em" },
+        .{ .prop = .opacity, .value = "0.5" },
+        .{ .prop = .fill_opacity, .value = "150%" },
+    };
+    const n: dom.Node = .{ .tag = .g, .decls = &decls };
+    st.apply(&n);
+    try std.testing.expectEqual(PaintKind.server, st.fill.kind);
+    try std.testing.expectEqual(PaintKind.color, st.fill.fallback);
+    try std.testing.expectEqual(stroke.Join.round, st.join);
+    try std.testing.expectEqual(@as(u8, 1 | (0 << 2) | (2 << 4)), st.paint_order);
+    try std.testing.expectEqual(@as(f32, 32), st.font_size);
+    try std.testing.expectEqual(@as(f32, 1), st.fill_opacity);
+}
