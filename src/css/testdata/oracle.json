@@ -1,0 +1,3226 @@
+{
+ "generator": "bench/probe/css/oracle.mjs",
+ "takumi": "@takumi-rs/wasm 2.20.0",
+ "cases": [
+  {
+   "name": "type < class",
+   "css": [
+    "p{width:2px} .a{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    null,
+    3,
+    null
+   ]
+  },
+  {
+   "name": "class < id",
+   "css": [
+    "#s{width:4px} .b{width:3px} span{width:2px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    4,
+    3,
+    null
+   ]
+  },
+  {
+   "name": "source order",
+   "css": [
+    ".a{width:2px} .b{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    3,
+    3,
+    null
+   ]
+  },
+  {
+   "name": "important beats id",
+   "css": [
+    "#s{width:4px} span{width:5px !important}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    5,
+    null,
+    null
+   ]
+  },
+  {
+   "name": "important order",
+   "css": [
+    "span{width:5px !important} .b{width:6px!important}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    6,
+    6,
+    null
+   ]
+  },
+  {
+   "name": "where is not",
+   "css": [
+    ":where(#s){width:2px} span{width:3px} :is(p, #root){width:4px} p:not(.b){width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    4,
+    4,
+    3,
+    4,
+    null
+   ]
+  },
+  {
+   "name": "is spec max",
+   "css": [
+    ":is(.b, #nope){width:2px} span.b{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    2,
+    2,
+    null
+   ]
+  },
+  {
+   "name": "universal and root",
+   "css": [
+    "*{width:2px} :root{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "b c",
+     "id": "s",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "a b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    3,
+    2,
+    2,
+    2,
+    2
+   ]
+  },
+  {
+   "name": "case-insensitive tag",
+   "css": [
+    "DIV{width:2px} P{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "P",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    2,
+    3,
+    3
+   ]
+  },
+  {
+   "name": "no implicit tag",
+   "css": [
+    "div{width:2px} *{height:1px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    2
+   ]
+  },
+  {
+   "name": "class splitting",
+   "css": [
+    ".x{width:2px} .y{width:3px} .X{width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "  x\ty  ",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "div",
+     "cls": "X",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    3,
+    4
+   ]
+  },
+  {
+   "name": "attributes",
+   "css": [
+    "[data-k]{width:2px} [data-k=\"v w\"]{width:3px} [data-k~=w]{width:4px}",
+    "[data-l|=en]{width:5px} [data-m^=ab]{width:6px} [data-m$=yz]{width:7px} [data-m*=mn]{width:8px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-k",
+       ""
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-k",
+       "v w"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-k",
+       "x w y"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-l",
+       "en-US"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-m",
+       "abcd"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-m",
+       "wxyz"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-m",
+       "lmno"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    4,
+    4,
+    5,
+    6,
+    7,
+    8
+   ]
+  },
+  {
+   "name": "attribute case",
+   "css": [
+    "[data-v=\"abc\" i]{width:2px} [type=checkbox]{width:3px} [data-v=\"ABC\"]{width:4px} [DATA-W]{width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-v",
+       "ABC"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "input",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "type",
+       "CheckBox"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-v",
+       "aBc"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "data-w",
+       "1"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    4,
+    3,
+    2,
+    5
+   ]
+  },
+  {
+   "name": "combinators",
+   "css": [
+    "div > p{width:2px} div span{width:3px} p + span{width:4px} span ~ em{width:5px} #root > em{width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "root",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "section",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 3
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 3
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    4,
+    null,
+    3,
+    5,
+    6
+   ]
+  },
+  {
+   "name": "descendant chain",
+   "css": [
+    "a b c d{width:2px} a > b c{width:3px} a ~ x d{width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "a",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "x",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 1
+    },
+    {
+     "tag": "c",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 2
+    },
+    {
+     "tag": "d",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 3
+    },
+    {
+     "tag": "x",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "d",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 5
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    null,
+    3,
+    2,
+    null,
+    null
+   ]
+  },
+  {
+   "name": "structural",
+   "css": [
+    ":first-child{width:2px} :last-child{width:3px} :only-child{width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 1
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    4,
+    2,
+    4,
+    null,
+    3
+   ]
+  },
+  {
+   "name": "of-type",
+   "css": [
+    "p:first-of-type{width:2px} p:last-of-type{width:3px} span:only-of-type{width:4px} em:nth-of-type(2){width:5px} em:nth-last-of-type(1){width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null,
+    4,
+    null,
+    5,
+    3,
+    6
+   ]
+  },
+  {
+   "name": "nth-child formulas",
+   "css": [
+    "li:nth-child(2n+1){width:2px} li:nth-child(3n){width:3px} li:nth-child(-n+2){width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "ul",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    4,
+    4,
+    3,
+    null,
+    2,
+    3,
+    2
+   ]
+  },
+  {
+   "name": "nth-child more",
+   "css": [
+    "li:nth-child(even){width:2px} li:nth-last-child(2){width:3px} li:nth-child(n+6){width:4px} li:nth-child( -2n + 5 ){width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "ul",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    5,
+    2,
+    5,
+    2,
+    5,
+    4,
+    4
+   ]
+  },
+  {
+   "name": "nth-child of",
+   "css": [
+    "li:nth-child(2 of .z){width:2px} li:nth-last-child(1 of .z){width:3px} li:nth-child(odd of :not(.z)){width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "ul",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "z",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "li",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "name": "empty",
+   "css": [
+    ":empty{width:2px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 2
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null,
+    2
+   ]
+  },
+  {
+   "name": "has",
+   "css": [
+    "div:has(> .t){width:2px} section:has(.t){width:3px} p:has(+ em){width:4px} p:has(~ b){width:5px} :has(> i > .t){width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "section",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "t",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 1
+    },
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 3
+    },
+    {
+     "tag": "u",
+     "cls": "t",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 4
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    3,
+    2,
+    null,
+    6,
+    null,
+    null,
+    5,
+    null,
+    5,
+    null
+   ]
+  },
+  {
+   "name": "not complex",
+   "css": [
+    ":not(div > p){width:2px} p:not(.a, #x){width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 2
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    2,
+    null,
+    2,
+    3,
+    3
+   ]
+  },
+  {
+   "name": "lang dir",
+   "css": [
+    ":lang(en){width:2px} :lang(fr){width:3px} :dir(rtl){width:4px} span:dir(ltr){width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "lang",
+       "en-US"
+      ]
+     ],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "lang",
+       "fr"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 2
+    },
+    {
+     "tag": "section",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "rtl",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 4
+    }
+   ],
+   "expect": [
+    2,
+    2,
+    3,
+    5,
+    4,
+    4
+   ]
+  },
+  {
+   "name": "state pseudo never",
+   "css": [
+    "a:hover{width:2px} a:link{width:3px} a:any-link{width:4px} a:visited{width:5px} a:focus{width:6px} a:foo{width:7px} a{height:1px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "a",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "href",
+       "https://x"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null
+   ]
+  },
+  {
+   "name": "form states",
+   "css": [
+    "input:checked{width:2px} input:disabled{width:3px} input:enabled{width:4px} input:required{width:5px} :read-only{height:1px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "form",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "input",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "type",
+       "checkbox"
+      ],
+      [
+       "checked",
+       ""
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "input",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "disabled",
+       ""
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "input",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "required",
+       ""
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "input",
+     "cls": "",
+     "id": "",
+     "attrs": [
+      [
+       "type",
+       "radio"
+      ]
+     ],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    4,
+    3,
+    5,
+    4
+   ]
+  },
+  {
+   "name": "media width dpr1",
+   "css": [
+    "p{width:2px} @media (min-width: 500px){p{width:3px}} @media (max-width: 499px){em{width:4px}} @media (min-width: 40em){i{width:5px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    null,
+    5
+   ]
+  },
+  {
+   "name": "media width dpr2",
+   "css": [
+    "p{width:2px} @media (min-width: 500px){p{width:3px}} @media (max-width: 499px){em{width:4px}} @media (min-width: 40em){i{width:5px}} @media (min-resolution: 2dppx){b{width:6px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 2
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    4,
+    5,
+    6
+   ]
+  },
+  {
+   "name": "media range",
+   "css": [
+    "@media (400px <= width < 801px){p{width:2px}} @media (width > 800px){em{width:3px}} @media (100px < height){i{width:4px}} @media (orientation: landscape){b{width:5px}} @media (aspect-ratio > 4/1){u{width:6px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null,
+    null,
+    5,
+    6
+   ]
+  },
+  {
+   "name": "media types and logic",
+   "css": [
+    "@media screen{p{width:2px}} @media print{em{width:3px}} @media not print{i{width:4px}} @media (prefers-color-scheme: dark){b{width:5px}} @media not (prefers-color-scheme: dark){u{width:6px}} @media (max-width: 1px), (min-width: 2px){s{width:7px}} @media tv, screen and (min-width: 1px){q{width:8px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "s",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "q",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null,
+    4,
+    null,
+    null,
+    7,
+    8
+   ]
+  },
+  {
+   "name": "media no viewport height",
+   "css": [
+    "@media (min-height: 1px){p{width:2px}} @media (min-width: 1px){em{width:3px}}"
+   ],
+   "env": {
+    "w": 300,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    3
+   ]
+  },
+  {
+   "name": "supports",
+   "css": [
+    "@supports (display: grid){p{width:2px}} @supports not (display: grid){em{width:3px}} @supports (foo: bar){i{width:4px}} @supports selector(p){b{width:5px}} @supports (display:flex) and (width: 3px){u{width:6px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null,
+    null,
+    null,
+    6
+   ]
+  },
+  {
+   "name": "layers order",
+   "css": [
+    "@layer a, b; @layer b{p{width:2px}} @layer a{#x{width:3px}} @layer c{em{width:4px}} em{width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "x",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    5
+   ]
+  },
+  {
+   "name": "layers important",
+   "css": [
+    "@layer a{p{width:2px !important}} @layer b{p{width:3px !important}} p{width:4px !important} @layer a{em{width:5px !important}} em{width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    5
+   ]
+  },
+  {
+   "name": "layers nested anon",
+   "css": [
+    "@layer x{@layer y{p{width:2px}} p{width:3px}} @layer x.y{em{width:4px}} @layer x{em{width:5px}} @layer{i{width:6px}} @layer{i{width:7px}} @layer q{i{width:8px}}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    4,
+    8
+   ]
+  },
+  {
+   "name": "nesting basic",
+   "css": [
+    ".a{ .b{width:2px} &.c{width:3px} > em{width:4px} & + p{width:5px} }"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "a c",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "i",
+     "cls": "b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    3,
+    2,
+    4,
+    null
+   ]
+  },
+  {
+   "name": "nesting specificity",
+   "css": [
+    "#r{ & p{width:2px} } div p.q.q{width:3px} .s, #t{ & > i{width:4px} } div > i.x.x{width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "s",
+     "id": "r",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "q",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "x",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    4
+   ]
+  },
+  {
+   "name": "nesting decl order",
+   "css": [
+    ".a{ width:2px; &.a{width:3px} width:4px }"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    }
+   ],
+   "expect": [
+    3
+   ]
+  },
+  {
+   "name": "nesting ident-colon swallow",
+   "css": [
+    ".a{ span:first-child{width:3px} width:4px; height:1px } .b{ p{width:5px} } .c{ :is(p):first-child{width:6px} }"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "a b c",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "span",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    6,
+    null
+   ]
+  },
+  {
+   "name": "nested media in rule",
+   "css": [
+    "p{ width:2px; @media (min-width: 100px){ width:3px } } em{ @media (max-width: 100px){ width:4px } }"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    null
+   ]
+  },
+  {
+   "name": "error recovery",
+   "css": [
+    "p{width:2px;;width;: x; height 3; } p;{width:9px} em{width:3px} ] i{width:9px} b{width:4px}",
+    "u{width:5px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    3,
+    null,
+    4,
+    5
+   ]
+  },
+  {
+   "name": "invalid selector drops rule",
+   "css": [
+    "p, :::x{width:2px} em, #1x{width:3px} i, b:hover{width:4px} u:unknown(1){width:5px}, s{width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "s",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    null,
+    4,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "name": "unknown at-rules",
+   "css": [
+    "@container (min-width: 1px){p{width:2px}} @scope (div){em{width:3px}} @page{i{width:4px}} @foo; b{width:5px} @import url(x.css); u{width:6px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "u",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null,
+    null,
+    null,
+    5,
+    6
+   ]
+  },
+  {
+   "name": "concatenated entries",
+   "css": [
+    "p{width:2px",
+    "} em{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "escapes",
+   "css": [
+    ".a\\:b{width:2px} #\\31 23{width:3px} .\\66 oo{width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "a:b",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "123",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "p",
+     "cls": "foo",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "namespaces",
+   "css": [
+    "*|p{width:2px} |em{width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    2,
+    null
+   ]
+  },
+  {
+   "name": "pseudo elements dont hit element",
+   "css": [
+    "p::before{width:2px} p:before{width:3px} p::after{width:4px} p::marker{width:5px} p::placeholder{width:6px} p{height:1px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    null
+   ]
+  },
+  {
+   "name": "comma spec per selector",
+   "css": [
+    ".a, #b{width:2px} div.a{width:3px} #b{height:1px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "section",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "div",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "div",
+     "cls": "a",
+     "id": "b",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    2
+   ]
+  },
+  {
+   "name": "rule objects",
+   "css": [
+    {
+     "selector": ".a",
+     "style": {
+      "width": "2px"
+     },
+     "rules": [
+      {
+       "selector": "& > p",
+       "style": {
+        "width": 3
+       }
+      }
+     ]
+    },
+    {
+     "media": "(min-width: 10px)",
+     "rules": [
+      {
+       "selector": "em",
+       "style": {
+        "width": "4px"
+       }
+      }
+     ]
+    },
+    {
+     "layer": "l",
+     "rules": [
+      {
+       "selector": "i",
+       "style": {
+        "width": "5px"
+       }
+      }
+     ]
+    },
+    "i{width:6px}",
+    {
+     "supports": "(display: grid)",
+     "rules": [
+      "b{width:7px}"
+     ]
+    }
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "a",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "b",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    2,
+    3,
+    4,
+    6,
+    7
+   ]
+  },
+  {
+   "name": "important in layer objects",
+   "css": [
+    {
+     "layer": "a"
+    },
+    {
+     "layer": "b",
+     "rules": [
+      "p{width:2px !important}"
+     ]
+    },
+    {
+     "layer": "a",
+     "rules": [
+      {
+       "selector": "p",
+       "style": {
+        "width": "3px"
+       }
+      },
+      "p{width:3px!important}"
+     ]
+    },
+    {
+     "selector": "em",
+     "style": {
+      "width": "4px"
+     },
+     "rules": [
+      {
+       "selector": "&:hover",
+       "style": {
+        "width": "5px"
+       }
+      }
+     ]
+    }
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "preflight layer",
+   "css": [
+    "@import \"tailwindcss\"; @layer base{p{width:2px}} @layer components{p{width:3px}} em{width:4px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "div",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "p",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "em",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    }
+   ],
+   "expect": [
+    null,
+    3,
+    4
+   ]
+  },
+  {
+   "name": "deep has bounded",
+   "css": [
+    "section:has(i i i i i i){width:2px} i:nth-child(1):has(> i){width:3px}"
+   ],
+   "env": {
+    "w": 800,
+    "h": 100,
+    "dpr": 1
+   },
+   "nodes": [
+    {
+     "tag": "section",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": null
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 0
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 1
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 2
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 3
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 4
+    },
+    {
+     "tag": "i",
+     "cls": "",
+     "id": "",
+     "attrs": [],
+     "dir": "",
+     "parent": 5
+    }
+   ],
+   "expect": [
+    2,
+    3,
+    3,
+    3,
+    3,
+    3,
+    null
+   ]
+  }
+ ]
+}
