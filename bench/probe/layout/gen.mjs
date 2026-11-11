@@ -144,7 +144,7 @@ add("block/stack", B({ width: 300 }, B({ height: 50 }), B({ height: 30, width: 1
 add("block/margins-collapse-siblings", B({ width: 300 }, B({ height: 50, marginBottom: 20 }), B({ height: 30, marginTop: 30, marginBottom: 10 }), B({ height: 20, marginTop: 5 })));
 add("block/margins-negative", B({ width: 300 }, B({ height: 50, marginBottom: 20 }), B({ height: 30, marginTop: -30, marginBottom: -10 }), B({ height: 20, marginTop: -5 })));
 add("block/margin-collapse-parent-first", B({ width: 300 }, B({}, B({ height: 50, marginTop: 20, marginBottom: 15 })), B({ marginTop: 10 }, B({ height: 30, marginTop: 30 }))));
-add("block/margin-collapse-parent-padding", B({ width: 300 }, B({ paddingTop: 1 }, B({ height: 50, marginTop: 20, marginBottom: 15 })), B({ marginTop: 10, borderBottomWidth: 2, borderStyle: "solid" }, B({ height: 30, marginTop: 30, marginBottom: 9 }))));
+add("block/margin-collapse-parent-padding", B({ width: 300 }, B({ paddingTop: 1 }, B({ height: 50, marginTop: 20, marginBottom: 15 })), B({ marginTop: 10, borderWidth: 0, borderStyle: "solid", borderBottomWidth: 2 }, B({ height: 30, marginTop: 30, marginBottom: 9 }))));
 add("block/margin-collapse-through-empty", B({ width: 300 }, B({ height: 50, marginBottom: 20 }), B({ marginTop: 40, marginBottom: 25 }), B({ height: 20, marginTop: 5 })));
 add("block/margin-collapse-nested-deep", B({ width: 300, padding: 1 }, B({ marginTop: 5 }, B({ marginTop: 15 }, B({ marginTop: 10, height: 20, marginBottom: 12 })), B({ height: 10, marginBottom: 30 })), B({ height: 10, marginTop: 7 })));
 add("block/margin-root-child", B({ width: 300 }, B({ height: 50, marginTop: 20, marginBottom: 15 })));
@@ -182,8 +182,9 @@ add("root/col-overflow-viewport", F({ flexDirection: "column" }, box(50, 200), b
 add("root/wrap-col-auto", F({ flexDirection: "column", flexWrap: "wrap" }, box(50, 200), box(50, 200)));
 
 // ---------------------------------------------------------------- seeded random flex/block trees
-let seed = 12345;
-const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+let seed = +(process.env.SEED || 12345);
+const NF = +(process.env.NF || 80), NB = +(process.env.NB || 40), NM = +(process.env.NM || 60);
+const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const pick = (...xs) => xs[Math.floor(rnd() * xs.length)];
 const maybe = (p, v) => (rnd() < p ? v : {});
 function randFlex(depth, isRoot) {
@@ -217,7 +218,7 @@ function randFlex(depth, isRoot) {
   const n = 1 + Math.floor(rnd() * 4);
   return c(style, ...Array.from({ length: n }, () => randFlex(depth - 1, false)));
 }
-for (let i = 0; i < 80; i++) add(`rand/flex-${i}`, randFlex(3, true));
+for (let i = 0; i < NF; i++) add(`rand/flex-${i}`, randFlex(3, true));
 
 function randBlock(depth, isRoot) {
   const leaf = depth <= 0 || rnd() < 0.3;
@@ -238,7 +239,50 @@ function randBlock(depth, isRoot) {
   const n = 1 + Math.floor(rnd() * 4);
   return c(style, ...Array.from({ length: n }, () => (rnd() < 0.15 ? randFlex(1, false) : randBlock(depth - 1, false))));
 }
-for (let i = 0; i < 40; i++) add(`rand/block-${i}`, randBlock(3, true));
+for (let i = 0; i < NB; i++) add(`rand/block-${i}`, randBlock(3, true));
+
+// mixed trees: text-like wrapping leaves, absolute children, aspect ratios, blocks inside flex, baseline
+function randMix(depth, isRoot, parentKind) {
+  const k = rnd();
+  if (!isRoot && k < 0.12) return words(1 + Math.floor(rnd() * 8), pick(20, 30, 45), pick(10, 16), maybe(0.3, { gap: pick(2, 4) }));
+  if (!isRoot && k < 0.2 && parentKind === "flex") return c({ display: "flex", position: "absolute", ...maybe(0.5, { top: pick(0, 5, "10%") }), ...maybe(0.5, { left: pick(0, 7, "20%") }), ...maybe(0.3, { right: pick(0, 4) }), ...maybe(0.3, { bottom: pick(0, 6) }), ...maybe(0.6, { width: pick(20, 50, "30%") }), ...maybe(0.6, { height: pick(10, 30, "40%") }), ...maybe(0.2, { margin: pick(3, "auto") }) }, ...(rnd() < 0.3 ? [box(15, 12)] : []));
+  if (!isRoot && k < 0.24) return c({ display: "none", width: 50, height: 50 });
+  const isBlock = rnd() < 0.25;
+  const leaf = depth <= 0 || rnd() < 0.25;
+  const style = {
+    display: isBlock ? "block" : "flex",
+    position: "relative",
+    ...maybe(0.35, { width: pick(30, 60, 90.5, 140, "50%", "35%") }),
+    ...maybe(leaf ? 0.6 : 0.25, { height: pick(15, 30, 55.5, 80, "50%") }),
+    ...maybe(0.12, { aspectRatio: pick(1, 2, 0.5) }),
+    ...maybe(0.25, { flexGrow: pick(1, 2) }),
+    ...maybe(0.15, { flexShrink: pick(0, 3) }),
+    ...maybe(0.1, { flexBasis: pick(0, 40, "25%", "auto") }),
+    ...maybe(0.2, { margin: pick(4, "2px 8px", "0 auto", "auto") }),
+    ...maybe(0.2, { padding: pick(3, 7, "2px 10px", "5%") }),
+    ...maybe(0.1, { borderWidth: pick(1, 2), borderStyle: "solid" }),
+    ...maybe(0.1, { minWidth: pick(20, 70) }),
+    ...maybe(0.1, { maxWidth: pick(50, 110) }),
+    ...maybe(0.08, { minHeight: pick(20, 60) }),
+    ...maybe(0.08, { maxHeight: pick(30, 90) }),
+    ...maybe(0.15, { alignSelf: pick("flex-start", "center", "flex-end", "stretch", "baseline") }),
+    ...maybe(0.06, { overflow: "hidden" }),
+    ...maybe(0.06, { boxSizing: "content-box" }),
+  };
+  if (isRoot) Object.assign(style, { width: pick(220, 320, 401), margin: 0, ...maybe(0.6, { height: pick(160, 240) }) });
+  if (leaf) return c(style);
+  if (!isBlock) Object.assign(style, {
+    flexDirection: pick("row", "column", "row", "column", "row-reverse", "column-reverse"),
+    ...maybe(0.3, { flexWrap: pick("wrap", "wrap", "wrap-reverse") }),
+    ...maybe(0.5, { justifyContent: pick("flex-start", "center", "flex-end", "space-between", "space-around", "space-evenly") }),
+    ...maybe(0.5, { alignItems: pick("flex-start", "center", "flex-end", "stretch", "baseline") }),
+    ...maybe(0.25, { alignContent: pick("flex-start", "center", "flex-end", "stretch", "space-between", "space-around", "space-evenly") }),
+    ...maybe(0.4, { gap: pick(3, 6, "4px 9px") }),
+  });
+  const n = 1 + Math.floor(rnd() * 4);
+  return c(style, ...Array.from({ length: n }, () => randMix(depth - 1, false, isBlock ? "block" : "flex")));
+}
+for (let i = 0; i < NM; i++) add(`rand/mix-${i}`, randMix(3, true, "flex"));
 
 export { cases, c, F, B, G, box, add, words, rnd, pick, maybe };
 const { addGrid } = await import("./gen_grid.mjs").catch(() => ({ addGrid: null }));

@@ -19,7 +19,7 @@ export function mine(text, st = {}, width = null) {
   const cfg = new Float32Array([FAM[st.fontFamily ?? "Inter"], st.fontSize ?? 16,
     lh == null ? 0 : typeof lh === "string" ? 1 : 2, lh == null ? 0 : parseFloat(lh),
     width ?? -1, WS[st.whiteSpace ?? "normal"], WB[st.wordBreak ?? "normal"], OW[st.overflowWrap ?? "normal"],
-    st.lineClamp ?? 0, st.textOverflow === "ellipsis" ? 1 : 0, st.letterSpacing ?? 0, st.wordSpacing ?? 0, AL[st.textAlign ?? "left"], st.fontWeight ?? 400]);
+    st.lineClamp ?? 0, st.textOverflow === "ellipsis" ? 1 : 0, st.letterSpacing ?? 0, st.wordSpacing ?? 0, AL[st.textAlign ?? "left"], st.fontWeight ?? 400, FAM[st.famB ?? "Inter"], st.sizeB ?? 16]);
   const cp = put(new Uint8Array(cfg.buffer));
   const op = X.para(tp, tb.length, cp); const o = new Float32Array(X.memory.buffer, op, 8192);
   const n = o[2], lines = [];

@@ -1,0 +1,12 @@
+import { readFileSync } from "node:fs";
+const S = "C:/Users/admini/AppData/Local/Temp/claude/46c8b6142d3c6b7e/eb762129-eac5-46a2-aaef-1b224d61f7d8/scratchpad/font/";
+const { instance } = await WebAssembly.instantiate(readFileSync(S + "cmp.wasm"), {});
+const X = instance.exports;
+const put = (b) => { const p = X.alloc(b.length); new Uint8Array(X.memory.buffer, p, b.length).set(b); return p; };
+const fb = readFileSync("D:/project/bm-engine/assets/fonts/Inter-Regular.ttf"); X.addFont(put(fb), fb.length);
+const txt = new TextEncoder().encode("The quick brown fox jumps over the lazy dog. Tô yêu Việt Nam — đất nước tươi đẹp; WAVE To AVATAR (kerning) well-known state-of-the-art. ".repeat(4));
+const tp = put(txt);
+X.bench(tp, txt.length, 10, 10);
+let t = performance.now(); X.bench(tp, txt.length, 0, 1000); const shape = (performance.now() - t) / 1000;
+t = performance.now(); X.bench(tp, txt.length, 100000, 1); const meas = (performance.now() - t) / 100000;
+console.log(`text ${txt.length} bytes: shape ${(shape * 1000).toFixed(1)} us, measure ${(meas * 1000).toFixed(2)} us`);

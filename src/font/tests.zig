@@ -1,0 +1,757 @@
+//! Tests for the font module. Expected numbers marked "oracle" were measured with
+//! @takumi-rs/wasm 2.20.0 (`renderer.measure`), see bench/probe/font/*.mjs.
+const std = @import("std");
+const font = @import("font.zig");
+const t = std.testing;
+
+const inter = @embedFile("testdata/Inter-Regular.ttf");
+const inter_bold = @embedFile("testdata/Inter-Bold.ttf");
+const noto = @embedFile("testdata/NotoSans-Regular.ttf");
+const roboto = @embedFile("testdata/Roboto-Regular.ttf");
+const z60: [60]u8 = @splat(0);
+const all_fonts = [_][]const u8{ inter, inter_bold, noto, roboto };
+
+/// Path sink that tracks contours and the exact bounding box (quad extrema included).
+const Stats = struct {
+    moves: u32 = 0,
+    closes: u32 = 0,
+    ops: u32 = 0,
+    open: bool = false,
+    bad: bool = false,
+    cx: f32 = 0,
+    cy: f32 = 0,
+    min_x: f32 = std.math.inf(f32),
+    min_y: f32 = std.math.inf(f32),
+    max_x: f32 = -std.math.inf(f32),
+    max_y: f32 = -std.math.inf(f32),
+
+    fn pt(s: *Stats, x: f32, y: f32) void {
+        if (!std.math.isFinite(x) or !std.math.isFinite(y)) s.bad = true;
+        s.min_x = @min(s.min_x, x);
+        s.max_x = @max(s.max_x, x);
+        s.min_y = @min(s.min_y, y);
+        s.max_y = @max(s.max_y, y);
+        s.cx = x;
+        s.cy = y;
+        s.ops += 1;
+    }
+    pub fn moveTo(s: *Stats, x: f32, y: f32) void {
+        if (s.open) s.bad = true;
+        s.open = true;
+        s.moves += 1;
+        s.pt(x, y);
+    }
+    pub fn lineTo(s: *Stats, x: f32, y: f32) void {
+        if (!s.open) s.bad = true;
+        s.pt(x, y);
+    }
+    fn extremum(p0: f32, c: f32, p2: f32) ?f32 {
+        const d = p0 - 2 * c + p2;
+        if (d == 0) return null;
+        const u = (p0 - c) / d;
+        if (u <= 0 or u >= 1) return null;
+        return (1 - u) * (1 - u) * p0 + 2 * u * (1 - u) * c + u * u * p2;
+    }
+    pub fn quadTo(s: *Stats, cx: f32, cy: f32, x: f32, y: f32) void {
+        if (!s.open) s.bad = true;
+        if (extremum(s.cx, cx, x)) |ex| {
+            s.min_x = @min(s.min_x, ex);
+            s.max_x = @max(s.max_x, ex);
+        }
+        if (extremum(s.cy, cy, y)) |ey| {
+            s.min_y = @min(s.min_y, ey);
+            s.max_y = @max(s.max_y, ey);
+        }
+        s.pt(x, y);
+    }
+    pub fn cubicTo(s: *Stats, _: f32, _: f32, _: f32, _: f32, x: f32, y: f32) void {
+        s.pt(x, y);
+    }
+    pub fn close(s: *Stats) void {
+        if (!s.open) s.bad = true;
+        s.open = false;
+        s.closes += 1;
+    }
+};
+
+test "parse all fonts: names, metrics" {
+    const Exp = struct { family: []const u8, sub: []const u8, upem: u16, weight: u16, asc: i32, desc: i32 };
+    const exp = [_]Exp{
+        .{ .family = "Inter", .sub = "Regular", .upem = 2048, .weight = 400, .asc = 1984, .desc = 494 },
+        .{ .family = "Inter", .sub = "Bold", .upem = 2048, .weight = 700, .asc = 1984, .desc = 494 },
+        .{ .family = "Noto Sans", .sub = "Regular", .upem = 1000, .weight = 400, .asc = 1069, .desc = 293 },
+        .{ .family = "Roboto", .sub = "Regular", .upem = 2048, .weight = 400, .asc = 2146, .desc = 555 },
+    };
+    for (all_fonts, exp) |d, e| {
+        const f = try font.Font.init(d, 0);
+        var buf: [64]u8 = undefined;
+        try t.expectEqualStrings(e.family, f.familyName(&buf));
+        try t.expectEqualStrings(e.sub, f.subfamilyName(&buf));
+        try t.expectEqual(e.upem, f.unitsPerEm());
+        try t.expectEqual(e.weight, f.weightClass());
+        try t.expect(!f.isItalic());
+        try t.expect(f.numGlyphs() > 2000);
+        const lm = f.lineMetrics();
+        try t.expectEqual(e.asc, lm.ascent);
+        try t.expectEqual(e.desc, lm.descent);
+        try t.expectEqual(@as(i32, 0), lm.leading);
+        try t.expect(f.xHeight() > 0 and f.capHeight() > f.xHeight());
+        try t.expect(f.underlineThickness() > 0 and f.underlinePosition() < 0);
+        try t.expect(f.strikeoutThickness() > 0 and f.strikeoutPosition() > 0);
+        try t.expect(f.typoAscender() > 0 and f.typoDescender() < 0 and f.winAscent() > 0 and f.winDescent() > 0);
+        // tiny output buffers truncate instead of overflowing
+        var tiny: [3]u8 = undefined;
+        try t.expect(f.familyName(&tiny).len <= 3);
+    }
+}
+
+test "cmap, advances, kerning" {
+    const fi = try font.Font.init(inter, 0);
+    const fnn = try font.Font.init(noto, 0);
+    const fr = try font.Font.init(roboto, 0);
+    for ([_]font.Font{ fi, fnn, fr }) |f| {
+        try t.expect(f.glyphIndex('A') != 0);
+        try t.expect(f.glyphIndex(0xe9) != 0); // é
+        try t.expect(f.glyphIndex(0x1ec7) != 0); // ệ
+        try t.expectEqual(@as(u16, 0), f.glyphIndex(0x4e2d));
+        try t.expectEqual(@as(u16, 0), f.glyphIndex(0x10ffff));
+        try t.expect(f.glyphIndex(' ') != 0);
+    }
+    // oracle: "A" at 100px = 68.994140625 (Inter), 63.9 (Noto), 65.234375 (Roboto)
+    try t.expectEqual(@as(u16, 1413), fi.advanceWidth(fi.glyphIndex('A')));
+    try t.expectEqual(@as(u16, 639), fnn.advanceWidth(fnn.glyphIndex('A')));
+    try t.expectEqual(@as(u16, 1336), fr.advanceWidth(fr.glyphIndex('A')));
+    try t.expectEqual(@as(u16, 758), fi.advanceWidth(fi.glyphIndex('f'))); // 37.01171875 px @100
+    // out-of-range glyph ids are harmless
+    _ = fi.advanceWidth(0xffff);
+    try t.expectEqual(@as(i16, 0), fi.kerning(0xffff, 0xfffe));
+    // oracle: "AV" at 100px: Inter 131.15234375, Noto 119.9, Roboto 124.609375
+    try t.expectEqual(@as(i16, -140), fi.kerning(fi.glyphIndex('A'), fi.glyphIndex('V')));
+    try t.expectEqual(@as(i16, -40), fnn.kerning(fnn.glyphIndex('A'), fnn.glyphIndex('V')));
+    try t.expectEqual(@as(i16, -87), fr.kerning(fr.glyphIndex('A'), fr.glyphIndex('V')));
+    try t.expect(fi.kerning(fi.glyphIndex('T'), fi.glyphIndex('o')) < 0);
+    try t.expect(fi.kerning(fi.glyphIndex('W'), fi.glyphIndex('A')) < 0);
+    try t.expectEqual(@as(i16, 0), fi.kerning(fi.glyphIndex('H'), fi.glyphIndex('H')));
+}
+
+test "outlines: O, composites, emitGlyph" {
+    for (all_fonts) |d| {
+        const f = try font.Font.init(d, 0);
+        {
+            var s: Stats = .{};
+            const gid = f.glyphIndex('O');
+            try t.expect(f.outline(gid, &s));
+            try t.expect(!s.bad and !s.open);
+            try t.expectEqual(@as(u32, 2), s.moves);
+            try t.expectEqual(@as(u32, 2), s.closes);
+            const b = f.glyphBounds(gid);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(b.x_min)), s.min_x, 0.51);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(b.x_max)), s.max_x, 0.51);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(b.y_min)), s.min_y, 0.51);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(b.y_max)), s.max_y, 0.51);
+        }
+        for ([_]u21{ 0xe9, 0x1ec7, 0x1ee3, 'i', 'B', '8', '%' }) |cp| {
+            var s: Stats = .{};
+            const gid = f.glyphIndex(cp);
+            try t.expect(f.outline(gid, &s));
+            try t.expect(!s.bad and !s.open and s.moves >= 2 and s.moves == s.closes);
+            const b = f.glyphBounds(gid);
+            try t.expect(s.min_x >= @as(f32, @floatFromInt(b.x_min)) - 1.01 and s.max_x <= @as(f32, @floatFromInt(b.x_max)) + 1.01);
+            try t.expect(s.min_y >= @as(f32, @floatFromInt(b.y_min)) - 1.01 and s.max_y <= @as(f32, @floatFromInt(b.y_max)) + 1.01);
+            try t.expect(s.max_x - s.min_x > 10 and s.max_y - s.min_y > 10);
+        }
+        // space: no outline
+        var s: Stats = .{};
+        try t.expect(!f.outline(f.glyphIndex(' '), &s));
+        try t.expectEqual(@as(u32, 0), s.ops);
+        try t.expect(!f.outline(0xffff, &s));
+        // every glyph decodes into well-formed contours
+        var g: u32 = 0;
+        while (g < f.numGlyphs()) : (g += 1) {
+            var a: Stats = .{};
+            _ = f.outline(@intCast(g), &a);
+            try t.expect(!a.bad and !a.open and a.moves == a.closes);
+        }
+        // device-space emission: y flipped, scaled, translated
+        var dev: Stats = .{};
+        const gid = f.glyphIndex('O');
+        try t.expect(font.emitGlyph(&f, gid, 100, 10, 200, &dev));
+        const b = f.glyphBounds(gid);
+        const k = 100.0 / @as(f32, @floatFromInt(f.unitsPerEm()));
+        try t.expectApproxEqAbs(10 + @as(f32, @floatFromInt(b.x_min)) * k, dev.min_x, 0.05);
+        try t.expectApproxEqAbs(200 - @as(f32, @floatFromInt(b.y_max)) * k, dev.min_y, 0.05);
+        try t.expectApproxEqAbs(200 - @as(f32, @floatFromInt(b.y_min)) * k, dev.max_y, 0.05);
+    }
+}
+
+test "contour starting off-curve and implied points" {
+    // Hand-made glyf: one contour of 4 off-curve points (a "circle" made only of control points).
+    var g: [64]u8 = @splat(0);
+    const hdr = [_]u8{ 0, 1, 0, 0, 0, 0, 0, 100, 0, 100, 0, 3, 0, 0 }; // nContours=1, bbox, endPt=3, insLen=0
+    @memcpy(g[0..hdr.len], &hdr);
+    // flags: 4 x (off-curve, x short, y short, positive) = 0x36
+    @memset(g[14..18], 0x36);
+    const xs = [_]u8{ 0, 100, 0, 0 }; // deltas: (0,0) (100,0) (100,100) (0,100) -> x: 0,+100,+0,-100
+    const ys = [_]u8{ 0, 0, 100, 0 };
+    @memcpy(g[18..22], &xs);
+    @memcpy(g[22..26], &ys);
+    g[17] = 0x26; // 4th point: x short NEGATIVE, y same... y short positive with delta 0
+    g[21] = 100;
+    var s: Stats = .{};
+    try t.expect(font.ttf.testSimpleOutline(g[0..26], &s));
+    try t.expect(!s.bad and !s.open);
+    try t.expectEqual(@as(u32, 1), s.moves);
+    try t.expectEqual(@as(u32, 1), s.closes);
+    try t.expectEqual(@as(u32, 5), s.ops); // moveTo + 4 quads
+    // curve stays inside the control polygon and touches the edge midpoints
+    try t.expectApproxEqAbs(@as(f32, 0), s.min_x, 0.01);
+    try t.expectApproxEqAbs(@as(f32, 100), s.max_x, 0.01);
+    try t.expectApproxEqAbs(@as(f32, 0), s.min_y, 0.01);
+    try t.expectApproxEqAbs(@as(f32, 100), s.max_y, 0.01);
+}
+
+test "unsupported and invalid containers, ttc" {
+    try t.expectError(error.UnsupportedFontFormat, font.Font.init("OTTO" ++ z60, 0));
+    try t.expectError(error.UnsupportedFontFormat, font.Font.init("wOFF" ++ z60, 0));
+    try t.expectError(error.UnsupportedFontFormat, font.Font.init("wOF2" ++ z60, 0));
+    try t.expectError(error.InvalidFont, font.Font.init("", 0));
+    try t.expectError(error.InvalidFont, font.Font.init("hello world, not a font", 0));
+    try t.expectError(error.InvalidFont, font.Font.init(inter, 1));
+    try t.expectError(error.MissingTable, font.Font.init("\x00\x01\x00\x00\x00\x00" ++ z60, 0));
+
+    // wrap Roboto into a one-face collection
+    const pre = 16;
+    const buf = try t.allocator.alloc(u8, roboto.len + pre);
+    defer t.allocator.free(buf);
+    @memcpy(buf[0..12], "ttcf\x00\x01\x00\x00\x00\x00\x00\x01");
+    std.mem.writeInt(u32, buf[12..16], pre, .big);
+    @memcpy(buf[pre..], roboto);
+    const n = std.mem.readInt(u16, buf[pre + 4 ..][0..2], .big);
+    for (0..n) |i| {
+        const p = buf[pre + 12 + i * 16 + 8 ..][0..4];
+        std.mem.writeInt(u32, p, std.mem.readInt(u32, p, .big) + pre, .big);
+    }
+    const f = try font.Font.init(buf, 0);
+    const r = try font.Font.init(roboto, 0);
+    try t.expectEqual(r.glyphIndex('A'), f.glyphIndex('A'));
+    try t.expectEqual(r.advanceWidth(40), f.advanceWidth(40));
+    try t.expectError(error.InvalidFont, font.Font.init(buf, 1));
+}
+
+fn exercise(d: []const u8, alloc: std.mem.Allocator) !void {
+    const f = font.Font.init(d, 0) catch return;
+    var buf: [40]u8 = undefined;
+    _ = f.familyName(&buf);
+    _ = f.subfamilyName(&buf);
+    _ = f.lineMetrics();
+    _ = .{ f.xHeight(), f.capHeight(), f.weightClass(), f.isItalic(), f.underlinePosition(), f.strikeoutPosition() };
+    const cps = [_]u21{ 'A', 'V', 'f', 'i', 'o', 0xe9, 0x1ec7, 0x3a9, 0x4e2d, 0x1f600, '-', '>' };
+    var prev: u16 = 0;
+    for (cps) |cp| {
+        const g = f.glyphIndex(cp);
+        _ = f.advanceWidth(g);
+        _ = f.kerning(prev, g);
+        _ = f.glyphBounds(g);
+        var s: Stats = .{};
+        _ = f.outline(g, &s);
+        if (s.ops > 2_000_000) return error.RunawayOutline;
+        prev = g;
+    }
+    var g: u32 = 0;
+    while (g < 0x10000) : (g += 2731) {
+        var s: Stats = .{};
+        _ = f.outline(@intCast(g), &s);
+        _ = f.kerning(@intCast(g), @intCast(g ^ 0x55));
+        if (s.ops > 2_000_000) return error.RunawayOutline;
+    }
+    // shaping + layout through the mutated font
+    var fc: font.FontCollection = .{};
+    defer fc.deinit(alloc);
+    _ = fc.register(alloc, d, .{}) catch return;
+    var p = try font.Paragraph.init(alloc, &fc, &.{.{ .text = "AV To office -> 1:2 Việt fi ffl\u{ad}x", .style = .{ .size = 20 } }}, .{ .max_lines = 2, .ellipsis = true });
+    defer p.deinit();
+    var lay = try p.layout(alloc, 60);
+    defer lay.deinit(alloc);
+    for (lay.glyphs) |pg| {
+        var s: Stats = .{};
+        _ = font.emitGlyph(fc.font(pg.face), pg.gid, pg.size, pg.x, pg.y, &s);
+    }
+}
+
+test "fuzz: truncated and corrupted fonts never crash" {
+    const alloc = t.allocator;
+    var prng = std.Random.DefaultPrng.init(0x5eed_f00d);
+    const rnd = prng.random();
+    for (all_fonts) |orig| {
+        // truncation at every 97th byte offset
+        var cut: usize = 0;
+        while (cut < orig.len) : (cut += 97) try exercise(orig[0..cut], alloc);
+
+        const buf = try alloc.dupe(u8, orig);
+        defer alloc.free(buf);
+        const f = try font.Font.init(orig, 0);
+        const tables = [_][]const u8{ f.head, f.hhea, f.hmtx, f.cmap_sub, f.loca, f.glyf, f.name, f.os2, f.post, f.gpos, f.gsub, orig[0..512] };
+        var iter: usize = 0;
+        while (iter < 1500) : (iter += 1) {
+            var saved: [8]struct { off: usize, val: u8 } = undefined;
+            const flips = rnd.intRangeAtMost(usize, 1, saved.len);
+            for (saved[0..flips]) |*s| {
+                const tb = tables[rnd.uintLessThan(usize, tables.len)];
+                if (tb.len == 0) {
+                    s.* = .{ .off = 0, .val = buf[0] };
+                    continue;
+                }
+                const base = @intFromPtr(tb.ptr) - @intFromPtr(orig.ptr);
+                // bias towards table headers, where offsets and counts live
+                const span = if (rnd.boolean()) @min(tb.len, 64) else tb.len;
+                const off = base + rnd.uintLessThan(usize, span);
+                s.* = .{ .off = off, .val = buf[off] };
+                buf[off] = if (rnd.boolean()) rnd.int(u8) else buf[off] ^ (@as(u8, 1) << rnd.int(u3));
+            }
+            try exercise(buf, alloc);
+            var k = flips;
+            while (k > 0) {
+                k -= 1;
+                buf[saved[k].off] = saved[k].val;
+            }
+        }
+        try t.expectEqualSlices(u8, orig, buf);
+    }
+}
+
+// ----------------------------------------------------------------- text
+
+const Fixture = struct {
+    fc: font.FontCollection = .{},
+    fn init() !Fixture {
+        var fx: Fixture = .{};
+        errdefer fx.fc.deinit(t.allocator);
+        for (all_fonts) |d| _ = try fx.fc.register(t.allocator, d, .{});
+        return fx;
+    }
+    fn deinit(fx: *Fixture) void {
+        fx.fc.deinit(t.allocator);
+    }
+    fn lay(fx: *Fixture, text: []const u8, style: font.TextStyle, opts: font.ParagraphOptions) !font.TextLayout {
+        return font.layoutText(t.allocator, &fx.fc, &.{.{ .text = text, .style = style }}, opts);
+    }
+};
+
+fn lineText(text: []const u8, l: font.TextLayout, i: usize) []const u8 {
+    const ln = l.lines[i];
+    if (ln.glyph_end == ln.glyph_start) return "";
+    const a = l.glyphs[ln.glyph_start].cluster;
+    var b: usize = a;
+    for (l.glyphs[ln.glyph_start..ln.glyph_end]) |g| b = @max(b, g.cluster);
+    b += 1;
+    while (b < text.len and text[b] & 0xc0 == 0x80) b += 1;
+    return text[a..b];
+}
+
+fn expectLines(text: []const u8, l: font.TextLayout, expected: []const []const u8) !void {
+    try t.expectEqual(expected.len, l.lines.len);
+    for (expected, 0..) |e, i| try t.expectEqualStrings(e, lineText(text, l, i));
+}
+
+const inter_fam: []const []const u8 = &.{"Inter"};
+const noto_fam: []const []const u8 = &.{"Noto Sans"};
+const roboto_fam: []const []const u8 = &.{"Roboto"};
+
+test "collection matching and fallback" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    var buf: [8]font.FaceId = undefined;
+    // ids: 0 Inter 400, 1 Inter 700, 2 Noto Sans, 3 Roboto
+    try t.expectEqualSlices(font.FaceId, &.{ 0, 2, 3 }, fx.fc.match(&.{"inter"}, 400, false, &buf));
+    try t.expectEqualSlices(font.FaceId, &.{ 1, 2, 3 }, fx.fc.match(&.{"INTER"}, 600, false, &buf));
+    try t.expectEqualSlices(font.FaceId, &.{ 0, 2, 3 }, fx.fc.match(&.{"Inter"}, 500, true, &buf));
+    try t.expectEqualSlices(font.FaceId, &.{ 3, 2, 0 }, fx.fc.match(&.{ "Roboto", "Missing", "Noto Sans" }, 400, false, &buf));
+    try t.expectEqualSlices(font.FaceId, &.{ 0, 2, 3 }, fx.fc.match(&.{"Nope"}, 400, false, &buf));
+    try t.expectEqualSlices(font.FaceId, &.{ 1, 2, 3 }, fx.fc.match(&.{}, 900, false, &buf));
+    var one: [1]font.FaceId = undefined;
+    try t.expectEqual(@as(usize, 1), fx.fc.match(&.{}, 400, false, &one).len);
+    // explicit registration overrides + unregister
+    const id = try fx.fc.register(t.allocator, roboto, .{ .family = "Brand", .weight = 300, .italic = true });
+    try t.expectEqual(id, fx.fc.match(&.{"brand"}, 400, false, &buf)[0]);
+    try t.expectEqual(@as(u16, 300), fx.fc.face(id).weight);
+    fx.fc.unregister(t.allocator, id);
+    try t.expectEqualSlices(font.FaceId, &.{ 0, 2, 3 }, fx.fc.match(&.{"brand"}, 400, false, &buf));
+
+    // per-codepoint fallback: U+2C60 is in Noto Sans but not in Inter; U+4E2D is nowhere
+    const gl = try font.shape(t.allocator, &fx.fc, "a\u{2c60}\u{4e2d}", .{ .families = inter_fam, .size = 100 });
+    defer t.allocator.free(gl);
+    try t.expectEqual(@as(usize, 3), gl.len);
+    try t.expectEqual(@as(font.FaceId, 0), gl[0].face);
+    try t.expectEqual(@as(font.FaceId, 2), gl[1].face);
+    try t.expectApproxEqAbs(@as(f32, 52.4), gl[1].x_advance, 0.001); // oracle
+    try t.expectEqual(@as(font.FaceId, 0), gl[2].face);
+    try t.expectEqual(@as(u16, 0), gl[2].gid);
+    try t.expectEqual(@as(u32, 4), gl[2].cluster);
+}
+
+test "shaping: widths vs oracle" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const Case = struct { fam: []const []const u8, text: []const u8, size: f32, ls: f32 = 0, ws: f32 = 0, w: f32 };
+    const cases = [_]Case{
+        // oracle run widths (exact advance sums)
+        .{ .fam = inter_fam, .text = "Hello AV To WA fi ffl", .size = 16, .w = 151.5078125 },
+        .{ .fam = noto_fam, .text = "Hello AV To WA fi ffl", .size = 16, .w = 145.488037109375 },
+        .{ .fam = roboto_fam, .text = "Hello AV To WA fi ffl", .size = 16, .w = 141.8984375 },
+        .{ .fam = inter_fam, .text = "AV", .size = 100, .w = 131.15234375 },
+        .{ .fam = inter_fam, .text = "To", .size = 100, .w = 116.69921875 },
+        .{ .fam = inter_fam, .text = "WA", .size = 100, .w = 161.865234375 },
+        .{ .fam = noto_fam, .text = "AV", .size = 100, .w = 119.89999389648438 },
+        .{ .fam = roboto_fam, .text = "To", .size = 100, .w = 111.865234375 },
+        .{ .fam = inter_fam, .text = "ệ", .size = 100, .w = 58.30078125 },
+        // GSUB: Roboto fi / ffi ligatures, Inter "->" contextual arrow
+        .{ .fam = roboto_fam, .text = "fi", .size = 100, .w = 55.37109375 },
+        .{ .fam = roboto_fam, .text = "ffi", .size = 100, .w = 90.087890625 },
+        .{ .fam = roboto_fam, .text = "ffl", .size = 100, .w = 91.50390625 },
+        .{ .fam = inter_fam, .text = "fi", .size = 100, .w = 61.23046875 },
+        .{ .fam = inter_fam, .text = "->", .size = 100, .w = 95.41015625 },
+        .{ .fam = noto_fam, .text = "->", .size = 100, .w = 89.39999389648438 },
+        // letter-spacing after every glyph, disables ligatures; word-spacing on spaces
+        .{ .fam = roboto_fam, .text = "fi", .size = 100, .ls = 2, .w = 62.984375 },
+        .{ .fam = inter_fam, .text = "AV", .size = 100, .ls = 2, .w = 135.15234375 },
+        .{ .fam = inter_fam, .text = "a b", .size = 100, .ls = 2, .w = 151.5078125 },
+        .{ .fam = inter_fam, .text = "a b", .size = 100, .ws = 5, .w = 150.5078125 },
+        // zero-width characters, combining mark, nbsp
+        .{ .fam = inter_fam, .text = "a\u{200b}b", .size = 100, .w = 117.3828125 },
+        .{ .fam = inter_fam, .text = "a\u{ad}b", .size = 100, .w = 117.3828125 },
+        .{ .fam = inter_fam, .text = "a\u{200d}b", .size = 100, .w = 117.3828125 },
+        .{ .fam = inter_fam, .text = "a\u{a0}b", .size = 100, .w = 145.5078125 },
+        .{ .fam = inter_fam, .text = "ệ\u{301}", .size = 100, .w = 58.30078125 },
+    };
+    for (cases) |c| {
+        const gl = try font.shape(t.allocator, &fx.fc, c.text, .{ .families = c.fam, .size = c.size, .letter_spacing = c.ls, .word_spacing = c.ws });
+        defer t.allocator.free(gl);
+        var w: f32 = 0;
+        for (gl) |g| w += g.x_advance;
+        t.expectApproxEqAbs(c.w, w, 0.002) catch |e| {
+            std.debug.print("case '{s}' size {d}: got {d}\n", .{ c.text, c.size, w });
+            return e;
+        };
+    }
+    // invalid UTF-8 -> U+FFFD (one per bad byte), control characters dropped, clusters = byte offsets
+    const gl = try font.shape(t.allocator, &fx.fc, "a\xff\x01é\xe1\xbbz", .{ .families = inter_fam });
+    defer t.allocator.free(gl);
+    try t.expectEqual(@as(usize, 6), gl.len);
+    const fi = fx.fc.font(0);
+    try t.expect(gl[1].gid != 0 and gl[1].gid == fx.fc.font(gl[1].face).glyphIndex(0xfffd));
+    try t.expectEqual(fi.glyphIndex(0xe9), gl[2].gid);
+    try t.expectEqual(@as(u32, 3), gl[2].cluster);
+    try t.expectEqual(gl[1].gid, gl[3].gid);
+    try t.expectEqual(gl[1].gid, gl[4].gid);
+    try t.expectEqual(@as(u32, 7), gl[5].cluster);
+}
+
+test "vertical metrics vs oracle" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const sizes = [_]f32{ 16, 24, 44, 64 };
+    const lhs = [_]font.LineHeight{ .normal, .{ .multiple = 1.2 }, .{ .multiple = 1.5 }, .{ .px = 40 } };
+    // oracle node heights [family][size][line-height: normal, 1.2, 1.5, 40px]
+    const heights = [3][4][4]f32{
+        .{ .{ 20, 19.1875, 24, 40 }, .{ 29, 28.796875, 36, 40 }, .{ 54, 52.796875, 66, 40 }, .{ 77, 76.796875, 96, 40 } },
+        .{ .{ 22, 19.1875, 24, 40 }, .{ 33, 28.796875, 36, 40 }, .{ 60, 52.796875, 66, 40 }, .{ 87, 76.796875, 96, 40 } },
+        .{ .{ 21, 19.1875, 24, 40 }, .{ 32, 28.796875, 36, 40 }, .{ 58, 52.796875, 66, 40 }, .{ 84, 76.796875, 96, 40 } },
+    };
+    // oracle run y (= baseline - exact ascent) for Inter
+    const inter_y = [4][4]f32{ .{ 0.5, -0.5, 2.5, 10.5 }, .{ -0.25, -1.25, 2.75, 4.75 }, .{ 0.375, -0.625, 6.375, -6.625 }, .{ 0, -1, 9, -19 } };
+    const fams = [_][]const []const u8{ inter_fam, noto_fam, roboto_fam };
+    for (fams, 0..) |fam, fi| for (sizes, 0..) |size, si| for (lhs, 0..) |lh, li| {
+        var l = try fx.lay("Hello AV To WA fi ffl", .{ .families = fam, .size = size }, .{ .line_height = lh });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        try t.expectApproxEqAbs(heights[fi][si][li], l.height, 0.0001);
+        try t.expectApproxEqAbs(l.height, l.lines[0].height, 0.0001);
+        if (fi == 0) try t.expectApproxEqAbs(inter_y[si][li], l.lines[0].baseline - 1984.0 / 2048.0 * size, 0.0001);
+    };
+    // fallback font metrics join the line box only for line-height: normal (oracle: 136 / 121)
+    var a = try fx.lay("a\u{2c60}b", .{ .families = inter_fam, .size = 100 }, .{});
+    defer a.deinit(t.allocator);
+    try t.expectApproxEqAbs(@as(f32, 136), a.height, 0.0001);
+    var b = try fx.lay("ab", .{ .families = inter_fam, .size = 100 }, .{});
+    defer b.deinit(t.allocator);
+    try t.expectApproxEqAbs(@as(f32, 121), b.height, 0.0001);
+}
+
+const para = "The quick brown fox jumps over the lazy dog. Tô yêu Việt Nam — đất nước tươi đẹp; WAVE To AVATAR (kerning) well-known state-of-the-art.";
+
+test "line breaking fixtures (oracle)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16 };
+    {
+        var l = try fx.lay(para, st, .{ .max_width = 200 });
+        defer l.deinit(t.allocator);
+        try expectLines(para, l, &.{ "The quick brown fox", "jumps over the lazy dog.", "Tô yêu Việt Nam — đất", "nước tươi đẹp; WAVE To", "AVATAR (kerning) well-", "known state-of-the-art." });
+        const widths = [_]f32{ 154.5, 185.4296875, 173.1875, 181.4140625, 174.40625, 178 };
+        for (widths, l.lines, 0..) |w, ln, i| {
+            try t.expectApproxEqAbs(w, ln.width, 0.01);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(i)) * 20, ln.top, 0.0001);
+            try t.expectApproxEqAbs(@as(f32, @floatFromInt(i)) * 20 + 16, ln.baseline, 0.0001);
+            try t.expectEqual(@as(f32, 0), ln.x);
+        }
+        try t.expectApproxEqAbs(@as(f32, 120), l.height, 0.0001);
+        try t.expectApproxEqAbs(@as(f32, 185.4375), l.width, 0.0001); // ceil to 1/64
+        // glyph origins: on the baseline, monotonic in x within a line
+        for (l.lines) |ln| {
+            var x: f32 = -1;
+            for (l.glyphs[ln.glyph_start..ln.glyph_end]) |g| {
+                try t.expectEqual(ln.baseline, g.y);
+                try t.expect(g.x > x);
+                x = g.x;
+                try t.expectEqual(@as(f32, 16), g.size);
+            }
+        }
+    }
+    {
+        const s = "The quick brown fox";
+        var l = try fx.lay(s, st, .{ .max_width = 120 });
+        defer l.deinit(t.allocator);
+        try expectLines(s, l, &.{ "The quick", "brown fox" });
+        try t.expectApproxEqAbs(@as(f32, 74.671875), l.lines[0].width, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 75.328125), l.lines[1].width, 0.01);
+    }
+    {
+        // soft hyphen shows a hyphen when broken there; ZWSP breaks silently; NBSP never breaks
+        const s = "nbsp\u{a0}joined words and soft\u{ad}hyphen\u{ad}ated zero\u{200b}width\u{200b}space";
+        var l = try fx.lay(s, .{ .families = inter_fam, .size = 18 }, .{ .max_width = 150 });
+        defer l.deinit(t.allocator);
+        try expectLines(s, l, &.{ "nbsp\u{a0}joined", "words and soft", "hyphen\u{ad}ated zero", "width\u{200b}space" });
+        try t.expectApproxEqAbs(@as(f32, 126.31640625 + 6.451171875), l.lines[1].width, 0.01);
+        const hy = l.glyphs[l.lines[1].glyph_end - 1];
+        try t.expectEqual(fx.fc.font(0).glyphIndex(0x2010), hy.gid);
+        // kerning o|w is undone at the ZWSP break: oracle 143.1298828125
+        try t.expectApproxEqAbs(@as(f32, 143.1298828125), l.lines[2].width, 0.01);
+    }
+    {
+        // overflow-wrap / word-break
+        const s = "Supercalifragilisticexpialidocious and pneumonoultramicroscopicsilicovolcanoconiosis https://example.com/a/very/long/path/that-never-ends?x=1";
+        var l = try fx.lay(s, st, .{ .max_width = 120 });
+        defer l.deinit(t.allocator);
+        try expectLines(s, l, &.{ "Supercalifragilisticexpialidocious", "and", "pneumonoultramicroscopicsilicovolcanoconiosis", "https://example.com/a/very/long/path/that-", "never-ends?x=1" });
+        var l2 = try fx.lay(s, st, .{ .max_width = 120, .word_break = .break_all });
+        defer l2.deinit(t.allocator);
+        try expectLines(s, l2, &.{ "Supercalifragili", "sticexpialidocio", "us and pneumo", "noultramicrosc", "opicsilicovolca", "noconiosis http", "s://example.co", "m/a/very/long/", "path/that-neve", "r-ends?x=1" });
+        var l3 = try fx.lay(s, st, .{ .max_width = 120, .overflow_wrap = .anywhere });
+        defer l3.deinit(t.allocator);
+        try t.expectEqualStrings("Supercalifragili", lineText(s, l3, 0));
+        for (l3.lines) |ln| try t.expect(ln.width <= 120);
+    }
+    {
+        // CJK: break between ideographs, never before closing / after opening punctuation
+        const s = "\u{4e2d}\u{6587}\u{3002}\u{300c}\u{4e2d}\u{300d}\u{4e2d}";
+        var p = try font.Paragraph.init(t.allocator, &fx.fc, &.{.{ .text = s, .style = st }}, .{});
+        defer p.deinit();
+        const B = font.ShapedGlyph.BREAK_BEFORE;
+        const expect = [_]bool{ false, true, false, true, false, false, true };
+        for (expect, p.glyphs) |e, g| try t.expectEqual(e, g.flags & B != 0);
+    }
+}
+
+test "white-space modes" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16 };
+    const s = "  leading and   multiple    spaces \t tab\there  \n  second line\n\nfourth   line  ";
+    {
+        var l = try fx.lay(s, st, .{ .max_width = 200 });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 3), l.lines.len);
+        try t.expectEqualStrings("leading and   multiple", lineText(s, l, 0));
+        try t.expectApproxEqAbs(@as(f32, 152.2109375), l.lines[0].width, 0.01); // oracle (collapsed)
+    }
+    {
+        var l = try fx.lay(s, st, .{ .max_width = 200, .white_space = .nowrap });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        try t.expect(l.width > 200);
+    }
+    {
+        var l = try fx.lay(s, st, .{ .max_width = 90, .white_space = .pre });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 4), l.lines.len); // forced breaks only; blank 3rd line
+        try t.expectEqual(l.lines[2].glyph_start, l.lines[2].glyph_end);
+        try t.expectApproxEqAbs(@as(f32, 80), l.height, 0.0001);
+        try t.expectApproxEqAbs(@as(f32, 330.875), l.width, 0.02); // oracle, tabs + trailing spaces
+        try t.expectApproxEqAbs(@as(f32, 95.7890625), l.lines[1].width, 0.01);
+    }
+    {
+        var l = try fx.lay(s, st, .{ .max_width = 200, .white_space = .pre_line });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 5), l.lines.len);
+        try t.expectApproxEqAbs(@as(f32, 100), l.height, 0.0001);
+        try t.expectEqualStrings("second line", lineText(s, l, 2));
+        try t.expectEqualStrings("", lineText(s, l, 3));
+        try t.expectApproxEqAbs(@as(f32, 76.5078125), l.lines[4].width, 0.01);
+    }
+    {
+        var l = try fx.lay(s, st, .{ .max_width = 200, .white_space = .pre_wrap });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 5), l.lines.len);
+        // oracle: hanging spaces are part of the reported run width
+        try t.expectApproxEqAbs(@as(f32, 188.21875), l.lines[0].width, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 150.875), l.lines[1].width, 0.01);
+    }
+    {
+        var l = try fx.lay("   \n\t ", st, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 0), l.lines.len);
+        try t.expectEqual(@as(f32, 0), l.height);
+        var e = try fx.lay("", st, .{ .max_width = 10, .ellipsis = true, .max_lines = 1 });
+        defer e.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 0), e.glyphs.len);
+    }
+}
+
+test "clamp, ellipsis, alignment, justify" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16, .user = 7 };
+    const s = "The quick brown fox jumps over the lazy dog";
+    const ell = fx.fc.font(0).glyphIndex(0x2026);
+    const Case = struct { w: f32, text: []const u8, width: f32 };
+    // oracle: lineClamp 1
+    for ([_]Case{ .{ .w = 150, .text = "The quick brown", .width = 140.40625 }, .{ .w = 120, .text = "The quick", .width = 88.5 }, .{ .w = 85, .text = "The quic", .width = 79.71875 } }) |c| {
+        var l = try fx.lay(s, st, .{ .max_width = c.w, .max_lines = 1 });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        try t.expectApproxEqAbs(c.width, l.lines[0].width, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 20), l.height, 0.0001);
+        const last = l.glyphs[l.glyphs.len - 1];
+        try t.expectEqual(ell, last.gid);
+        try t.expectEqual(@as(u32, 7), last.user);
+        const before = l.glyphs[l.glyphs.len - 2];
+        try t.expectEqual(c.text[c.text.len - 1], s[before.cluster]);
+        try t.expectEqual(c.text.len - 1, before.cluster);
+    }
+    {
+        // oracle: nowrap + text-overflow: ellipsis at 150 -> "The quick brown …" 144.90625
+        var l = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        try t.expectApproxEqAbs(@as(f32, 144.90625), l.lines[0].width, 0.01);
+        // wide enough: untouched
+        var l2 = try fx.lay(s, st, .{ .max_width = 1000, .white_space = .nowrap, .ellipsis = true });
+        defer l2.deinit(t.allocator);
+        try t.expect(l2.glyphs[l2.glyphs.len - 1].gid != ell);
+        // no clamp needed: no ellipsis
+        var l3 = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 5 });
+        defer l3.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 3), l3.lines.len);
+        try t.expect(l3.glyphs[l3.glyphs.len - 1].gid != ell);
+    }
+    {
+        const a = "aaa bbb ccc ddd";
+        // oracle x offsets at width 60: right 33.046875 / 30.609375, center 16.515625 / 15.296875
+        var r = try fx.lay(a, st, .{ .max_width = 60, .text_align = .right });
+        defer r.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 4), r.lines.len);
+        try t.expectApproxEqAbs(@as(f32, 33.046875), r.lines[0].x, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 30.609375), r.lines[1].x, 0.01);
+        try t.expectApproxEqAbs(r.lines[0].x, r.glyphs[0].x, 0.0001);
+        var c = try fx.lay(a, st, .{ .max_width = 60, .text_align = .center });
+        defer c.deinit(t.allocator);
+        try t.expectApproxEqAbs(@as(f32, 16.515625), c.lines[0].x, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 15.296875), c.lines[1].x, 0.01);
+        var e = try fx.lay(a, st, .{ .max_width = 60, .text_align = .end });
+        defer e.deinit(t.allocator);
+        try t.expectApproxEqAbs(r.lines[2].x, e.lines[2].x, 0.0001);
+        // overflowing line stays at x = 0 when centred (oracle)
+        var o = try fx.lay("aaaaaaaaaaaaaaa bbb", st, .{ .max_width = 60, .text_align = .center });
+        defer o.deinit(t.allocator);
+        try t.expectEqual(@as(f32, 0), o.lines[0].x);
+        try t.expectApproxEqAbs(@as(f32, 15.296875), o.lines[1].x, 0.01);
+    }
+    {
+        // oracle: justify at 100 -> first line 100 wide, last line natural 82.890625
+        const j = "aaa bbb ccc ddd eee fff";
+        var l = try fx.lay(j, st, .{ .max_width = 100, .text_align = .justify });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 2), l.lines.len);
+        try t.expectApproxEqAbs(@as(f32, 100), l.lines[0].width, 0.01);
+        try t.expectApproxEqAbs(@as(f32, 82.890625), l.lines[1].width, 0.01);
+    }
+}
+
+test "multiple runs (oracle)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const a: font.TextStyle = .{ .families = inter_fam, .size = 16, .user = 1 };
+    const b: font.TextStyle = .{ .families = noto_fam, .size = 28, .user = 2 };
+    const runs = [_]font.Run{ .{ .text = "Hello small ", .style = a }, .{ .text = "BIG World", .style = b }, .{ .text = " and small again to wrap lines", .style = a } };
+    {
+        var l = try font.layoutText(t.allocator, &fx.fc, &runs, .{ .max_width = 400 });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 2), l.lines.len);
+        try t.expectApproxEqAbs(@as(f32, 58), l.height, 0.0001);
+        try t.expectApproxEqAbs(@as(f32, 30), l.lines[0].baseline, 0.0001);
+        try t.expectApproxEqAbs(@as(f32, 38), l.lines[1].top, 0.0001);
+        try t.expectApproxEqAbs(@as(f32, 220.5625 + 141.2109375), l.lines[0].width, 0.01);
+        // run origins snap to 1/64: "BIG" starts at 86.765625, " and" at 220.5625
+        try t.expectApproxEqAbs(@as(f32, 86.765625), l.glyphs[12].x, 0.0001);
+        try t.expectEqual(@as(u32, 2), l.glyphs[12].user);
+        try t.expectEqual(@as(f32, 28), l.glyphs[12].size);
+        try t.expectEqual(@as(u32, 12), l.glyphs[12].cluster);
+        try t.expectApproxEqAbs(@as(f32, 220.5625), l.glyphs[21].x, 0.0001);
+    }
+    {
+        var l = try font.layoutText(t.allocator, &fx.fc, &runs, .{ .max_width = 150 });
+        defer l.deinit(t.allocator);
+        try t.expectApproxEqAbs(@as(f32, 116), l.height, 0.0001);
+        var l2 = try font.layoutText(t.allocator, &fx.fc, &runs, .{ .max_width = 150, .line_height = .{ .multiple = 1.5 } });
+        defer l2.deinit(t.allocator);
+        try t.expectApproxEqAbs(@as(f32, 96), l2.height, 0.0001);
+        var l3 = try font.layoutText(t.allocator, &fx.fc, &runs, .{ .max_width = 150, .line_height = .{ .px = 30 } });
+        defer l3.deinit(t.allocator);
+        try t.expectApproxEqAbs(@as(f32, 120), l3.height, 0.0001);
+    }
+}
+
+test "measure: cached paragraph, monotonic, min/max content" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    var p = try font.Paragraph.init(t.allocator, &fx.fc, &.{.{ .text = para, .style = .{ .families = roboto_fam, .size = 17 } }}, .{});
+    defer p.deinit();
+    const max = p.maxContentWidth();
+    const min = p.minContentWidth();
+    try t.expect(min > 0 and min < max);
+    try t.expectEqual(max, p.measure(null).width);
+    try t.expectEqual(@as(u32, 1), p.measure(max).line_count); // fits exactly at its own ceiled width
+    try t.expect(p.measure(max - 1.0 / 64.0).line_count == 2);
+    var prev = p.measure(1);
+    var w: f32 = 1;
+    while (w < max + 40) : (w += 3.7) {
+        const s = p.measure(w);
+        try t.expect(s.height <= prev.height);
+        try t.expect(s.line_count <= prev.line_count);
+        try t.expect(s.width <= @max(w, min) + 0.001);
+        try t.expect(s.width >= min - 0.001 or s.line_count == 1);
+        prev = s;
+        // layout agrees with measure
+        var l = try p.layout(t.allocator, w);
+        defer l.deinit(t.allocator);
+        try t.expectEqual(s.width, l.width);
+        try t.expectEqual(s.height, l.height);
+        try t.expectEqual(@as(usize, s.line_count), l.lines.len);
+    }
+    try t.expectEqual(@as(u32, 1), prev.line_count);
+    // min-content is the widest unbreakable piece
+    try t.expectEqual(min, p.measure(0).width);
+}
+
+test "empty collection and degenerate input" {
+    var fc: font.FontCollection = .{};
+    defer fc.deinit(t.allocator);
+    var l = try font.layoutText(t.allocator, &fc, &.{.{ .text = "hello", .style = .{} }}, .{ .max_width = 10, .ellipsis = true });
+    defer l.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 0), l.glyphs.len);
+    try t.expectEqual(@as(f32, 0), l.height);
+    var l2 = try font.layoutText(t.allocator, &fc, &.{}, .{});
+    defer l2.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 0), l2.lines.len);
+    try t.expectError(error.InvalidFont, fc.register(t.allocator, "nope", .{}));
+}
