@@ -6,7 +6,6 @@ const st = @import("style.zig");
 const tr = @import("tree.zig");
 const flex = @import("flex.zig");
 
-const Tree = tr.Tree;
 const In = tr.In;
 const Out = tr.Out;
 const Box = tr.Box;
@@ -67,11 +66,33 @@ const Item = struct {
     }
 };
 
+/// Per-container state kept in the tree's scratch arena (see `Tree.computeNode` on stack discipline).
 const G = struct {
-    t: *Tree,
     items: []Item,
     tracks: [2][]Track,
     gap: [2]f32,
+    in: In,
+    box: Box,
+    /// box of the item being placed
+    cb: Box,
+    inset: [4]f32,
+    inner: [2]f32,
+    tmpl: [2][]const st.Track,
+    fit_range: [2][2]i32,
+    explicit: [2]i32,
+    lo: [2]i32,
+    n_tracks: [2]i32,
+    used: [2][]bool,
+    size: [2]f32,
+    content: [2]f32,
+    area: [2]f32,
+    astart: [2]f32,
+    al: [2]st.Align,
+    ci: In,
+    co: Out,
+    pad_area: [4]f32,
+    abs_area: [4]f32,
+    sp: tr.StaticPos,
 };
 
 fn lineIdx(l: i16, explicit: i32) i32 {
@@ -190,7 +211,7 @@ fn initTrack(tk: st.Track, inner: f32) Track {
     return r;
 }
 
-fn resetTracks(g: *G, a: usize, s: *const st.Style, tmpl: []const st.Track, neg: i32, fit_range: [2]i32, used: []const bool, inner: f32) void {
+fn resetTracks(t: anytype, g: *G, a: usize, s: *const st.Style, tmpl: []const st.Track, neg: i32, fit_range: [2]i32, used: []const bool, inner: f32) void {
     const autos = if (a == 0) s.grid_auto_columns else s.grid_auto_rows;
     for (g.tracks[a], 0..) |*tk, i| {
         const e = @as(i32, @intCast(i)) - neg;
@@ -203,11 +224,11 @@ fn resetTracks(g: *G, a: usize, s: *const st.Style, tmpl: []const st.Track, neg:
             src = autos[@intCast(idx)];
         }
         tk.* = initTrack(src, inner);
-        if (g.t.q64) {
-            tk.min_v = g.t.qt(tk.min_v);
-            if (tk.max_kind != .flex and tk.max_v != MAXC) tk.max_v = g.t.qt(tk.max_v);
-            tk.base = g.t.qt(tk.base);
-            if (tk.limit != MAXC) tk.limit = g.t.qt(tk.limit);
+        if (t.q64) {
+            tk.min_v = t.qt(tk.min_v);
+            if (tk.max_kind != .flex and tk.max_v != MAXC) tk.max_v = t.qt(tk.max_v);
+            tk.base = t.qt(tk.base);
+            if (tk.limit != MAXC) tk.limit = t.qt(tk.limit);
         }
         if (e >= fit_range[0] and e < fit_range[1] and !used[i]) {
             tk.* = .{ .min_kind = .fixed, .max_kind = .fixed, .min_v = 0, .max_v = 0, .base = 0, .limit = 0, .collapsed = true };
@@ -229,13 +250,15 @@ fn spanTracks(g: *G, it: *const Item, a: usize) []Track {
     return ts[s..@max(s, e)];
 }
 
-fn contrib(g: *G, it: *Item, a: usize, k: usize) Error!f32 {
+noinline fn contrib(t: anytype, g: *G, it: *Item, a: usize, k: usize) Error!f32 {
     if (has(it.contrib[a][k])) return it.contrib[a][k];
     var v: f32 = undefined;
     if (a == 0) {
-        v = try g.t.measureChild(it.node, .{ .avail = .{ if (k == 0) MINC else MAXC, MAXC } }, 0);
+        g.ci = .{ .avail = .{ if (k == 0) MINC else MAXC, MAXC } };
+        v = try t.measureChild(it.node, &g.ci, 0);
     } else {
-        v = try g.t.measureChild(it.node, .{ .known = .{ it.size[0], NONE }, .parent = .{ it.area_w, NONE }, .avail = .{ it.area_w, MAXC } }, 1);
+        g.ci = .{ .known = .{ it.size[0], NONE }, .parent = .{ it.area_w, NONE }, .avail = .{ it.area_w, MAXC } };
+        v = try t.measureChild(it.node, &g.ci, 1);
         it.contrib[1] = .{ v + it.margin[1], v + it.margin[1] };
     }
     v += it.margin[a];
@@ -244,8 +267,8 @@ fn contrib(g: *G, it: *Item, a: usize, k: usize) Error!f32 {
 }
 
 /// Minimum contribution (§11.5): the content-based automatic minimum, or the specified minimum.
-fn minContrib(g: *G, it: *Item, a: usize, allow_auto: bool) Error!f32 {
-    const cs = &g.t.nodes.items[it.node].style;
+fn minContrib(t: anytype, g: *G, it: *Item, a: usize, allow_auto: bool) Error!f32 {
+    const cs = &t.nodes.items[it.node].style;
     if (cs.size[a] != .px) {
         switch (cs.min_size[a]) {
             .px => |v| return v + it.margin[a],
@@ -254,7 +277,7 @@ fn minContrib(g: *G, it: *Item, a: usize, allow_auto: bool) Error!f32 {
         const ov = if (a == 0) cs.overflow_x else cs.overflow_y;
         if (ov != .visible or !allow_auto) return it.margin[a];
     }
-    return contrib(g, it, a, 0);
+    return contrib(t, g, it, a, 0);
 }
 
 fn pred(tk: *const Track, phase: u8, max_constraint: bool, flex_only: bool) bool {
@@ -353,7 +376,7 @@ fn findFr(ts: []Track, gap: f32, space: f32) f32 {
 }
 
 /// The track sizing algorithm for one axis. `avail`: content-box space (definite, MINC or MAXC).
-fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
+noinline fn sizeTracks(t: anytype, g: *G, a: usize, avail: f32, stretch: bool) Error!void {
     const ts = g.tracks[a];
     const gap = g.gap[a];
     // only the intrinsic inline sizing runs under a real max-content constraint; an auto block size is just
@@ -399,9 +422,9 @@ fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
                     }
                     if (!any) continue;
                     const size = switch (ph) {
-                        0 => try minContrib(g, it, a, !(flex_only and sp > 1)),
-                        1, 3 => try contrib(g, it, a, 0),
-                        else => try contrib(g, it, a, 1),
+                        0 => try minContrib(t, g, it, a, !(flex_only and sp > 1)),
+                        1, 3 => try contrib(t, g, it, a, 0),
+                        else => try contrib(t, g, it, a, 1),
                     };
                     distribute(sl, gap, size, ph, max_constraint, flex_only);
                 }
@@ -470,14 +493,14 @@ fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
                 const sl = spanTracks(g, it, a);
                 var crosses = false;
                 for (sl) |*tk| crosses = crosses or tk.max_kind == .flex;
-                if (crosses) fr = @max(fr, findFr(sl, gap, try contrib(g, it, a, 1)));
+                if (crosses) fr = @max(fr, findFr(sl, gap, try contrib(t, g, it, a, 1)));
             }
         }
         // (on the layout-unit grid each track truncates and hands its remainder to the next one)
         var leftover: f32 = 0;
         for (ts) |*tk| {
             if (tk.max_kind != .flex) continue;
-            if (!g.t.q64) {
+            if (!t.q64) {
                 tk.base = @max(tk.base, fr * tk.max_v);
                 continue;
             }
@@ -503,7 +526,7 @@ fn sizeTracks(g: *G, a: usize, avail: f32, stretch: bool) Error!void {
             var extra = avail - sum;
             for (ts) |*tk| {
                 if (tk.max_kind != .auto) continue;
-                const share = g.t.div(extra, n);
+                const share = t.div(extra, n);
                 tk.base += share;
                 extra -= share;
                 n -= 1;
@@ -541,15 +564,14 @@ fn usedSize(cs: *const st.Style, b: *const Box, a: usize, area: f32, al: st.Alig
 
 /// Content alignment (Blink's ComputeSetGeometry): assigns the track offsets (relative to the container's
 /// border-box origin).
-fn placeTracks(g: *G, a: usize, inner: f32, start: f32, al: st.Align) void {
-    const t = g.t;
+fn placeTracks(t: anytype, g: *G, a: usize, inner: f32, start: f32, al: st.Align, safe: bool) void {
     const ts = g.tracks[a];
     var n: f32 = 0;
     for (ts) |*tk| n += @floatFromInt(@intFromBool(!tk.collapsed));
     const free = inner - total(ts, g.gap[a]);
     var pos = start;
     var gutter = g.gap[a];
-    switch (al) {
+    switch (if (free < 0 and safe) st.Align.start else al) {
         .space_between => if (n >= 2 and free >= 0) {
             gutter += t.div(free, n - 1);
         },
@@ -592,36 +614,122 @@ fn areaOf(ts: []const Track, gap: f32, start: i32, end_: i32) [2]f32 {
     return .{ ts[s].off, ts[e - 1].off + ts[e - 1].base - ts[s].off };
 }
 
-pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
-    var in = in_;
-    const s = &t.nodes.items[node].style;
-    var box = t.sbox(s, &in);
-    in.known = tr.styledKnown(in, &box);
-    if (!in.layout and has(in.known[0]) and has(in.known[1])) return .{ .size = in.known };
-    _ = t.applyRatio(s, &box, &in.known);
-    const pb = box.pb;
-    var inset: [4]f32 = undefined;
-    for (0..4) |i| inset[i] = box.padding[i] + box.border[i];
-
+pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!void {
     const mark = t.scratch.mark();
     defer t.scratch.release(mark);
+    const g = try t.scratch.create(t.alloc, G);
+    g.in = in_.*;
+    const in = &g.in;
+    const s = &t.nodes.items[node].style;
+    t.sbox(&g.box, s, in);
+    const box = &g.box;
+    in.known = tr.styledKnown(in, box);
+    out.* = .{ .size = in.known };
+    if (!in.layout and has(in.known[0]) and has(in.known[1])) return;
+    const ratio_w = t.ratioWidth(s, box, in);
+    const pb = box.pb;
+    for (0..4) |i| g.inset[i] = box.padding[i] + box.border[i];
 
-    // items
-    var count: usize = 0;
-    {
-        var ch = t.firstChild(node);
-        while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
-            if (cs.display != .none and cs.position != .absolute) count += 1;
+    try place(t, g, node);
+    const tmpl = &g.tmpl;
+    const lo = &g.lo;
+    const inner = &g.inner;
+    const jc: st.Align = s.justify_content orelse .stretch;
+    const ac: st.Align = s.align_content orelse .stretch;
+
+    // inline size when not known: fit-content of the intrinsic sizes
+    if (!has(in.known[0])) {
+        const a0 = in.avail[0] - box.marginSum(0) - pb[0];
+        resetTracks(t, g, 0, s, tmpl[0], -lo[0], g.fit_range[0], g.used[0], NONE);
+        var w: f32 = undefined;
+        if (a0 == MINC) {
+            try sizeTracks(t, g, 0, MINC, false);
+            w = total(g.tracks[0], g.gap[0]);
+        } else {
+            try sizeTracks(t, g, 0, MAXC, false);
+            w = total(g.tracks[0], g.gap[0]);
+            if (isDef(a0) and w > a0) {
+                resetTracks(t, g, 0, s, tmpl[0], -lo[0], g.fit_range[0], g.used[0], NONE);
+                try sizeTracks(t, g, 0, MINC, false);
+                w = @max(total(g.tracks[0], g.gap[0]), a0);
+            }
+        }
+        in.known[0] = maxO(@max(clampO(w + pb[0], box.min[0], box.max[0]), pb[0]), ratio_w);
+        inner[0] = in.known[0] - pb[0];
+        g.gap[0] = t.lp(s.gap[0], inner[0]);
+    }
+    out.* = .{ .size = .{ in.known[0], NONE } };
+    if (in.width_only) return;
+    const floor_h = t.applyRatio(s, box, &in.known);
+    if (has(floor_h)) {
+        box.min[1] = floor_h;
+        inner[1] = @max(floor_h - pb[1], 0);
+    } else if (!in.indef_h) inner[1] = maxO(in.known[1] - pb[1], 0);
+    g.gap[1] = t.lp(s.gap[1], inner[1]);
+
+    // columns
+    resetTracks(t, g, 0, s, tmpl[0], -lo[0], g.fit_range[0], g.used[0], inner[0]);
+    try sizeTracks(t, g, 0, inner[0], jc == .stretch);
+    placeTracks(t, g, 0, inner[0], g.inset[0], jc, s.safe.justify_content);
+
+    try itemWidths(t, g, s);
+
+    // rows
+    const known_h = in.known[1];
+    const inner_h: f32 = maxO(known_h - pb[1], 0);
+    resetTracks(t, g, 1, s, tmpl[1], -lo[1], g.fit_range[1], g.used[1], inner[1]);
+    try sizeTracks(t, g, 1, orElse(inner_h, MAXC), ac == .stretch);
+    if (!has(inner_h)) {
+        const min_h = box.min[1] - pb[1];
+        if (total(g.tracks[1], g.gap[1]) < min_h) {
+            resetTracks(t, g, 1, s, tmpl[1], -lo[1], g.fit_range[1], g.used[1], inner[1]);
+            try sizeTracks(t, g, 1, min_h, ac == .stretch);
         }
     }
-    const items = try t.scratch.alloc(t.alloc, Item, count);
+    var auto_h: f32 = NONE;
+    if (!has(inner_h)) {
+        // percentage rows and gaps resolve against the content-based height in a second pass
+        var pct = s.gap[1].hasPercent();
+        for (tmpl[1]) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
+        for (s.grid_auto_rows) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
+        if (pct) {
+            const h = @max(clampO(total(g.tracks[1], g.gap[1]) + pb[1], box.min[1], box.max[1]) - pb[1], 0);
+            g.gap[1] = t.lp(s.gap[1], h);
+            resetTracks(t, g, 1, s, tmpl[1], -lo[1], g.fit_range[1], g.used[1], h);
+            for (g.items) |*it| it.contrib[1] = .{ NONE, NONE };
+            try sizeTracks(t, g, 1, h, ac == .stretch);
+            auto_h = h + pb[1];
+        }
+    }
+    const content_h = total(g.tracks[1], g.gap[1]);
+    g.size = .{ in.known[0], orElse(orElse(known_h, auto_h), @max(clampO(content_h + pb[1], box.min[1], box.max[1]), pb[1])) };
+    out.* = .{ .size = g.size };
+    if (!in.layout) return;
+
+    placeTracks(t, g, 1, @max(g.size[1] - pb[1], 0), g.inset[1], ac, s.safe.align_content);
+    try layoutItems(t, g, node, s);
+    out.content = g.content;
+}
+
+/// Explicit grid (with auto-repeat expansion), item placement, track allocation.
+noinline fn place(t: anytype, g: *G, node: u32) Error!void {
+    const s = &t.nodes.items[node].style;
+    const box = &g.box;
+    const in = &g.in;
+    const pb = box.pb;
+
+    // items (in order-modified document order)
+    const ids = try t.orderedItems(node);
+    const items = try t.scratch.alloc(t.alloc, Item, ids.len);
+    g.items = items;
 
     // explicit grid (with auto-repeat expansion)
-    var inner: [2]f32 = .{ maxO(in.known[0] - pb[0], 0), if (in.indef_h) NONE else maxO(in.known[1] - pb[1], 0) };
-    var g: G = .{ .t = t, .items = items, .tracks = undefined, .gap = .{ t.lp(s.gap[0], inner[0]), t.lp(s.gap[1], inner[1]) } };
-    var tmpl: [2][]const st.Track = .{ s.grid_template_columns, s.grid_template_rows };
-    var fit_range: [2][2]i32 = .{ .{ 0, 0 }, .{ 0, 0 } };
+    g.inner = .{ maxO(in.known[0] - pb[0], 0), if (in.indef_h) NONE else maxO(in.known[1] - pb[1], 0) };
+    const inner = &g.inner;
+    g.gap = .{ t.lp(s.gap[0], inner[0]), t.lp(s.gap[1], inner[1]) };
+    g.tmpl = .{ s.grid_template_columns, s.grid_template_rows };
+    const tmpl = &g.tmpl;
+    g.fit_range = .{ .{ 0, 0 }, .{ 0, 0 } };
     for (0..2) |a| {
         const rep = (if (a == 0) s.grid_auto_repeat_columns else s.grid_auto_repeat_rows) orelse continue;
         const space = orElse(orElse(inner[a], box.max[a] - pb[a]), box.min[a] - pb[a]);
@@ -632,37 +740,33 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
         for (0..n) |k| @memcpy(buf[at + k * rep.tracks.len ..][0..rep.tracks.len], rep.tracks);
         @memcpy(buf[at + n * rep.tracks.len ..], tmpl[a][at..]);
         tmpl[a] = buf;
-        if (rep.fit) fit_range[a] = .{ @intCast(at), @intCast(at + n * rep.tracks.len) };
+        if (rep.fit) g.fit_range[a] = .{ @intCast(at), @intCast(at + n * rep.tracks.len) };
     }
-    const explicit: [2]i32 = .{ @intCast(@min(tmpl[0].len, max_line)), @intCast(@min(tmpl[1].len, max_line)) };
+    g.explicit = .{ @intCast(@min(tmpl[0].len, max_line)), @intCast(@min(tmpl[1].len, max_line)) };
+    const explicit = &g.explicit;
 
     // placement
-    var lo: [2]i32 = .{ 0, 0 };
+    g.lo = .{ 0, 0 };
+    const lo = &g.lo;
     {
-        var i: usize = 0;
-        var ch = t.firstChild(node);
-        while (ch != no_node) : (ch = t.nextSibling(ch)) {
+        for (ids, items) |ch, *it| {
             const cs = &t.nodes.items[ch].style;
-            if (cs.display == .none or cs.position == .absolute) continue;
-            const it = &items[i];
-            i += 1;
             it.* = .{
                 .node = ch,
                 .p = .{ resolvePlace(cs.grid_column, explicit[0]), resolvePlace(cs.grid_row, explicit[1]) },
                 .placed = false,
                 .contrib = .{ .{ NONE, NONE }, .{ NONE, NONE } },
-                .margin = .{ 0, 0 },
+                .margin = .{ t.marginSumOf(cs, 0, NONE), t.marginSumOf(cs, 1, NONE) },
                 .size = .{ NONE, NONE },
                 .area_w = NONE,
             };
             for (0..2) |a| {
                 if (it.p[a].def) lo[a] = @min(lo[a], it.p[a].start);
             }
-            const cb = t.rbox(cs, .{ NONE, NONE });
-            it.margin = .{ cb.marginSum(0), cb.marginSum(1) };
         }
     }
-    var n_tracks: [2]i32 = .{ explicit[0] - lo[0], explicit[1] - lo[1] };
+    g.n_tracks = .{ explicit[0] - lo[0], explicit[1] - lo[1] };
+    const n_tracks = &g.n_tracks;
     for (items) |*it| {
         for (0..2) |a| {
             if (it.p[a].def) it.p[a].start -= lo[a];
@@ -727,122 +831,64 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
     }
 
     // tracks
-    var used: [2][]bool = undefined;
     for (0..2) |a| {
         const n: usize = @intCast(@max(n_tracks[a], 0));
         g.tracks[a] = try t.scratch.alloc(t.alloc, Track, n);
-        used[a] = try t.scratch.alloc(t.alloc, bool, n);
-        @memset(used[a], false);
+        g.used[a] = try t.scratch.alloc(t.alloc, bool, n);
+        @memset(g.used[a], false);
         for (items) |*it| {
             var k = it.p[a].start;
             while (k < it.end(a)) : (k += 1) {
-                if (k >= 0 and k < n) used[a][@intCast(k)] = true;
+                if (k >= 0 and k < n) g.used[a][@intCast(k)] = true;
             }
         }
     }
-    const jc: st.Align = s.justify_content orelse .stretch;
-    const ac: st.Align = s.align_content orelse .stretch;
+}
 
-    // inline size when not known: fit-content of the intrinsic sizes
-    if (!has(in.known[0])) {
-        const a0 = in.avail[0] - box.marginSum(0) - pb[0];
-        resetTracks(&g, 0, s, tmpl[0], -lo[0], fit_range[0], used[0], NONE);
-        var w: f32 = undefined;
-        if (a0 == MINC) {
-            try sizeTracks(&g, 0, MINC, false);
-            w = total(g.tracks[0], g.gap[0]);
-        } else {
-            try sizeTracks(&g, 0, MAXC, false);
-            w = total(g.tracks[0], g.gap[0]);
-            if (isDef(a0) and w > a0) {
-                resetTracks(&g, 0, s, tmpl[0], -lo[0], fit_range[0], used[0], NONE);
-                try sizeTracks(&g, 0, MINC, false);
-                w = @max(total(g.tracks[0], g.gap[0]), a0);
-            }
-        }
-        in.known[0] = @max(clampO(w + pb[0], box.min[0], box.max[0]), pb[0]);
-        inner[0] = in.known[0] - pb[0];
-        g.gap[0] = t.lp(s.gap[0], inner[0]);
-    }
-    if (in.width_only) return .{ .size = .{ in.known[0], NONE } };
-    const floor_h = t.applyRatio(s, &box, &in.known);
-    if (has(floor_h)) {
-        box.min[1] = floor_h;
-        inner[1] = @max(floor_h - pb[1], 0);
-    } else if (!in.indef_h) inner[1] = maxO(in.known[1] - pb[1], 0);
-    g.gap[1] = t.lp(s.gap[1], inner[1]);
-
-    // columns
-    resetTracks(&g, 0, s, tmpl[0], -lo[0], fit_range[0], used[0], inner[0]);
-    try sizeTracks(&g, 0, inner[0], jc == .stretch);
-    placeTracks(&g, 0, inner[0], inset[0], jc);
-
-    // item inline sizes
-    for (items) |*it| {
+/// Inline sizes of the items inside their (sized) column areas.
+noinline fn itemWidths(t: anytype, g: *G, s: *const st.Style) Error!void {
+    for (g.items) |*it| {
         const cs = &t.nodes.items[it.node].style;
         const area = areaOf(g.tracks[0], g.gap[0], it.p[0].start, it.end(0));
         it.area_w = area[1];
-        const b = t.rbox(cs, .{ area[1], NONE });
+        t.rbox(&g.cb, cs, .{ area[1], NONE });
+        const b = &g.cb;
         it.margin = .{ b.marginSum(0), b.marginSum(1) };
-        var w = usedSize(cs, &b, 0, area[1], selfAlign(cs.justify_self, s.justify_items, cs));
+        var w = usedSize(cs, b, 0, area[1], selfAlign(cs.justify_self, s.justify_items, cs));
         if (!has(w)) {
             const kh = clampO(b.size[1], b.min[1], b.max[1]);
-            w = try t.measureChild(it.node, .{ .known = .{ NONE, kh }, .parent = .{ area[1], NONE }, .avail = .{ area[1], MAXC } }, 0);
+            g.ci = .{ .known = .{ NONE, kh }, .parent = .{ area[1], NONE }, .avail = .{ area[1], MAXC } };
+            w = try t.measureChild(it.node, &g.ci, 0);
         }
         it.size[0] = w;
     }
+}
 
-    // rows
-    const known_h = in.known[1];
-    const inner_h: f32 = maxO(known_h - pb[1], 0);
-    resetTracks(&g, 1, s, tmpl[1], -lo[1], fit_range[1], used[1], inner[1]);
-    try sizeTracks(&g, 1, orElse(inner_h, MAXC), ac == .stretch);
-    if (!has(inner_h)) {
-        const min_h = box.min[1] - pb[1];
-        if (total(g.tracks[1], g.gap[1]) < min_h) {
-            resetTracks(&g, 1, s, tmpl[1], -lo[1], fit_range[1], used[1], inner[1]);
-            try sizeTracks(&g, 1, min_h, ac == .stretch);
-        }
-    }
-    var auto_h: f32 = NONE;
-    if (!has(inner_h)) {
-        // percentage rows and gaps resolve against the content-based height in a second pass
-        var pct = s.gap[1].hasPercent();
-        for (tmpl[1]) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
-        for (s.grid_auto_rows) |tk| pct = pct or tk.min == .percent or tk.max == .percent;
-        if (pct) {
-            const h = @max(clampO(total(g.tracks[1], g.gap[1]) + pb[1], box.min[1], box.max[1]) - pb[1], 0);
-            g.gap[1] = t.lp(s.gap[1], h);
-            resetTracks(&g, 1, s, tmpl[1], -lo[1], fit_range[1], used[1], h);
-            for (items) |*it| it.contrib[1] = .{ NONE, NONE };
-            try sizeTracks(&g, 1, h, ac == .stretch);
-            auto_h = h + pb[1];
-        }
-    }
-    const content_h = total(g.tracks[1], g.gap[1]);
-    const size: [2]f32 = .{ in.known[0], orElse(orElse(known_h, auto_h), @max(clampO(content_h + pb[1], box.min[1], box.max[1]), pb[1])) };
-    if (!in.layout) return .{ .size = size };
-    const final_inner: [2]f32 = .{ @max(size[0] - pb[0], 0), @max(size[1] - pb[1], 0) };
-
-    placeTracks(&g, 1, final_inner[1], inset[1], ac);
-
-    // items
-    var out: Out = .{ .size = size };
-    var content: [2]f32 = .{ 0, 0 };
-    for (items) |*it| {
+/// Final layout of the items in their areas, absolutely positioned and hidden children.
+noinline fn layoutItems(t: anytype, g: *G, node: u32, s: *const st.Style) Error!void {
+    const box = &g.box;
+    g.content = .{ 0, 0 };
+    for (g.items) |*it| {
         const cs = &t.nodes.items[it.node].style;
         const ax = areaOf(g.tracks[0], g.gap[0], it.p[0].start, it.end(0));
         const ay = areaOf(g.tracks[1], g.gap[1], it.p[1].start, it.end(1));
-        const area: [2]f32 = .{ ax[1], ay[1] };
-        var b = t.rbox(cs, area);
-        const al: [2]st.Align = .{ selfAlign(cs.justify_self, s.justify_items, cs), selfAlign(cs.align_self, s.align_items, cs) };
-        var known: [2]f32 = .{ it.size[0], usedSize(cs, &b, 1, area[1], al[1]) };
-        if (!has(known[1])) {
-            known[1] = try t.measureChild(it.node, .{ .known = .{ known[0], NONE }, .parent = area, .avail = .{ area[0], MAXC } }, 1);
-            known[1] = @max(clampO(known[1], b.min[1], b.max[1]), b.pb[1]);
+        g.area = .{ ax[1], ay[1] };
+        g.astart = .{ ax[0], ay[0] };
+        const area = &g.area;
+        t.rbox(&g.cb, cs, area.*);
+        const b = &g.cb;
+        g.al = .{ selfAlign(cs.justify_self, s.justify_items, cs), selfAlign(cs.align_self, s.align_items, cs) };
+        g.ci = .{ .known = .{ it.size[0], usedSize(cs, b, 1, area[1], g.al[1]) }, .parent = area.*, .avail = .{ area[0], MAXC } };
+        if (!has(g.ci.known[1])) {
+            const h = try t.measureChild(it.node, &g.ci, 1);
+            g.ci.known[1] = @max(clampO(h, b.min[1], b.max[1]), b.pb[1]);
         }
-        const o = try t.computeNode(it.node, .{ .known = known, .parent = area, .avail = area, .layout = true });
-        var pos: [2]f32 = undefined;
+        g.ci.avail = area.*;
+        g.ci.layout = true;
+        g.ci.width_only = false;
+        try t.computeNode(it.node, &g.ci, &g.co);
+        const o = &g.co;
+        const pos = &g.ci.known;
         for (0..2) |a| {
             const free = area[a] - o.size[a] - b.marginSum(a);
             const sa = b.margin_auto[a];
@@ -856,24 +902,24 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
                     b.margin[a] = f;
                 } else b.margin[a + 2] = f;
             }
-            const start = if (a == 0) ax[0] else ay[0];
-            pos[a] = start + b.margin[a] + (if (sa or ea) 0 else switch (al[a]) {
+            const safe = if (a == 0) (if (cs.justify_self != null) cs.safe.justify_self else s.safe.justify_items) else (if (cs.align_self != null) cs.safe.align_self else s.safe.align_items);
+            pos[a] = g.astart[a] + b.margin[a] + (if (sa or ea or (free < 0 and safe)) 0 else switch (g.al[a]) {
                 .end => free,
                 .center => t.div(free, 2),
                 else => 0,
             });
         }
-        if (cs.position != .absolute) {
+        if (!cs.position.isOut()) {
             pos[0] += orElse(t.dim(cs.inset.left, area[0]), -orElse(t.dim(cs.inset.right, area[0]), 0));
             pos[1] += orElse(t.dim(cs.inset.top, area[1]), -orElse(t.dim(cs.inset.bottom, area[1]), 0));
         }
-        t.setLayout(it.node, pos, &o, &b);
-        t.accumContent(&content, it.node);
+        t.setLayout(it.node, pos.*, o, b);
+        t.accumContent(&g.content, it.node);
     }
 
     // absolutely positioned and hidden children
-    if (count != t.nodes.items[node].child_count) {
-        const pad_area: [4]f32 = .{ box.border[0], box.border[1], size[0] - box.border[0] - box.border[2], size[1] - box.border[1] - box.border[3] };
+    if (g.items.len != t.nodes.items[node].child_count) {
+        g.pad_area = .{ box.border[0], box.border[1], g.size[0] - box.border[0] - box.border[2], g.size[1] - box.border[1] - box.border[3] };
         var ch = t.firstChild(node);
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
             const cs = &t.nodes.items[ch].style;
@@ -881,19 +927,45 @@ pub fn compute(t: *Tree, node: u32, in_: In) Error!Out {
                 t.hide(ch);
                 continue;
             }
-            if (cs.position != .absolute) continue;
-            // the static position of a grid child is the padding edge
-            var sp: Tree.Static = .{ .rect = pad_area };
+            if (!cs.position.isOut()) continue;
+            // the static position of a grid child is the padding edge; with grid-placement properties the
+            // containing block is the grid area between the given lines (auto = the padding edge)
+            g.sp = .{ .rect = g.pad_area };
+            var cbk = g.pad_area;
+            for (0..2) |a| {
+                const pl = if (a == 0) cs.grid_column else cs.grid_row;
+                const ts = g.tracks[a];
+                if (ts.len == 0) continue;
+                const nt: i32 = @intCast(ts.len);
+                var e0 = cbk[a];
+                var e1 = cbk[a] + cbk[a + 2];
+                // line indices (in track units) of the two edges, null = auto; a span counts from the other line
+                var k0: ?i32 = if (pl.start == .line and pl.start.line != 0) lineIdx(pl.start.line, g.explicit[a]) - g.lo[a] else null;
+                var k1: ?i32 = if (pl.end == .line and pl.end.line != 0) lineIdx(pl.end.line, g.explicit[a]) - g.lo[a] else null;
+                if (k0 == null and pl.start == .span and k1 != null) k0 = k1.? - @min(@as(i32, pl.start.span), max_line);
+                if (k1 == null and pl.end == .span and k0 != null) k1 = k0.? + @min(@as(i32, pl.end.span), max_line);
+                if (k0) |k| {
+                    if (k >= 0 and k < nt) e0 = ts[@intCast(k)].off else if (k == nt) e0 = ts[ts.len - 1].off + ts[ts.len - 1].base;
+                }
+                if (k1) |k| {
+                    if (k >= 1 and k <= nt) e1 = ts[@intCast(k - 1)].off + ts[@intCast(k - 1)].base else if (k == 0) e1 = ts[0].off;
+                }
+                cbk[a] = e0;
+                cbk[a + 2] = @max(e1 - e0, 0);
+            }
+            const in_area = cbk[0] != g.pad_area[0] or cbk[1] != g.pad_area[1] or cbk[2] != g.pad_area[2] or cbk[3] != g.pad_area[3];
+            if (in_area) g.sp.rect = cbk;
             const al: [2]st.Align = .{ selfAlign(cs.justify_self, s.justify_items, cs), selfAlign(cs.align_self, s.align_items, cs) };
-            for (0..2) |a| sp.al[a] = switch (al[a]) {
+            for (0..2) |a| g.sp.al[a] = switch (al[a]) {
                 .end => 2,
                 .center => 1,
                 else => 0,
             };
-            try t.placeAbsolute(node, ch, pad_area, sp);
-            t.accumContent(&content, ch);
+            if (in_area) {
+                g.abs_area = cbk;
+                try t.placeAbsolute(node, ch, &g.abs_area, &g.sp);
+            } else try t.placeAbsolute(node, ch, &g.pad_area, &g.sp);
+            t.accumContent(&g.content, ch);
         }
     }
-    out.content = content;
-    return out;
 }

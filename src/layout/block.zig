@@ -1,12 +1,18 @@
-//! Block layout: vertical stacking of block-level children with margin collapsing (CSS 2.1 §8.3.1, §10).
-//! No floats and no inline formatting; text is a measured leaf treated as a block-level box.
+//! Block layout: vertical stacking of block-level children with margin collapsing (CSS 2.1 §8.3.1, §10) and,
+//! with `Config.floats`, floats (§9.5): placement in the exclusion space of the block formatting context,
+//! `clear`, formatting-context roots and measured leaves avoiding floats, BFC roots growing to contain them.
+//! There is no inline formatting: text is a measured leaf. Next to floats such a leaf (and any formatting
+//! context root: flex/grid/table boxes, `overflow` != visible, `flow_root`) is fitted into the band that is
+//! free at its top edge and keeps that width for its whole height; real line boxes would widen again below a
+//! float (documented approximation, see `Style.is_inline_content`).
 const std = @import("std");
 const st = @import("style.zig");
 const tr = @import("tree.zig");
+const fl = @import("floats.zig");
 
-const Tree = tr.Tree;
 const In = tr.In;
 const Out = tr.Out;
+const Box = tr.Box;
 const Error = tr.Error;
 const MarginSet = tr.MarginSet;
 const NONE = tr.NONE;
@@ -19,15 +25,203 @@ const no_node = tr.no_node;
 
 const AbsItem = struct { node: u32, y: f32 };
 
-pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
+/// Per-container state kept in the tree's scratch arena (see `Tree.computeNode` on stack discipline).
+const S = struct {
+    in: In,
+    box: Box,
+    /// box of the child being placed
+    cb: Box,
+    known: [2]f32,
+    inset: [4]f32,
+    parent: [2]f32,
+    content: [2]f32,
+    ci: In,
+    co: Out,
+    area: [4]f32,
+    sp: tr.StaticPos,
+    first_set: MarginSet,
+    active: MarginSet,
+    // floats
+    /// border-box origin of this box in the coordinates of its block formatting context
+    org: [2]f32,
+    bfc: fl.Bfc,
+    prev_bfc: ?*fl.Bfc,
+    /// result of `avoidFloats`: x shift, band width, y push
+    av: [3]f32,
+};
+
+/// Does a block container establish a new block formatting context?
+pub fn isRoot(s: *const st.Style, in: *const In) bool {
+    return !in.collapse or s.position.isOut() or s.float != .none or s.flow_root or
+        s.overflow_x == .hidden or s.overflow_x == .scroll or s.overflow_y == .hidden or s.overflow_y == .scroll;
+}
+
+fn inFlow(s: *const st.Style) bool {
+    return s.display != .none and !s.position.isOut() and s.float == .none;
+}
+
+/// Static test for a box whose own margins collapse through it: an empty auto-height block.
+fn selfCollapsing(t: anytype, node: u32) bool {
     const n = &t.nodes.items[node];
     const s = &n.style;
-    var box = t.sbox(s, &in);
-    var known = tr.styledKnown(in, &box);
-    if (!in.layout and has(known[0]) and has(known[1])) return .{ .size = known };
-    _ = t.applyRatio(s, &box, &known);
+    if (n.measured or s.display != .block or s.flow_root or s.overflow_x != .visible or s.overflow_y != .visible) return false;
+    if (s.border.top > 0 or s.border.bottom > 0 or tr.resolveLp(s.padding.top, 0) > 0 or tr.resolveLp(s.padding.bottom, 0) > 0) return false;
+    if (orElse(tr.resolveDim(s.size[1], 0), 0) > 0 or orElse(tr.resolveDim(s.min_size[1], 0), 0) > 0 or s.aspect_ratio != null) return false;
+    var k = n.first_child;
+    while (k != no_node) : (k = t.nextSibling(k)) {
+        if (inFlow(&t.nodes.items[k].style)) return false;
+    }
+    return true;
+}
 
-    var inset: [4]f32 = undefined;
+/// Static estimate of the margins that collapse at the top of in-flow child `ch` (its own top margin, those
+/// of its first in-flow descendants and of the empty blocks before them), needed to know where the box
+/// starts before it is laid out.
+fn topSetEst(t: anytype, ch: u32, own: f32) MarginSet {
+    var set = (MarginSet{}).with(own);
+    var cur = ch;
+    var guard: u32 = 0;
+    while (guard < tr.max_depth) : (guard += 1) {
+        const n = &t.nodes.items[cur];
+        const s = &n.style;
+        if (n.measured or n.child_count == 0 or s.display != .block or s.float != .none or s.flow_root or s.position.isOut() or
+            s.overflow_x != .visible or s.overflow_y != .visible or s.border.top > 0 or tr.resolveLp(s.padding.top, 0) > 0) break;
+        var k = n.first_child;
+        while (k != no_node) : (k = t.nextSibling(k)) {
+            const ks = &t.nodes.items[k].style;
+            if (!inFlow(ks)) continue;
+            set = set.with(orElse(tr.resolveDim(ks.margin.top, 0), 0));
+            if (ks.clear != .none or !selfCollapsing(t, k)) break;
+            set = set.with(orElse(tr.resolveDim(ks.margin.bottom, 0), 0));
+        }
+        if (k == no_node) break;
+        cur = k;
+    }
+    return set;
+}
+
+/// Places float `ch` (CSS 2.1 §9.5.1): shrink-to-fit size, then as high as possible at or below `y_top`
+/// (local y of the current position) and as far to its side as the earlier floats allow.
+noinline fn floatChild(t: anytype, c: *S, ch: u32, y_top: f32, do_layout: bool) Error!void {
+    const cs = &t.nodes.items[ch].style;
+    const inner_w = c.parent[0];
+    t.rbox(&c.cb, cs, c.parent);
+    const cb = &c.cb;
+    // (takumi parity: percentage margins of a float compute to 0 there, unlike in Blink)
+    inline for (.{ "left", "top", "right", "bottom" }, 0..) |f, i| {
+        if (@field(cs.margin, f).hasPercent()) cb.margin[i] = 0;
+    }
+    const ms = cb.marginSum(0);
+    const kh = maxO(clampO(cb.size[1], cb.min[1], cb.max[1]), cb.pb[1]);
+    var w = clampO(cb.size[0], cb.min[0], cb.max[0]);
+    if (!has(w) and !cs.size[0].isKeyword() and !has(t.ratio(cs, cb, 0, kh))) {
+        // shrink-to-fit: min(max-content, max(min-content, available))
+        c.ci = .{ .known = .{ NONE, kh }, .parent = c.parent, .avail = .{ MAXC, MAXC } };
+        w = try t.measureChild(ch, &c.ci, 0);
+        if (w + ms > inner_w) {
+            c.ci = .{ .known = .{ NONE, kh }, .parent = c.parent, .avail = .{ tr.MINC, MAXC } };
+            const mn = try t.measureChild(ch, &c.ci, 0);
+            w = @max(mn, inner_w - ms);
+        }
+        w = clampO(w, cb.min[0], cb.max[0]);
+    }
+    c.ci = .{ .known = .{ maxO(w, cb.pb[0]), kh }, .parent = c.parent, .avail = .{ inner_w, MAXC }, .layout = true };
+    try t.computeNode(ch, &c.ci, &c.co);
+
+    const bf = t.bfc orelse return;
+    const rects = t.float_rects.items[@min(bf.start, t.float_rects.items.len)..];
+    const mw = @max(c.co.size[0] + ms, 0);
+    const mh = @max(c.co.size[1] + cb.margin[1] + cb.margin[3], 0);
+    const lo = c.org[0] + c.inset[0];
+    var top = @max(c.org[1] + y_top, bf.last_top);
+    top = @max(top, fl.clearY(rects, cs.clear));
+    const p = fl.place(rects, cs.float == .left, mw, mh, top, lo, lo + inner_w);
+    bf.last_top = p[1];
+    try t.float_rects.append(t.alloc, .{ .x0 = p[0], .y0 = p[1], .x1 = p[0] + mw, .y1 = p[1] + mh, .left = cs.float == .left });
+    if (do_layout) {
+        const rel: [2]f32 = if (cs.position == .relative) .{
+            orElse(t.dim(cs.inset.left, inner_w), -orElse(t.dim(cs.inset.right, inner_w), 0)),
+            orElse(t.dim(cs.inset.top, c.parent[1]), -orElse(t.dim(cs.inset.bottom, c.parent[1]), 0)),
+        } else .{ 0, 0 };
+        t.setLayout(ch, .{ p[0] - c.org[0] + cb.margin[0] + rel[0], p[1] - c.org[1] + cb.margin[1] + rel[1] }, &c.co, cb);
+        t.accumContent(&c.content, ch);
+    }
+}
+
+/// Fits the border box of in-flow child `ch` (a formatting context root or a measured leaf, box already in
+/// `c.cb`) next to the floats, after Blink's layout opportunities: at the first position at or below local y
+/// `top` where the box fits for its whole height (a box of definite width / a measured leaf needs that width /
+/// its min-content width, any other box takes whatever is left). Stores the x shift, the width available to
+/// the margin box and the y push in `c.av`.
+noinline fn avoidFloats(t: anytype, c: *S, ch: u32, top: f32) Error!void {
+    const inner_w = c.parent[0];
+    c.av = .{ 0, inner_w, 0 };
+    const bf = t.bfc orelse return;
+    const rects = t.float_rects.items[@min(bf.start, t.float_rects.items.len)..];
+    if (rects.len == 0) return;
+    const cb = &c.cb;
+    const lo = c.org[0] + c.inset[0];
+    const hi = lo + inner_w;
+    const kw = clampO(cb.size[0], cb.min[0], cb.max[0]);
+    const kh = clampO(cb.size[1], cb.min[1], cb.max[1]);
+    var y = c.org[1] + top;
+    // minimum border-box width: a definite width, the min-content width of a measured leaf, else anything
+    var need = kw;
+    if (!has(need) and t.nodes.items[ch].measured) {
+        c.ci = .{ .known = .{ NONE, kh }, .parent = c.parent, .avail = .{ tr.MINC, MAXC } };
+        need = try t.measureChild(ch, &c.ci, 0);
+    }
+    need = orElse(need, 0);
+    var guard: usize = 0;
+    while (guard <= rects.len) : (guard += 1) {
+        const e0 = fl.edges(rects, y, 0);
+        // (the margins overlap the floats, only the border box avoids them; an opportunity squeezed out of
+        // the containing block still exists with zero width, one between overlapping floats does not)
+        const left = @max(e0[0], lo + cb.margin[0]);
+        const right = @max(@min(e0[1], hi - cb.margin[2]), left);
+        c.av = .{ left - lo - cb.margin[0], right - left + cb.marginSum(0), y - c.org[1] - top };
+        if (e0[0] <= lo and e0[1] >= hi) return;
+        if (e0[0] <= e0[1] and right - left >= need) {
+            var bh = kh;
+            if (!has(bh)) {
+                c.ci = .{ .known = .{ @max(orElse(kw, clampO(right - left, cb.min[0], cb.max[0])), cb.pb[0]), NONE }, .parent = c.parent, .avail = .{ inner_w, MAXC } };
+                bh = try t.measureChild(ch, &c.ci, 1);
+            }
+            // the opportunity must stay free over the whole height of the box, or narrow to one that does
+            const e1 = fl.edges(rects, y, bh);
+            if (e1[0] == e0[0] and e1[1] == e0[1]) return;
+            const l1 = @max(e1[0], lo + cb.margin[0]);
+            const r1 = @min(e1[1], hi - cb.margin[2]);
+            if (r1 > l1 and r1 - l1 >= need) {
+                c.av = .{ l1 - lo - cb.margin[0], r1 - l1 + cb.marginSum(0), y - c.org[1] - top };
+                return;
+            }
+        }
+        const nb = fl.nextBottom(rects, y, 0);
+        if (!(nb > y)) return;
+        y = nb;
+    }
+}
+
+pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!void {
+    const mark = t.scratch.mark();
+    defer t.scratch.release(mark);
+    const c = try t.scratch.create(t.alloc, S);
+    c.in = in_.*;
+    const in = &c.in;
+    const n = &t.nodes.items[node];
+    const s = &n.style;
+    t.sbox(&c.box, s, in);
+    const box = &c.box;
+    c.known = tr.styledKnown(in, box);
+    const known = &c.known;
+    out.* = .{ .size = known.* };
+    if (!in.layout and has(known[0]) and has(known[1])) return;
+    in.known = known.*;
+    const ratio_w = t.ratioWidth(s, box, in);
+    known[0] = in.known[0];
+
+    const inset = &c.inset;
     for (0..4) |i| inset[i] = box.padding[i] + box.border[i];
     const pb = box.pb;
     var inner_h: f32 = if (in.indef_h) NONE else maxO(known[1] - pb[1], 0);
@@ -37,63 +231,90 @@ pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
     if (!has(outer_w)) {
         const avail_w = in.avail[0] - box.marginSum(0) - pb[0];
         var max_w: f32 = 0;
+        // floats sit side by side under a max-content constraint
+        var float_w: f32 = 0;
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
             const cs = &t.nodes.items[ch].style;
-            if (cs.display == .none or cs.position == .absolute) continue;
-            const cb = t.rbox(cs, .{ NONE, inner_h });
+            if (cs.display == .none or cs.position.isOut()) continue;
+            const side = (comptime @TypeOf(t.*).config.floats) and cs.float != .none and avail_w != tr.MINC;
+            t.rbox(&c.cb, cs, .{ NONE, inner_h });
+            const cb = &c.cb;
             const ms = cb.marginSum(0);
-            var w = clampO(orElse(cb.size[0], t.ratio(cs, &cb, 0, clampO(cb.size[1], cb.min[1], cb.max[1]))), cb.min[0], cb.max[0]);
+            // (a width through the aspect ratio is left to the child: its automatic minimum may apply)
+            var w = clampO(cb.size[0], cb.min[0], cb.max[0]);
             if (!has(w)) {
-                w = try t.measureChild(ch, .{
+                c.ci = .{
                     .known = .{ NONE, clampO(cb.size[1], cb.min[1], cb.max[1]) },
                     .parent = .{ NONE, inner_h },
-                    .avail = .{ avail_w, MAXC },
-                }, 0);
+                    .avail = .{ if (side) MAXC else avail_w, MAXC },
+                };
+                w = try t.measureChild(ch, &c.ci, 0);
             }
-            max_w = @max(max_w, @max(w, cb.pb[0]) + ms);
+            w = @max(w, c.cb.pb[0]) + ms;
+            if (side) {
+                if (cs.clear != .none) float_w = 0;
+                float_w += w;
+                w = float_w;
+            }
+            max_w = @max(max_w, w);
         }
-        outer_w = @max(clampO(max_w + pb[0], box.min[0], box.max[0]), pb[0]);
+        outer_w = maxO(@max(clampO(max_w + pb[0], box.min[0], box.max[0]), pb[0]), ratio_w);
     }
     known[0] = outer_w;
-    if (in.width_only) return .{ .size = .{ outer_w, NONE } };
+    out.* = .{ .size = .{ outer_w, NONE } };
+    if (in.width_only) return;
     {
-        const floor_h = t.applyRatio(s, &box, &known);
+        const floor_h = t.applyRatio(s, box, known);
         if (has(floor_h)) {
             box.min[1] = floor_h;
             inner_h = @max(floor_h - pb[1], 0);
         } else if (!in.indef_h) inner_h = maxO(known[1] - pb[1], 0);
     }
-    if (!in.layout and has(known[1])) return .{ .size = .{ outer_w, known[1] } };
+    out.* = .{ .size = .{ outer_w, known[1] } };
+    if (!in.layout and has(known[1])) return;
 
-    const bfc = !in.collapse or s.position == .absolute or
-        s.overflow_x == .hidden or s.overflow_x == .scroll or s.overflow_y == .hidden or s.overflow_y == .scroll;
+    const bfc = isRoot(s, in);
+    // floats: enter / leave this box's formatting context
+    const fl_on = (comptime @TypeOf(t.*).config.floats) and t.has_floats;
+    c.prev_bfc = null;
+    if (fl_on) {
+        c.prev_bfc = t.bfc;
+        c.org = t.bfc_org;
+        if (bfc or t.bfc == null) {
+            c.org = .{ 0, 0 };
+            c.bfc = .{ .start = @intCast(t.float_rects.items.len) };
+            t.bfc = &c.bfc;
+        }
+    }
+    defer if (fl_on and t.bfc == &c.bfc) {
+        t.float_rects.items.len = @min(c.bfc.start, t.float_rects.items.len);
+        t.bfc = c.prev_bfc;
+    };
     const collapse_top = !bfc and inset[1] == 0;
     var collapse_bottom = !bfc and inset[3] == 0 and !has(known[1]);
     const prevents_collapse_through = bfc or inset[1] > 0 or inset[3] > 0 or known[1] > 0 or box.min[1] > 0;
 
     const inner_w = @max(outer_w - pb[0], 0);
-    const parent: [2]f32 = .{ inner_w, inner_h };
+    c.parent = .{ inner_w, inner_h };
 
-    const mark = t.scratch.mark();
-    defer t.scratch.release(mark);
     var n_abs: usize = 0;
     var abs: []AbsItem = &.{};
     if (in.layout) {
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
             const cs = &t.nodes.items[ch].style;
-            if (cs.display != .none and cs.position == .absolute) n_abs += 1;
+            if (cs.display != .none and cs.position.isOut()) n_abs += 1;
         }
         if (n_abs > 0) abs = try t.scratch.alloc(t.alloc, AbsItem, n_abs);
         n_abs = 0;
     }
 
-    var content: [2]f32 = .{ 0, 0 };
+    c.content = .{ 0, 0 };
     var y = inset[1];
     var y_abs = y;
-    var first_set: MarginSet = .{};
-    var active: MarginSet = .{};
+    c.first_set = .{};
+    c.active = .{};
     var with_first = true;
     var all_through = true;
     var first_bl: f32 = NONE;
@@ -105,27 +326,65 @@ pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
             if (in.layout) t.hide(ch);
             continue;
         }
-        if (cs.position == .absolute) {
+        if (cs.position.isOut()) {
             if (in.layout) {
                 abs[n_abs] = .{ .node = ch, .y = y_abs };
                 n_abs += 1;
             }
             continue;
         }
-        var cb = t.rbox(cs, parent);
+        if (fl_on and cs.float != .none) {
+            try floatChild(t, c, ch, y + (if (with_first and collapse_top) 0 else c.active.resolve()), in.layout);
+            continue;
+        }
+        t.rbox(&c.cb, cs, c.parent);
+        const cb = &c.cb;
         const ms = cb.marginSum(0);
         const ckh = maxO(clampO(cb.size[1], cb.min[1], cb.max[1]), cb.pb[1]);
+        // floats: clearance, the band left free by the floats, the child's origin in the formatting context
+        var fx: f32 = 0;
+        var band_w = inner_w;
+        if (fl_on) {
+            const cn = &t.nodes.items[ch];
+            const est: f32 = if (with_first and collapse_top) 0 else c.active.merge(topSetEst(t, ch, cb.margin[1])).resolve();
+            if (cs.clear != .none) {
+                const cy = fl.clearY(t.float_rects.items[@min(t.bfc.?.start, t.float_rects.items.len)..], cs.clear) - c.org[1];
+                if (cy > y + est) y = cy - est;
+            }
+            if (cn.measured or cs.display != .block or isRoot(cs, &.{ .collapse = true })) {
+                try avoidFloats(t, c, ch, y + est);
+                fx = c.av[0];
+                band_w = c.av[1];
+                y += c.av[2];
+            } else {
+                var ml = cb.margin[0];
+                if (cb.margin_auto[0] and has(cb.size[0])) {
+                    const free = @max(inner_w - clampO(cb.size[0], cb.min[0], cb.max[0]) - ms, 0);
+                    ml = if (cb.margin_auto[2]) t.div(free, 2) else free;
+                }
+                t.bfc_org = .{ c.org[0] + inset[0] + ml, c.org[1] + y + est };
+            }
+        }
         // width: explicit, else from a definite height through the aspect ratio, else fill the container
-        const ckw = orElse(orElse(cb.size[0], t.ratio(cs, &cb, 0, ckh)), inner_w - ms);
-        // (width: min-/max-/fit-content does not fill: the child sizes itself against the available width)
-        const ck: [2]f32 = .{ if (cs.size[0].isKeyword()) NONE else @max(clampO(ckw, cb.min[0], cb.max[0]), cb.pb[0]), ckh };
-        const o = try t.computeNode(ch, .{ .known = ck, .parent = parent, .avail = .{ inner_w, MAXC }, .layout = true, .collapse = true });
+        const ckw = orElse(cb.size[0], band_w - ms);
+        // (width: min-/max-/fit-content does not fill: the child sizes itself against the available width;
+        // so does a child whose width follows from its height through the aspect ratio)
+        const self_sized = cs.size[0].isKeyword() or (!has(cb.size[0]) and has(t.ratio(cs, cb, 0, ckh)));
+        c.ci = .{
+            .known = .{ if (self_sized) NONE else @max(clampO(ckw, cb.min[0], cb.max[0]), cb.pb[0]), ckh },
+            .parent = c.parent,
+            .avail = .{ band_w, MAXC },
+            .layout = true,
+            .collapse = true,
+        };
+        try t.computeNode(ch, &c.ci, &c.co);
+        const o = &c.co;
 
         const top_set = o.top_margin.with(cb.margin[1]);
         const bottom_set = o.bottom_margin.with(cb.margin[3]);
 
         // auto horizontal margins
-        const free_x = @max(inner_w - o.size[0] - ms, 0);
+        const free_x = @max(band_w - o.size[0] - ms, 0);
         const n_auto: f32 = @floatFromInt(@as(u8, @intFromBool(cb.margin_auto[0])) + @intFromBool(cb.margin_auto[2]));
         if (n_auto > 0) {
             if (cb.margin_auto[0]) cb.margin[0] = t.div(free_x, n_auto);
@@ -134,55 +393,63 @@ pub fn compute(t: *Tree, node: u32, in: In) Error!Out {
         cb.margin[1] = top_set.resolve();
         cb.margin[3] = bottom_set.resolve();
 
-        const y_margin: f32 = if (with_first and collapse_top) 0 else active.merge(top_set).resolve();
+        const y_margin: f32 = if (with_first and collapse_top) 0 else c.active.merge(top_set).resolve();
         if (in.layout) {
             const rel: [2]f32 = .{
                 orElse(t.dim(cs.inset.left, inner_w), -orElse(t.dim(cs.inset.right, inner_w), 0)),
                 orElse(t.dim(cs.inset.top, inner_h), -orElse(t.dim(cs.inset.bottom, inner_h), 0)),
             };
-            t.setLayout(ch, .{ inset[0] + cb.margin[0] + rel[0], y + y_margin + rel[1] }, &o, &cb);
-            t.accumContent(&content, ch);
+            t.setLayout(ch, .{ inset[0] + fx + cb.margin[0] + rel[0], y + y_margin + rel[1] }, o, cb);
+            t.accumContent(&c.content, ch);
             if (!has(first_bl) and has(o.baseline)) first_bl = y + y_margin + o.baseline;
         }
 
         if (with_first) {
-            first_set = first_set.merge(top_set);
-            if (o.collapse_through) first_set = first_set.merge(bottom_set) else with_first = false;
+            c.first_set = c.first_set.merge(top_set);
+            if (o.collapse_through) c.first_set = c.first_set.merge(bottom_set) else with_first = false;
         }
         if (o.collapse_through) {
-            active = active.merge(top_set).merge(bottom_set);
+            c.active = c.active.merge(top_set).merge(bottom_set);
             y_abs = y + o.size[1] + y_margin;
         } else {
             all_through = false;
             y += o.size[1] + y_margin;
-            active = bottom_set;
-            y_abs = y + active.resolve();
+            c.active = bottom_set;
+            y_abs = y + c.active.resolve();
         }
     }
 
+    if (fl_on and t.bfc == &c.bfc) {
+        // a formatting context root grows to contain its floats
+        const fb = fl.bottom(t.float_rects.items[@min(c.bfc.start, t.float_rects.items.len)..]);
+        if (fb > y + c.active.resolve()) {
+            y = fb;
+            c.active = .{};
+        }
+    }
     y += inset[3];
     if (collapse_bottom and box.min[1] > y) {
         // min-height enlarges the box: the last child's margin stays inside and is not propagated
         collapse_bottom = false;
-        active = .{};
+        c.active = .{};
     }
     // (when every child collapsed through and the top collapses, these margins already left through the top)
-    if (!collapse_bottom and !(with_first and collapse_top)) y += active.resolve();
+    if (!collapse_bottom and !(with_first and collapse_top)) y += c.active.resolve();
     const outer_h = @max(orElse(known[1], clampO(@max(y, 0), box.min[1], box.max[1])), pb[1]);
-    var out: Out = .{ .size = .{ outer_w, outer_h } };
-    if (!in.layout) return out;
+    out.* = .{ .size = .{ outer_w, outer_h } };
+    if (!in.layout) return;
 
     if (n_abs > 0) {
-        const area: [4]f32 = .{ box.border[0], box.border[1], outer_w - box.border[0] - box.border[2], outer_h - box.border[1] - box.border[3] };
+        c.area = .{ box.border[0], box.border[1], outer_w - box.border[0] - box.border[2], outer_h - box.border[1] - box.border[3] };
         for (abs[0..n_abs]) |a| {
-            try t.placeAbsolute(node, a.node, area, .{ .rect = .{ inset[0], a.y, inner_w, 0 } });
-            t.accumContent(&content, a.node);
+            c.sp = .{ .rect = .{ inset[0], a.y, inner_w, 0 } };
+            try t.placeAbsolute(node, a.node, &c.area, &c.sp);
+            t.accumContent(&c.content, a.node);
         }
     }
-    out.content = content;
+    out.content = c.content;
     out.baseline = first_bl;
-    out.top_margin = if (collapse_top) first_set else .{};
-    out.bottom_margin = if (collapse_bottom) active else .{};
+    if (collapse_top) out.top_margin = c.first_set;
+    if (collapse_bottom) out.bottom_margin = c.active;
     out.collapse_through = !prevents_collapse_through and all_through and outer_h == 0;
-    return out;
 }

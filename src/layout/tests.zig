@@ -1,23 +1,23 @@
 //! Tests: hand-written unit tests + replay of oracle fixtures generated from @takumi-rs/wasm
 //! (bench/probe/layout/gen.mjs -> testdata/oracle.json).
 const std = @import("std");
-const L = @import("layout.zig");
+pub const L = @import("layout.zig");
 const testing = std.testing;
 const Style = L.Style;
 const Tree = L.Tree;
 const Dim = L.Dim;
 
-fn noMeasure(_: *anyopaque, _: L.NodeId, _: [2]?f32, _: [2]L.AvailableSpace) [2]f32 {
+pub fn noMeasure(_: *anyopaque, _: L.NodeId, _: [2]?f32, _: [2]L.AvailableSpace) [2]f32 {
     return .{ 0, 0 };
 }
-var dummy: u8 = 0;
+pub var dummy: u8 = 0;
 
 // ---------------------------------------------------------------------------------------------------
 // fixture JSON -> Style translator (test only)
 
-const J = std.json.Value;
+pub const J = std.json.Value;
 
-fn num(v: J) f32 {
+pub fn num(v: J) f32 {
     return switch (v) {
         .integer => |i| @floatFromInt(i),
         .float => |f| @floatCast(f),
@@ -73,8 +73,13 @@ fn dimEdges(v: J) L.Edges(Dim) {
         else => return .all(dim(v)),
     }
 }
+fn isSafe(v: J) bool {
+    return std.mem.startsWith(u8, v.string, "safe ");
+}
 fn alignOf(v: J) ?L.Align {
-    const s = v.string;
+    var s = v.string;
+    if (std.mem.startsWith(u8, s, "safe ")) s = s[5..];
+    if (std.mem.startsWith(u8, s, "unsafe ")) s = s[7..];
     const map = .{
         .{ "start", L.Align.start },               .{ "end", L.Align.end },
         .{ "flex-start", L.Align.flex_start },     .{ "flex-end", L.Align.flex_end },
@@ -167,20 +172,61 @@ fn placement(v: J) L.Placement {
     }
 }
 
-fn eq(a: []const u8, b: []const u8) bool {
+pub fn eq(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-fn styleFrom(a: std.mem.Allocator, obj: J) !Style {
+pub fn styleFrom(a: std.mem.Allocator, obj: J) !Style {
     var s: Style = .{ .position = .static };
     var it = obj.object.iterator();
     while (it.next()) |kv| {
         const k = kv.key_ptr.*;
         const v = kv.value_ptr.*;
         if (eq(k, "display")) {
-            s.display = if (eq(v.string, "flex")) .flex else if (eq(v.string, "block")) .block else if (eq(v.string, "grid")) .grid else .none;
+            const d = v.string;
+            s.display = .none;
+            inline for (.{
+                .{ "flex", .flex },                             .{ "block", .block },                       .{ "grid", .grid },
+                .{ "table", .table },                           .{ "inline-table", .inline_table },         .{ "table-row-group", .table_row_group },
+                .{ "table-header-group", .table_header_group }, .{ "table-footer-group", .table_footer_group }, .{ "table-row", .table_row },
+                .{ "table-cell", .table_cell },                 .{ "table-caption", .table_caption },       .{ "table-column", .table_column },
+                .{ "table-column-group", .table_column_group }, .{ "inline-row", .inline_row },             .{ "flow-root", .block },
+                .{ "inline-block", .block },                    .{ "inline-flex", .flex },                  .{ "inline-grid", .grid },
+            }) |p| {
+                if (eq(d, p[0])) s.display = p[1];
+            }
+            if (eq(d, "flow-root")) s.flow_root = true;
         } else if (eq(k, "position")) {
-            s.position = if (eq(v.string, "absolute")) .absolute else if (eq(v.string, "relative")) .relative else .static;
+            s.position = if (eq(v.string, "absolute")) .absolute else if (eq(v.string, "relative")) .relative else if (eq(v.string, "fixed")) .fixed else .static;
+        } else if (eq(k, "float")) {
+            s.float = if (eq(v.string, "left")) .left else if (eq(v.string, "right")) .right else .none;
+        } else if (eq(k, "clear")) {
+            s.clear = if (eq(v.string, "left")) .left else if (eq(v.string, "right")) .right else if (eq(v.string, "both")) .both else .none;
+        } else if (eq(k, "order")) {
+            s.order = @intFromFloat(num(v));
+        } else if (eq(k, "visibility")) {
+            s.visibility_collapse = eq(v.string, "collapse");
+        } else if (eq(k, "borderSpacing")) {
+            const e = dimEdges(v); // "h v" (dimEdges reads two values as vertical/horizontal pairs: top=first, right=second)
+            s.border_spacing = .{ lpPx(e.top), lpPx(e.right) };
+        } else if (eq(k, "borderCollapse")) {
+            s.border_collapse = eq(v.string, "collapse");
+        } else if (eq(k, "tableLayout")) {
+            s.table_fixed = eq(v.string, "fixed");
+        } else if (eq(k, "captionSide")) {
+            s.caption_bottom = eq(v.string, "bottom");
+        } else if (eq(k, "verticalAlign")) {
+            s.vertical_align = if (eq(v.string, "top")) .top else if (eq(v.string, "middle")) .middle else if (eq(v.string, "bottom")) .bottom else .baseline;
+        } else if (eq(k, "textAlign")) {
+            s.text_align = if (eq(v.string, "center")) .center else if (eq(v.string, "end") or eq(v.string, "right")) .end else if (eq(v.string, "justify")) .justify else .start;
+        } else if (eq(k, "colSpan")) {
+            s.col_span = @intFromFloat(@max(num(v), 1));
+        } else if (eq(k, "rowSpan")) {
+            s.row_span = @intFromFloat(@max(num(v), 1));
+        } else if (eq(k, "strutAscent")) {
+            s.strut_ascent = num(v);
+        } else if (eq(k, "strutDescent")) {
+            s.strut_descent = num(v);
         } else if (eq(k, "boxSizing")) {
             s.box_sizing = if (eq(v.string, "content-box")) .content_box else .border_box;
         } else if (eq(k, "overflow")) {
@@ -263,16 +309,22 @@ fn styleFrom(a: std.mem.Allocator, obj: J) !Style {
             s.flex_basis = dim(v);
         } else if (eq(k, "alignItems")) {
             s.align_items = alignOf(v);
+            s.safe.align_items = isSafe(v);
         } else if (eq(k, "alignSelf")) {
             s.align_self = alignOf(v);
+            s.safe.align_self = isSafe(v);
         } else if (eq(k, "alignContent")) {
             s.align_content = alignOf(v);
+            s.safe.align_content = isSafe(v);
         } else if (eq(k, "justifyContent")) {
             s.justify_content = alignOf(v);
+            s.safe.justify_content = isSafe(v);
         } else if (eq(k, "justifyItems")) {
             s.justify_items = alignOf(v);
+            s.safe.justify_items = isSafe(v);
         } else if (eq(k, "justifySelf")) {
             s.justify_self = alignOf(v);
+            s.safe.justify_self = isSafe(v);
         } else if (eq(k, "gridTemplateColumns")) {
             const tl = try tracks(a, v);
             s.grid_template_columns = tl.tracks;
@@ -298,6 +350,12 @@ fn styleFrom(a: std.mem.Allocator, obj: J) !Style {
     }
     return s;
 }
+fn lpPx(d: Dim) f32 {
+    return switch (d) {
+        .px => |p| p,
+        else => 0,
+    };
+}
 fn lpOf(d: Dim) L.LengthPercentage {
     return switch (d) {
         .percent => |p| .{ .percent = p },
@@ -306,7 +364,7 @@ fn lpOf(d: Dim) L.LengthPercentage {
     };
 }
 
-fn buildNode(a: std.mem.Allocator, t: *Tree, v: J) !L.NodeId {
+pub fn buildNode(a: std.mem.Allocator, t: *Tree, v: J) !L.NodeId {
     const s = if (v.object.get("style")) |so| try styleFrom(a, so) else Style{};
     const id = try t.addNode(s);
     if (v.object.get("children")) |ch| {
@@ -317,7 +375,7 @@ fn buildNode(a: std.mem.Allocator, t: *Tree, v: J) !L.NodeId {
 
 const tol: f32 = 0.07;
 
-fn compareNode(t: *const Tree, id: L.NodeId, ox: f32, oy: f32, exp: J, bad: *usize, verbose: bool) void {
+pub fn compareNode(t: *const Tree, id: L.NodeId, ox: f32, oy: f32, exp: J, bad: *usize, verbose: bool) void {
     const l = t.layout(id);
     const o = exp.object;
     if (o.get("none") != null) {
@@ -834,7 +892,7 @@ test "stack use per nesting level" {
     if (@import("builtin").mode != .debug) try testing.expect(per_level < 4096);
 }
 
-fn compareExact(t: *const Tree, id: L.NodeId, ox: f32, oy: f32, exp: J, bad: *usize, verbose: bool) void {
+pub fn compareExact(t: *const Tree, id: L.NodeId, ox: f32, oy: f32, exp: J, bad: *usize, verbose: bool) void {
     const l = t.layout(id);
     const o = exp.object;
     if (o.get("none") != null) return;

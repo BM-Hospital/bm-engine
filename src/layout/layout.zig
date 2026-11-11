@@ -1,5 +1,8 @@
-//! bm-engine layout: CSS flexbox / block / grid over a flat node tree, sized like Chrome (the takumi oracle is a
-//! Blink LayoutNG port). See `Tree` for the entry points.
+//! bm-engine layout: CSS flexbox / block (with floats) / grid / tables / inline rows over a flat node tree, sized
+//! like Chrome (the takumi oracle is a Blink LayoutNG port). See `Tree` for the entry points.
+//! `TreeWith(.{ .tables = false, .floats = false, .inline_row = false })` compiles optional features out
+//! (`Tree` = `TreeWith(.{})`, everything on): table displays and inline rows then lay out as blocks, floats as
+//! in-flow blocks.
 //!
 //! Usage:
 //!   var t = Tree.init(arena);                       // all memory (nodes, caches, scratch) comes from `arena`
@@ -16,10 +19,16 @@
 //!    `.position = .static` on boxes that must not be the containing block of absolute descendants.
 //!  * The root is blockified: an auto width fills a definite available width, an auto height is content-sized,
 //!    the root's margins offset it inside the viewport.
-//!  * Text is always a measured leaf (block-level); there is no inline formatting and there are no floats.
+//!  * Text is always a measured leaf; there is no real inline formatting. `Display.inline_row` (inline.zig) lays
+//!    atomic inline boxes and measured leaves out on wrapping lines; next to floats a measured leaf / formatting
+//!    context root is fitted into the free band at its top edge (block.zig).
+//!  * `Style.order` reorders flex / grid items inside the tree (pre-sorted children with order 0 work as before).
+//!  * `Position.fixed` boxes resolve against the `available` size passed to `compute`.
 //!  * Results are unrounded f32. `Options.quantize64` snaps edges to Blink's 1/64 px grid, `Options.round` to
 //!    whole pixels (edges are rounded in absolute space, so siblings never gap or overlap).
-//!  * Nesting deeper than `max_depth` fails with `error.TooDeep` (about 2.7 KB of stack per level).
+//!  * Nesting deeper than `max_depth` (512) fails with `error.TooDeep`. Per-node algorithm state lives in the
+//!    tree's scratch arena: a nesting level costs 64-128 bytes of wasm shadow stack (plus the engine's native
+//!    call stack: V8 runs out of it at roughly 1200 levels).
 //!  * `compute` may be called again after style changes (`setStyle`); every call recomputes everything.
 const std = @import("std");
 pub const style = @import("style.zig");
@@ -31,6 +40,11 @@ pub const Edges = style.Edges;
 pub const Style = style.Style;
 pub const Display = style.Display;
 pub const Position = style.Position;
+pub const Float = style.Float;
+pub const Clear = style.Clear;
+pub const VerticalAlign = style.VerticalAlign;
+pub const TextAlign = style.TextAlign;
+pub const AlignSafe = style.AlignSafe;
 pub const BoxSizing = style.BoxSizing;
 pub const Overflow = style.Overflow;
 pub const FlexDirection = style.FlexDirection;
@@ -45,6 +59,8 @@ pub const GridAutoFlow = style.GridAutoFlow;
 pub const AvailableSpace = style.AvailableSpace;
 pub const NodeId = tree.NodeId;
 pub const Tree = tree.Tree;
+pub const TreeWith = tree.TreeWith;
+pub const Config = tree.Config;
 pub const Layout = tree.Layout;
 pub const MeasureFn = tree.MeasureFn;
 pub const BaselineFn = tree.BaselineFn;
@@ -54,4 +70,7 @@ pub const max_depth = tree.max_depth;
 
 test {
     _ = @import("tests.zig");
+    _ = @import("tests_table.zig");
+    _ = @import("tests_inline.zig");
+    _ = @import("tests_float.zig");
 }

@@ -56,9 +56,64 @@ pub fn Edges(comptime T: type) type {
     };
 }
 
-pub const Display = enum(u8) { flex, block, grid, none };
+pub const Display = enum(u8) {
+    flex,
+    block,
+    grid,
+    none,
+    /// `display: table` (block-level table wrapper + grid box). See table.zig.
+    table,
+    /// `display: inline-table`: lays out like `table` (it only differs as a child of an `inline_row`).
+    inline_table,
+    table_row_group,
+    table_header_group,
+    table_footer_group,
+    table_row,
+    table_cell,
+    table_caption,
+    table_column,
+    table_column_group,
+    /// Anonymous line container: its children (atomic inline boxes and measured text leaves) are laid out
+    /// left to right on wrapping lines. See inline.zig.
+    inline_row,
+
+    pub fn isTablePart(d: Display) bool {
+        return @backingInt(d) >= @backingInt(Display.table_row_group) and @backingInt(d) <= @backingInt(Display.table_column_group);
+    }
+    pub fn isTable(d: Display) bool {
+        return d == .table or d == .inline_table;
+    }
+};
 /// `static` only matters for absolutely positioned descendants: a static box is not their containing block.
-pub const Position = enum(u8) { relative, absolute, static };
+/// `fixed` is absolute positioning against the initial containing block (the `available` size of `compute`,
+/// positioned at the root's containing-block origin) whatever the ancestors are.
+pub const Position = enum(u8) {
+    relative,
+    absolute,
+    static,
+    fixed,
+
+    /// absolute or fixed
+    pub inline fn isOut(p: Position) bool {
+        return p == .absolute or p == .fixed;
+    }
+};
+pub const Float = enum(u8) { none, left, right };
+pub const Clear = enum(u8) { none, left, right, both };
+/// Alignment of a table cell's content / of an inline-level box on its line.
+pub const VerticalAlign = enum(u8) { baseline, top, middle, bottom };
+pub const TextAlign = enum(u8) { start, center, end, justify };
+/// `safe` keyword per alignment property (overflowing content falls back to `start`); the default is the
+/// property's normal behaviour (`unsafe` for explicit alignments).
+pub const AlignSafe = packed struct(u8) {
+    align_items: bool = false,
+    align_self: bool = false,
+    align_content: bool = false,
+    justify_content: bool = false,
+    justify_items: bool = false,
+    justify_self: bool = false,
+    _pad: u2 = 0,
+};
 pub const BoxSizing = enum(u8) { border_box, content_box };
 pub const Overflow = enum(u8) { visible, hidden, scroll, clip };
 pub const FlexDirection = enum(u8) { row, column, row_reverse, column_reverse };
@@ -99,6 +154,10 @@ pub const TrackBreadth = union(enum) {
 pub const Track = struct {
     min: TrackBreadth = .auto,
     max: TrackBreadth = .auto,
+    /// Track-set id. Tracks produced by one `repeat(n, <one track>)` share a non-zero id: Blink sizes them as
+    /// one set and splits the set's size between its tracks (remainder layout units go to the first ones).
+    /// 0 = a set of its own.
+    set: u16 = 0,
 
     pub const auto: Track = .{};
     pub const min_content: Track = .{ .min = .min_content, .max = .min_content };
@@ -192,6 +251,45 @@ pub const Style = struct {
     // grid item
     grid_column: Placement = .{},
     grid_row: Placement = .{},
+
+    /// flex / grid item order (stable among equal values); the tree order is used when all are 0
+    order: i32 = 0,
+    /// `safe` alignment keywords
+    safe: AlignSafe = .{},
+    /// `visibility: collapse` on a flex item (takes no main-axis space but still props up the line's cross
+    /// size) or a table row / row group / column (removed, the table keeps its other dimension)
+    visibility_collapse: bool = false,
+
+    // block formatting context (floats.zig / block.zig)
+    float: Float = .none,
+    clear: Clear = .none,
+    /// `display: flow-root` (and anything else that makes a block container establish a formatting context)
+    flow_root: bool = false,
+    /// The node is an anonymous inline box (text) of a block container: next to floats its lines shorten
+    /// instead of the whole box avoiding them (approximated, see block.zig).
+    is_inline_content: bool = false,
+
+    // tables (table.zig)
+    col_span: u16 = 1,
+    row_span: u16 = 1,
+    /// cell content alignment in a table row; alignment of an inline-level box in an `inline_row` line
+    vertical_align: VerticalAlign = .baseline,
+    /// [horizontal, vertical] px
+    border_spacing: [2]f32 = .{ 0, 0 },
+    border_collapse: bool = false,
+    /// `table-layout: fixed`
+    table_fixed: bool = false,
+    /// `caption-side: bottom` (on a table-caption box)
+    caption_bottom: bool = false,
+
+    // inline rows (inline.zig)
+    text_align: TextAlign = .start,
+    /// strut of the line container: every line is at least this tall around its baseline
+    strut_ascent: f32 = 0,
+    strut_descent: f32 = 0,
+    /// Distance from the baseline up to the line where `vertical-align: middle` items are centred
+    /// (CSS: half the x-height of the container's font). null = unknown: the middle of the strut is used.
+    strut_middle: ?f32 = null,
 };
 
 pub const AvailableSpace = union(enum) {
