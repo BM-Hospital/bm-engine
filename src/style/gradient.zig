@@ -43,7 +43,16 @@ pub const Gradient = struct {
     /// radial/conic centre (default 50% 50%).
     position: [2]LP = .{ .{ .pct = 0.5 }, .{ .pct = 0.5 } },
     stops: []const Stop = &.{},
+    /// Colour interpolation space. `.srgb` = legacy premultiplied 8-bit sRGB lerp (what
+    /// `resolveStops` + the rasterizer do). Default `.srgb`, or `.oklab` when any stop uses a modern
+    /// colour function and no `in <space>` is given (takumi `gradient_default`). Use
+    /// `resolveGradientStops` to honour it.
+    space: InterpSpace = .srgb,
+    hue: HueMethod = .shorter,
 };
+
+pub const InterpSpace = colorm.Space;
+pub const HueMethod = colorm.HueMethod;
 
 /// A `background-image` / `<image>` layer.
 pub const Image = union(enum) {
@@ -90,9 +99,20 @@ fn stripUrl(a: []const u8) []const u8 {
     return s;
 }
 
-fn parseInterpolation(l: *Lexer) Error!void {
-    const sp = l.next();
-    if (!sp.isIdent("srgb")) return error.InvalidStyleValue;
+fn parseInterpolation(g: *Gradient, l: *Lexer) Error!void {
+    const m = colorm.parseInterpolationMethod(l) orelse return error.InvalidStyleValue;
+    g.space = m.space;
+    g.hue = m.hue;
+}
+
+/// Whether the prelude (before the first top-level comma) contains an `in` keyword.
+fn hasIn(args: []const u8) bool {
+    var l = Lexer.init(args);
+    while (true) {
+        const t = l.next();
+        if (t.kind == .eof or t.kind == .comma) return false;
+        if (t.isIdent("in")) return true;
+    }
 }
 
 fn sideX(t: Token) i8 {
@@ -120,7 +140,7 @@ fn parseConfig(g: *Gradient, l: *Lexer, env: *const Env) Error!bool {
                 const t = l.next();
                 if (t.kind == .eof or t.kind == .comma) break;
                 if (t.isIdent("in") and !have_in) {
-                    try parseInterpolation(l);
+                    try parseInterpolation(g, l);
                     have_in = true;
                 } else if (t.isIdent("to") and !have_dir) {
                     have_dir = true;
@@ -159,13 +179,13 @@ fn parseConfig(g: *Gradient, l: *Lexer, env: *const Env) Error!bool {
                 const t = l.next();
                 if (t.kind == .eof or t.kind == .comma) break;
                 if (t.isIdent("in") and !have_in) {
-                    try parseInterpolation(l);
+                    try parseInterpolation(g, l);
                     have_in = true;
                 } else if (t.isIdent("at")) {
                     g.position = (values.position(l, env, 4)) orelse return error.InvalidStyleValue;
                     const e = l.next();
                     if (e.isIdent("in") and !have_in) {
-                        try parseInterpolation(l);
+                        try parseInterpolation(g, l);
                         const e2 = l.next();
                         if (e2.kind != .eof and e2.kind != .comma) return error.InvalidStyleValue;
                     } else if (e.kind != .eof and e.kind != .comma) return error.InvalidStyleValue;
@@ -213,7 +233,7 @@ fn parseConfig(g: *Gradient, l: *Lexer, env: *const Env) Error!bool {
                 const t = l.next();
                 if (t.kind == .eof or t.kind == .comma) break;
                 if (t.isIdent("in") and !have_in) {
-                    try parseInterpolation(l);
+                    try parseInterpolation(g, l);
                     have_in = true;
                 } else if (t.isIdent("from") and !have_from and !have_at) {
                     g.angle = (values.angle(l.next(), false)) orelse return error.InvalidStyleValue;
@@ -237,12 +257,15 @@ fn parseGradient(arena: std.mem.Allocator, kind: Kind, args: []const u8, env: *c
     var g: Gradient = .{ .kind = kind, .angle = if (kind == .linear) 180 else 0 };
     var l = Lexer.init(args);
     _ = try parseConfig(&g, &l, env);
+    const explicit_space = g.space != .srgb or g.hue != .shorter or hasIn(args);
+    var modern = false;
     var stops: tok.List(Stop) = .{};
     var ncolor: usize = 0;
     while (true) {
         const t = l.next();
         if (t.kind == .eof) return error.InvalidStyleValue; // empty stop / trailing comma
         if (colorm.fromToken(t)) |c| {
+            modern = modern or colorm.isModernColorToken(t);
             var st: Stop = .{ .color = c };
             const p1 = l.peek();
             if (stopPos(kind, p1, env)) |a| {
@@ -268,6 +291,7 @@ fn parseGradient(arena: std.mem.Allocator, kind: Kind, args: []const u8, env: *c
     // takumi accepts a single colour stop and stray hints (they are skipped by resolveStops).
     if (ncolor < 1) return error.InvalidStyleValue;
     g.stops = stops.items;
+    if (modern and !explicit_space) g.space = .oklab;
     return g;
 }
 
@@ -365,6 +389,56 @@ pub fn resolveStops(arena: std.mem.Allocator, stops: []const Stop, line_length: 
     return r;
 }
 
+/// Like `resolveStops`, but honours `g.space`/`g.hue`: for any space other than legacy sRGB each
+/// interval between adjacent stops is SUBDIVIDED into intermediate sRGB stops whose colours are
+/// computed in that space (takumi samples its gradient LUT with `Color::interpolate` per entry), so
+/// a rasterizer that lerps premultiplied sRGB between adjacent stops reproduces the curve to within
+/// ~1 level: one stop every 3 px (1 unit = 1 degree for conic), refined to 0.5 px where the
+/// midpoint deviates by >= 2 levels; at most 256 pieces per interval and 8192 stops in total (beyond
+/// that the plain stops are returned). Hint stops keep takumi's 50% premultiplied-sRGB colour.
+pub fn resolveGradientStops(arena: std.mem.Allocator, g: *const Gradient, line_length: f32, current: Color) Error![]ResolvedStop {
+    const base = try resolveStops(arena, g.stops, line_length, current);
+    if (g.space == .srgb or base.len < 2) return base;
+    const step: f32 = if (g.kind == .conic) 1 else 3;
+    var out: tok.List(ResolvedStop) = .{};
+    try out.append(arena, base[0]);
+    for (base[0 .. base.len - 1], base[1..]) |x, y| {
+        const d = y.offset_px - x.offset_px;
+        const k: usize = if (x.color.eql(y.color) or !(d > 0)) 1 else @intFromFloat(std.math.clamp(@ceil(d / step), 1, 256));
+        const inv = 1 / @as(f32, @floatFromInt(k));
+        var prev = x;
+        var j: usize = 1;
+        while (j <= k) : (j += 1) {
+            const t = @as(f32, @floatFromInt(j)) * inv;
+            const cur: ResolvedStop = if (j == k) y else .{ .offset_px = x.offset_px + d * t, .color = colorm.interpolate(x.color, y.color, t, g.space, g.hue) };
+            if (k > 1) {
+                // refine where the piece is visibly curved
+                const t0 = t - inv;
+                const mid = colorm.interpolate(x.color, y.color, t0 + inv * 0.5, g.space, g.hue);
+                const lin = mixHalfPremultiplied(prev.color, cur.color);
+                if (maxDiff(mid, lin) >= 2) {
+                    const m: usize = @intFromFloat(std.math.clamp(@ceil(d * inv / 0.5), 2, 8));
+                    const sub = inv / @as(f32, @floatFromInt(m));
+                    var q: usize = 1;
+                    while (q < m) : (q += 1) {
+                        const tq = t0 + sub * @as(f32, @floatFromInt(q));
+                        try out.append(arena, .{ .offset_px = x.offset_px + d * tq, .color = colorm.interpolate(x.color, y.color, tq, g.space, g.hue) });
+                    }
+                }
+            }
+            try out.append(arena, cur);
+            prev = cur;
+            if (out.items.len > 8192) return base;
+        }
+    }
+    return out.items;
+}
+
+fn maxDiff(a: Color, b: Color) u8 {
+    const d = [4]u8{ @max(a.r, b.r) - @min(a.r, b.r), @max(a.g, b.g) - @min(a.g, b.g), @max(a.b, b.b) - @min(a.b, b.b), @max(a.a, b.a) - @min(a.a, b.a) };
+    return @max(@max(d[0], d[1]), @max(d[2], d[3]));
+}
+
 // ------------------------------------------------------------------ tests
 const T = std.testing;
 
@@ -408,7 +482,8 @@ test "gradient stops and hints" {
     const bad = [_][]const u8{
         "linear-gradient(10%)",
         "linear-gradient(red,, blue)",     "linear-gradient(45deg)",
-        "linear-gradient(to middle, red, blue)", "linear-gradient(to left right, red, blue)", "linear-gradient(in oklab, red, blue)",
+        "linear-gradient(to middle, red, blue)", "linear-gradient(to left right, red, blue)", "linear-gradient(in srgb longer hue, red, blue)",
+        "linear-gradient(in foo, red, blue)", "linear-gradient(in oklch longer, red, blue)", "linear-gradient(in, red, blue)",
         "linear-gradient(red 10px 20px 30px, blue)", "linear-gradient(45, red, blue)", "radial-gradient(circle 10% , red, blue)",
         "radial-gradient(ellipse 10px, red, blue)", "radial-gradient(circle 1px 2px, red, blue)", "conic-gradient(from 10px, red, blue)",
         "linear-gradient(red, blue,)",
@@ -488,4 +563,63 @@ test "stop fix-up" {
     const g2 = try parseImg(a, "linear-gradient(white, 50%, black)");
     const r2 = try resolveStops(a, g2.stops, 10, Color.black);
     try T.expect(r2[1].color.eql(.{ .r = 128, .g = 128, .b = 128, .a = 255 }));
+}
+
+test "interpolation space" {
+    var arena = std.heap.ArenaAllocator.init(T.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const cases = [_]struct { []const u8, InterpSpace, HueMethod }{
+        .{ "linear-gradient(red, blue)", .srgb, .shorter },
+        .{ "linear-gradient(red, oklch(0.5 0.2 250))", .oklab, .shorter },
+        .{ "linear-gradient(lab(50 0 0), blue)", .oklab, .shorter },
+        .{ "linear-gradient(color-mix(in srgb, red, blue), blue)", .oklab, .shorter },
+        .{ "linear-gradient(in srgb, red, oklch(0.5 0.2 250))", .srgb, .shorter },
+        .{ "linear-gradient(to right in oklch longer hue, red, blue)", .oklch, .longer },
+        .{ "linear-gradient(in hsl decreasing hue 45deg, red, blue)", .hsl, .decreasing },
+        .{ "linear-gradient(in display-p3, red, blue)", .display_p3, .shorter },
+        .{ "radial-gradient(circle at 10px 10px in lab, red, blue)", .lab, .shorter },
+        .{ "radial-gradient(in srgb-linear circle, red, blue)", .srgb_linear, .shorter },
+        .{ "conic-gradient(from 10deg in lch increasing hue, red, blue)", .lch, .increasing },
+        .{ "repeating-conic-gradient(red, lch(50 30 20) 10%)", .oklab, .shorter },
+    };
+    for (cases) |cs| {
+        const g = try parseImg(a, cs[0]);
+        T.expect(g.space == cs[1] and g.hue == cs[2]) catch |e| {
+            std.debug.print("{s}: {} {}\n", .{ cs[0], g.space, g.hue });
+            return e;
+        };
+    }
+}
+
+test "resolveGradientStops subdivision" {
+    var arena = std.heap.ArenaAllocator.init(T.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // legacy: identical to resolveStops
+    const g0 = try parseImg(a, "linear-gradient(red, blue)");
+    try T.expectEqual(@as(usize, 2), (try resolveGradientStops(a, g0, 300, Color.black)).len);
+    // oklab: subdivided, endpoints preserved, offsets increasing, midpoint = oracle colour-mix
+    const g = try parseImg(a, "linear-gradient(in oklab, red, blue)");
+    const r = try resolveGradientStops(a, g, 300, Color.black);
+    try T.expect(r.len >= 100 and r.len < 400);
+    try T.expect(r[0].color.eql(.{ .r = 255, .a = 255 }) and r[r.len - 1].color.eql(.{ .b = 255, .a = 255 }));
+    try T.expectEqual(@as(f32, 300), r[r.len - 1].offset_px);
+    for (r[1..], r[0 .. r.len - 1]) |x, y| try T.expect(x.offset_px > y.offset_px);
+    var found = false;
+    for (r) |s| if (s.offset_px == 150) {
+        try T.expect(s.color.eql(.{ .r = 140, .g = 83, .b = 162, .a = 255 }));
+        found = true;
+    };
+    try T.expect(found);
+    // hard stops and equal colours are not subdivided; huge lists fall back to the plain stops
+    const g2 = try parseImg(a, "linear-gradient(in oklch, red 50%, blue 50%, blue)");
+    try T.expectEqual(@as(usize, 3), (try resolveGradientStops(a, g2, 300, Color.black)).len);
+    const g3 = try parseImg(a, "linear-gradient(in oklab, red, blue)");
+    const r3 = try resolveGradientStops(a, g3, 1.0e9, Color.black);
+    try T.expect(r3.len > 2 and r3.len <= 8193 and r3[r3.len - 1].offset_px == 1.0e9);
+    // conic: per-degree steps
+    const g4 = try parseImg(a, "conic-gradient(in oklch, red, blue)");
+    const r4 = try resolveGradientStops(a, g4, 360, Color.black);
+    try T.expect(r4.len > 200);
 }

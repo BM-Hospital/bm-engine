@@ -12,8 +12,13 @@ const Lexer = tok.Lexer;
 pub const LP = struct {
     px: f32 = 0,
     pct: f32 = 0,
+    /// Non-linear math (`min()/max()/clamp()` mixing % and absolute lengths). When set, it is the
+    /// whole value and `px`/`pct` hold an approximation (the expression evaluated with a
+    /// reference of 0 in `px`, `pct` = 0). Always use `resolve()` / `isCalc()`; null in the common case.
+    calc: ?*const CalcNode = null,
 
     pub fn resolve(v: LP, reference: f32) f32 {
+        if (v.calc) |c| return c.eval(reference);
         return v.px + v.pct * reference;
     }
     pub fn fromPx(px: f32) LP {
@@ -22,12 +27,63 @@ pub const LP = struct {
     pub fn fromPct(frac: f32) LP {
         return .{ .pct = frac };
     }
+    pub fn isCalc(v: LP) bool {
+        return v.calc != null;
+    }
     pub fn eql(a: LP, b: LP) bool {
-        return a.px == b.px and a.pct == b.pct;
+        return a.px == b.px and a.pct == b.pct and a.calc == b.calc;
+    }
+};
+
+/// Expression tree for non-linear `<length-percentage>` math. Every node's value is
+/// `px + pct * reference + combine(args)` where combine is: leaf -> 0, sum -> Σ args,
+/// min/max -> min/max of args, clamp -> clamp(args[0], args[1], args[2]) (CSS: max(MIN, min(VAL, MAX))),
+/// scale -> px * args[0] (pct ignored).
+pub const CalcNode = struct {
+    op: Op = .leaf,
+    px: f32 = 0,
+    pct: f32 = 0,
+    args: []const CalcNode = &.{},
+
+    pub const Op = enum(u8) { leaf, sum, min, max, clamp, scale };
+
+    pub fn eval(n: *const CalcNode, ref: f32) f32 {
+        return evalDepth(n, ref, 0);
+    }
+
+    fn evalDepth(n: *const CalcNode, ref: f32, depth: u32) f32 {
+        if (depth > 64) return 0;
+        const base = n.px + n.pct * ref;
+        switch (n.op) {
+            .leaf => return base,
+            .scale => return if (n.args.len > 0) n.px * evalDepth(&n.args[0], ref, depth + 1) else 0,
+            .sum => {
+                var acc: f32 = base;
+                for (n.args) |*a| acc += evalDepth(a, ref, depth + 1);
+                return acc;
+            },
+            .min, .max => {
+                if (n.args.len == 0) return base;
+                var acc = evalDepth(&n.args[0], ref, depth + 1);
+                for (n.args[1..]) |*a| {
+                    const v = evalDepth(a, ref, depth + 1);
+                    acc = if (n.op == .min) @min(acc, v) else @max(acc, v);
+                }
+                return acc;
+            },
+            .clamp => {
+                if (n.args.len != 3) return base;
+                const lo = evalDepth(&n.args[0], ref, depth + 1);
+                const v = evalDepth(&n.args[1], ref, depth + 1);
+                const hi = evalDepth(&n.args[2], ref, depth + 1);
+                return @max(lo, @min(v, hi));
+            },
+        }
     }
 };
 
 /// `width`/`height`/`min-*`/`max-*` value. For `max-*`, `none` is stored as `.auto`.
+/// `fit_content_lp` = `fit-content(<length-percentage>)`.
 pub const Size = union(enum) {
     auto,
     lp: LP,
@@ -35,6 +91,7 @@ pub const Size = union(enum) {
     max_content,
     fit_content,
     stretch,
+    fit_content_lp: LP,
 };
 
 /// `auto | <length-percentage>` (margins, insets).
@@ -50,6 +107,18 @@ pub const Env = struct {
     vh: f32 = 0,
     em: f32 = 16, // font-size the `em` unit refers to (device px)
     rem: f32 = 16, // root font-size (device px)
+    /// font-metric ratios relative to `em` (ch = advance of "0", ex = x-height, cap = cap height,
+    /// ic = advance of "水").
+    ch: f32 = 0.5,
+    ex: f32 = 0.5,
+    cap: f32 = 0.7,
+    ic: f32 = 1,
+    /// computed line-height of the element / root element in device px (`lh` / `rlh`)
+    lh: f32 = 19.2,
+    rlh: f32 = 19.2,
+    /// When set, `min()/max()/clamp()` mixing percentages and absolute lengths build a
+    /// `CalcNode` tree in this allocator; otherwise such values are rejected.
+    alloc: ?std.mem.Allocator = null,
 };
 
 fn ieq(a: []const u8, b: []const u8) bool {
@@ -57,7 +126,7 @@ fn ieq(a: []const u8, b: []const u8) bool {
 }
 
 /// Device px per unit, or null if `unit` is not a length unit.
-const unit_names = "px\x00pt\x00pc\x00in\x00cm\x00mm\x00q\x00em\x00rem\x00ch\x00ex\x00vw\x00vh\x00vmin\x00vmax";
+const unit_names = "px\x00pt\x00pc\x00in\x00cm\x00mm\x00q\x00em\x00rem\x00ch\x00ex\x00vw\x00vh\x00vmin\x00vmax\x00lh\x00rlh\x00cap\x00ic\x00svw\x00lvw\x00dvw\x00svh\x00lvh\x00dvh\x00vi\x00vb";
 const abs_units = [_]f32{ 1, 4.0 / 3.0, 16, 96, 96.0 / 2.54, 96.0 / 25.4, 96.0 / 101.6 };
 
 pub fn lengthUnit(unit: []const u8, env: *const Env) ?f32 {
@@ -66,18 +135,50 @@ pub fn lengthUnit(unit: []const u8, env: *const Env) ?f32 {
     return switch (i) {
         7 => env.em,
         8 => env.rem,
-        // ch/ex are approximated as 0.5em (no font metrics at style time).
-        9, 10 => env.em * 0.5,
-        11 => env.vw / 100,
-        12 => env.vh / 100,
+        9 => env.em * env.ch,
+        10 => env.em * env.ex,
+        11, 20, 21, 22, 26 => env.vw / 100,
+        12, 23, 24, 25, 27 => env.vh / 100,
         13 => @min(env.vw, env.vh) / 100,
-        else => @max(env.vw, env.vh) / 100,
+        14 => @max(env.vw, env.vh) / 100,
+        15 => env.lh,
+        16 => env.rlh,
+        17 => env.em * env.cap,
+        else => env.em * env.ic,
     };
 }
 
 // ------------------------------------------------------------------ calc
 const Dim = enum(u8) { number, length, angle, percent };
-const CV = struct { v: f32 = 0, pct: f32 = 0, dim: Dim };
+/// Linear value `v + pct*ref`, or (length/percent dims only) a non-linear `node` that replaces v/pct.
+const CV = struct { v: f32 = 0, pct: f32 = 0, dim: Dim, node: ?*const CalcNode = null };
+
+/// The CalcNode for a value (leaf when linear).
+fn asNode(a: CV, alloc: std.mem.Allocator) ?*const CalcNode {
+    if (a.node) |n| return n;
+    const n = alloc.create(CalcNode) catch return null;
+    n.* = .{ .op = .leaf, .px = a.v, .pct = a.pct };
+    return n;
+}
+
+fn mkNode(alloc: std.mem.Allocator, op: CalcNode.Op, k: f32, args: []const CV) ?*const CalcNode {
+    const arr = alloc.alloc(CalcNode, args.len) catch return null;
+    for (args, 0..) |a, i| arr[i] = (asNode(a, alloc) orelse return null).*;
+    const n = alloc.create(CalcNode) catch return null;
+    n.* = .{ .op = op, .px = k, .args = arr };
+    return n;
+}
+
+fn scaleCV(a: *CV, k: f32, env: *const Env) bool {
+    if (a.node) |_| {
+        const al = env.alloc orelse return false;
+        a.node = mkNode(al, .scale, k, &.{a.*}) orelse return false;
+        return true;
+    }
+    a.v *= k;
+    a.pct *= k;
+    return true;
+}
 
 const max_calc_depth = 24;
 
@@ -100,38 +201,42 @@ fn mathFn(t: Token, env: *const Env, depth: u32) ?CV {
     }
     const is_min = ieq(t.text, "min");
     const is_clamp = ieq(t.text, "clamp");
-    var args: [3]CV = undefined;
+    var args: [16]CV = undefined;
     var n: usize = 0;
     var acc: CV = undefined;
+    var mixed = false;
     while (true) {
         const a = sum(&l, env, depth + 1) orelse return null;
+        if (n >= args.len) return null;
+        args[n] = a;
         if (n == 0) {
             acc = a;
         } else {
-            // comparable: same dimension and same "shape" (all absolute or all pure-percent)
+            // comparable: same dimension; mixed shapes (abs + %) need a calc tree
             const ad: Dim = if (a.dim == .percent) .length else a.dim;
             const cd: Dim = if (acc.dim == .percent) .length else acc.dim;
             if (ad != cd) return null;
-            if ((a.pct != 0 or acc.pct != 0) and (a.v != 0 or acc.v != 0)) return null;
-            if (!is_clamp) {
+            if (a.node != null or acc.node != null or ((a.pct != 0 or acc.pct != 0) and (a.v != 0 or acc.v != 0))) mixed = true;
+            if (!is_clamp and !mixed) {
                 const av = a.v + a.pct;
                 const cv = acc.v + acc.pct;
                 const take = if (is_min) av < cv else av > cv;
                 if (take) acc = a;
             }
         }
-        if (is_clamp) {
-            if (n >= 3) return null;
-            args[n] = a;
-        }
         n += 1;
         const sep = l.next();
         if (sep.kind == .eof) break;
         if (sep.kind != .comma) return null;
-        if (n > 64) return null;
+    }
+    if (is_clamp and n != 3) return null;
+    if (mixed) {
+        const al = env.alloc orelse return null;
+        const op: CalcNode.Op = if (is_clamp) .clamp else if (is_min) .min else .max;
+        const node = mkNode(al, op, 0, args[0..n]) orelse return null;
+        return .{ .dim = .length, .node = node };
     }
     if (is_clamp) {
-        if (n != 3) return null;
         const lo = args[0].v + args[0].pct;
         const mid = args[1].v + args[1].pct;
         const hi = args[2].v + args[2].pct;
@@ -187,16 +292,13 @@ fn product(l: *Lexer, env: *const Env, depth: u32) ?CV {
             if (a.dim == .number) {
                 const k = a.v;
                 a = b;
-                a.v *= k;
-                a.pct *= k;
+                if (!scaleCV(&a, k, env)) return null;
             } else if (b.dim == .number) {
-                a.v *= b.v;
-                a.pct *= b.v;
+                if (!scaleCV(&a, b.v, env)) return null;
             } else return null;
         } else {
             if (b.dim != .number or b.v == 0) return null;
-            a.v /= b.v;
-            a.pct /= b.v;
+            if (!scaleCV(&a, 1 / b.v, env)) return null;
         }
     }
 }
@@ -215,6 +317,15 @@ fn sum(l: *Lexer, env: *const Env, depth: u32) ?CV {
         if ((a.dim == .number) != (b.dim == .number)) return null;
         if (a.dim != .percent and b.dim != .percent and a.dim != b.dim) return null;
         if (a.dim == .percent) a.dim = b.dim;
+        if (a.node != null or b.node != null) {
+            const al = env.alloc orelse return null;
+            var nb = b;
+            if (!plus and !scaleCV(&nb, -1, env)) return null;
+            a.node = mkNode(al, .sum, 0, &.{ a, nb }) orelse return null;
+            a.v = 0;
+            a.pct = 0;
+            continue;
+        }
         a.v += s * b.v;
         a.pct += s * b.pct;
     }
@@ -244,6 +355,12 @@ fn lengthPctRaw(t: Token, env: *const Env) ?LP {
         .function => {
             if (!isMathFn(t)) return null;
             const r = mathFn(t, env, 0) orelse return null;
+            if (r.node) |nd| {
+                if (r.dim == .angle or r.dim == .number) return null;
+                const v0 = nd.eval(0);
+                if (!finite(v0)) return null;
+                return .{ .px = v0, .calc = nd };
+            }
             return switch (r.dim) {
                 .number => .{ .px = r.v * env.dpr },
                 .length, .percent => .{ .px = r.v, .pct = r.pct },
@@ -258,7 +375,7 @@ fn lengthPctRaw(t: Token, env: *const Env) ?LP {
 pub fn length(t: Token, env: *const Env) ?f32 {
     if (t.kind == .percentage) return null;
     const v = lengthPct(t, env) orelse return null;
-    if (v.pct != 0) return null;
+    if (v.pct != 0 or v.calc != null) return null;
     return v.px;
 }
 
@@ -333,6 +450,12 @@ pub fn size(t: Token, env: *const Env) ?Size {
         if (ieq(s, "fit-content") or ieq(s, "-webkit-fit-content")) return .fit_content;
         if (ieq(s, "stretch") or ieq(s, "-webkit-fill-available")) return .stretch;
         return null;
+    }
+    if (t.isFunc("fit-content") or t.isFunc("-webkit-fit-content")) {
+        var l = Lexer.init(t.args);
+        const v = lengthPct(l.next(), env) orelse return null;
+        if (!l.atEnd() or v.px < 0 or v.pct < 0) return null;
+        return .{ .fit_content_lp = v };
     }
     return if (lengthPct(t, env)) |v| .{ .lp = v } else null;
 }

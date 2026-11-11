@@ -1,16 +1,31 @@
-//! CSS style-value parsing -> per-node `ComputedStyle`.
+//! CSS style-value parsing + cascade -> per-node `ComputedStyle`.
 //!
-//! There is no selector engine: a node's style comes from its `preset` object (lowest priority),
-//! then its `style` object (camelCase keys, string or number values), plus inheritance from the parent.
+//! There is no selector engine here: a node's style comes from ordered declaration LAYERS (takumi's
+//! cascade: `preset` (UA) < presentation attributes / author rules / Tailwind < inline `style`), plus
+//! inheritance from the parent. `compute` takes the two JSON objects of a node; `computeEx` adds an
+//! ordered list of rule-origin `Declaration`s between them; `computeLayers` is the general form.
 //!
-//! Error policy (mirrors takumi): unknown / kebab-case / `--custom` keys are ignored, `null` means "no
-//! declaration", and a known property with an invalid value fails with `error.InvalidStyleValue`
-//! (`Diagnostics` names the property and value). `inherit`, `initial`, `unset`, `revert`,
-//! `revert-layer` work for every property; a trailing `!important` is accepted and ignored;
-//! values containing `var(` are rejected.
+//! Cascade: within normal declarations later wins; every `!important` declaration beats every normal
+//! one; among important ones the later layer (and later declaration) wins.
 //!
-//! Memory: `compute` allocates lists (font families, shadows, gradients, tracks, ...) in `arena`,
-//! which must outlive the returned style; strings may alias the JSON input.
+//! Property names: camelCase (`backgroundColor`, `WebkitLineClamp`) are matched exactly; names
+//! containing '-' are kebab-case / vendor (`background-color`, `-webkit-line-clamp`) and matched
+//! case-insensitively; `--name` is a custom property. JSON objects (takumi rule) ignore kebab keys.
+//!
+//! Error policy: in STRICT layers (JSON preset/style, as in takumi) a known property with an invalid
+//! value fails with `error.InvalidStyleValue` (`Diagnostics` names the property and value). In
+//! LENIENT layers (stylesheet rules) invalid declarations are dropped (CSS behaviour). Unknown names
+//! are always ignored, `null` JSON values mean "no declaration". `inherit`, `initial`, `unset`,
+//! `revert`, `revert-layer` work for every property.
+//!
+//! Custom properties + `var()`: `--x` declarations are inherited (`ComputedStyle.custom_props`,
+//! name-sorted, shared with the parent when the element declares none). `var(--x, fallback)` is
+//! substituted textually anywhere in a value at computed-value time against the element's own
+//! custom properties (cycles / depth > 32 / missing without fallback -> the custom property is
+//! invalid; a normal property becomes `unset` — never an error).
+//!
+//! Memory: `compute*` allocate lists (font families, shadows, gradients, tracks, substituted values,
+//! ...) in `arena`, which must outlive the returned style; strings may alias the input.
 const std = @import("std");
 const json = @import("testjson.zig"); // referenced from tests only (see compute())
 pub const tokenizer = @import("tokenizer.zig");
@@ -19,10 +34,13 @@ pub const values = @import("values.zig");
 pub const gradient = @import("gradient.zig");
 pub const computed = @import("computed.zig");
 pub const props = @import("props.zig");
+/// Keyframe interpolation + easing (see interp.zig); only linked in when referenced.
+pub const interp = @import("interp.zig");
 
 pub const Color = color.Color;
 pub const ColorValue = color.ColorValue;
 pub const LP = values.LP;
+pub const CalcNode = values.CalcNode;
 pub const Size = values.Size;
 pub const LengthAuto = values.LengthAuto;
 pub const Gradient = gradient.Gradient;
@@ -32,6 +50,7 @@ pub const Image = gradient.Image;
 pub const resolveStops = gradient.resolveStops;
 pub const ComputedStyle = computed.ComputedStyle;
 pub const BgLayer = computed.BgLayer;
+pub const MaskLayer = computed.MaskLayer;
 pub const Shadow = computed.Shadow;
 pub const Filter = computed.Filter;
 pub const TransformOp = computed.TransformOp;
@@ -41,7 +60,9 @@ pub const GridTemplate = computed.GridTemplate;
 pub const GridLine = computed.GridLine;
 pub const Display = computed.Display;
 pub const Align = computed.Align;
+pub const TimingFunction = computed.TimingFunction;
 pub const usedLineWidth = computed.usedLineWidth;
+pub const Prop = props.Prop;
 
 pub const Error = error{ InvalidStyleValue, OutOfMemory };
 
@@ -53,10 +74,34 @@ pub const Context = struct {
     viewport_h: f32,
     /// Root element font-size in device px (16*dpr until the root computes its own); `rem` base.
     root_font_size: f32,
+    /// Font metrics for `ch` / `ex` / `cap` / `ic` units as fractions of the element's font-size
+    /// (the integrator may fill these from the primary font; CSS fallback values by default).
+    ch_width_ratio: f32 = 0.5,
+    x_height_ratio: f32 = 0.5,
+    cap_height_ratio: f32 = 0.7,
+    ic_width_ratio: f32 = 1,
+    /// `line-height: normal` as a multiple of font-size, used only for the `lh`/`rlh` units.
+    normal_line_height_ratio: f32 = 1.2,
+    /// Root element's computed line-height in device px (`rlh`); 0 = normal ratio * root_font_size.
+    root_line_height: f32 = 0,
 };
 
 /// Filled on error.InvalidStyleValue. `value` is "" for JSON-number values.
 pub const Diagnostics = struct { property: []const u8 = "", value: []const u8 = "" };
+
+/// One declaration from any origin. `name`: camelCase, kebab-case, vendor or `--custom`.
+/// `value`: the raw value text (a trailing `!important` in it is also recognised). `number`:
+/// set instead of `value` for JSON numbers (takumi: unitless numbers are px for lengths).
+pub const Declaration = struct {
+    name: []const u8,
+    value: []const u8,
+    important: bool = false,
+    number: ?f64 = null,
+};
+
+/// An ordered group of declarations of one origin. `lenient`: drop invalid declarations silently
+/// (CSS rules) instead of failing the computation (JSON style objects, as in takumi).
+pub const Layer = struct { decls: []const Declaration, lenient: bool = false };
 
 fn sanitizedDpr(ctx: *const Context) f32 {
     return if (ctx.dpr > 0 and ctx.dpr < 1.0e6) ctx.dpr else 1;
@@ -67,15 +112,10 @@ pub fn initial(ctx: *const Context) ComputedStyle {
     return computed.initialStyle(sanitizedDpr(ctx));
 }
 
-const Mode = enum { font_only, all };
-
 /// A declaration value: the subset of `json.Value` (src/json.zig) that style cares about.
 pub const RawValue = union(enum) { null, number: f64, string: []const u8, other };
 
-/// Computes a node's style: start from `initial`, copy inherited properties from `parent` (if any),
-/// apply `preset` then `style` declarations in object order (later wins; shorthands expand in place).
-/// Font-size-setting declarations (`fontSize`, `font`) are evaluated first so `em` in every other
-/// property uses this element's final font-size (as CSS computed values do).
+/// Computes a node's style from its JSON `preset` (lowest priority) and `style` objects.
 ///
 /// `preset` / `style` are `?json.Value` (src/json.zig). They are taken as `anytype` only so that this
 /// directory can be unit-tested standalone (importing ../json.zig is outside the module path when
@@ -89,11 +129,131 @@ pub fn compute(
     style: anytype,
     diag: *Diagnostics,
 ) Error!ComputedStyle {
+    return computeEx(arena, ctx, parent, preset, &.{}, style, diag);
+}
+
+/// takumi cascade order: `preset_json` (strict) < `rules` (lenient: presentation attributes,
+/// author stylesheet rules and Tailwind utilities, already in cascade order) < `style_json`
+/// (strict, inline style). JSON sources as in `compute`.
+pub fn computeEx(
+    arena: std.mem.Allocator,
+    ctx: *const Context,
+    parent: ?*const ComputedStyle,
+    preset_json: anytype,
+    rules: []const Declaration,
+    style_json: anytype,
+    diag: *Diagnostics,
+) Error!ComputedStyle {
+    const layers = [3]Layer{
+        .{ .decls = try jsonDecls(arena, preset_json, diag) },
+        .{ .decls = rules, .lenient = true },
+        .{ .decls = try jsonDecls(arena, style_json, diag) },
+    };
+    return computeLayers(arena, ctx, parent, &layers, diag);
+}
+
+/// Converts a JSON style object to declarations (kebab keys dropped, `!important` split off).
+/// Generic only over the JSON value type (see `compute`).
+pub fn jsonDecls(arena: std.mem.Allocator, src: anytype, diag: *Diagnostics) Error![]const Declaration {
+    const Src = @TypeOf(src);
+    if (Src == @TypeOf(null)) return &.{};
+    const v = if (@typeInfo(Src) == .optional) (src orelse return &.{}) else src;
+    switch (v) {
+        .null => return &.{},
+        .object => |members| {
+            const out = try arena.alloc(Declaration, members.len);
+            var n: usize = 0;
+            for (members) |m| {
+                const custom = isCustomName(m.key);
+                if (!custom and std.mem.indexOfScalar(u8, m.key, '-') != null) continue;
+                switch (m.value) {
+                    .null => continue,
+                    .number => |x| out[n] = .{ .name = m.key, .value = "", .number = x },
+                    .string => |str| {
+                        const sv = splitImportant(str);
+                        out[n] = .{ .name = m.key, .value = sv.value, .important = sv.important };
+                    },
+                    else => {
+                        if (custom or props.lookup(m.key) == null) continue;
+                        diag.* = .{ .property = m.key, .value = "" };
+                        return error.InvalidStyleValue;
+                    },
+                }
+                n += 1;
+            }
+            return out[0..n];
+        },
+        else => {
+            diag.* = .{ .property = "style", .value = "" };
+            return error.InvalidStyleValue;
+        },
+    }
+}
+
+fn isCustomName(n: []const u8) bool {
+    return n.len > 2 and n[0] == '-' and n[1] == '-';
+}
+
+/// Property id for a declaration name: camelCase exact, kebab-case/vendor case-insensitive.
+/// Null for unknown names and custom properties.
+pub fn propertyId(name: []const u8) ?Prop {
+    if (std.mem.indexOfScalar(u8, name, '-') == null) return props.lookup(name);
+    if (isCustomName(name) or name.len >= 48) return null;
+    var buf: [48]u8 = undefined;
+    var n: usize = 0;
+    var up = false;
+    for (name) |ch| {
+        if (ch == '-') {
+            up = true;
+            continue;
+        }
+        const lo = std.ascii.toLower(ch);
+        buf[n] = if (up) std.ascii.toUpper(lo) else lo;
+        up = false;
+        n += 1;
+    }
+    return props.lookup(buf[0..n]);
+}
+
+const SplitValue = struct { value: []const u8, important: bool };
+
+fn splitImportant(s0: []const u8) SplitValue {
+    const s = std.mem.trim(u8, s0, " \t\r\n\x0c");
+    const bang = std.mem.lastIndexOfScalar(u8, s, '!') orelse return .{ .value = s, .important = false };
+    const rest = std.mem.trim(u8, s[bang + 1 ..], " \t\r\n\x0c");
+    if (!std.ascii.eqlIgnoreCase(rest, "important")) return .{ .value = s, .important = false };
+    return .{ .value = std.mem.trimEnd(u8, s[0..bang], " \t\r\n\x0c"), .important = true };
+}
+
+// ---------------------------------------------------------------------------------------------
+// cascade
+
+const Mode = enum { font_size, font_metrics, all };
+
+/// One cascaded declaration: `prop` null = custom property.
+const Item = struct { d: *const Declaration, prop: ?Prop, lenient: bool };
+
+const State = struct {
+    init: *const ComputedStyle,
+    parent: ?*const ComputedStyle,
+    diag: *Diagnostics,
+};
+
+/// General cascade: `layers` in increasing precedence (see module doc for `!important`).
+pub fn computeLayers(
+    arena: std.mem.Allocator,
+    ctx: *const Context,
+    parent: ?*const ComputedStyle,
+    layers: []const Layer,
+    diag: *Diagnostics,
+) Error!ComputedStyle {
     const dpr = sanitizedDpr(ctx);
     const init_s = computed.initialStyle(dpr);
     var s = init_s;
     if (parent) |p| props.inheritAll(&s, p);
     const pfs = if (parent) |p| p.font_size else init_s.font_size;
+    const rem = if (ctx.root_font_size > 0) ctx.root_font_size else 16 * dpr;
+    const nlh = if (ctx.normal_line_height_ratio > 0) ctx.normal_line_height_ratio else 1.2;
     var cx: props.Cx = .{
         .a = arena,
         .s = &s,
@@ -102,51 +262,63 @@ pub fn compute(
             .vw = if (ctx.viewport_w > 0) ctx.viewport_w else 0,
             .vh = if (ctx.viewport_h > 0) ctx.viewport_h else 0,
             .em = pfs,
-            .rem = if (ctx.root_font_size > 0) ctx.root_font_size else 16 * dpr,
+            .rem = rem,
+            .ch = ctx.ch_width_ratio,
+            .ex = ctx.x_height_ratio,
+            .cap = ctx.cap_height_ratio,
+            .ic = ctx.ic_width_ratio,
+            .lh = if (parent) |p| lineHeightPx(p, nlh) else nlh * pfs,
+            .rlh = if (ctx.root_line_height > 0) ctx.root_line_height else nlh * rem,
+            .alloc = arena,
         },
         .parent_fs = pfs,
         .parent_weight = if (parent) |p| p.font_weight else 400,
         .parent_color = if (parent) |p| p.color else Color.black,
     };
     const st: State = .{ .init = &init_s, .parent = parent, .diag = diag };
-    try applySource(&cx, &st, preset, .font_only);
-    try applySource(&cx, &st, style, .font_only);
-    cx.env.em = s.font_size;
-    try applySource(&cx, &st, preset, .all);
-    try applySource(&cx, &st, style, .all);
+
+    // flatten: normal declarations in layer order, then important ones
+    var total: usize = 0;
+    for (layers) |ly| total += ly.decls.len;
+    if (total == 0) return s;
+    const items = try arena.alloc(Item, total);
+    var n: usize = 0;
+    var n_custom: usize = 0;
+    for ([2]bool{ false, true }) |imp| {
+        for (layers) |ly| for (ly.decls) |*d| {
+            const sv = splitImportant(d.value);
+            if ((d.important or sv.important) != imp) continue;
+            const custom = isCustomName(d.name);
+            const p = if (custom) null else (propertyId(d.name) orelse continue);
+            if (custom) n_custom += 1;
+            items[n] = .{ .d = d, .prop = p, .lenient = ly.lenient };
+            n += 1;
+        };
+    }
+    const list = items[0..n];
+    if (n_custom > 0) try buildCustom(&cx, &st, list, n_custom);
+
+    for ([3]Mode{ .font_size, .font_metrics, .all }) |mode| {
+        for (list) |it| {
+            const p = it.prop orelse continue;
+            const want = switch (mode) {
+                .font_size => p == .fontSize or p == .font,
+                .font_metrics => p == .lineHeight or p == .font or p == .direction or p == .writingMode,
+                .all => true,
+            };
+            if (want) try applyItem(&cx, &st, it, p);
+        }
+        if (mode == .font_size) cx.env.em = s.font_size;
+        if (mode == .font_metrics) cx.env.lh = lineHeightPx(&s, nlh);
+    }
     return s;
 }
 
-const State = struct { init: *const ComputedStyle, parent: ?*const ComputedStyle, diag: *Diagnostics };
-
-fn applySource(cx: *props.Cx, st: *const State, src: anytype, mode: Mode) Error!void {
-    const Src = @TypeOf(src);
-    if (Src == @TypeOf(null)) return;
-    const v = if (@typeInfo(Src) == .optional) (src orelse return) else src;
-    switch (v) {
-        .null => return,
-        .object => |members| for (members) |m| {
-            const raw: RawValue = switch (m.value) {
-                .null => .null,
-                .number => |n| .{ .number = n },
-                .string => |str| .{ .string = str },
-                else => .other,
-            };
-            try applyDecl(cx, st, m.key, raw, mode);
-        },
-        else => {
-            st.diag.* = .{ .property = "style", .value = "" };
-            return error.InvalidStyleValue;
-        },
-    }
-}
-
-fn applyDecl(cx: *props.Cx, st: *const State, key: []const u8, value: RawValue, mode: Mode) Error!void {
-    const p = props.lookup(key) orelse return;
-    if (mode == .font_only and p != .fontSize and p != .font) return;
-    applyValue(cx, st, p, value) catch |e| {
-        if (e == error.InvalidStyleValue) st.diag.* = .{ .property = key, .value = if (value == .string) value.string else "" };
-        return e;
+fn lineHeightPx(s: *const ComputedStyle, normal_ratio: f32) f32 {
+    return switch (s.line_height) {
+        .normal => normal_ratio * s.font_size,
+        .number => |k| k * s.font_size,
+        .px => |v| v,
     };
 }
 
@@ -159,48 +331,440 @@ fn cssWide(s: []const u8) ?CssWide {
     return null;
 }
 
-fn stripImportant(s0: []const u8) []const u8 {
-    const s = std.mem.trimEnd(u8, s0, " \t\r\n");
-    const bang = std.mem.lastIndexOfScalar(u8, s, '!') orelse return s;
-    const rest = std.mem.trim(u8, s[bang + 1 ..], " \t\r\n");
-    if (!std.ascii.eqlIgnoreCase(rest, "important")) return s;
-    return std.mem.trimEnd(u8, s[0..bang], " \t\r\n");
-}
-
 fn containsVar(s: []const u8) bool {
-    if (s.len < 4) return false;
-    var i: usize = 0;
-    while (i + 4 <= s.len) : (i += 1) {
-        if (std.ascii.eqlIgnoreCase(s[i .. i + 4], "var(")) return true;
-    }
-    return false;
+    return findVar(s, 0) != null;
 }
 
-fn applyValue(cx: *props.Cx, st: *const State, p: props.Prop, value: RawValue) Error!void {
-    switch (value) {
-        .null => return,
-        .number => |n| {
-            var l = tokenizer.Lexer.initNumber(n);
-            try props.apply(cx, p, &l);
-        },
-        .string => |raw| {
-            const s = stripImportant(std.mem.trim(u8, raw, " \t\r\n"));
-            if (s.len == 0 or containsVar(s)) return error.InvalidStyleValue;
-            if (cssWide(s)) |k| {
-                const use_parent = switch (k) {
-                    .inherit => true,
-                    .initial => false,
-                    .unset => props.isInherited(p),
-                };
-                const src: *const ComputedStyle = if (use_parent) (st.parent orelse st.init) else st.init;
-                props.copyProp(p, cx.s, src);
-                return;
-            }
-            var l = tokenizer.Lexer.init(s);
-            try props.apply(cx, p, &l);
-        },
-        else => return error.InvalidStyleValue,
+/// Applies the CSS-wide keyword `k` to `p` (logical properties map through the direction).
+fn applyWide(cx: *props.Cx, st: *const State, p: Prop, k: CssWide) void {
+    var buf: [4]Prop = undefined;
+    for (props.physicalProps(p, cx.s.direction == .rtl, &buf)) |q| {
+        const use_parent = switch (k) {
+            .inherit => true,
+            .initial => false,
+            .unset => props.isInherited(q),
+        };
+        const src: *const ComputedStyle = if (use_parent) (st.parent orelse st.init) else st.init;
+        props.copyProp(q, cx.s, src);
     }
+}
+
+fn applyItem(cx: *props.Cx, st: *const State, it: Item, p: Prop) Error!void {
+    const d = it.d;
+    if (d.number) |num| {
+        var l = tokenizer.Lexer.initNumber(num);
+        return applyParsed(cx, st, it, p, &l);
+    }
+    var text = splitImportant(d.value).value;
+    if (containsVar(text)) {
+        var sc: SubCtx = .{ .a = cx.a, .list = cx.s.custom_props };
+        text = (try sc.substitute(text, 0)) orelse {
+            applyWide(cx, st, p, .unset); // invalid at computed-value time
+            return;
+        };
+        text = std.mem.trim(u8, text, " \t\r\n\x0c");
+    }
+    if (cssWide(text)) |k| return applyWide(cx, st, p, k);
+    if (text.len == 0) return fail(st, it, text);
+    var l = tokenizer.Lexer.init(text);
+    return applyParsed(cx, st, it, p, &l);
+}
+
+fn fail(st: *const State, it: Item, text: []const u8) Error!void {
+    if (it.lenient) return;
+    st.diag.* = .{ .property = it.d.name, .value = text };
+    return error.InvalidStyleValue;
+}
+
+fn applyParsed(cx: *props.Cx, st: *const State, it: Item, p: Prop, l: *tokenizer.Lexer) Error!void {
+    if (!it.lenient) {
+        props.apply(cx, p, l) catch |e| {
+            if (e == error.InvalidStyleValue) st.diag.* = .{ .property = it.d.name, .value = if (it.d.number != null) "" else splitImportant(it.d.value).value };
+            return e;
+        };
+        return;
+    }
+    // lenient: a failed declaration must leave no partial writes behind
+    var saved: ComputedStyle = undefined;
+    var buf: [4]Prop = undefined;
+    const phys = props.physicalProps(p, cx.s.direction == .rtl, &buf);
+    for (phys) |q| props.copyProp(q, &saved, cx.s);
+    props.apply(cx, p, l) catch |e| {
+        if (e == error.OutOfMemory) return e;
+        for (phys) |q| props.copyProp(q, cx.s, &saved);
+    };
+}
+
+// ---------------------------------------------------------------------------------------------
+// custom properties
+
+const max_var_depth = 32;
+const max_subst_len = 64 * 1024;
+
+/// var() substitution against a name-sorted custom property list. While the element's own custom
+/// properties are being resolved, `state` tracks per-entry progress (cycle detection).
+const SubCtx = struct {
+    a: std.mem.Allocator,
+    list: []const computed.CustomProp,
+    /// null = every entry is resolved; else 0 = done, 1 = pending, 2 = resolving, 3 = invalid
+    state: ?[]u8 = null,
+    vals: ?[]computed.CustomProp = null,
+    /// entry where a detected cycle closes; set while unwinding through the cycle members
+    cycle_root: ?usize = null,
+
+    fn find(c: *const SubCtx, name: []const u8) ?usize {
+        var lo: usize = 0;
+        var hi: usize = c.list.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            switch (std.mem.order(u8, c.list[mid].name, name)) {
+                .eq => return mid,
+                .lt => lo = mid + 1,
+                .gt => hi = mid,
+            }
+        }
+        return null;
+    }
+
+    /// Resolved value of custom property `name`, or null (missing / invalid / cycle).
+    fn get(c: *SubCtx, name: []const u8, depth: u32) Error!?[]const u8 {
+        const i = c.find(name) orelse return null;
+        const stv = c.state orelse return c.list[i].value;
+        switch (stv[i]) {
+            0 => return c.list[i].value,
+            2 => {
+                if (c.cycle_root == null) c.cycle_root = i;
+                return null;
+            },
+            3 => return null,
+            else => {},
+        }
+        stv[i] = 2;
+        const r = try c.substitute(c.list[i].value, depth + 1);
+        if (c.cycle_root) |root| {
+            // every member of the cycle is invalid; referencers outside it may use fallbacks
+            stv[i] = 3;
+            if (root == i) c.cycle_root = null;
+            return null;
+        }
+        if (r) |v| {
+            c.vals.?[i].value = v;
+            stv[i] = 0;
+        } else stv[i] = 3;
+        return r;
+    }
+
+    /// Replaces every `var()` in `text`; null if any reference is invalid.
+    fn substitute(c: *SubCtx, text: []const u8, depth: u32) Error!?[]const u8 {
+        if (depth > max_var_depth) return null;
+        var first = findVar(text, 0) orelse return text;
+        var out: tokenizer.List(u8) = .{};
+        var pos: usize = 0;
+        while (true) {
+            try out.appendSlice(c.a, text[pos..first]);
+            const close = matchParen(text, first + 4) orelse return null;
+            const args = text[first + 4 .. close];
+            const comma = topComma(args);
+            const name = std.mem.trim(u8, args[0 .. comma orelse args.len], " \t\r\n\x0c");
+            if (!isCustomName(name)) return null;
+            var rep: ?[]const u8 = try c.get(name, depth);
+            if (rep == null and c.cycle_root != null) return null;
+            if (rep == null) {
+                const cm = comma orelse return null;
+                rep = (try c.substitute(std.mem.trim(u8, args[cm + 1 ..], " \t\r\n\x0c"), depth + 1)) orelse return null;
+            }
+            const r = rep.?;
+            // keep adjacent tokens apart (`var(--a)px` must not form a dimension)
+            if (r.len > 0 and out.items.len > 0 and tokenizer.isNameChar(out.items[out.items.len - 1]) and tokenizer.isNameChar(r[0])) try out.append(c.a, ' ');
+            try out.appendSlice(c.a, r);
+            pos = close + 1;
+            if (pos < text.len and r.len > 0 and tokenizer.isNameChar(text[pos]) and tokenizer.isNameChar(r[r.len - 1])) try out.append(c.a, ' ');
+            if (out.items.len > max_subst_len) return null;
+            first = findVar(text, pos) orelse break;
+        }
+        try out.appendSlice(c.a, text[pos..]);
+        return out.items;
+    }
+};
+
+/// Index of the next `var(` function (case-insensitive, outside strings) at or after `from`.
+fn findVar(s: []const u8, from: usize) ?usize {
+    var i = from;
+    while (i + 4 <= s.len) : (i += 1) {
+        const ch = s[i];
+        if (ch == '"' or ch == '\'') {
+            i += 1;
+            while (i < s.len and s[i] != ch) : (i += 1) {
+                if (s[i] == '\\') i += 1;
+            }
+            continue;
+        }
+        if (ch == '\\') {
+            i += 1;
+            continue;
+        }
+        if ((ch == 'v' or ch == 'V') and std.ascii.eqlIgnoreCase(s[i .. i + 4], "var(") and (i == 0 or !tokenizer.isNameChar(s[i - 1]))) return i;
+    }
+    return null;
+}
+
+/// Index of the `)` closing the block whose contents start at `start`.
+fn matchParen(s: []const u8, start: usize) ?usize {
+    var depth: usize = 0;
+    var i = start;
+    while (i < s.len) : (i += 1) {
+        const ch = s[i];
+        switch (ch) {
+            '(', '[', '{' => depth += 1,
+            ')', ']', '}' => {
+                if (depth == 0) return if (ch == ')') i else null;
+                depth -= 1;
+            },
+            '"', '\'' => {
+                i += 1;
+                while (i < s.len and s[i] != ch) : (i += 1) {
+                    if (s[i] == '\\') i += 1;
+                }
+            },
+            '\\' => i += 1,
+            else => {},
+        }
+    }
+    return null;
+}
+
+fn topComma(s: []const u8) ?usize {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i < s.len) : (i += 1) {
+        switch (s[i]) {
+            '(', '[', '{' => depth += 1,
+            ')', ']', '}' => depth -|= 1,
+            ',' => if (depth == 0) return i,
+            '"', '\'' => {
+                const q = s[i];
+                i += 1;
+                while (i < s.len and s[i] != q) : (i += 1) {
+                    if (s[i] == '\\') i += 1;
+                }
+            },
+            '\\' => i += 1,
+            else => {},
+        }
+    }
+    return null;
+}
+
+/// Collects the winning `--name` declarations, merges them over the parent's map and resolves
+/// their var() references (cycles -> invalid -> dropped).
+fn buildCustom(cx: *props.Cx, st: *const State, list: []const Item, n_custom: usize) Error!void {
+    const a = cx.a;
+    const parent_list: []const computed.CustomProp = if (st.parent) |p| p.custom_props else &.{};
+    // own declarations, last wins; value null = remove (initial / guaranteed-invalid)
+    const Own = struct { name: []const u8, value: ?[]const u8 };
+    const own = try a.alloc(Own, n_custom);
+    var no: usize = 0;
+    for (list) |it| {
+        if (it.prop != null) continue;
+        const d = it.d;
+        var v: ?[]const u8 = undefined;
+        if (d.number) |num| {
+            v = try fmtNum(a, num);
+        } else {
+            const raw = splitImportant(d.value).value;
+            if (cssWide(raw)) |k| {
+                v = if (k == .initial) null else computed.findCustom(parent_list, d.name);
+            } else v = raw;
+        }
+        var k: usize = 0;
+        while (k < no and !std.mem.eql(u8, own[k].name, d.name)) k += 1;
+        own[k] = .{ .name = d.name, .value = v };
+        if (k == no) no += 1;
+    }
+    // merge (both sorted) into a fresh array
+    // insertion sort (small n; avoids pulling std.sort into the binary)
+    for (1..no) |x| {
+        const v = own[x];
+        var y = x;
+        while (y > 0 and std.mem.order(u8, own[y - 1].name, v.name) == .gt) : (y -= 1) own[y] = own[y - 1];
+        own[y] = v;
+    }
+    const merged = try a.alloc(computed.CustomProp, parent_list.len + no);
+    const state = try a.alloc(u8, parent_list.len + no);
+    var m: usize = 0;
+    var i: usize = 0;
+    var j: usize = 0;
+    while (i < parent_list.len or j < no) {
+        const take_own = j < no and (i >= parent_list.len or std.mem.order(u8, own[j].name, parent_list[i].name) != .gt);
+        if (take_own) {
+            if (i < parent_list.len and std.mem.eql(u8, own[j].name, parent_list[i].name)) i += 1;
+            if (own[j].value) |v| {
+                merged[m] = .{ .name = own[j].name, .value = v };
+                state[m] = if (containsVar(v)) 1 else 0;
+                m += 1;
+            }
+            j += 1;
+        } else {
+            merged[m] = parent_list[i];
+            state[m] = 0;
+            m += 1;
+            i += 1;
+        }
+    }
+    var sc: SubCtx = .{ .a = a, .list = merged[0..m], .state = state[0..m], .vals = merged[0..m] };
+    for (0..m) |k| {
+        if (state[k] == 1) _ = try sc.get(merged[k].name, 0);
+    }
+    var w: usize = 0;
+    for (0..m) |k| {
+        if (state[k] == 3) continue;
+        merged[w] = merged[k];
+        w += 1;
+    }
+    cx.s.custom_props = merged[0..w];
+}
+
+/// Shortest-ish decimal text for a JSON number used as a custom property value.
+fn fmtNum(a: std.mem.Allocator, x0: f64) Error![]const u8 {
+    var buf: [48]u8 = undefined;
+    var n: usize = 0;
+    var x = x0;
+    if (!(x == x) or @abs(x) > 1.0e15) return "0";
+    if (x < 0) {
+        buf[n] = '-';
+        n += 1;
+        x = -x;
+    }
+    var ip: u64 = @intFromFloat(@floor(x));
+    var frac = x - @floor(x);
+    var digits: [20]u8 = undefined;
+    var nd: usize = 0;
+    while (true) {
+        digits[nd] = @as(u8, @intCast(ip % 10)) + '0';
+        nd += 1;
+        ip /= 10;
+        if (ip == 0) break;
+    }
+    while (nd > 0) {
+        nd -= 1;
+        buf[n] = digits[nd];
+        n += 1;
+    }
+    if (frac > 1e-9) {
+        buf[n] = '.';
+        n += 1;
+        var k: usize = 0;
+        while (k < 6 and frac > 1e-9) : (k += 1) {
+            frac *= 10;
+            const dgt: u8 = @intFromFloat(@floor(frac));
+            buf[n] = @as(u8, '0') + @min(dgt, 9);
+            n += 1;
+            frac -= @floor(frac);
+        }
+    }
+    return a.dupe(u8, buf[0..n]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// declaration blocks
+
+/// Parses `style="a: b; c: d !important"` attribute / rule-body text into declarations (in order).
+/// Handles strings, nested ()/[]/{} blocks, comments and escapes; malformed declarations (no name
+/// or no ':') are skipped. Names are returned as written (trimmed); values are trimmed with
+/// `!important` split off. Slices alias `text` except when comments had to be removed.
+pub fn parseDeclarationBlock(arena: std.mem.Allocator, text: []const u8) Error![]Declaration {
+    var out: tokenizer.List(Declaration) = .{};
+    var i: usize = 0;
+    while (i < text.len) {
+        // find the end of this declaration: ';' at depth 0
+        const start = i;
+        var depth: usize = 0;
+        var colon: ?usize = null;
+        var has_comment = false;
+        while (i < text.len) : (i += 1) {
+            const ch = text[i];
+            switch (ch) {
+                ';' => if (depth == 0) break,
+                ':' => if (depth == 0 and colon == null) {
+                    colon = i;
+                },
+                '(', '[', '{' => depth += 1,
+                ')', ']', '}' => depth -|= 1,
+                '"', '\'' => {
+                    i += 1;
+                    while (i < text.len and text[i] != ch and text[i] != '\n') : (i += 1) {
+                        if (text[i] == '\\') i += 1;
+                    }
+                    if (i >= text.len) break;
+                },
+                '\\' => i += 1,
+                '/' => if (i + 1 < text.len and text[i + 1] == '*') {
+                    has_comment = true;
+                    i += 2;
+                    while (i + 1 < text.len and !(text[i] == '*' and text[i + 1] == '/')) i += 1;
+                    i += 1;
+                },
+                else => {},
+            }
+        }
+        const end = @min(i, text.len);
+        i = end + 1;
+        if (out.items.len >= 1 << 16) break;
+        var body = text[start..end];
+        var col = (colon orelse continue) - start;
+        if (has_comment) {
+            const sc = try stripComments(arena, body, col);
+            body = sc.text;
+            col = sc.colon orelse continue;
+        }
+        const name = std.mem.trim(u8, body[0..col], " \t\r\n\x0c");
+        if (name.len == 0) continue;
+        var ok = true;
+        for (name) |ch| if (!tokenizer.isNameChar(ch)) {
+            ok = false;
+        };
+        if (!ok) continue;
+        const sv = splitImportant(body[col + 1 ..]);
+        try out.append(arena, .{ .name = name, .value = sv.value, .important = sv.important });
+    }
+    return out.items;
+}
+
+/// Copy of `s` without /* comments */ (outside strings); also maps the colon index.
+fn stripComments(a: std.mem.Allocator, s: []const u8, colon: usize) Error!struct { text: []const u8, colon: ?usize } {
+    var out = try a.alloc(u8, s.len);
+    var n: usize = 0;
+    var new_colon: ?usize = null;
+    var i: usize = 0;
+    while (i < s.len) {
+        const ch = s[i];
+        if (ch == '/' and i + 1 < s.len and s[i + 1] == '*') {
+            i += 2;
+            while (i + 1 < s.len and !(s[i] == '*' and s[i + 1] == '/')) i += 1;
+            i = @min(i + 2, s.len);
+            out[n] = ' ';
+            n += 1;
+            continue;
+        }
+        if (ch == '"' or ch == '\'') {
+            const b = i;
+            i += 1;
+            while (i < s.len and s[i] != ch) : (i += 1) {
+                if (s[i] == '\\') i += 1;
+            }
+            i = @min(i + 1, s.len);
+            @memcpy(out[n .. n + (i - b)], s[b..i]);
+            n += i - b;
+            continue;
+        }
+        if (i == colon) new_colon = n;
+        out[n] = ch;
+        n += 1;
+        i += 1;
+    }
+    // a colon inside a comment is not the separator: re-find the first top-level ':'
+    if (new_colon == null) new_colon = std.mem.indexOfScalar(u8, out[0..n], ':');
+    return .{ .text = out[0..n], .colon = new_colon };
 }
 
 // =============================================================================================
@@ -209,6 +773,7 @@ fn applyValue(cx: *props.Cx, st: *const State, p: props.Prop, value: RawValue) E
 const T = std.testing;
 
 test {
+    _ = interp;
     _ = tokenizer;
     _ = color;
     _ = values;
@@ -301,8 +866,9 @@ test "ignored keys, null, errors, important, var" {
     try expectLP(s.min_height.lp, 5, 0);
     try t.bad("width", "banana");
     try T.expectEqualStrings("banana", t.diag.value);
-    try t.bad("width", "var(--x)");
-    try t.bad("color", "calc(var(--a) * 1)");
+    // var() never errors: invalid at computed-value time -> unset
+    try T.expect((try t.one("width", "var(--x)")).width == .auto);
+    try T.expect((try t.one("color", "calc(var(--a) * 1)")).color.eql(Color.black));
     try t.bad("width", "");
     try t.bad("width", "10px 20px");
     try t.bad("width", "none");
@@ -444,12 +1010,14 @@ test "display / position / box keywords" {
         .{ "none", .none },               .{ "flex", .flex },             .{ "inline-flex", .inline_flex },
         .{ "grid", .grid },               .{ "inline-grid", .inline_grid }, .{ "block", .block },
         .{ "inline", .@"inline" },        .{ "inline-block", .inline_block }, .{ "contents", .contents },
-        .{ "flow-root", .flow_root },     .{ "FLEX", .flex },             .{ "table", .block },
-        .{ "list-item", .block },       .{ "-webkit-box", .block },
+        .{ "flow-root", .flow_root },     .{ "FLEX", .flex },             .{ "table", .table },
+        .{ "list-item", .list_item },     .{ "-webkit-box", .webkit_box }, .{ "table-cell", .table_cell },
+        .{ "inline-table", .inline_table }, .{ "table-header-group", .table_header_group }, .{ "-webkit-inline-box", .webkit_inline_box },
     };
     for (cases) |cs| try T.expectEqual(cs[1], (try t.one("display", cs[0])).display);
     try t.bad("display", "flexbox");
     try t.bad("display", "1");
+    try t.bad("display", "webkit-box");
     try t.bad("display", "block flex"); // takumi rejects the two-value syntax
     try T.expectEqual(computed.Position.absolute, (try t.one("position", "absolute")).position);
     try T.expectEqual(computed.Position.sticky, (try t.one("position", "sticky")).position);
@@ -984,6 +1552,452 @@ test "text properties" {
     try t.bad("letterSpacing", "wide");
 }
 
+// ---------------------------------------------------------------------------------------------
+// phase 2 tests
+
+/// Computes from a CSS declaration block given as lenient rules (plus optional strict JSON style).
+fn css(t: *TestCx, parent: ?*const ComputedStyle, text: []const u8) !ComputedStyle {
+    const d = try parseDeclarationBlock(t.a(), text);
+    return computeEx(t.a(), &t.ctx, parent, null, d, null, &t.diag);
+}
+
+test "property names: camel, kebab, vendor" {
+    try T.expectEqual(Prop.backgroundColor, propertyId("backgroundColor").?);
+    try T.expectEqual(Prop.backgroundColor, propertyId("background-color").?);
+    try T.expectEqual(Prop.backgroundColor, propertyId("BACKGROUND-COLOR").?);
+    try T.expectEqual(Prop.WebkitLineClamp, propertyId("-webkit-line-clamp").?);
+    try T.expectEqual(Prop.WebkitLineClamp, propertyId("WebkitLineClamp").?);
+    try T.expectEqual(Prop.WebkitMaskImage, propertyId("-webkit-mask-image").?);
+    try T.expectEqual(Prop.borderStartStartRadius, propertyId("border-start-start-radius").?);
+    try T.expect(propertyId("--x") == null);
+    try T.expect(propertyId("-moz-thing") == null);
+    try T.expect(propertyId("background--color") != null); // empty segment collapses; harmless
+    try T.expect(propertyId("") == null);
+}
+
+test "parseDeclarationBlock" {
+    var t = TestCx.init();
+    defer t.deinit();
+    const d = try parseDeclarationBlock(t.a(),
+        \\ color: red; background: url("a;b.png") no-repeat ; --x: { a; b } ;
+        \\ /* c: d; */ width : 10px !important; content: "x\";y" ; bad ; :novalue; height:/*:*/5px ! IMPORTANT;font-family: 'a;b'
+    );
+    const want = [_]struct { []const u8, []const u8, bool }{
+        .{ "color", "red", false },          .{ "background", "url(\"a;b.png\") no-repeat", false },
+        .{ "--x", "{ a; b }", false },       .{ "width", "10px", true },
+        .{ "content", "\"x\\\";y\"", false }, .{ "height", "5px", true },
+        .{ "font-family", "'a;b'", false },
+    };
+    try T.expectEqual(want.len, d.len);
+    for (want, d) |w, x| {
+        try T.expectEqualStrings(w[0], x.name);
+        try T.expectEqualStrings(w[1], std.mem.trim(u8, x.value, " "));
+        try T.expectEqual(w[2], x.important);
+    }
+    try T.expectEqual(@as(usize, 0), (try parseDeclarationBlock(t.a(), "")).len);
+    try T.expectEqual(@as(usize, 0), (try parseDeclarationBlock(t.a(), ";;; ; /* x */")).len);
+    try T.expectEqual(@as(usize, 1), (try parseDeclarationBlock(t.a(), "a:b; \"unterminated: x")).len);
+}
+
+test "cascade: layers, !important, lenient" {
+    var t = TestCx.init();
+    defer t.deinit();
+    const preset = try json.parse(t.a(), "{\"width\": 1, \"height\": \"2px !important\", \"color\": \"red\"}");
+    const sty = try json.parse(t.a(), "{\"width\": 3, \"height\": 4, \"minWidth\": \"5px\"}");
+    const rules = try parseDeclarationBlock(t.a(), "width: 7px; height: 8px; min-width: 9px !important; color: blue; padding: banana; margin-top: 6px; margin-top: nope");
+    const s = try computeEx(t.a(), &t.ctx, null, preset, rules, sty, &t.diag);
+    try expectLP(s.width.lp, 3, 0); // inline style beats rules
+    try expectLP(s.height.lp, 2, 0); // important preset beats everything normal
+    try expectLP(s.min_width.lp, 9, 0); // important rule beats normal inline
+    try T.expect(s.color.eql(.{ .b = 255, .a = 255 }));
+    try expectLP(s.margin[0].lp, 6, 0); // invalid later declaration dropped
+    try expectLP(s.padding[0], 0, 0);
+    // among important, the later layer wins
+    const p2 = try json.parse(t.a(), "{\"width\": \"1px !important\"}");
+    const s2 = try computeEx(t.a(), &t.ctx, null, p2, try parseDeclarationBlock(t.a(), "width: 2px !important"), null, &t.diag);
+    try expectLP(s2.width.lp, 2, 0);
+    // lenient: a partially-parsed invalid value leaves no writes
+    const s3 = try css(&t, null, "padding: 1px 2px; padding: 5px 6px banana zz q");
+    try expectLP(s3.padding[0], 1, 0);
+    try expectLP(s3.padding[3], 2, 0);
+    // strict inline style still throws, rules never do
+    const bad_style = try json.parse(t.a(), "{\"width\": \"banana\"}");
+    try T.expectError(error.InvalidStyleValue, computeEx(t.a(), &t.ctx, null, null, rules, bad_style, &t.diag));
+    try T.expectEqualStrings("width", t.diag.property);
+    // generic layers
+    const l1 = [_]Declaration{.{ .name = "opacity", .value = "0.5" }};
+    const l2 = [_]Declaration{ .{ .name = "opacity", .value = "0.25" }, .{ .name = "z-index", .value = "", .number = 4 } };
+    const s4 = try computeLayers(t.a(), &t.ctx, null, &.{ .{ .decls = &l2, .lenient = true }, .{ .decls = &l1 } }, &t.diag);
+    try T.expectEqual(@as(f32, 0.5), s4.opacity);
+    try T.expectEqual(@as(?i32, 4), s4.z_index);
+}
+
+test "custom properties and var()" {
+    var t = TestCx.init();
+    defer t.deinit();
+    const root = try css(&t, null, "--gap: 4px; --c: red; --pad: var(--gap) 2px; --b: var(--a); --a: var(--b); --self: var(--self, 1px)");
+    try T.expectEqualStrings("4px", root.customProperty("--gap").?);
+    try T.expectEqualStrings("4px 2px", root.customProperty("--pad").?);
+    try T.expect(root.customProperty("--a") == null); // cycle -> invalid
+    try T.expect(root.customProperty("--b") == null);
+    try T.expect(root.customProperty("--self") == null);
+    const child = try css(&t, &root, "padding: var(--pad); color: var(--c); margin-top: var(--missing, var(--gap)); width: var(--a, 3px); --c: blue; border-color: var(--c)");
+    try expectLP(child.padding[0], 4, 0);
+    try expectLP(child.padding[1], 2, 0);
+    try T.expect(child.color.eql(.{ .b = 255, .a = 255 })); // own --c overrides inherited
+    try expectLP(child.margin[0].lp, 4, 0);
+    try expectLP(child.width.lp, 3, 0); // invalid var -> fallback
+    try T.expectEqualStrings("4px", child.customProperty("--gap").?); // inherited
+    try T.expect(child.border_color[0].rgba.eql(.{ .b = 255, .a = 255 }));
+    // invalid at computed-value time -> unset (inherits for inherited properties)
+    const p = try css(&t, null, "color: green; --bad: banana");
+    const c2 = try css(&t, &p, "color: var(--bad); width: var(--nope); font-size: calc(var(--n, 2) * 10px)");
+    try T.expect(c2.color.eql(.{ .g = 128, .a = 255 }));
+    try T.expect(c2.width == .auto);
+    try T.expectEqual(@as(f32, 20), c2.font_size);
+    // JSON style also supports var and custom props (numbers formatted)
+    const s = try t.style(null, "{\"--w\": 12, \"--h\": 1.5, \"width\": \"var(--w)\", \"lineHeight\": \"var(--h)\", \"--i\": \"initial\"}");
+    try expectLP(s.width.lp, 12, 0);
+    try T.expect(s.line_height.number == 1.5);
+    try T.expect(s.customProperty("--i") == null);
+    // inherit / unset on custom
+    const c3 = try css(&t, &root, "--gap: inherit; --c: initial; height: var(--gap)");
+    try expectLP(c3.height.lp, 4, 0);
+    try T.expect(c3.customProperty("--c") == null);
+    // token separation: var(--n)px must not form a dimension
+    const c4 = try css(&t, null, "--n: 5; width: var(--n)px");
+    try T.expect(c4.width == .auto);
+    // exponential blow-up is bounded
+    const bomb = try css(&t, null, "--a: xx xx xx xx xx xx xx xx; --b: var(--a)var(--a)var(--a)var(--a)var(--a)var(--a)var(--a)var(--a); --c: var(--b)var(--b)var(--b)var(--b)var(--b)var(--b)var(--b)var(--b); --d: var(--c)var(--c)var(--c)var(--c)var(--c)var(--c)var(--c)var(--c); --e: var(--d)var(--d)var(--d)var(--d)var(--d)var(--d)var(--d)var(--d)");
+    try T.expect(bomb.customProperty("--e") == null);
+    try T.expect(bomb.customProperty("--c") != null);
+    // deep chain past the depth limit is invalid, short chain fine
+    var buf: [4096]u8 = undefined;
+    var n: usize = 0;
+    for (0..40) |i| {
+        const w = std.fmt.bufPrint(buf[n..], "--v{d}: var(--v{d});", .{ i, i + 1 }) catch unreachable;
+        n += w.len;
+    }
+    const w2 = std.fmt.bufPrint(buf[n..], "--v40: 1px; width: var(--v0); height: var(--v35)", .{}) catch unreachable;
+    n += w2.len;
+    const deep = try css(&t, null, buf[0..n]);
+    try T.expect(deep.width == .auto);
+}
+
+test "logical properties" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try css(&t, null, "margin-inline: 1px 2px; padding-block: 3px; inset-inline-start: 4px; border-inline-start: 2px solid red; inline-size: 50%; max-block-size: 10px; border-start-end-radius: 6px");
+    try expectLP(s.margin[3].lp, 1, 0);
+    try expectLP(s.margin[1].lp, 2, 0);
+    try expectLP(s.padding[0], 3, 0);
+    try expectLP(s.padding[2], 3, 0);
+    try expectLP(s.inset[3].lp, 4, 0);
+    try T.expect(s.border_style[3] == .solid and s.border_width[3] == 2);
+    try expectLP(s.width.lp, 0, 0.5);
+    try expectLP(s.max_height.lp, 10, 0);
+    try expectLP(s.border_radius[1][0], 6, 0);
+    // rtl flips the inline axis, even when direction is declared later
+    s = try css(&t, null, "margin-inline: 1px 2px; padding-inline-end: 5px; border-start-end-radius: 6px; direction: rtl; border-inline-width: 1px 3px; border-inline-style: solid");
+    try expectLP(s.margin[1].lp, 1, 0);
+    try expectLP(s.margin[3].lp, 2, 0);
+    try expectLP(s.padding[3], 5, 0);
+    try expectLP(s.border_radius[0][0], 6, 0);
+    try T.expect(s.border_width[1] == 1 and s.border_width[3] == 3 and s.border_style[1] == .solid);
+    // css-wide keywords on logical properties
+    const p = try css(&t, null, "margin-left: 7px; padding-left: 9px");
+    s = try css(&t, &p, "margin-inline-start: inherit; padding-inline: inherit");
+    try expectLP(s.margin[3].lp, 7, 0);
+    try expectLP(s.padding[3], 9, 0);
+    // JSON camelCase + numbers
+    s = try t.style(null, "{\"marginInline\": 5, \"paddingBlockStart\": 2, \"blockSize\": \"fit-content(20px)\"}");
+    try expectLP(s.margin[1].lp, 5, 0);
+    try expectLP(s.padding[0], 2, 0);
+    try T.expect(s.height == .fit_content_lp);
+    try t.bad("marginInline", "1px 2px 3px");
+}
+
+test "grid: areas, names, shorthands" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try t.one("gridTemplateAreas", "\"head head\" \"nav main\" \". main\"");
+    const g = s.grid_template_areas;
+    try T.expect(g.rows == 3 and g.cols == 2 and g.areas.len == 3);
+    try T.expectEqualStrings("head", g.areas[0].name);
+    try T.expect(g.areas[0].row_start == 0 and g.areas[0].row_end == 1 and g.areas[0].col_end == 2);
+    try T.expect(g.areas[2].row_start == 1 and g.areas[2].row_end == 3 and g.areas[2].col_start == 1);
+    try t.bad("gridTemplateAreas", "\"a b\" \"b a\"");
+    try t.bad("gridTemplateAreas", "\"a b\" \"a\"");
+    try t.bad("gridTemplateAreas", "\"a ! b\"");
+    s = try t.one("gridTemplateColumns", "[full-start] 1fr [main-start] repeat(2, [col] 10px) [main-end] repeat(auto-fill, [x] 5px [y])");
+    const ln = s.grid_template_columns.line_names;
+    try T.expectEqual(@as(usize, 7), ln.len);
+    try T.expectEqualStrings("full-start", ln[0].name);
+    try T.expect(ln[1].line == 1 and ln[2].line == 1 and ln[3].line == 2 and ln[4].line == 3);
+    try T.expectEqualStrings("main-end", ln[4].name);
+    try T.expect(ln[5].in_repeat and ln[5].line == 0 and ln[6].line == 1);
+    try t.bad("gridTemplateColumns", "[span] 1fr");
+    s = try t.one("gridArea", "main");
+    for (s.grid_line_names) |r| try T.expectEqualStrings("main", r.name);
+    try T.expect(s.grid_row_start == .auto);
+    s = try t.one("gridColumn", "2 col / span col");
+    try T.expect(s.grid_line_names[1].n == 2 and s.grid_line_names[3].span);
+    s = try t.one("gridRow", "1 / span 2");
+    try T.expect(s.grid_row_start.line == 1 and s.grid_row_end.span == 2 and s.grid_line_names[0].name.len == 0);
+    s = try t.one("gridRowStart", "span 3 x");
+    try T.expect(s.grid_line_names[0].span and s.grid_line_names[0].n == 3);
+    try t.bad("gridRow", "span");
+    try t.bad("gridRow", "0 x");
+    s = try t.one("gridTemplate", "[top] \"a a\" 40px [mid] \"b c\" / 1fr 2fr");
+    try T.expect(s.grid_template_rows.tracks.len == 2 and s.grid_template_columns.tracks.len == 2 and s.grid_template_areas.areas.len == 3);
+    try expectLP(s.grid_template_rows.tracks[0].min.lp, 40, 0);
+    try T.expect(s.grid_template_rows.tracks[1].min == .auto);
+    try T.expectEqual(@as(usize, 2), s.grid_template_rows.line_names.len);
+    s = try t.one("gridTemplate", "100px 1fr / auto 50px");
+    try T.expect(s.grid_template_rows.tracks.len == 2 and s.grid_template_columns.tracks.len == 2);
+    s = try t.one("grid", "auto-flow dense 40px / 1fr 1fr");
+    try T.expect(s.grid_auto_flow.dense and !s.grid_auto_flow.column and s.grid_auto_rows.len == 1 and s.grid_template_columns.tracks.len == 2);
+    s = try t.one("grid", "100px / auto-flow 30px");
+    try T.expect(s.grid_auto_flow.column and s.grid_auto_columns.len == 1 and s.grid_template_rows.tracks.len == 1);
+    s = try t.one("grid", "\"a\" 10px / 20px");
+    try T.expect(s.grid_template_areas.areas.len == 1 and s.grid_auto_rows.len == 0);
+    try t.bad("grid", "auto-flow / auto-flow");
+    try t.bad("gridTemplate", "1px");
+}
+
+test "box / table / list / misc keywords" {
+    var t = TestCx.init();
+    defer t.deinit();
+    const s = try css(&t, null,
+        \\float: inline-start; clear: both; table-layout: fixed; border-collapse: collapse; border-spacing: 2px 3px;
+        \\caption-side: bottom; empty-cells: hide; box-decoration-break: clone; isolation: isolate; unicode-bidi: bidi-override;
+        \\writing-mode: vertical-rl; vertical-align: text-top; contain: inline-size paint; will-change: transform;
+        \\pointer-events: none; cursor: pointer; user-select: none; background-attachment: fixed, local;
+        \\list-style: square inside; content: "a" counter(x) " b"; counter-reset: a 1 b; counter-increment: none;
+        \\overflow-inline: hidden; background-blend-mode: multiply, screen; mask-type: alpha
+    );
+    try T.expect(s.float == .inline_start and s.clear == .both and s.table_layout == .fixed and s.border_collapse == .collapse);
+    try T.expectEqual([2]f32{ 2, 3 }, s.border_spacing);
+    try T.expect(s.caption_side == .bottom and s.empty_cells == .hide and s.box_decoration_break == .clone and s.isolation == .isolate);
+    try T.expect(s.unicode_bidi == .bidi_override and s.writing_mode == .vertical_rl and s.vertical_align == .text_top);
+    try T.expect(s.contain.inline_size and s.contain.paint and !s.contain.size);
+    try T.expect(s.list_style_type == .ident and std.mem.eql(u8, s.list_style_type.ident, "square") and s.list_style_position == .inside);
+    try T.expectEqualStrings("\"a\" counter(x) \" b\"", s.content);
+    try T.expectEqualStrings("a 1 b", s.counter_reset);
+    try T.expectEqualStrings("", s.counter_increment);
+    try T.expect(s.overflow_x == .hidden);
+    try T.expect(s.background_blend_mode.len == 2 and s.background_blend_mode[1] == .screen);
+    try T.expect(s.mask_type == .alpha);
+    // inherited table/list properties
+    const c2 = try css(&t, &s, "width: 1px");
+    try T.expect(c2.border_collapse == .collapse and c2.list_style_position == .inside and c2.float == .none);
+    try T.expectEqual([2]f32{ 2, 3 }, c2.border_spacing);
+    var x = try t.one("listStyle", "none");
+    try T.expect(x.list_style_type == .none and x.list_style_image == .none);
+    x = try t.one("listStyle", "url(a.png) \"-\"");
+    try T.expect(x.list_style_type == .string and x.list_style_image == .url);
+    x = try t.one("verticalAlign", "-2px");
+    try expectLP(x.vertical_align.lp, -2, 0);
+    x = try t.one("contain", "strict");
+    try T.expect(x.contain.size and x.contain.paint);
+    try t.bad("contain", "size size");
+    try t.bad("contain", "size inline-size");
+    try t.bad("float", "middle");
+    try t.bad("borderSpacing", "-1px");
+    try t.bad("listStyle", "none none none");
+    try t.bad("counterReset", "a, b");
+}
+
+test "clip-path, masks, backdrop-filter" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try t.one("clipPath", "inset(10px 20% round 5px) padding-box");
+    const cp = s.clip_path.?;
+    try T.expect(cp.box == .padding_box);
+    const in_ = cp.shape.?.inset;
+    try expectLP(in_.sides[0], 10, 0);
+    try expectLP(in_.sides[1], 0, 0.2);
+    try expectLP(in_.sides[3], 0, 0.2);
+    try expectLP(in_.radius[2][1], 5, 0);
+    s = try t.one("clipPath", "circle(50% at left 10px top)");
+    try expectLP(s.clip_path.?.shape.?.circle.r.lp, 0, 0.5);
+    try expectLP(s.clip_path.?.shape.?.circle.at[0], 10, 0);
+    s = try t.one("clipPath", "circle()");
+    try T.expect(s.clip_path.?.shape.?.circle.r == .closest_side);
+    try expectLP(s.clip_path.?.shape.?.circle.at[1], 0, 0.5);
+    s = try t.one("clipPath", "ellipse(farthest-side 20px)");
+    try T.expect(s.clip_path.?.shape.?.ellipse.rx == .farthest_side);
+    s = try t.one("clipPath", "polygon(evenodd, 0 0, 100% 0, 50% 100%)");
+    const poly = s.clip_path.?.shape.?.polygon;
+    try T.expect(poly.rule == .evenodd and poly.points.len == 3);
+    try expectLP(poly.points[2][1], 0, 1);
+    s = try t.one("clipPath", "path(\"M0 0 L10 10 Z\")");
+    try T.expectEqualStrings("M0 0 L10 10 Z", s.clip_path.?.shape.?.path.d);
+    s = try t.one("clipPath", "content-box");
+    try T.expect(s.clip_path.?.shape == null and s.clip_path.?.box == .content_box);
+    s = try t.one("clipPath", "url(#c)");
+    try T.expectEqualStrings("#c", s.clip_path.?.url);
+    try T.expect((try t.one("clipPath", "none")).clip_path == null);
+    try t.bad("clipPath", "circle(-1px)");
+    try t.bad("clipPath", "polygon(1px)");
+    try t.bad("clipPath", "inset()");
+    try t.bad("clipPath", "circle() circle()");
+    s = try t.one("mask", "url(m.png) center / contain no-repeat content-box luminance, linear-gradient(red, transparent)");
+    try T.expectEqual(@as(usize, 2), s.mask_image.len);
+    const m0 = s.maskLayer(0);
+    try T.expect(m0.size == .contain and m0.origin == .content_box and m0.clip == .content_box and m0.mode == .luminance);
+    try T.expectEqual([2]computed.BgRepeat{ .no_repeat, .no_repeat }, m0.repeat);
+    try T.expect(s.maskLayer(1).image == .gradient and s.maskLayer(1).clip == .border_box);
+    s = try css(&t, null, "-webkit-mask-image: url(a), none; mask-size: 10px; mask-mode: alpha; mask-clip: no-clip; -webkit-mask-repeat: repeat-x; mask-position: right");
+    try T.expect(s.mask_image.len == 2 and s.maskLayer(1).mode == .alpha and s.maskLayer(0).repeat[1] == .no_repeat);
+    try expectLP(s.maskLayer(0).position[0], 0, 1);
+    s = try t.one("backdropFilter", "blur(4px) saturate(2)");
+    try T.expect(s.backdrop_filter.len == 2 and s.backdrop_filter[0].blur == 4);
+    s = try t.one("filter", "drop-shadow(1px 2px 3px red)");
+    const ds = s.filter[0].drop_shadow;
+    try T.expect(ds.x == 1 and ds.y == 2 and ds.blur == 3 and ds.color.rgba.r == 255);
+    s = try t.one("backgroundPositionX", "right 4px, 30%");
+    try T.expect(s.background_position.len == 2);
+    try expectLP(s.background_position[0][0], -4, 1);
+    try expectLP(s.background_position[1][0], 0, 0.3);
+    s = try css(&t, null, "background-position: 1px 2px; background-position-y: bottom");
+    try expectLP(s.background_position[0][0], 1, 0);
+    try expectLP(s.background_position[0][1], 0, 1);
+}
+
+test "text and font extras" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try css(&t, null,
+        \\font-size: 20px; text-decoration-skip-ink: none; text-underline-offset: 10%; text-underline-position: under left;
+        \\-webkit-text-fill-color: transparent; paint-order: stroke fill; text-align-last: justify; hyphens: auto; line-break: strict;
+        \\font-stretch: condensed; font-feature-settings: "liga" off, "ss01", "cv01" 3; font-variation-settings: "wght" 650, "wdth" 80.5;
+        \\font-variant: small-caps tabular-nums no-common-ligatures super; font-kerning: none; font-optical-sizing: none; font-synthesis: weight
+    );
+    try T.expect(s.text_decoration_skip_ink == .none and s.text_underline_offset.? == 2);
+    try T.expect(s.text_underline_position.under and s.text_underline_position.left);
+    try T.expect(s.webkit_text_fill_color.?.rgba.a == 0 and s.paint_order == .stroke);
+    try T.expect(s.text_align_last == .justify and s.hyphens == .auto and s.line_break == .strict and s.font_stretch == 75);
+    try T.expectEqual(@as(usize, 3), s.font_feature_settings.len);
+    try T.expect(std.mem.eql(u8, &s.font_feature_settings[0].tag, "liga") and s.font_feature_settings[0].value == 0 and s.font_feature_settings[1].value == 1 and s.font_feature_settings[2].value == 3);
+    try T.expect(s.font_variation_settings.len == 2 and s.font_variation_settings[1].value == 80.5);
+    try T.expect(s.font_variant_caps == .small_caps and s.font_variant_numeric.spacing == .tabular and s.font_variant_ligatures.common == .off and s.font_variant_position == .super);
+    try T.expect(s.font_kerning == .none and s.font_optical_sizing == .none and s.font_synthesis.weight and !s.font_synthesis.style);
+    // resolved features: variants first, then settings (takumi order)
+    const feats = try s.fontFeatures(t.a());
+    const want = [_][]const u8{ "liga", "clig", "tnum", "smcp", "sups", "kern", "liga", "ss01", "cv01" };
+    try T.expectEqual(want.len, feats.len);
+    for (want, feats) |w, f| try T.expectEqualStrings(w, &f.tag);
+    // inherited
+    const c2 = try css(&t, &s, "color: red");
+    try T.expect(c2.font_variant_caps == .small_caps and c2.font_stretch == 75 and c2.hyphens == .auto and c2.webkit_text_fill_color != null);
+    // font shorthand resets variants/features, sets stretch & caps
+    s = try css(&t, &s, "font: small-caps expanded 12px serif");
+    try T.expect(s.font_stretch == 125 and s.font_variant_caps == .small_caps and s.font_feature_settings.len == 0 and s.font_kerning == .auto);
+    try T.expect(s.font_variant_numeric.spacing == .normal);
+    s = try t.one("fontVariantLigatures", "none");
+    try T.expect(s.font_variant_ligatures.contextual == .off);
+    s = try t.one("fontVariantNumeric", "oldstyle-nums diagonal-fractions slashed-zero ordinal");
+    try T.expect(s.font_variant_numeric.figure == .oldstyle and s.font_variant_numeric.fraction == .diagonal and s.font_variant_numeric.slashed_zero);
+    s = try t.one("fontVariantEastAsian", "jis83 full-width ruby");
+    try T.expect(s.font_variant_east_asian.form == .jis83 and s.font_variant_east_asian.width == .full and s.font_variant_east_asian.ruby);
+    try T.expectEqual(@as(f32, 150), (try t.one("fontStretch", "150%")).font_stretch);
+    try T.expectEqual(@as(f32, 200), (try t.one("fontStretch", "ultra-expanded")).font_stretch);
+    try T.expect(!(try t.one("fontSynthesisStyle", "none")).font_synthesis.style);
+    try T.expect(!(try t.one("fontSynthesis", "none")).font_synthesis.weight);
+    try t.bad("fontVariantNumeric", "lining-nums oldstyle-nums");
+    try t.bad("fontVariantCaps", "tabular-nums");
+    try t.bad("fontFeatureSettings", "\"toolong\" 1");
+    try t.bad("fontFeatureSettings", "liga");
+    try t.bad("fontVariationSettings", "\"wght\"");
+    try t.bad("fontStretch", "-5%");
+    try t.bad("paintOrder", "fill fill");
+    try t.bad("textUnderlinePosition", "under from-font");
+    // kerning normal + letter-spacing disables ligatures
+    s = try css(&t, null, "letter-spacing: 1px; font-kerning: normal");
+    const f2 = try s.fontFeatures(t.a());
+    try T.expectEqual(@as(usize, 6), f2.len);
+    try T.expect(f2[0].value == 0 and std.mem.eql(u8, &f2[5].tag, "kern") and f2[5].value == 1);
+    try T.expectEqual(@as(usize, 0), (try (try css(&t, null, "color: red")).fontFeatures(t.a())).len);
+}
+
+test "animations and transitions" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try t.one("animation", "spin 2s linear infinite, 300ms ease-in-out 1s 3 reverse both paused fade, none");
+    try T.expectEqual(@as(usize, 3), s.animation_name.len);
+    var a = s.animation(0);
+    try T.expectEqualStrings("spin", a.name);
+    try T.expect(a.duration_ms == 2000 and a.iteration_count == std.math.inf(f32) and a.timing.cubic[2] == 1 and a.delay_ms == 0);
+    a = s.animation(1);
+    try T.expectEqualStrings("fade", a.name);
+    try T.expect(a.duration_ms == 300 and a.delay_ms == 1000 and a.iteration_count == 3 and a.direction == .reverse and a.fill_mode == .both and a.play_state == .paused);
+    try T.expectEqualStrings("none", s.animation(2).name);
+    s = try css(&t, null,
+        \\animation-name: a, b; animation-duration: 1s; animation-timing-function: steps(4, jump-none), cubic-bezier(0.1, -1, 0.9, 2);
+        \\animation-delay: -500ms; animation-iteration-count: 2.5; animation-direction: alternate-reverse; animation-fill-mode: forwards;
+        \\animation-play-state: running, paused
+    );
+    a = s.animation(1);
+    try T.expect(a.duration_ms == 1000 and a.timing.cubic[1] == -1 and a.delay_ms == -500 and a.iteration_count == 2.5 and a.play_state == .paused);
+    try T.expect(s.animation(0).timing.steps.n == 4 and s.animation(0).timing.steps.pos == .jump_none);
+    s = try t.one("animationTimingFunction", "linear(0, 0.25 25% 75%, 1)");
+    const pts = s.animation_timing_function[0].linear_points;
+    try T.expectEqual(@as(usize, 4), pts.len);
+    try T.expect(pts[0][0] == 0 and pts[1][0] == 0.25 and pts[2][0] == 0.75 and pts[3][0] == 1 and pts[3][1] == 1);
+    s = try t.one("animationTimingFunction", "linear(0, 0.5, 1)");
+    try T.expect(s.animation_timing_function[0].linear_points[1][0] == 0.5);
+    s = try t.one("animationTimingFunction", "step-start");
+    try T.expect(s.animation_timing_function[0].steps.pos == .jump_start);
+    s = try t.one("transition", "opacity 200ms, transform 1s ease-out 50ms");
+    try T.expectEqual(@as(usize, 2), s.transition_property.len);
+    try T.expectEqualStrings("transform", s.transition(1).property);
+    try T.expect(s.transition(1).duration_ms == 1000 and s.transition(1).delay_ms == 50 and s.transition(1).timing.cubic[2] == 0.58);
+    try T.expectEqualStrings("all", (try t.one("transition", "1s")).transition(0).property);
+    try t.bad("animationDuration", "-1s");
+    try t.bad("animationTimingFunction", "cubic-bezier(2, 0, 0, 1)");
+    try t.bad("animationTimingFunction", "steps(0)");
+    try t.bad("animationTimingFunction", "steps(1, jump-none)");
+    try t.bad("animation", "a 1s 2s 3s");
+    try t.bad("animationIterationCount", "-1");
+    try t.bad("transition", "opacity 1s,");
+    const init_s = try t.one("width", "1px");
+    try T.expect(init_s.animation_name.len == 0 and init_s.transition_property.len == 1 and init_s.transition(0).duration_ms == 0);
+}
+
+test "mixed-unit math, fit-content(), font-relative units" {
+    var t = TestCx.init();
+    defer t.deinit();
+    var s = try t.one("width", "min(100%, 300px)");
+    const w = s.width.lp;
+    try T.expect(w.isCalc());
+    try T.expect(approx(w.resolve(200), 200) and approx(w.resolve(1000), 300));
+    s = try t.one("width", "clamp(10px, 50% - 5px, 2em)");
+    try T.expect(approx(s.width.lp.resolve(100), 32) and approx(s.width.lp.resolve(30), 10) and approx(s.width.lp.resolve(50), 20));
+    s = try t.one("paddingLeft", "calc(2 * max(10%, 8px) + 1px)");
+    try T.expect(approx(s.padding[3].resolve(50), 17) and approx(s.padding[3].resolve(200), 41));
+    s = try t.one("marginTop", "calc(10px - min(5%, 3px))");
+    try T.expect(approx(s.margin[0].lp.resolve(100), 7) and approx(s.margin[0].lp.resolve(20), 9));
+    try t.bad("borderWidth", "min(10%, 2px)"); // <length> only
+    s = try t.one("width", "fit-content(50%)");
+    try expectLP(s.width.fit_content_lp, 0, 0.5);
+    s = try t.one("minHeight", "-webkit-fill-available");
+    try T.expect(s.min_height == .stretch);
+    try t.bad("width", "fit-content(-1px)");
+    // ch / ex / cap / ic / lh / rlh
+    t.ctx.ch_width_ratio = 0.6;
+    t.ctx.x_height_ratio = 0.4;
+    s = try css(&t, null, "font-size: 20px; line-height: 30px; width: 2ch; height: 1ex; min-width: 1lh; max-width: 1rlh; margin-left: 1cap; margin-right: 1ic");
+    try expectLP(s.width.lp, 24, 0);
+    try expectLP(s.height.lp, 8, 0);
+    try expectLP(s.min_width.lp, 30, 0);
+    try expectLP(s.max_width.lp, 16 * 1.2, 0);
+    try expectLP(s.margin[3].lp, 14, 0);
+    try expectLP(s.margin[1].lp, 20, 0);
+    s = try css(&t, null, "font-size: 10px; line-height: 2; padding-top: 2lh");
+    try expectLP(s.padding[0], 40, 0);
+}
+
 test "fuzz: parsers never crash" {
     var arena_state = std.heap.ArenaAllocator.init(T.allocator);
     defer arena_state.deinit();
@@ -996,6 +2010,15 @@ test "fuzz: parsers never crash" {
         "conic-gradient(from 10deg at center, red 0 10%, blue)", "translate(1px, 2%) rotate(1turn) matrix(1,2,3,4,5,6)",
         "1 / span 2", "min(1px, max(2px, clamp(1px, 2px, 3px)))", "hsl(120deg 100% 25% / .5)", "drop-shadow(1px 1px red) blur(2px)",
         "right 10px bottom 20%", "1px 2px 3px 4px / 5px", "#0f08", "((((((((", "\"unterminated", "/* comment",
+        "var(--a, var(--b, 1px)) var(--c)", "[a b] 1fr [c] repeat(2, [d] 10px)", "\"a a\" 10px \". b\" / 1fr 2fr", "2 foo / span bar",
+        "auto-flow dense 10px / 1fr", "inset(1px 2% round 3px / 4px)", "polygon(evenodd, 0 0, 100% 0, 50% 100%)", "circle(closest-side at 10% 20%)",
+        "path(\"M0 0 L1 1\") content-box", "url(m.png) center / contain no-repeat luminance, none", "spin 1s steps(3, jump-both) infinite alternate",
+        "linear(0, 0.5 20% 40%, 1)", "cubic-bezier(0.1, 2, 0.3, -1)", "\"liga\" off, \"ss01\" 2", "small-caps tabular-nums no-contextual",
+        "min(100%, calc(50% + 10px), max(2em, 3ch))", "clamp(1lh, 10%, 2rlh)", "fit-content(10%)", "oklch(0.7 0.1 200 / 50%)",
+        "color-mix(in oklab, red 30%, blue)", "lab(50 20 -30)", "linear-gradient(in oklch longer hue, red, lab(50 20 30))",
+        "color-mix(in oklch longer hue, red 20%, lab(50 1 2))", "lch(none none none / none)", "color(xyz-d50 1e30 -1e30 0)",
+        "linear-gradient(in hsl decreasing hue 45deg, oklch(0.5 0.2 250), 30%, red)", "radial-gradient(circle at 1px 2px in lab, red, blue)",
+        "light-dark(red, blue)",
     };
     const alphabet = "()[],/*+- .%#\"'0123456789pxemrdgaucltnbi!\\";
     var buf: [96]u8 = undefined;
@@ -1031,5 +2054,13 @@ test "fuzz: parsers never crash" {
             var d: Diagnostics = .{};
             _ = compute(a, &ctx, &parent, null, json.Value{ .object = members }, &d) catch {};
         }
+        // declaration blocks + var() + lenient cascade
+        const decls = parseDeclarationBlock(a, val) catch continue;
+        var d: Diagnostics = .{};
+        _ = computeEx(a, &ctx, &parent, null, decls, null, &d) catch {};
+        const names = [_][]const u8{ "--a", "--b", "width", "grid-template", "margin-inline", "font", "background", "animation" };
+        var vd: [names.len]Declaration = undefined;
+        for (names, 0..) |nm, k| vd[k] = .{ .name = nm, .value = if (k % 2 == 0) val else "var(--a) var(--b)" };
+        _ = computeEx(a, &ctx, &parent, null, &vd, null, &d) catch {};
     }
 }

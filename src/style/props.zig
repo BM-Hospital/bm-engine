@@ -16,32 +16,88 @@ const Env = values.Env;
 const S = c.ComputedStyle;
 const ColorValue = colorm.ColorValue;
 
-pub const Prop = enum(u8) {
+pub const Prop = enum(u16) {
+    WebkitBackdropFilter,
+    WebkitBoxDecorationBreak,
     WebkitBoxOrient,
+    WebkitClipPath,
+    WebkitHyphens,
     WebkitLineClamp,
+    WebkitMask,
+    WebkitMaskClip,
+    WebkitMaskComposite,
+    WebkitMaskImage,
+    WebkitMaskOrigin,
+    WebkitMaskPosition,
+    WebkitMaskRepeat,
+    WebkitMaskSize,
+    WebkitTextFillColor,
     WebkitTextStroke,
     WebkitTextStrokeColor,
     WebkitTextStrokeWidth,
+    WebkitUserSelect,
     alignContent,
     alignItems,
     alignSelf,
+    animation,
+    animationDelay,
+    animationDirection,
+    animationDuration,
+    animationFillMode,
+    animationIterationCount,
+    animationName,
+    animationPlayState,
+    animationTimingFunction,
     aspectRatio,
+    backdropFilter,
     background,
+    backgroundAttachment,
+    backgroundBlendMode,
     backgroundClip,
     backgroundColor,
     backgroundImage,
     backgroundOrigin,
     backgroundPosition,
+    backgroundPositionX,
+    backgroundPositionY,
     backgroundRepeat,
     backgroundSize,
+    blockSize,
     border,
+    borderBlock,
+    borderBlockColor,
+    borderBlockEnd,
+    borderBlockEndColor,
+    borderBlockEndStyle,
+    borderBlockEndWidth,
+    borderBlockStart,
+    borderBlockStartColor,
+    borderBlockStartStyle,
+    borderBlockStartWidth,
+    borderBlockStyle,
+    borderBlockWidth,
     borderBottom,
     borderBottomColor,
     borderBottomLeftRadius,
     borderBottomRightRadius,
     borderBottomStyle,
     borderBottomWidth,
+    borderCollapse,
     borderColor,
+    borderEndEndRadius,
+    borderEndStartRadius,
+    borderInline,
+    borderInlineColor,
+    borderInlineEnd,
+    borderInlineEndColor,
+    borderInlineEndStyle,
+    borderInlineEndWidth,
+    borderInlineStart,
+    borderInlineStartColor,
+    borderInlineStartStyle,
+    borderInlineStartWidth,
+    borderInlineStyle,
+    borderInlineWidth,
     borderLeft,
     borderLeftColor,
     borderLeftStyle,
@@ -51,6 +107,9 @@ pub const Prop = enum(u8) {
     borderRightColor,
     borderRightStyle,
     borderRightWidth,
+    borderSpacing,
+    borderStartEndRadius,
+    borderStartStartRadius,
     borderStyle,
     borderTop,
     borderTopColor,
@@ -60,12 +119,23 @@ pub const Prop = enum(u8) {
     borderTopWidth,
     borderWidth,
     bottom,
+    boxDecorationBreak,
     boxShadow,
     boxSizing,
+    captionSide,
+    clear,
+    clipPath,
     color,
     columnGap,
+    contain,
+    content,
+    counterIncrement,
+    counterReset,
+    counterSet,
+    cursor,
     direction,
     display,
+    emptyCells,
     filter,
     flex,
     flexBasis,
@@ -74,12 +144,29 @@ pub const Prop = enum(u8) {
     flexGrow,
     flexShrink,
     flexWrap,
+    float,
     font,
     fontFamily,
+    fontFeatureSettings,
+    fontKerning,
+    fontOpticalSizing,
     fontSize,
+    fontStretch,
     fontStyle,
+    fontSynthesis,
+    fontSynthesisSmallCaps,
+    fontSynthesisStyle,
+    fontSynthesisWeight,
+    fontVariant,
+    fontVariantCaps,
+    fontVariantEastAsian,
+    fontVariantLigatures,
+    fontVariantNumeric,
+    fontVariantPosition,
+    fontVariationSettings,
     fontWeight,
     gap,
+    grid,
     gridArea,
     gridAutoColumns,
     gridAutoFlow,
@@ -90,26 +177,62 @@ pub const Prop = enum(u8) {
     gridRow,
     gridRowEnd,
     gridRowStart,
+    gridTemplate,
+    gridTemplateAreas,
     gridTemplateColumns,
     gridTemplateRows,
     height,
+    hyphens,
     imageRendering,
+    inlineSize,
     inset,
+    insetBlock,
+    insetBlockEnd,
+    insetBlockStart,
+    insetInline,
+    insetInlineEnd,
+    insetInlineStart,
+    isolation,
     justifyContent,
     justifyItems,
     justifySelf,
     left,
     letterSpacing,
+    lineBreak,
     lineClamp,
     lineHeight,
+    listStyle,
+    listStyleImage,
+    listStylePosition,
+    listStyleType,
     margin,
+    marginBlock,
+    marginBlockEnd,
+    marginBlockStart,
     marginBottom,
+    marginInline,
+    marginInlineEnd,
+    marginInlineStart,
     marginLeft,
     marginRight,
     marginTop,
+    mask,
+    maskClip,
+    maskComposite,
+    maskImage,
+    maskMode,
+    maskOrigin,
+    maskPosition,
+    maskRepeat,
+    maskSize,
+    maskType,
+    maxBlockSize,
     maxHeight,
+    maxInlineSize,
     maxWidth,
+    minBlockSize,
     minHeight,
+    minInlineSize,
     minWidth,
     mixBlendMode,
     objectFit,
@@ -122,47 +245,73 @@ pub const Prop = enum(u8) {
     outlineStyle,
     outlineWidth,
     overflow,
+    overflowBlock,
+    overflowInline,
     overflowWrap,
     overflowX,
     overflowY,
     padding,
+    paddingBlock,
+    paddingBlockEnd,
+    paddingBlockStart,
     paddingBottom,
+    paddingInline,
+    paddingInlineEnd,
+    paddingInlineStart,
     paddingLeft,
     paddingRight,
     paddingTop,
+    paintOrder,
     placeContent,
     placeItems,
     placeSelf,
+    pointerEvents,
     position,
     right,
     rotate,
     rowGap,
     scale,
     tabSize,
+    tableLayout,
     textAlign,
+    textAlignLast,
     textDecoration,
     textDecorationColor,
     textDecorationLine,
+    textDecorationSkipInk,
     textDecorationStyle,
     textDecorationThickness,
     textIndent,
     textOverflow,
     textShadow,
     textTransform,
+    textUnderlineOffset,
+    textUnderlinePosition,
     textWrap,
     textWrapMode,
     textWrapStyle,
     top,
     transform,
     transformOrigin,
+    transition,
+    transitionBehavior,
+    transitionDelay,
+    transitionDuration,
+    transitionProperty,
+    transitionTimingFunction,
     translate,
+    unicodeBidi,
+    userSelect,
+    verticalAlign,
     visibility,
     whiteSpace,
     whiteSpaceCollapse,
     width,
+    willChange,
     wordBreak,
     wordSpacing,
     wordWrap,
+    writingMode,
     zIndex,
 };
 
@@ -284,21 +433,21 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .flexGrow => &.{fr("flex_grow")},
         .flexShrink => &.{fr("flex_shrink")},
         .flexWrap => &.{fr("flex_wrap")},
-        .font => &.{ fr("font_style"), fr("font_weight"), fr("font_size"), fr("line_height"), fr("font_family") },
+        .font => &.{ fr("font_style"), fr("font_weight"), fr("font_size"), fr("line_height"), fr("font_family"), fr("font_stretch"), fr("font_variant_ligatures"), fr("font_variant_numeric"), fr("font_variant_caps"), fr("font_variant_position"), fr("font_variant_east_asian"), fr("font_kerning"), fr("font_optical_sizing"), fr("font_feature_settings"), fr("font_variation_settings") },
         .fontFamily => &.{fr("font_family")},
         .fontSize => &.{fr("font_size")},
         .fontStyle => &.{fr("font_style")},
         .fontWeight => &.{fr("font_weight")},
-        .gridArea => &.{ fr("grid_row_start"), fr("grid_column_start"), fr("grid_row_end"), fr("grid_column_end") },
+        .gridArea => &.{ fr("grid_row_start"), fr("grid_column_start"), fr("grid_row_end"), fr("grid_column_end"), fr("grid_line_names") },
         .gridAutoColumns => &.{fr("grid_auto_columns")},
         .gridAutoRows => &.{fr("grid_auto_rows")},
         .gridAutoFlow => &.{fr("grid_auto_flow")},
-        .gridColumn => &.{ fr("grid_column_start"), fr("grid_column_end") },
-        .gridColumnEnd => &.{fr("grid_column_end")},
-        .gridColumnStart => &.{fr("grid_column_start")},
-        .gridRow => &.{ fr("grid_row_start"), fr("grid_row_end") },
-        .gridRowEnd => &.{fr("grid_row_end")},
-        .gridRowStart => &.{fr("grid_row_start")},
+        .gridColumn => &.{ fr("grid_column_start"), fr("grid_column_end"), fi("grid_line_names", 1), fi("grid_line_names", 3) },
+        .gridColumnEnd => &.{ fr("grid_column_end"), fi("grid_line_names", 3) },
+        .gridColumnStart => &.{ fr("grid_column_start"), fi("grid_line_names", 1) },
+        .gridRow => &.{ fr("grid_row_start"), fr("grid_row_end"), fi("grid_line_names", 0), fi("grid_line_names", 2) },
+        .gridRowEnd => &.{ fr("grid_row_end"), fi("grid_line_names", 2) },
+        .gridRowStart => &.{ fr("grid_row_start"), fi("grid_line_names", 0) },
         .gridTemplateColumns => &.{fr("grid_template_columns")},
         .gridTemplateRows => &.{fr("grid_template_rows")},
         .width => &.{fr("width")},
@@ -366,12 +515,89 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .wordBreak => &.{fr("word_break")},
         .wordSpacing => &.{fr("word_spacing")},
         .zIndex => &.{fr("z_index")},
+        // logical properties: fields come from the physical mapping (physicalProps), none here
+        .marginInline, .marginInlineStart, .marginInlineEnd, .marginBlock, .marginBlockStart, .marginBlockEnd, .paddingInline, .paddingInlineStart, .paddingInlineEnd, .paddingBlock, .paddingBlockStart, .paddingBlockEnd, .insetInline, .insetInlineStart, .insetInlineEnd, .insetBlock, .insetBlockStart, .insetBlockEnd, .inlineSize, .blockSize, .minInlineSize, .minBlockSize, .maxInlineSize, .maxBlockSize, .borderInline, .borderInlineStart, .borderInlineEnd, .borderInlineWidth, .borderInlineStyle, .borderInlineColor, .borderInlineStartWidth, .borderInlineStartStyle, .borderInlineStartColor, .borderInlineEndWidth, .borderInlineEndStyle, .borderInlineEndColor, .borderBlock, .borderBlockStart, .borderBlockEnd, .borderBlockWidth, .borderBlockStyle, .borderBlockColor, .borderBlockStartWidth, .borderBlockStartStyle, .borderBlockStartColor, .borderBlockEndWidth, .borderBlockEndStyle, .borderBlockEndColor, .borderStartStartRadius, .borderStartEndRadius, .borderEndStartRadius, .borderEndEndRadius => &.{},
+        // accepted and ignored
+        .backgroundAttachment, .willChange, .pointerEvents, .cursor, .userSelect, .WebkitUserSelect, .transitionBehavior, .maskComposite, .WebkitMaskComposite => &.{},
+        .overflowInline => &.{fr("overflow_x")},
+        .overflowBlock => &.{fr("overflow_y")},
+        .gridTemplateAreas => &.{fr("grid_template_areas")},
+        .gridTemplate => &.{ fr("grid_template_rows"), fr("grid_template_columns"), fr("grid_template_areas") },
+        .grid => &.{ fr("grid_template_rows"), fr("grid_template_columns"), fr("grid_template_areas"), fr("grid_auto_rows"), fr("grid_auto_columns"), fr("grid_auto_flow") },
+        .backgroundPositionX, .backgroundPositionY => &.{fr("background_position")},
+        .backgroundBlendMode => &.{fr("background_blend_mode")},
+        .float => &.{fr("float")},
+        .clear => &.{fr("clear")},
+        .tableLayout => &.{fr("table_layout")},
+        .borderCollapse => &.{fr("border_collapse")},
+        .borderSpacing => &.{fr("border_spacing")},
+        .captionSide => &.{fr("caption_side")},
+        .emptyCells => &.{fr("empty_cells")},
+        .boxDecorationBreak, .WebkitBoxDecorationBreak => &.{fr("box_decoration_break")},
+        .listStyle => &.{ fr("list_style_type"), fr("list_style_position"), fr("list_style_image") },
+        .listStyleType => &.{fr("list_style_type")},
+        .listStylePosition => &.{fr("list_style_position")},
+        .listStyleImage => &.{fr("list_style_image")},
+        .content => &.{fr("content")},
+        .counterReset => &.{fr("counter_reset")},
+        .counterIncrement => &.{fr("counter_increment")},
+        .counterSet => &.{fr("counter_set")},
+        .contain => &.{fr("contain")},
+        .isolation => &.{fr("isolation")},
+        .verticalAlign => &.{fr("vertical_align")},
+        .unicodeBidi => &.{fr("unicode_bidi")},
+        .writingMode => &.{fr("writing_mode")},
+        .backdropFilter, .WebkitBackdropFilter => &.{fr("backdrop_filter")},
+        .clipPath, .WebkitClipPath => &.{fr("clip_path")},
+        .mask, .WebkitMask => &.{ fr("mask_image"), fr("mask_size"), fr("mask_position"), fr("mask_repeat"), fr("mask_clip"), fr("mask_origin"), fr("mask_mode") },
+        .maskImage, .WebkitMaskImage => &.{fr("mask_image")},
+        .maskSize, .WebkitMaskSize => &.{fr("mask_size")},
+        .maskPosition, .WebkitMaskPosition => &.{fr("mask_position")},
+        .maskRepeat, .WebkitMaskRepeat => &.{fr("mask_repeat")},
+        .maskClip, .WebkitMaskClip => &.{fr("mask_clip")},
+        .maskOrigin, .WebkitMaskOrigin => &.{fr("mask_origin")},
+        .maskMode => &.{fr("mask_mode")},
+        .maskType => &.{fr("mask_type")},
+        .textDecorationSkipInk => &.{fr("text_decoration_skip_ink")},
+        .textUnderlineOffset => &.{fr("text_underline_offset")},
+        .textUnderlinePosition => &.{fr("text_underline_position")},
+        .WebkitTextFillColor => &.{fr("webkit_text_fill_color")},
+        .paintOrder => &.{fr("paint_order")},
+        .textAlignLast => &.{fr("text_align_last")},
+        .hyphens, .WebkitHyphens => &.{fr("hyphens")},
+        .lineBreak => &.{fr("line_break")},
+        .fontStretch => &.{fr("font_stretch")},
+        .fontVariationSettings => &.{fr("font_variation_settings")},
+        .fontFeatureSettings => &.{fr("font_feature_settings")},
+        .fontVariant => &.{ fr("font_variant_ligatures"), fr("font_variant_numeric"), fr("font_variant_caps"), fr("font_variant_position"), fr("font_variant_east_asian") },
+        .fontVariantLigatures => &.{fr("font_variant_ligatures")},
+        .fontVariantNumeric => &.{fr("font_variant_numeric")},
+        .fontVariantCaps => &.{fr("font_variant_caps")},
+        .fontVariantPosition => &.{fr("font_variant_position")},
+        .fontVariantEastAsian => &.{fr("font_variant_east_asian")},
+        .fontKerning => &.{fr("font_kerning")},
+        .fontOpticalSizing => &.{fr("font_optical_sizing")},
+        .fontSynthesis, .fontSynthesisWeight, .fontSynthesisStyle, .fontSynthesisSmallCaps => &.{fr("font_synthesis")},
+        .animation => &.{ fr("animation_name"), fr("animation_duration"), fr("animation_timing_function"), fr("animation_delay"), fr("animation_iteration_count"), fr("animation_direction"), fr("animation_fill_mode"), fr("animation_play_state") },
+        .animationName => &.{fr("animation_name")},
+        .animationDuration => &.{fr("animation_duration")},
+        .animationTimingFunction => &.{fr("animation_timing_function")},
+        .animationDelay => &.{fr("animation_delay")},
+        .animationIterationCount => &.{fr("animation_iteration_count")},
+        .animationDirection => &.{fr("animation_direction")},
+        .animationFillMode => &.{fr("animation_fill_mode")},
+        .animationPlayState => &.{fr("animation_play_state")},
+        .transition => &.{ fr("transition_property"), fr("transition_duration"), fr("transition_timing_function"), fr("transition_delay") },
+        .transitionProperty => &.{fr("transition_property")},
+        .transitionDuration => &.{fr("transition_duration")},
+        .transitionTimingFunction => &.{fr("transition_timing_function")},
+        .transitionDelay => &.{fr("transition_delay")},
     };
 }
 
 pub fn isInherited(p: Prop) bool {
     return switch (p) {
-        .WebkitTextStroke, .WebkitTextStrokeColor, .WebkitTextStrokeWidth, .color, .direction, .font, .fontFamily, .fontSize, .fontStyle, .fontWeight, .imageRendering, .letterSpacing, .lineHeight, .overflowWrap, .wordWrap, .tabSize, .textAlign, .textIndent, .textShadow, .textTransform, .textWrap, .textWrapMode, .textWrapStyle, .visibility, .whiteSpace, .whiteSpaceCollapse, .wordBreak, .wordSpacing => true,
+        .WebkitTextStroke, .WebkitTextStrokeColor, .WebkitTextStrokeWidth, .color, .direction, .font, .fontFamily, .fontSize, .fontStyle, .fontWeight, .imageRendering, .letterSpacing, .lineHeight, .overflowWrap, .wordWrap, .tabSize, .textAlign, .textIndent, .textShadow, .textTransform, .textWrap, .textWrapMode, .textWrapStyle, .visibility, .whiteSpace, .whiteSpaceCollapse, .wordBreak, .wordSpacing, .borderCollapse, .borderSpacing, .captionSide, .emptyCells, .listStyle, .listStyleType, .listStylePosition, .listStyleImage, .writingMode, .textAlignLast, .hyphens, .WebkitHyphens, .lineBreak, .textDecorationSkipInk, .textUnderlineOffset, .textUnderlinePosition, .WebkitTextFillColor, .paintOrder, .fontStretch, .fontVariationSettings, .fontFeatureSettings, .fontVariant, .fontVariantLigatures, .fontVariantNumeric, .fontVariantCaps, .fontVariantPosition, .fontVariantEastAsian, .fontKerning, .fontOpticalSizing, .fontSynthesis, .fontSynthesisWeight, .fontSynthesisStyle, .fontSynthesisSmallCaps => true,
         else => false,
     };
 }
@@ -433,6 +659,7 @@ pub fn inheritAll(dst: *S, parent: *const S) void {
         const p: Prop = @enumFromInt(i);
         if (isInherited(p)) copyProp(p, dst, parent);
     }
+    dst.custom_props = parent.custom_props;
 }
 
 // ------------------------------------------------------------------ parsing context
@@ -513,16 +740,6 @@ fn fourTokens(l: *Lexer) Error![4]Token {
     return expand4(Token, buf[0..n]);
 }
 // ------------------------------------------------------------------ simple property parsers
-fn parseDisplay(l: *Lexer) Error!c.Display {
-    const t = l.next();
-    if (t.kind != .ident) return bad;
-    if (tok.kw(c.Display, t)) |d| return d;
-    const s = t.text;
-    if (ieq(s, "list-item") or ieq(s, "-webkit-box") or ieq(s, "table") or ieq(s, "table-row-group") or ieq(s, "table-header-group") or ieq(s, "table-footer-group") or ieq(s, "table-row") or ieq(s, "table-cell") or ieq(s, "table-column-group") or ieq(s, "table-column") or ieq(s, "table-caption")) return .block;
-    if (ieq(s, "inline-table") or ieq(s, "-webkit-inline-box")) return .inline_block;
-    return bad;
-}
-
 const AMask = u32;
 fn amask(comptime tags: []const c.Align) AMask {
     var m: AMask = 0;
@@ -582,7 +799,7 @@ fn parseFlexBasis(cx: *Cx, t: Token) Error!?c.FlexBasis {
             .min_content => .min_content,
             .max_content => .max_content,
             .fit_content => .fit_content,
-            .stretch => null,
+            .stretch, .fit_content_lp => null,
             .lp => null,
         };
     }
@@ -695,10 +912,34 @@ fn trackSize(cx: *Cx, t: Token) Error!?c.Track {
 
 const max_tracks = 10000;
 
-fn trackList(cx: *Cx, l: *Lexer, out: *tok.List(c.Track), tmpl: ?*c.GridTemplate, nested: bool) Error!void {
+const NameList = tok.List(c.LineName);
+
+fn isReservedLineName(t: Token) bool {
+    return t.isIdent("span") or t.isIdent("auto");
+}
+
+/// `[a b]` -> names at grid line `line` (relative to the repeat group when `rel`).
+fn addNames(cx: *Cx, names: *NameList, args: []const u8, line: usize, rel: bool) Error!void {
+    var bl = Lexer.init(args);
+    while (!bl.atEnd()) {
+        const t = bl.next();
+        if (t.kind != .ident or isReservedLineName(t)) return bad;
+        if (names.items.len >= max_tracks) return bad;
+        try names.append(cx.a, .{ .name = t.text, .line = @intCast(@min(line, 65535)), .in_repeat = rel });
+    }
+}
+
+/// Track list (stops at a top-level '/'). `rel_start` != null: inside `repeat(auto-*)`, names are
+/// stored relative to that track index.
+fn trackList(cx: *Cx, l: *Lexer, out: *tok.List(c.Track), tmpl: ?*c.GridTemplate, nested: bool, names: *NameList, rel_start: ?usize) Error!void {
     while (!l.atEnd()) {
+        if (!nested and l.peek().kind == .slash) break;
         const t = l.next();
-        if (t.kind == .bracket) continue; // line names: parsed and discarded
+        if (t.kind == .bracket) {
+            const line = if (rel_start) |r| out.items.len - r else out.items.len;
+            try addNames(cx, names, t.args, line, rel_start != null);
+            continue;
+        }
         if (t.isFunc("repeat")) {
             if (nested) return bad;
             var rl = Lexer.init(t.args);
@@ -716,7 +957,8 @@ fn trackList(cx: *Cx, l: *Lexer, out: *tok.List(c.Track), tmpl: ?*c.GridTemplate
             }
             if (rl.next().kind != .comma) return bad;
             const start = out.items.len;
-            try trackList(cx, &rl, out, null, true);
+            const names0 = names.items.len;
+            try trackList(cx, &rl, out, null, true, names, if (mode != .none) start else null);
             const group = out.items.len - start;
             if (group == 0) return bad;
             if (mode != .none) {
@@ -727,9 +969,17 @@ fn trackList(cx: *Cx, l: *Lexer, out: *tok.List(c.Track), tmpl: ?*c.GridTemplate
                 tp.auto_repeat_len = @intCast(group);
             } else {
                 if (group * count > max_tracks) return bad;
+                const names1 = names.items.len;
                 var k: u32 = 1;
                 while (k < count) : (k += 1) {
                     try out.appendSlice(cx.a, out.items[start .. start + group]);
+                    var q = names0;
+                    while (q < names1) : (q += 1) {
+                        if (names.items.len >= max_tracks) return bad;
+                        var nm = names.items[q];
+                        nm.line = @intCast(@min(@as(usize, nm.line) + k * group, 65535));
+                        try names.append(cx.a, nm);
+                    }
                 }
             }
         } else {
@@ -747,15 +997,18 @@ fn parseTemplate(cx: *Cx, l: *Lexer) Error!c.GridTemplate {
         return g;
     }
     var out: tok.List(c.Track) = .{};
-    try trackList(cx, l, &out, &g, false);
+    var names: NameList = .{};
+    try trackList(cx, l, &out, &g, false, &names, null);
     if (out.items.len == 0) return bad;
     g.tracks = out.items;
+    g.line_names = names.items;
     return g;
 }
 
 fn parseAutoTracks(cx: *Cx, l: *Lexer) Error![]const c.Track {
     var out: tok.List(c.Track) = .{};
     while (!l.atEnd()) {
+        if (l.peek().kind == .slash) break;
         if (out.items.len >= max_tracks) return bad;
         try out.append(cx.a, try need(c.Track, try trackSize(cx, l.next())));
     }
@@ -763,31 +1016,50 @@ fn parseAutoTracks(cx: *Cx, l: *Lexer) Error![]const c.Track {
     return out.items;
 }
 
-fn gridLine(l: *Lexer) Error!c.GridLine {
-    var t = l.next();
-    if (t.isIdent("auto")) return .auto;
-    var span = false;
-    if (t.isIdent("span")) {
-        span = true;
-        t = l.next();
-    }
-    if (t.kind == .ident) return .auto; // named line: unsupported, treated as auto
-    const n = try need(i32, values.integer(t));
-    if (!span and l.peek().isIdent("span")) {
+const LineSpec = struct { line: c.GridLine = .auto, ref: c.GridLineRef = .{}, ident_only: bool = false };
+
+/// `auto | <custom-ident> | [<integer> && <custom-ident>?] | [span && [<integer> || <custom-ident>]]`
+fn gridLine(l: *Lexer) Error!LineSpec {
+    if (l.peek().isIdent("auto")) {
         _ = l.next();
-        span = true;
+        return .{};
     }
-    if (n == 0) return .auto;
+    var span = false;
+    var num: ?i32 = null;
+    var name: ?[]const u8 = null;
+    var n: usize = 0;
+    while (true) {
+        const t = l.peek();
+        if (t.kind == .eof or t.kind == .slash) break;
+        _ = l.next();
+        n += 1;
+        if (t.isIdent("span") and !span) {
+            span = true;
+        } else if (t.kind == .ident and name == null and !isReservedLineName(t)) {
+            name = t.text;
+        } else if (num == null and t.kind != .ident) {
+            num = try need(i32, values.integer(t));
+        } else return bad;
+    }
+    if (n == 0) return bad;
+    if (span and num == null and name == null) return bad;
+    if (name) |nm| {
+        const k = num orelse 1;
+        if (k == 0 or (span and k < 0)) return bad;
+        return .{ .ref = .{ .name = nm, .n = k, .span = span }, .ident_only = !span and num == null };
+    }
+    const v = num orelse return bad;
+    if (v == 0) return .{}; // takumi accepts 0 (behaves as auto)
     if (span) {
-        if (n < 0) return bad;
-        return .{ .span = @intCast(n) };
+        if (v < 0) return bad;
+        return .{ .line = .{ .span = @intCast(v) } };
     }
-    return .{ .line = n };
+    return .{ .line = .{ .line = v } };
 }
 
-/// `<line> [/ <line>]*` up to `max` parts; missing parts are auto.
-fn gridLines(l: *Lexer, comptime max: usize) Error![max]c.GridLine {
-    var out: [max]c.GridLine = @splat(.auto);
+/// `<line> [/ <line>]*` up to `max` parts; `got` = number written.
+fn gridLines(l: *Lexer, comptime max: usize, got: *usize) Error![max]LineSpec {
+    var out: [max]LineSpec = @splat(.{});
     var n: usize = 0;
     while (true) {
         if (n == max) return bad;
@@ -797,7 +1069,217 @@ fn gridLines(l: *Lexer, comptime max: usize) Error![max]c.GridLine {
         if (t.kind == .eof) break;
         if (t.kind != .slash) return bad;
     }
+    got.* = n;
     return out;
+}
+
+/// Omitted end lines copy a lone custom-ident start (CSS Grid §8.4), else auto.
+fn identOr(s: LineSpec) LineSpec {
+    return if (s.ident_only) s else .{};
+}
+
+fn setLine(s: *S, idx: usize, v: LineSpec) void {
+    s.grid_line_names[idx] = v.ref;
+    switch (idx) {
+        0 => s.grid_row_start = v.line,
+        1 => s.grid_column_start = v.line,
+        2 => s.grid_row_end = v.line,
+        else => s.grid_column_end = v.line,
+    }
+}
+
+/// grid-template-areas strings -> named rectangles.
+fn parseAreas(cx: *Cx, l: *Lexer) Error!c.GridAreas {
+    if (l.peek().isIdent("none")) {
+        _ = l.next();
+        return .{};
+    }
+    var cells: tok.List(u16) = .{}; // per cell: area index + 1, 0 = null cell
+    var areas: tok.List(c.GridArea) = .{};
+    var rows: usize = 0;
+    var cols: usize = 0;
+    while (!l.atEnd()) {
+        const p = l.peek();
+        if (p.kind != .string) break;
+        _ = l.next();
+        const n = try areaRow(cx, p.text, &cells, &areas);
+        if (n == 0) return bad;
+        if (rows == 0) cols = n else if (n != cols) return bad;
+        rows += 1;
+        if (rows * cols > max_tracks) return bad;
+    }
+    if (rows == 0) return bad;
+    var g: c.GridAreas = .{ .rows = @intCast(rows), .cols = @intCast(cols), .areas = areas.items };
+    try finishAreas(&g, cells.items);
+    return g;
+}
+
+fn areaRow(cx: *Cx, s: []const u8, cells: *tok.List(u16), areas: *tok.List(c.GridArea)) Error!usize {
+    var i: usize = 0;
+    var n: usize = 0;
+    while (i < s.len) {
+        const ch = s[i];
+        if (ch == ' ' or ch == '\t' or ch == '\n' or ch == '\r' or ch == 12) {
+            i += 1;
+            continue;
+        }
+        if (ch == '.') {
+            while (i < s.len and s[i] == '.') i += 1;
+            try cells.append(cx.a, 0);
+        } else if (tok.isNameChar(ch)) {
+            const b = i;
+            while (i < s.len and tok.isNameChar(s[i])) i += 1;
+            const name = s[b..i];
+            var idx: usize = 0;
+            while (idx < areas.items.len and !std.mem.eql(u8, areas.items[idx].name, name)) idx += 1;
+            if (idx == areas.items.len) {
+                if (idx >= 4096) return bad;
+                try areas.append(cx.a, .{ .name = name, .row_start = 0, .row_end = 0, .col_start = 0, .col_end = 0 });
+            }
+            try cells.append(cx.a, @intCast(idx + 1));
+        } else return bad;
+        n += 1;
+        if (cells.items.len > max_tracks) return bad;
+    }
+    return n;
+}
+
+/// `grid-template`: none | <rows> / <cols> | [<names>? <string> <track-size>? <names>?]+ [/ <cols>]?
+fn parseGridTemplate(cx: *Cx, l: *Lexer) Error!void {
+    const s = cx.s;
+    if (l.peek().isIdent("none")) {
+        _ = l.next();
+        s.grid_template_rows = .{};
+        s.grid_template_columns = .{};
+        s.grid_template_areas = .{};
+        return;
+    }
+    // areas form?
+    var probe = l.*;
+    var has_string = false;
+    while (!probe.atEnd()) {
+        const t = probe.next();
+        if (t.kind == .slash) break;
+        if (t.kind == .string) has_string = true;
+    }
+    if (!has_string) {
+        const rows = try parseTemplate(cx, l);
+        if (l.next().kind != .slash) return bad;
+        const colsv = try parseTemplate(cx, l);
+        s.grid_template_rows = rows;
+        s.grid_template_columns = colsv;
+        s.grid_template_areas = .{};
+        return;
+    }
+    var tracks: tok.List(c.Track) = .{};
+    var names: NameList = .{};
+    var cells: tok.List(u16) = .{};
+    var areas: tok.List(c.GridArea) = .{};
+    var rows: usize = 0;
+    var cols: usize = 0;
+    while (!l.atEnd()) {
+        const t = l.peek();
+        if (t.kind == .slash) break;
+        _ = l.next();
+        if (t.kind == .bracket) {
+            try addNames(cx, &names, t.args, tracks.items.len, false);
+            continue;
+        }
+        if (t.kind != .string) return bad;
+        const n = try areaRow(cx, t.text, &cells, &areas);
+        if (n == 0) return bad;
+        if (rows == 0) cols = n else if (n != cols) return bad;
+        rows += 1;
+        if (rows * cols > max_tracks) return bad;
+        var tr: c.Track = .{ .min = .auto, .max = .auto };
+        const nx = l.peek();
+        if (nx.kind != .eof and nx.kind != .slash and nx.kind != .string and nx.kind != .bracket) {
+            _ = l.next();
+            tr = try need(c.Track, try trackSize(cx, nx));
+        }
+        try tracks.append(cx.a, tr);
+    }
+    var colsv: c.GridTemplate = .{};
+    if (l.peek().kind == .slash) {
+        _ = l.next();
+        colsv = try parseTemplate(cx, l);
+        if (colsv.auto_repeat != .none) return bad;
+    }
+    var tmp: c.GridAreas = .{ .rows = @intCast(rows), .cols = @intCast(cols), .areas = areas.items };
+    try finishAreas(&tmp, cells.items);
+    s.grid_template_rows = .{ .tracks = tracks.items, .line_names = names.items };
+    s.grid_template_columns = colsv;
+    s.grid_template_areas = tmp;
+}
+
+fn finishAreas(g: *c.GridAreas, cells: []const u16) Error!void {
+    const cols: usize = g.cols;
+    if (cols == 0) return bad;
+    const areas: []c.GridArea = @constCast(g.areas);
+    for (areas, 0..) |*ar, ai| {
+        var r0: usize = std.math.maxInt(usize);
+        var r1: usize = 0;
+        var c0: usize = cols;
+        var c1: usize = 0;
+        var count: usize = 0;
+        for (cells, 0..) |v, k| {
+            if (v != ai + 1) continue;
+            r0 = @min(r0, k / cols);
+            r1 = @max(r1, k / cols + 1);
+            c0 = @min(c0, k % cols);
+            c1 = @max(c1, k % cols + 1);
+            count += 1;
+        }
+        if (count == 0 or count != (r1 - r0) * (c1 - c0)) return bad;
+        ar.* = .{ .name = ar.name, .row_start = @intCast(r0), .row_end = @intCast(r1), .col_start = @intCast(c0), .col_end = @intCast(c1) };
+    }
+}
+
+/// `grid`: <grid-template> | <rows> / auto-flow && dense? <auto-cols>? | auto-flow && dense? <auto-rows>? / <cols>
+fn parseGrid(cx: *Cx, l: *Lexer) Error!void {
+    const s = cx.s;
+    var probe = l.*;
+    var side: u8 = 0; // 1 = auto-flow before '/', 2 = after
+    var after_slash = false;
+    while (!probe.atEnd()) {
+        const t = probe.next();
+        if (t.kind == .slash) after_slash = true;
+        if (t.isIdent("auto-flow")) side = if (after_slash) 2 else 1;
+    }
+    s.grid_auto_rows = &.{};
+    s.grid_auto_columns = &.{};
+    s.grid_auto_flow = .{};
+    if (side == 0) return parseGridTemplate(cx, l);
+    var flow: c.GridAutoFlow = .{ .column = side == 2 };
+    if (side == 1) {
+        try autoFlowKw(l, &flow);
+        if (l.peek().kind != .slash) s.grid_auto_rows = try parseAutoTracks(cx, l);
+        if (l.next().kind != .slash) return bad;
+        s.grid_template_columns = try parseTemplate(cx, l);
+        s.grid_template_rows = .{};
+    } else {
+        s.grid_template_rows = try parseTemplate(cx, l);
+        if (l.next().kind != .slash) return bad;
+        try autoFlowKw(l, &flow);
+        if (!l.atEnd()) s.grid_auto_columns = try parseAutoTracks(cx, l);
+        s.grid_template_columns = .{};
+    }
+    s.grid_template_areas = .{};
+    s.grid_auto_flow = flow;
+}
+
+fn autoFlowKw(l: *Lexer, flow: *c.GridAutoFlow) Error!void {
+    var seen = false;
+    while (true) {
+        const t = l.peek();
+        if (t.isIdent("auto-flow") and !seen) {
+            seen = true;
+        } else if (t.isIdent("dense") and !flow.dense) {
+            flow.dense = true;
+        } else break;
+        _ = l.next();
+    }
+    if (!seen) return bad;
 }
 
 // ------------------------------------------------------------------ borders / backgrounds
@@ -937,7 +1419,9 @@ fn isPosStart(t: Token, env: *const Env) bool {
     };
 }
 
-fn parseBackground(cx: *Cx, l: *Lexer) Error!void {
+/// `background` (mask = false) or `mask` / `-webkit-mask` (mask = true) layer lists.
+fn parseBackground(cx: *Cx, l: *Lexer, mask: bool) Error!void {
+    var modes: tok.List(c.MaskMode) = .{};
     var images: tok.List(c.Image) = .{};
     var sizes: tok.List(c.BgSize) = .{};
     var poss: tok.List([2]LP) = .{};
@@ -955,6 +1439,7 @@ fn parseBackground(cx: *Cx, l: *Lexer) Error!void {
         var nbox: usize = 0;
         var attach = false;
         var col: ?ColorValue = null;
+        var mode: ?c.MaskMode = null;
         var nitems: usize = 0;
         while (true) {
             const t = l.peek();
@@ -981,16 +1466,24 @@ fn parseBackground(cx: *Cx, l: *Lexer) Error!void {
                     continue;
                 }
             }
-            if (!attach and (t.isIdent("scroll") or t.isIdent("fixed") or t.isIdent("local"))) {
-                attach = true;
+            const kw_attach = if (mask) "add\x00subtract\x00intersect\x00exclude" else "scroll\x00fixed\x00local";
+            if (!attach and t.kind == .ident and tok.matchPacked(t.text, kw_attach) != null) {
+                attach = true; // attachment (bg) / compositing operator (mask): accepted, ignored
                 continue;
             }
             if (nbox < 2) {
-                if (bgBox(t, true)) |b| {
+                if (if (mask) maskBox(t) else bgBox(t, true)) |b| {
                     boxes[nbox] = b;
                     nbox += 1;
                     continue;
                 }
+            }
+            if (mask) {
+                if (mode == null) if (tok.kw(c.MaskMode, t)) |m| {
+                    mode = m;
+                    continue;
+                };
+                return bad;
             }
             if (col == null) {
                 if (colorm.fromToken(t)) |v| {
@@ -1005,8 +1498,9 @@ fn parseBackground(cx: *Cx, l: *Lexer) Error!void {
         try sizes.append(cx.a, sz orelse c.default_bg_size[0]);
         try poss.append(cx.a, pos orelse c.zero2);
         try reps.append(cx.a, rep orelse c.default_bg_repeat[0]);
-        var origin: c.BgBox = .padding_box;
+        var origin: c.BgBox = if (mask) .border_box else .padding_box;
         var clip: c.BgBox = .border_box;
+        try modes.append(cx.a, mode orelse .match_source);
         if (nbox == 1) {
             if (boxes[0] == .text) clip = .text else {
                 origin = boxes[0];
@@ -1028,6 +1522,16 @@ fn parseBackground(cx: *Cx, l: *Lexer) Error!void {
         if (images.items.len > 1024) return bad;
     }
     const s = cx.s;
+    if (mask) {
+        s.mask_image = images.items;
+        s.mask_size = sizes.items;
+        s.mask_position = poss.items;
+        s.mask_repeat = reps.items;
+        s.mask_clip = clips.items;
+        s.mask_origin = origins.items;
+        s.mask_mode = modes.items;
+        return;
+    }
     s.background_color = bg_color;
     s.background_image = images.items;
     s.background_size = sizes.items;
@@ -1256,7 +1760,7 @@ fn fontSizeRaw(cx: *Cx, t: Token) Error!?f32 {
     var env = cx.env;
     env.em = cx.parent_fs;
     const v = (values.lengthPct(t, &env)) orelse return null;
-    const px = v.px + v.pct * cx.parent_fs;
+    const px = v.resolve(cx.parent_fs);
     return @max(px, 0);
 }
 
@@ -1282,13 +1786,13 @@ fn lineHeightValue(cx: *Cx, t: Token) Error!c.LineHeight {
         }
     }
     const v = try lp(cx, t);
-    return .{ .px = @max(v.px + v.pct * cx.s.font_size, 0) };
+    return .{ .px = @max(v.resolve(cx.s.font_size), 0) };
 }
 
 fn spacingValue(cx: *Cx, t: Token) Error!f32 {
     if (t.isIdent("normal")) return 0;
     const v = try lp(cx, t);
-    return v.px + v.pct * cx.s.font_size;
+    return v.resolve(cx.s.font_size);
 }
 
 fn parseFamilies(cx: *Cx, l: *Lexer) Error![]const []const u8 {
@@ -1339,7 +1843,7 @@ fn parseFontShorthand(cx: *Cx, l: *Lexer) Error!void {
     var style: ?c.FontStyle = null;
     var weight: ?u16 = null;
     var variant = false;
-    var stretch = false;
+    var stretch: ?f32 = null;
     var pre: usize = 0;
     var size_t: Token = undefined;
     while (true) {
@@ -1365,8 +1869,8 @@ fn parseFontShorthand(cx: *Cx, l: *Lexer) Error!void {
                 pre += 1;
                 continue;
             }
-            if (!stretch and t.kind == .ident and tok.matchPacked(t.text, stretch_kw) != null) {
-                stretch = true;
+            if (stretch == null and t.kind == .ident and tok.matchPacked(t.text, stretch_kw) != null) {
+                stretch = fontStretchValue(t);
                 pre += 1;
                 continue;
             }
@@ -1397,6 +1901,16 @@ fn parseFontShorthand(cx: *Cx, l: *Lexer) Error!void {
     s.font_size = fs;
     s.line_height = lh;
     s.font_family = fam;
+    s.font_stretch = stretch orelse 100;
+    s.font_variant_caps = if (variant) .small_caps else .normal;
+    s.font_variant_ligatures = .{};
+    s.font_variant_numeric = .{};
+    s.font_variant_east_asian = .{};
+    s.font_variant_position = .normal;
+    s.font_kerning = .auto;
+    s.font_optical_sizing = .auto;
+    s.font_feature_settings = &.{};
+    s.font_variation_settings = &.{};
 }
 
 fn decoLine(l: *Lexer) Error!?c.DecorationLine {
@@ -1424,7 +1938,7 @@ fn decoLine(l: *Lexer) Error!?c.DecorationLine {
 fn decoThickness(cx: *Cx, t: Token) Error!??f32 {
     if (t.isIdent("auto") or t.isIdent("from-font")) return @as(?f32, null);
     const v = (values.lengthPct(t, &cx.env)) orelse return null;
-    return @as(?f32, v.px + v.pct * cx.s.font_size);
+    return @as(?f32, v.resolve(cx.s.font_size));
 }
 
 fn parseTextDecoration(cx: *Cx, l: *Lexer) Error!void {
@@ -1606,6 +2120,28 @@ fn kwEntryOf(comptime p: Prop) ?KwEntry {
         .wordBreak => ke(c.WordBreak, fr("word_break")),
         .overflowWrap, .wordWrap => ke(c.OverflowWrap, fr("overflow_wrap")),
         .direction => ke(c.Direction, fr("direction")),
+        .overflowInline => ke(c.Overflow, fr("overflow_x")),
+        .overflowBlock => ke(c.Overflow, fr("overflow_y")),
+        .float => ke(c.Float, fr("float")),
+        .clear => ke(c.Clear, fr("clear")),
+        .tableLayout => ke(c.TableLayout, fr("table_layout")),
+        .borderCollapse => ke(c.BorderCollapse, fr("border_collapse")),
+        .captionSide => ke(c.CaptionSide, fr("caption_side")),
+        .emptyCells => ke(c.EmptyCells, fr("empty_cells")),
+        .boxDecorationBreak, .WebkitBoxDecorationBreak => ke(c.BoxDecorationBreak, fr("box_decoration_break")),
+        .isolation => ke(c.Isolation, fr("isolation")),
+        .unicodeBidi => ke(c.UnicodeBidi, fr("unicode_bidi")),
+        .writingMode => ke(c.WritingMode, fr("writing_mode")),
+        .textDecorationSkipInk => ke(c.SkipInk, fr("text_decoration_skip_ink")),
+        .textAlignLast => ke(c.TextAlignLast, fr("text_align_last")),
+        .hyphens, .WebkitHyphens => ke(c.Hyphens, fr("hyphens")),
+        .lineBreak => ke(c.LineBreak, fr("line_break")),
+        .fontKerning => ke(c.FontKerning, fr("font_kerning")),
+        .fontOpticalSizing => ke(c.FontOpticalSizing, fr("font_optical_sizing")),
+        .fontVariantCaps => ke(c.VariantCaps, fr("font_variant_caps")),
+        .fontVariantPosition => ke(c.VariantPosition, fr("font_variant_position")),
+        .maskType => ke(c.MaskType, fr("mask_type")),
+        .listStylePosition => ke(c.ListStylePosition, fr("list_style_position")),
         else => null,
     };
 }
@@ -1643,6 +2179,835 @@ const kw_index: [n_props]u8 = blk: {
     break :blk o;
 };
 
+// ------------------------------------------------------------------ logical properties
+/// The physical properties whose fields `p` writes, for horizontal writing modes (`rtl` flips the
+/// inline axis). Physical properties map to themselves. Pairs are [start, end].
+pub fn physicalProps(p: Prop, rtl: bool, buf: *[4]Prop) []const Prop {
+    const Map = struct { Prop, Prop, Prop }; // logical, ltr, rtl
+    const singles = [_]Map{
+        .{ .marginInlineStart, .marginLeft, .marginRight },        .{ .marginInlineEnd, .marginRight, .marginLeft },
+        .{ .marginBlockStart, .marginTop, .marginTop },            .{ .marginBlockEnd, .marginBottom, .marginBottom },
+        .{ .paddingInlineStart, .paddingLeft, .paddingRight },     .{ .paddingInlineEnd, .paddingRight, .paddingLeft },
+        .{ .paddingBlockStart, .paddingTop, .paddingTop },         .{ .paddingBlockEnd, .paddingBottom, .paddingBottom },
+        .{ .insetInlineStart, .left, .right },                     .{ .insetInlineEnd, .right, .left },
+        .{ .insetBlockStart, .top, .top },                         .{ .insetBlockEnd, .bottom, .bottom },
+        .{ .inlineSize, .width, .width },                          .{ .blockSize, .height, .height },
+        .{ .minInlineSize, .minWidth, .minWidth },                 .{ .minBlockSize, .minHeight, .minHeight },
+        .{ .maxInlineSize, .maxWidth, .maxWidth },                 .{ .maxBlockSize, .maxHeight, .maxHeight },
+        .{ .borderInlineStart, .borderLeft, .borderRight },        .{ .borderInlineEnd, .borderRight, .borderLeft },
+        .{ .borderBlockStart, .borderTop, .borderTop },            .{ .borderBlockEnd, .borderBottom, .borderBottom },
+        .{ .borderInlineStartWidth, .borderLeftWidth, .borderRightWidth }, .{ .borderInlineEndWidth, .borderRightWidth, .borderLeftWidth },
+        .{ .borderInlineStartStyle, .borderLeftStyle, .borderRightStyle }, .{ .borderInlineEndStyle, .borderRightStyle, .borderLeftStyle },
+        .{ .borderInlineStartColor, .borderLeftColor, .borderRightColor }, .{ .borderInlineEndColor, .borderRightColor, .borderLeftColor },
+        .{ .borderBlockStartWidth, .borderTopWidth, .borderTopWidth },     .{ .borderBlockEndWidth, .borderBottomWidth, .borderBottomWidth },
+        .{ .borderBlockStartStyle, .borderTopStyle, .borderTopStyle },     .{ .borderBlockEndStyle, .borderBottomStyle, .borderBottomStyle },
+        .{ .borderBlockStartColor, .borderTopColor, .borderTopColor },     .{ .borderBlockEndColor, .borderBottomColor, .borderBottomColor },
+        .{ .borderStartStartRadius, .borderTopLeftRadius, .borderTopRightRadius }, .{ .borderStartEndRadius, .borderTopRightRadius, .borderTopLeftRadius },
+        .{ .borderEndStartRadius, .borderBottomLeftRadius, .borderBottomRightRadius }, .{ .borderEndEndRadius, .borderBottomRightRadius, .borderBottomLeftRadius },
+    };
+    for (singles) |m| if (m[0] == p) {
+        buf[0] = if (rtl) m[2] else m[1];
+        return buf[0..1];
+    };
+    const pairs = [_]Map{
+        .{ .marginInline, .marginInlineStart, .marginInlineEnd },       .{ .marginBlock, .marginBlockStart, .marginBlockEnd },
+        .{ .paddingInline, .paddingInlineStart, .paddingInlineEnd },    .{ .paddingBlock, .paddingBlockStart, .paddingBlockEnd },
+        .{ .insetInline, .insetInlineStart, .insetInlineEnd },          .{ .insetBlock, .insetBlockStart, .insetBlockEnd },
+        .{ .borderInline, .borderInlineStart, .borderInlineEnd },       .{ .borderBlock, .borderBlockStart, .borderBlockEnd },
+        .{ .borderInlineWidth, .borderInlineStartWidth, .borderInlineEndWidth }, .{ .borderBlockWidth, .borderBlockStartWidth, .borderBlockEndWidth },
+        .{ .borderInlineStyle, .borderInlineStartStyle, .borderInlineEndStyle }, .{ .borderBlockStyle, .borderBlockStartStyle, .borderBlockEndStyle },
+        .{ .borderInlineColor, .borderInlineStartColor, .borderInlineEndColor }, .{ .borderBlockColor, .borderBlockStartColor, .borderBlockEndColor },
+    };
+    for (pairs) |m| if (m[0] == p) {
+        var b2: [4]Prop = undefined;
+        buf[0] = physicalProps(m[1], rtl, &b2)[0];
+        buf[1] = physicalProps(m[2], rtl, &b2)[0];
+        return buf[0..2];
+    };
+    buf[0] = p;
+    return buf[0..1];
+}
+
+/// True for the two-value logical shorthands `start [end]`.
+fn isSplitPair(p: Prop) bool {
+    return switch (p) {
+        .marginInline, .marginBlock, .paddingInline, .paddingBlock, .insetInline, .insetBlock, .borderInlineWidth, .borderBlockWidth, .borderInlineStyle, .borderBlockStyle, .borderInlineColor, .borderBlockColor => true,
+        else => false,
+    };
+}
+
+/// Source text of the next token (for re-dispatching part of a value).
+fn tokenText(l: *Lexer) []const u8 {
+    _ = l.atEnd(); // skip whitespace
+    const b = l.i;
+    _ = l.next();
+    return l.s[b..l.i];
+}
+
+fn applyLogical(cx: *Cx, p: Prop, l: *Lexer, phys: []const Prop) Error!void {
+    if (phys.len == 1) return apply(cx, phys[0], l);
+    if (!isSplitPair(p) or l.forced != null) {
+        var l2 = l.*;
+        try apply(cx, phys[0], l);
+        return apply(cx, phys[1], &l2);
+    }
+    const a = tokenText(l);
+    const b = if (l.atEnd()) a else tokenText(l);
+    if (!l.atEnd()) return bad;
+    var la = Lexer.init(a);
+    try apply(cx, phys[0], &la);
+    var lb = Lexer.init(b);
+    try apply(cx, phys[1], &lb);
+}
+
+// ------------------------------------------------------------------ misc box properties
+fn parseDisplay(l: *Lexer) Error!c.Display {
+    const t = l.next();
+    if (t.kind != .ident) return bad;
+    if (t.isIdent("-webkit-box")) return .webkit_box;
+    if (t.isIdent("-webkit-inline-box")) return .webkit_inline_box;
+    if (t.isIdent("-webkit-flex")) return .flex;
+    if (t.isIdent("-webkit-inline-flex")) return .inline_flex;
+    const d = tok.kw(c.Display, t) orelse return bad;
+    if (d == .webkit_box or d == .webkit_inline_box) return bad; // only the dashed spelling
+    return d;
+}
+
+fn parseBorderSpacing(cx: *Cx, l: *Lexer) Error![2]f32 {
+    const h = try len(cx, l.next());
+    const v = if (l.atEnd()) h else try len(cx, l.next());
+    if (h < 0 or v < 0) return bad;
+    return .{ h, v };
+}
+
+fn parseVerticalAlign(cx: *Cx, t: Token) Error!c.VerticalAlign {
+    if (t.kind == .ident) {
+        const names = "baseline\x00sub\x00super\x00top\x00middle\x00bottom\x00text-top\x00text-bottom";
+        const i = tok.matchPacked(t.text, names) orelse return bad;
+        const tags = [_]c.VerticalAlign{ .baseline, .sub, .super, .top, .middle, .bottom, .text_top, .text_bottom };
+        return tags[i];
+    }
+    return .{ .lp = try lp(cx, t) };
+}
+
+fn parseContain(l: *Lexer) Error!c.Contain {
+    var v: c.Contain = .{};
+    const f = l.peek();
+    if (f.isIdent("none")) {
+        _ = l.next();
+        return v;
+    }
+    if (f.isIdent("strict") or f.isIdent("content")) {
+        _ = l.next();
+        return .{ .size = f.isIdent("strict"), .layout = true, .style = true, .paint = true };
+    }
+    var n: usize = 0;
+    while (!l.atEnd()) : (n += 1) {
+        const t = l.next();
+        const i = tok.matchPacked(t.text, "size\x00inline-size\x00layout\x00style\x00paint") orelse return bad;
+        if (t.kind != .ident) return bad;
+        const bit = @as(u8, 1) << @intCast(i);
+        const cur: u8 = @bitCast(v);
+        if (cur & bit != 0) return bad;
+        v = @bitCast(cur | bit);
+    }
+    if (n == 0 or (v.size and v.inline_size)) return bad;
+    return v;
+}
+
+/// The rest of the value as written (trimmed), consuming it.
+fn rawRest(l: *Lexer) Error![]const u8 {
+    if (l.forced != null) return bad;
+    const r = std.mem.trim(u8, l.s[@min(l.i, l.s.len)..], " \t\r\n\x0c");
+    l.i = l.s.len;
+    if (r.len == 0) return bad;
+    return r;
+}
+
+fn parseCounters(l: *Lexer) Error![]const u8 {
+    const r = try rawRest(l);
+    var v = Lexer.init(r);
+    if (v.next().isIdent("none") and v.atEnd()) return "";
+    var sub = Lexer.init(r);
+    while (!sub.atEnd()) {
+        const t = sub.next();
+        if (t.kind != .ident and !(t.kind == .number and t.int)) return bad;
+    }
+    return r;
+}
+
+fn parseContent(l: *Lexer) Error![]const u8 {
+    const r = try rawRest(l);
+    var sub = Lexer.init(r);
+    while (!sub.atEnd()) {
+        const t = sub.next();
+        switch (t.kind) {
+            .ident, .string, .function, .slash => {},
+            else => return bad,
+        }
+    }
+    return r;
+}
+
+fn listStyleTypeValue(t: Token) Error!?c.ListStyleType {
+    if (t.kind == .string) return .{ .string = t.text };
+    if (t.kind != .ident) return null;
+    if (t.isIdent("none")) return .none;
+    if (t.isIdent("inside") or t.isIdent("outside")) return null;
+    return .{ .ident = t.text };
+}
+
+fn parseListStyle(cx: *Cx, l: *Lexer) Error!void {
+    var ty: ?c.ListStyleType = null;
+    var pos: ?c.ListStylePosition = null;
+    var img: ?c.Image = null;
+    var nones: u8 = 0;
+    var n: usize = 0;
+    while (!l.atEnd()) : (n += 1) {
+        const t = l.next();
+        if (t.isIdent("none")) {
+            nones += 1;
+            continue;
+        }
+        if (pos == null) if (tok.kw(c.ListStylePosition, t)) |v| {
+            pos = v;
+            continue;
+        };
+        if (img == null and t.kind == .function) {
+            if (try gradient.image(cx.a, t, &cx.env)) |im| {
+                img = im;
+                continue;
+            }
+        }
+        if (ty == null) if (try listStyleTypeValue(t)) |v| {
+            ty = v;
+            continue;
+        };
+        return bad;
+    }
+    if (n == 0) return bad;
+    // `none` fills whichever of type / image is unset
+    var k = nones;
+    if (k > 0 and ty == null) {
+        ty = .none;
+        k -= 1;
+    }
+    if (k > 0 and img == null) {
+        img = .none;
+        k -= 1;
+    }
+    if (k > 0) return bad;
+    cx.s.list_style_type = ty orelse .{ .ident = "disc" };
+    cx.s.list_style_position = pos orelse .outside;
+    cx.s.list_style_image = img orelse .none;
+}
+
+// ------------------------------------------------------------------ clip-path / masks
+fn fillRule(l: *Lexer) Error!c.FillRule {
+    const p = l.peek();
+    if (p.isIdent("nonzero") or p.isIdent("evenodd")) {
+        _ = l.next();
+        if (l.next().kind != .comma) return bad;
+        return if (p.isIdent("evenodd")) .evenodd else .nonzero;
+    }
+    return .nonzero;
+}
+
+fn shapeRadius(cx: *Cx, t: Token) Error!?c.ShapeRadius {
+    if (t.isIdent("closest-side")) return .closest_side;
+    if (t.isIdent("farthest-side")) return .farthest_side;
+    const v = values.lengthPct(t, &cx.env) orelse return null;
+    if (v.px < 0 or v.pct < 0) return bad;
+    return .{ .lp = v };
+}
+
+fn shapeAt(cx: *Cx, l: *Lexer) Error![2]LP {
+    if (l.atEnd()) return c.center2;
+    if (!l.next().isIdent("at")) return bad;
+    return need([2]LP, values.position(l, &cx.env, 4));
+}
+
+fn basicShape(cx: *Cx, t: Token) Error!?c.BasicShape {
+    if (t.kind != .function) return null;
+    var l = Lexer.init(t.args);
+    const n = t.text;
+    var sh: c.BasicShape = undefined;
+    if (ieq(n, "inset")) {
+        var buf: [4]Token = undefined;
+        var k: usize = 0;
+        while (!l.atEnd() and !l.peek().isIdent("round")) {
+            if (k == 4) return bad;
+            buf[k] = l.next();
+            k += 1;
+        }
+        const ts = try expand4(Token, buf[0..k]);
+        var sides: [4]LP = undefined;
+        for (ts, 0..) |x, i| sides[i] = try lp(cx, x);
+        var radius: [4][2]LP = .{ c.zero2, c.zero2, c.zero2, c.zero2 };
+        if (l.peek().isIdent("round")) {
+            _ = l.next();
+            radius = try parseBorderRadius(cx, &l);
+        }
+        sh = .{ .inset = .{ .sides = sides, .radius = radius } };
+    } else if (ieq(n, "circle")) {
+        var r: c.ShapeRadius = .closest_side;
+        if (!l.atEnd() and !l.peek().isIdent("at")) r = try need(c.ShapeRadius, try shapeRadius(cx, l.next()));
+        sh = .{ .circle = .{ .r = r, .at = try shapeAt(cx, &l) } };
+    } else if (ieq(n, "ellipse")) {
+        var rx: c.ShapeRadius = .closest_side;
+        var ry: c.ShapeRadius = .closest_side;
+        if (!l.atEnd() and !l.peek().isIdent("at")) {
+            rx = try need(c.ShapeRadius, try shapeRadius(cx, l.next()));
+            ry = try need(c.ShapeRadius, try shapeRadius(cx, l.next()));
+        }
+        sh = .{ .ellipse = .{ .rx = rx, .ry = ry, .at = try shapeAt(cx, &l) } };
+    } else if (ieq(n, "polygon")) {
+        const rule = try fillRule(&l);
+        var pts: tok.List([2]LP) = .{};
+        while (true) {
+            const x = try lp(cx, l.next());
+            const y = try lp(cx, l.next());
+            try pts.append(cx.a, .{ x, y });
+            const sep = l.next();
+            if (sep.kind == .eof) break;
+            if (sep.kind != .comma or pts.items.len > 4096) return bad;
+        }
+        sh = .{ .polygon = .{ .rule = rule, .points = pts.items } };
+    } else if (ieq(n, "path")) {
+        const rule = try fillRule(&l);
+        const s = l.next();
+        if (s.kind != .string) return bad;
+        sh = .{ .path = .{ .rule = rule, .d = s.text } };
+    } else return null;
+    if (!l.atEnd()) return bad;
+    return sh;
+}
+
+fn geometryBox(t: Token) ?c.GeometryBox {
+    return tok.kw(c.GeometryBox, t);
+}
+
+fn parseClipPath(cx: *Cx, l: *Lexer) Error!?*const c.ClipPath {
+    const f = l.peek();
+    if (f.isIdent("none")) {
+        _ = l.next();
+        return null;
+    }
+    var cp: c.ClipPath = .{};
+    if (f.isFunc("url")) {
+        _ = l.next();
+        cp.url = std.mem.trim(u8, f.args, " \t\"'");
+    } else {
+        var have_box = false;
+        var n: usize = 0;
+        while (!l.atEnd()) : (n += 1) {
+            const t = l.next();
+            if (!have_box) if (geometryBox(t)) |b| {
+                cp.box = b;
+                have_box = true;
+                continue;
+            };
+            if (cp.shape == null) if (try basicShape(cx, t)) |sh| {
+                cp.shape = sh;
+                continue;
+            };
+            return bad;
+        }
+        if (n == 0) return bad;
+    }
+    const out = try cx.a.create(c.ClipPath);
+    out.* = cp;
+    return out;
+}
+
+/// mask `<geometry-box> | no-clip` -> BgBox (margin/fill/stroke/view-box and no-clip map to border-box).
+fn maskBox(t: Token) ?c.BgBox {
+    if (t.isIdent("no-clip")) return .border_box;
+    const g = geometryBox(t) orelse return null;
+    return switch (g) {
+        .padding_box => .padding_box,
+        .content_box => .content_box,
+        else => .border_box,
+    };
+}
+
+/// `background-position-x/y` list: `[center | <side> <lp>? | <lp>]#`.
+fn parsePosAxis(cx: *Cx, l: *Lexer, y: bool) Error!void {
+    var out: tok.List([2]LP) = .{};
+    const old = cx.s.background_position;
+    while (true) {
+        const t = l.next();
+        var v: LP = undefined;
+        if (t.kind == .ident) {
+            const lo = if (y) t.isIdent("top") else t.isIdent("left");
+            const hi = if (y) t.isIdent("bottom") else t.isIdent("right");
+            if (t.isIdent("center")) {
+                v = .{ .pct = 0.5 };
+            } else if (lo or hi) {
+                v = if (hi) .{ .pct = 1 } else .{};
+                if (!isEnd(l.peek())) {
+                    const o = try lp(cx, l.next());
+                    v = if (hi) .{ .px = -o.px, .pct = 1 - o.pct } else o;
+                }
+            } else return bad;
+        } else v = try lp(cx, t);
+        var e: [2]LP = if (old.len > 0) old[out.items.len % old.len] else c.zero2;
+        e[@intFromBool(y)] = v;
+        try out.append(cx.a, e);
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (sep.kind != .comma or out.items.len > 1024) return bad;
+    }
+    cx.s.background_position = out.items;
+}
+
+// ------------------------------------------------------------------ text / font extras
+fn parseUnderlinePosition(l: *Lexer) Error!c.UnderlinePosition {
+    var v: c.UnderlinePosition = .{};
+    if (l.peek().isIdent("auto")) {
+        _ = l.next();
+        return v;
+    }
+    var n: usize = 0;
+    while (!l.atEnd()) : (n += 1) {
+        const t = l.next();
+        if (t.isIdent("from-font") and !v.from_font and !v.under) {
+            v.from_font = true;
+        } else if (t.isIdent("under") and !v.from_font and !v.under) {
+            v.under = true;
+        } else if ((t.isIdent("left") or t.isIdent("right")) and !v.left and !v.right) {
+            if (t.isIdent("left")) v.left = true else v.right = true;
+        } else return bad;
+    }
+    if (n == 0) return bad;
+    return v;
+}
+
+fn parsePaintOrder(l: *Lexer) Error!c.PaintOrder {
+    const t = l.next();
+    if (t.isIdent("normal")) return .normal;
+    const first = tok.kw(c.PaintOrder, t) orelse return bad;
+    if (first == .normal) return bad;
+    var seen: u8 = @as(u8, 1) << @intCast(@intFromEnum(first));
+    while (!l.atEnd()) {
+        const x = tok.kw(c.PaintOrder, l.next()) orelse return bad;
+        const bit = @as(u8, 1) << @intCast(@intFromEnum(x));
+        if (x == .normal or seen & bit != 0) return bad;
+        seen |= bit;
+    }
+    return first;
+}
+
+const stretch_pct = [_]f32{ 50, 62.5, 75, 87.5, 112.5, 125, 150, 200 };
+
+fn fontStretchValue(t: Token) ?f32 {
+    if (t.isIdent("normal")) return 100;
+    if (t.kind == .ident) {
+        const i = tok.matchPacked(t.text, stretch_kw) orelse return null;
+        return stretch_pct[i];
+    }
+    if (t.kind == .percentage and t.num >= 0) return t.num;
+    return null;
+}
+
+/// 4-character OpenType tag string (printable ASCII).
+fn otTag(t: Token) Error![4]u8 {
+    if (t.kind != .string or t.text.len != 4) return bad;
+    for (t.text) |ch| if (ch < 0x20 or ch > 0x7e) return bad;
+    return t.text[0..4].*;
+}
+
+fn parseFeatures(cx: *Cx, l: *Lexer) Error![]const c.FontFeature {
+    if (l.peek().isIdent("normal")) {
+        _ = l.next();
+        return &.{};
+    }
+    var out: tok.List(c.FontFeature) = .{};
+    while (true) {
+        const tag = try otTag(l.next());
+        var v: u32 = 1;
+        const p = l.peek();
+        if (p.isIdent("on") or p.isIdent("off")) {
+            _ = l.next();
+            v = @intFromBool(p.isIdent("on"));
+        } else if (!isEnd(p)) {
+            const n = try need(i32, values.integer(l.next()));
+            if (n < 0) return bad;
+            v = @intCast(n);
+        }
+        try out.append(cx.a, .{ .tag = tag, .value = v });
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (sep.kind != .comma or out.items.len > 256) return bad;
+    }
+    return out.items;
+}
+
+fn parseVariations(cx: *Cx, l: *Lexer) Error![]const c.FontVariation {
+    if (l.peek().isIdent("normal")) {
+        _ = l.next();
+        return &.{};
+    }
+    var out: tok.List(c.FontVariation) = .{};
+    while (true) {
+        const tag = try otTag(l.next());
+        const v = try need(f32, values.number(l.next()));
+        try out.append(cx.a, .{ .tag = tag, .value = v });
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (sep.kind != .comma or out.items.len > 256) return bad;
+    }
+    return out.items;
+}
+
+/// font-variant-* keyword sets. `which` limits the accepted groups (bit 0 ligatures, 1 numeric,
+/// 2 east-asian, 3 caps, 4 position). Returns false if `t` is not a keyword of those groups.
+const Variants = struct {
+    lig: c.VariantLigatures = .{},
+    num: c.VariantNumeric = .{},
+    ea: c.VariantEastAsian = .{},
+    caps: c.VariantCaps = .normal,
+    pos: c.VariantPosition = .normal,
+    seen: u32 = 0,
+};
+
+const variant_kw = "common-ligatures\x00no-common-ligatures\x00discretionary-ligatures\x00no-discretionary-ligatures\x00historical-ligatures\x00no-historical-ligatures\x00contextual\x00no-contextual" ++
+    "\x00lining-nums\x00oldstyle-nums\x00proportional-nums\x00tabular-nums\x00diagonal-fractions\x00stacked-fractions\x00ordinal\x00slashed-zero" ++
+    "\x00jis78\x00jis83\x00jis90\x00jis04\x00simplified\x00traditional\x00full-width\x00proportional-width\x00ruby" ++
+    "\x00small-caps\x00all-small-caps\x00petite-caps\x00all-petite-caps\x00unicase\x00titling-caps\x00sub\x00super";
+/// per keyword: group bit, exclusive-slot id (keywords sharing a slot are mutually exclusive)
+const variant_group = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4 };
+const variant_slot = [_]u8{ 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 8, 9, 9, 9, 9, 9, 9, 10, 10, 11, 12, 12, 12, 12, 12, 12, 13, 13 };
+
+fn variantKw(v: *Variants, t: Token, which: u8) Error!bool {
+    if (t.kind != .ident) return false;
+    const i = tok.matchPacked(t.text, variant_kw) orelse return false;
+    if ((which >> @intCast(variant_group[i])) & 1 == 0) return false;
+    const slot = @as(u32, 1) << @intCast(variant_slot[i]);
+    if (v.seen & slot != 0) return bad;
+    v.seen |= slot;
+    const on: c.LigState = if (i % 2 == 0) .on else .off;
+    switch (i) {
+        0, 1 => v.lig.common = on,
+        2, 3 => v.lig.discretionary = on,
+        4, 5 => v.lig.historical = on,
+        6, 7 => v.lig.contextual = on,
+        8 => v.num.figure = .lining,
+        9 => v.num.figure = .oldstyle,
+        10 => v.num.spacing = .proportional,
+        11 => v.num.spacing = .tabular,
+        12 => v.num.fraction = .diagonal,
+        13 => v.num.fraction = .stacked,
+        14 => v.num.ordinal = true,
+        15 => v.num.slashed_zero = true,
+        16...21 => v.ea.form = @enumFromInt(i - 15),
+        22 => v.ea.width = .full,
+        23 => v.ea.width = .proportional,
+        24 => v.ea.ruby = true,
+        25...30 => v.caps = @enumFromInt(i - 24),
+        31 => v.pos = .sub,
+        else => v.pos = .super,
+    }
+    return true;
+}
+
+/// Parses `normal | [keywords of `which`]+` (+ `none` for ligatures when allowed).
+fn parseVariants(l: *Lexer, which: u8, allow_none: bool) Error!Variants {
+    var v: Variants = .{};
+    const f = l.peek();
+    if (f.isIdent("normal")) {
+        _ = l.next();
+        return v;
+    }
+    if (allow_none and f.isIdent("none")) {
+        _ = l.next();
+        v.lig = .{ .common = .off, .discretionary = .off, .historical = .off, .contextual = .off };
+        return v;
+    }
+    var n: usize = 0;
+    while (!l.atEnd()) : (n += 1) {
+        if (!try variantKw(&v, l.next(), which)) return bad;
+    }
+    if (n == 0) return bad;
+    return v;
+}
+
+fn parseSynthesis(l: *Lexer) Error!c.FontSynthesis {
+    var v: c.FontSynthesis = .{ .weight = false, .style = false, .small_caps = false, .position = false };
+    if (l.peek().isIdent("none")) {
+        _ = l.next();
+        return v;
+    }
+    var n: usize = 0;
+    while (!l.atEnd()) : (n += 1) {
+        const t = l.next();
+        const i = tok.matchPacked(t.text, "weight\x00style\x00small-caps\x00position") orelse return bad;
+        if (t.kind != .ident) return bad;
+        const b: u8 = @bitCast(v);
+        const bit = @as(u8, 1) << @intCast(i);
+        if (b & bit != 0) return bad;
+        v = @bitCast(b | bit);
+    }
+    if (n == 0) return bad;
+    return v;
+}
+
+// ------------------------------------------------------------------ animations / transitions
+/// `<time>` in milliseconds (`0` unitless accepted).
+fn timeMs(t: Token) ?f32 {
+    if (t.kind == .number and t.num == 0) return 0;
+    if (t.kind != .dimension) return null;
+    if (ieq(t.text, "s")) return t.num * 1000;
+    if (ieq(t.text, "ms")) return t.num;
+    return null;
+}
+
+const timing_kw = "linear\x00ease\x00ease-in\x00ease-out\x00ease-in-out\x00step-start\x00step-end";
+const timing_cubic = [_][4]f32{ .{ 0, 0, 1, 1 }, .{ 0.25, 0.1, 0.25, 1 }, .{ 0.42, 0, 1, 1 }, .{ 0, 0, 0.58, 1 }, .{ 0.42, 0, 0.58, 1 } };
+
+fn timingFn(cx: *Cx, t: Token) Error!?c.TimingFunction {
+    if (t.kind == .ident) {
+        const i = tok.matchPacked(t.text, timing_kw) orelse return null;
+        if (i < 5) return .{ .cubic = timing_cubic[i] };
+        return .{ .steps = .{ .n = 1, .pos = if (i == 5) .jump_start else .jump_end } };
+    }
+    if (t.kind != .function) return null;
+    var a: [4]Token = undefined;
+    if (t.isFunc("cubic-bezier")) {
+        if (try fnArgs(t.args, &a) != 4) return bad;
+        var v: [4]f32 = undefined;
+        for (0..4) |i| v[i] = try need(f32, values.number(a[i]));
+        if (v[0] < 0 or v[0] > 1 or v[2] < 0 or v[2] > 1) return bad;
+        return .{ .cubic = v };
+    }
+    if (t.isFunc("steps")) {
+        var l = Lexer.init(t.args);
+        const n = try need(i32, values.integer(l.next()));
+        var pos: c.StepPos = .jump_end;
+        if (!l.atEnd()) {
+            if (l.next().kind != .comma) return bad;
+            const p = l.next();
+            const i = tok.matchPacked(p.text, "jump-start\x00jump-end\x00jump-none\x00jump-both\x00start\x00end") orelse return bad;
+            if (p.kind != .ident) return bad;
+            pos = @enumFromInt(if (i == 4) 0 else if (i == 5) 1 else i);
+            if (!l.atEnd()) return bad;
+        }
+        if (n < 1 or (pos == .jump_none and n < 2)) return bad;
+        return .{ .steps = .{ .n = @intCast(n), .pos = pos } };
+    }
+    if (t.isFunc("linear")) return .{ .linear_points = try linearPoints(cx, t.args) };
+    return null;
+}
+
+/// css-easing-2 `linear()` stop list -> canonical [input, output] points.
+fn linearPoints(cx: *Cx, args: []const u8) Error![]const [2]f32 {
+    const nan = std.math.nan(f32);
+    var pts: tok.List([2]f32) = .{}; // [input (nan = unset), output]
+    var l = Lexer.init(args);
+    while (true) {
+        const out = try need(f32, values.number(l.next()));
+        var k: usize = 0;
+        while (k < 2 and l.peek().kind == .percentage) : (k += 1) {
+            try pts.append(cx.a, .{ l.next().num / 100, out });
+        }
+        if (k == 0) try pts.append(cx.a, .{ nan, out });
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (sep.kind != .comma or pts.items.len > 1024) return bad;
+    }
+    const p = pts.items;
+    if (p.len < 2) return bad;
+    if (p[0][0] != p[0][0]) p[0][0] = 0;
+    if (p[p.len - 1][0] != p[p.len - 1][0]) p[p.len - 1][0] = 1;
+    var maxin: f32 = p[0][0];
+    var i: usize = 1;
+    while (i < p.len) : (i += 1) {
+        if (p[i][0] == p[i][0]) {
+            p[i][0] = @max(p[i][0], maxin);
+            maxin = p[i][0];
+            continue;
+        }
+        var j = i + 1;
+        while (j < p.len and p[j][0] != p[j][0]) j += 1;
+        // j has an input (the last always does)
+        const end_in = @max(p[j][0], maxin);
+        const steps: f32 = @floatFromInt(j - i + 1);
+        var k: usize = i;
+        while (k < j) : (k += 1) p[k][0] = maxin + (end_in - maxin) * @as(f32, @floatFromInt(k - i + 1)) / steps;
+        i = j - 1;
+    }
+    return p;
+}
+
+fn listOf(comptime T: type, cx: *Cx, l: *Lexer, comptime item: fn (*Cx, Token) Error!?T) Error![]const T {
+    var out: tok.List(T) = .{};
+    while (true) {
+        try out.append(cx.a, try need(T, try item(cx, l.next())));
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (sep.kind != .comma or out.items.len > 1024) return bad;
+    }
+    return out.items;
+}
+
+fn durItem(_: *Cx, t: Token) Error!?f32 {
+    const v = timeMs(t) orelse return null;
+    if (v < 0) return bad;
+    return v;
+}
+fn delayItem(_: *Cx, t: Token) Error!?f32 {
+    return timeMs(t);
+}
+fn countItem(_: *Cx, t: Token) Error!?f32 {
+    if (t.isIdent("infinite")) return std.math.inf(f32);
+    const v = values.number(t) orelse return null;
+    if (v < 0) return bad;
+    return v;
+}
+fn nameItem(_: *Cx, t: Token) Error!?[]const u8 {
+    if (t.kind == .string) return t.text;
+    if (t.kind != .ident) return null;
+    return t.text;
+}
+fn dirItem(_: *Cx, t: Token) Error!?c.AnimDirection {
+    return tok.kw(c.AnimDirection, t);
+}
+fn fillItem(_: *Cx, t: Token) Error!?c.FillMode {
+    return tok.kw(c.FillMode, t);
+}
+fn playItem(_: *Cx, t: Token) Error!?c.PlayState {
+    return tok.kw(c.PlayState, t);
+}
+fn propItem(_: *Cx, t: Token) Error!?[]const u8 {
+    return if (t.kind == .ident) t.text else null;
+}
+
+/// `animation` (transition = false) or `transition` (transition = true) shorthand lists.
+fn parseAnimation(cx: *Cx, l: *Lexer, transition: bool) Error!void {
+    var names: tok.List([]const u8) = .{};
+    var durs: tok.List(f32) = .{};
+    var tfs: tok.List(c.TimingFunction) = .{};
+    var delays: tok.List(f32) = .{};
+    var counts: tok.List(f32) = .{};
+    var dirs: tok.List(c.AnimDirection) = .{};
+    var fills: tok.List(c.FillMode) = .{};
+    var plays: tok.List(c.PlayState) = .{};
+    while (true) {
+        var name: ?[]const u8 = null;
+        var dur: ?f32 = null;
+        var delay: ?f32 = null;
+        var tf: ?c.TimingFunction = null;
+        var count: ?f32 = null;
+        var dir: ?c.AnimDirection = null;
+        var fill: ?c.FillMode = null;
+        var play: ?c.PlayState = null;
+        var behavior = false;
+        var n: usize = 0;
+        while (!isEnd(l.peek())) : (n += 1) {
+            const t = l.next();
+            if (timeMs(t)) |v| {
+                if (dur == null) {
+                    if (v < 0) return bad;
+                    dur = v;
+                } else if (delay == null) delay = v else return bad;
+                continue;
+            }
+            if (tf == null) if (try timingFn(cx, t)) |v| {
+                tf = v;
+                continue;
+            };
+            if (transition) {
+                if (!behavior and (t.isIdent("allow-discrete") or t.isIdent("normal"))) {
+                    behavior = true;
+                    continue;
+                }
+            } else {
+                if (count == null and (t.kind == .number or t.isIdent("infinite"))) {
+                    count = try need(f32, try countItem(cx, t));
+                    continue;
+                }
+                if (dir == null) if (tok.kw(c.AnimDirection, t)) |v| {
+                    dir = v;
+                    continue;
+                };
+                if (fill == null and !t.isIdent("none")) if (tok.kw(c.FillMode, t)) |v| {
+                    fill = v;
+                    continue;
+                };
+                if (play == null) if (tok.kw(c.PlayState, t)) |v| {
+                    play = v;
+                    continue;
+                };
+            }
+            if (name == null and (t.kind == .ident or (!transition and t.kind == .string))) {
+                name = t.text;
+                continue;
+            }
+            // a second `none` is the fill mode
+            if (!transition and fill == null and t.isIdent("none")) {
+                fill = .none;
+                continue;
+            }
+            return bad;
+        }
+        if (n == 0) return bad;
+        try names.append(cx.a, name orelse if (transition) "all" else "none");
+        try durs.append(cx.a, dur orelse 0);
+        try tfs.append(cx.a, tf orelse c.TimingFunction.ease);
+        try delays.append(cx.a, delay orelse 0);
+        if (!transition) {
+            try counts.append(cx.a, count orelse 1);
+            try dirs.append(cx.a, dir orelse .normal);
+            try fills.append(cx.a, fill orelse .none);
+            try plays.append(cx.a, play orelse .running);
+        }
+        const sep = l.next();
+        if (sep.kind == .eof) break;
+        if (names.items.len > 1024) return bad;
+    }
+    const s = cx.s;
+    if (transition) {
+        s.transition_property = names.items;
+        s.transition_duration = durs.items;
+        s.transition_timing_function = tfs.items;
+        s.transition_delay = delays.items;
+        return;
+    }
+    s.animation_name = names.items;
+    s.animation_duration = durs.items;
+    s.animation_timing_function = tfs.items;
+    s.animation_delay = delays.items;
+    s.animation_iteration_count = counts.items;
+    s.animation_direction = dirs.items;
+    s.animation_fill_mode = fills.items;
+    s.animation_play_state = plays.items;
+}
+
+fn timingItem(cx: *Cx, t: Token) Error!?c.TimingFunction {
+    return timingFn(cx, t);
+}
+
+fn blendItem(_: *Cx, t: Token) Error!?c.BlendMode {
+    return tok.kw(c.BlendMode, t);
+}
+
+fn maskModeItem(_: *Cx, t: Token) Error!?c.MaskMode {
+    return tok.kw(c.MaskMode, t);
+}
+
+fn maskBoxItem(_: *Cx, t: Token) Error!?c.BgBox {
+    return maskBox(t);
+}
+
+fn imageItem(cx: *Cx, t: Token) Error!?c.Image {
+    return gradient.image(cx.a, t, &cx.env);
+}
+
+/// Consumes any value (properties accepted for compatibility but not used).
+fn ignoreRest(l: *Lexer) void {
+    while (!l.atEnd()) _ = l.next();
+}
+
 // ------------------------------------------------------------------ dispatch
 fn sideIndex(p: Prop) usize {
     return switch (p) {
@@ -1657,6 +3022,9 @@ fn sideIndex(p: Prop) usize {
 pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
     const s = cx.s;
     const env = &cx.env;
+    var pbuf: [4]Prop = undefined;
+    const phys = physicalProps(p, s.direction == .rtl, &pbuf);
+    if (phys.len != 1 or phys[0] != p) return applyLogical(cx, p, l, phys);
     const ki = kw_index[@intFromEnum(p)];
     if (ki < kw_count) {
         const e = kw_entries[ki];
@@ -1782,27 +3150,107 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
             if (n == 0) return bad;
             s.grid_auto_flow = f;
         },
-        .gridColumnStart => s.grid_column_start = (try gridLines(l, 1))[0],
-        .gridColumnEnd => s.grid_column_end = (try gridLines(l, 1))[0],
-        .gridRowStart => s.grid_row_start = (try gridLines(l, 1))[0],
-        .gridRowEnd => s.grid_row_end = (try gridLines(l, 1))[0],
-        .gridColumn => {
-            const v = try gridLines(l, 2);
-            s.grid_column_start = v[0];
-            s.grid_column_end = v[1];
+        .gridRowStart, .gridColumnStart, .gridRowEnd, .gridColumnEnd => {
+            var n: usize = 0;
+            const v = try gridLines(l, 1, &n);
+            const idx: usize = switch (p) {
+                .gridRowStart => 0,
+                .gridColumnStart => 1,
+                .gridRowEnd => 2,
+                else => 3,
+            };
+            setLine(s, idx, v[0]);
         },
-        .gridRow => {
-            const v = try gridLines(l, 2);
-            s.grid_row_start = v[0];
-            s.grid_row_end = v[1];
+        .gridColumn, .gridRow => {
+            var n: usize = 0;
+            const v = try gridLines(l, 2, &n);
+            const base: usize = if (p == .gridRow) 0 else 1;
+            setLine(s, base, v[0]);
+            setLine(s, base + 2, if (n > 1) v[1] else identOr(v[0]));
         },
         .gridArea => {
-            const v = try gridLines(l, 4);
-            s.grid_row_start = v[0];
-            s.grid_column_start = v[1];
-            s.grid_row_end = v[2];
-            s.grid_column_end = v[3];
+            var n: usize = 0;
+            const v = try gridLines(l, 4, &n);
+            const cs = if (n > 1) v[1] else identOr(v[0]);
+            setLine(s, 0, v[0]);
+            setLine(s, 1, cs);
+            setLine(s, 2, if (n > 2) v[2] else identOr(v[0]));
+            setLine(s, 3, if (n > 3) v[3] else identOr(cs));
         },
+        .gridTemplateAreas => s.grid_template_areas = try parseAreas(cx, l),
+        .gridTemplate => try parseGridTemplate(cx, l),
+        .grid => try parseGrid(cx, l),
+        .backgroundPositionX, .backgroundPositionY => try parsePosAxis(cx, l, p == .backgroundPositionY),
+        .backgroundBlendMode => s.background_blend_mode = try listOf(c.BlendMode, cx, l, blendItem),
+        .backgroundAttachment, .willChange, .pointerEvents, .cursor, .userSelect, .WebkitUserSelect, .transitionBehavior, .maskComposite, .WebkitMaskComposite => ignoreRest(l),
+        .borderSpacing => s.border_spacing = try parseBorderSpacing(cx, l),
+        .verticalAlign => s.vertical_align = try parseVerticalAlign(cx, l.next()),
+        .contain => s.contain = try parseContain(l),
+        .content => s.content = try parseContent(l),
+        .counterReset => s.counter_reset = try parseCounters(l),
+        .counterIncrement => s.counter_increment = try parseCounters(l),
+        .counterSet => s.counter_set = try parseCounters(l),
+        .listStyle => try parseListStyle(cx, l),
+        .listStyleType => s.list_style_type = try need(c.ListStyleType, try listStyleTypeValue(l.next())),
+        .listStyleImage => s.list_style_image = try need(c.Image, try gradient.image(cx.a, l.next(), env)),
+        .backdropFilter, .WebkitBackdropFilter => s.backdrop_filter = try parseFilter(cx, l),
+        .clipPath, .WebkitClipPath => s.clip_path = try parseClipPath(cx, l),
+        .mask, .WebkitMask => try parseBackground(cx, l, true),
+        .maskImage, .WebkitMaskImage => s.mask_image = try listOf(c.Image, cx, l, imageItem),
+        .maskSize, .WebkitMaskSize => s.mask_size = try bgList(c.BgSize, .size, cx, l),
+        .maskPosition, .WebkitMaskPosition => s.mask_position = try bgList([2]LP, .position, cx, l),
+        .maskRepeat, .WebkitMaskRepeat => s.mask_repeat = try bgList([2]c.BgRepeat, .repeat, cx, l),
+        .maskClip, .WebkitMaskClip => s.mask_clip = try listOf(c.BgBox, cx, l, maskBoxItem),
+        .maskOrigin, .WebkitMaskOrigin => s.mask_origin = try listOf(c.BgBox, cx, l, maskBoxItem),
+        .maskMode => s.mask_mode = try listOf(c.MaskMode, cx, l, maskModeItem),
+        .textUnderlineOffset => {
+            const t = l.next();
+            s.text_underline_offset = if (t.isIdent("auto")) null else (try lp(cx, t)).resolve(s.font_size);
+        },
+        .textUnderlinePosition => s.text_underline_position = try parseUnderlinePosition(l),
+        .WebkitTextFillColor => s.webkit_text_fill_color = try colorOf(l.next()),
+        .paintOrder => s.paint_order = try parsePaintOrder(l),
+        .fontStretch => s.font_stretch = try need(f32, fontStretchValue(l.next())),
+        .fontFeatureSettings => s.font_feature_settings = try parseFeatures(cx, l),
+        .fontVariationSettings => s.font_variation_settings = try parseVariations(cx, l),
+        .fontVariant, .fontVariantLigatures, .fontVariantNumeric, .fontVariantEastAsian => {
+            const which: u8 = switch (p) {
+                .fontVariant => 0x1f,
+                .fontVariantLigatures => 1,
+                .fontVariantNumeric => 2,
+                else => 4,
+            };
+            const v = try parseVariants(l, which, p == .fontVariant or p == .fontVariantLigatures);
+            if (which & 1 != 0) s.font_variant_ligatures = v.lig;
+            if (which & 2 != 0) s.font_variant_numeric = v.num;
+            if (which & 4 != 0) s.font_variant_east_asian = v.ea;
+            if (which & 8 != 0) s.font_variant_caps = v.caps;
+            if (which & 16 != 0) s.font_variant_position = v.pos;
+        },
+        .fontSynthesis => s.font_synthesis = try parseSynthesis(l),
+        .fontSynthesisWeight, .fontSynthesisStyle, .fontSynthesisSmallCaps => {
+            const t = l.next();
+            const on = if (t.isIdent("auto")) true else if (t.isIdent("none")) false else return bad;
+            switch (p) {
+                .fontSynthesisWeight => s.font_synthesis.weight = on,
+                .fontSynthesisStyle => s.font_synthesis.style = on,
+                else => s.font_synthesis.small_caps = on,
+            }
+        },
+        .animation => try parseAnimation(cx, l, false),
+        .animationName => s.animation_name = try listOf([]const u8, cx, l, nameItem),
+        .animationDuration => s.animation_duration = try listOf(f32, cx, l, durItem),
+        .animationTimingFunction => s.animation_timing_function = try listOf(c.TimingFunction, cx, l, timingItem),
+        .animationDelay => s.animation_delay = try listOf(f32, cx, l, delayItem),
+        .animationIterationCount => s.animation_iteration_count = try listOf(f32, cx, l, countItem),
+        .animationDirection => s.animation_direction = try listOf(c.AnimDirection, cx, l, dirItem),
+        .animationFillMode => s.animation_fill_mode = try listOf(c.FillMode, cx, l, fillItem),
+        .animationPlayState => s.animation_play_state = try listOf(c.PlayState, cx, l, playItem),
+        .transition => try parseAnimation(cx, l, true),
+        .transitionProperty => s.transition_property = try listOf([]const u8, cx, l, propItem),
+        .transitionDuration => s.transition_duration = try listOf(f32, cx, l, durItem),
+        .transitionTimingFunction => s.transition_timing_function = try listOf(c.TimingFunction, cx, l, timingItem),
+        .transitionDelay => s.transition_delay = try listOf(f32, cx, l, delayItem),
         .border => {
             const b = try borderParts(cx, l, false);
             s.border_width = @splat(b.w);
@@ -1852,7 +3300,7 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .backgroundRepeat => s.background_repeat = try bgList([2]c.BgRepeat, .repeat, cx, l),
         .backgroundClip => s.background_clip = try bgList(c.BgBox, .clip, cx, l),
         .backgroundOrigin => s.background_origin = try bgList(c.BgBox, .origin, cx, l),
-        .background => try parseBackground(cx, l),
+        .background => try parseBackground(cx, l, false),
         .boxShadow => s.box_shadow = try parseShadows(cx, l, true),
         .textShadow => s.text_shadow = try parseShadows(cx, l, false),
         .opacity => s.opacity = std.math.clamp(try need(f32, values.numberOrPct(l.next())), 0, 1),
