@@ -199,13 +199,139 @@ fn maxTaps(sratio: f32, source_len: u32) usize {
     return @min(t, source_len);
 }
 
-/// Separable Catmull-Rom resize of a premultiplied RGBA pixmap, numerically following
-/// `image::imageops::resize(.., CatmullRom)` as used by takumi (vertical pass into f32, then
-/// horizontal, `round(clamp(v, 0, 255))`). The kernel is widened by the scale factor when
-/// downscaling, so strong minification does not alias. Colour channels are additionally
-/// clamped to alpha so the result is always valid premultiplied data.
-/// Scratch memory and the result are allocated from `alloc`; the caller owns the result.
+/// Weight scale of the fixed-point resampler (Q14).
+const WQ = 14;
+/// Fraction bits of the intermediate (vertically filtered) row.
+const IQ = 6;
+
+/// Source window + normalised Q14 weights (summing to exactly 1 << 14) for one output index.
+fn sampleWindowQ(out: u32, ratio: f32, sratio: f32, source_len: u32, tmp: []f32, q: []i16) Window {
+    const win = sampleWindow(out, ratio, sratio, source_len, tmp);
+    var sum: i32 = 0;
+    var big: usize = 0;
+    for (0..win.count) |i| {
+        const v: i32 = @intFromFloat(@round(clampF(tmp[i], -1.9, 1.9) * (1 << WQ)));
+        q[i] = @intCast(v);
+        sum += v;
+        if (v > q[big]) big = i;
+    }
+    // keep flat areas exact: push the rounding residue into the largest tap
+    q[big] = @intCast(@as(i32, q[big]) + ((1 << WQ) - sum));
+    return win;
+}
+
+/// Separable Catmull-Rom resize of a premultiplied RGBA pixmap following
+/// `image::imageops::resize(.., CatmullRom)` as used by takumi (vertical pass, then horizontal;
+/// the kernel is widened by the scale factor when downscaling, so strong minification does not
+/// alias). The passes run in fixed point (Q14 weights, Q6 intermediate, integer SIMD), which
+/// agrees with the f32 reference to within +-1 level (identical on > 99 % of the bytes).
+/// Colour channels are additionally clamped to alpha so the result is always valid
+/// premultiplied data. Scratch memory and the result are allocated from `alloc`; the caller
+/// owns the result.
 pub fn resample(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !Pixmap {
+    var out = try Pixmap.init(alloc, new_w, new_h);
+    errdefer out.deinit(alloc);
+    if (new_w == 0 or new_h == 0 or !src.isValid() or src.width == 0 or src.height == 0) return out;
+    const sw = src.width;
+    const sh = src.height;
+    if (sw > (1 << 24) or sh > (1 << 24) or new_w > (1 << 24) or new_h > (1 << 24)) return error.OutOfMemory;
+
+    const hratio = @as(f32, @floatFromInt(sw)) / @as(f32, @floatFromInt(new_w));
+    const hs = @max(hratio, 1.0);
+    const vratio = @as(f32, @floatFromInt(sh)) / @as(f32, @floatFromInt(new_h));
+    const vs = @max(vratio, 1.0);
+    const htaps = maxTaps(hs, sw);
+    const vtaps = maxTaps(vs, sh);
+
+    const hwin = try alloc.alloc(Window, new_w);
+    defer alloc.free(hwin);
+    const hw_len = std.math.mul(usize, htaps, new_w) catch return error.OutOfMemory;
+    const hweights = try alloc.alloc(i16, hw_len);
+    defer alloc.free(hweights);
+    const tmp = try alloc.alloc(f32, @max(htaps, vtaps));
+    defer alloc.free(tmp);
+    const vweights = try alloc.alloc(i16, vtaps);
+    defer alloc.free(vweights);
+    const row_len = @as(usize, sw) * 4;
+    // 8 slack values so the horizontal pass may load 8 lanes at the last pixel
+    const inter = try alloc.alloc(i16, row_len + 8);
+    defer alloc.free(inter);
+    @memset(inter[row_len..], 0);
+
+    for (hwin, 0..) |*hwp, ox| {
+        hwp.* = sampleWindowQ(@intCast(ox), hratio, hs, sw, tmp, hweights[ox * htaps ..][0..htaps]);
+    }
+
+    const V4 = @Vector(4, i32);
+    const H4 = @Vector(4, i16);
+    const H8 = @Vector(8, i16);
+    const lo_idx = [4]i32{ 0, 1, 2, 3 };
+    const hi_idx = [4]i32{ 4, 5, 6, 7 };
+    const vround: V4 = @splat(1 << (WQ - IQ - 1));
+    const vshift: @Vector(4, u5) = @splat(WQ - IQ);
+    const hround: V4 = @splat(1 << (WQ + IQ - 1));
+    const hshift: @Vector(4, u5) = @splat(WQ + IQ);
+
+    var oy: u32 = 0;
+    while (oy < new_h) : (oy += 1) {
+        const vw = sampleWindowQ(oy, vratio, vs, sh, tmp, vweights);
+        const base = src.data.ptr + @as(usize, vw.left) * row_len;
+        // vertical: 8 channel values at a time, all taps accumulated in registers
+        var k: usize = 0;
+        while (true) {
+            if (k + 8 > row_len) {
+                if (k >= row_len) break;
+                if (row_len < 8) {
+                    // single-pixel-wide source
+                    for (0..row_len) |c| {
+                        var acc: i32 = 1 << (WQ - IQ - 1);
+                        for (vweights[0..vw.count], 0..) |wq, t| acc += @as(i32, base[t * row_len + c]) * wq;
+                        inter[c] = @intCast(acc >> (WQ - IQ));
+                    }
+                    break;
+                }
+                k = row_len - 8; // redo the last full group (overlapping, idempotent)
+            }
+            var lo: V4 = vround;
+            var hi: V4 = vround;
+            var p = base + k;
+            for (vweights[0..vw.count]) |wq| {
+                const v: H8 = @as(@Vector(8, u8), p[0..8].*);
+                const wv: V4 = @as(H4, @splat(wq));
+                lo += @as(V4, @as(H4, @shuffle(i16, v, undefined, lo_idx))) * wv;
+                hi += @as(V4, @as(H4, @shuffle(i16, v, undefined, hi_idx))) * wv;
+                p += row_len;
+            }
+            const l16: H4 = @truncate(lo >> vshift);
+            const h16: H4 = @truncate(hi >> vshift);
+            inter[k..][0..4].* = l16;
+            inter[k + 4 ..][0..4].* = h16;
+            k += 8;
+        }
+        // horizontal
+        const orow: [*]align(1) u32 = @ptrCast(out.data.ptr + @as(usize, oy) * new_w * 4);
+        for (hwin, 0..) |hwv, ox| {
+            var acc: V4 = hround;
+            const ws = hweights[ox * htaps ..][0..hwv.count];
+            var ip = inter.ptr + @as(usize, hwv.left) * 4;
+            for (ws) |wq| {
+                const px4: H4 = ip[0..4].*;
+                acc += @as(V4, px4) * @as(V4, @as(H4, @splat(wq)));
+                ip += 4;
+            }
+            var res = acc >> hshift;
+            res = @min(@max(res, @as(V4, @splat(0))), @as(V4, @splat(255)));
+            // colour <= alpha
+            res = @min(res, @as(V4, @splat(res[3])));
+            orow[ox] = @bitCast(@as(@Vector(4, u8), @intCast(res)));
+        }
+    }
+    return out;
+}
+
+/// The phase-1 f32 implementation, kept as the reference for tests (never referenced by the
+/// library itself, so it is not linked into the wasm).
+pub fn resampleReference(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !Pixmap {
     var out = try Pixmap.init(alloc, new_w, new_h);
     errdefer out.deinit(alloc);
     if (new_w == 0 or new_h == 0 or !src.isValid() or src.width == 0 or src.height == 0) return out;

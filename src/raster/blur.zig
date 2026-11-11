@@ -3,7 +3,8 @@
 //!   * sigma <= 0.03: no-op;
 //!   * sigma < 2: exact normalised Gaussian kernel of radius ceil(3 sigma), f32;
 //!   * 2 <= sigma <= 135: Skia's three-box (tent) integer pass per axis;
-//!   * sigma > 135: clamped to 135 (takumi rescales instead -- not ported).
+//!   * sigma > 135: the buffer is shrunk bilinearly (halving steps, Skia's
+//!     `FilterResult::Builder::blur` rule), blurred with sigma 135 and scaled back (`blurRescaled`).
 //! Separable, horizontal then vertical; pixels outside the buffer are transparent.
 const std = @import("std");
 const types = @import("types.zig");
@@ -72,6 +73,10 @@ const Pass = struct {
 
 /// Kernel reach in pixels for `sigma` (how far a blur spreads ink on each side); 0 = no-op.
 pub fn blurReach(sigma: f32) u32 {
+    if (sigma > MAX_SIGMA) {
+        // rescaled blur: the ink spreads 3 sigma (capped; such blurs wash out to nothing anyway)
+        return @intFromFloat(@ceil(3.0 * @min(sigma, 5000.0)));
+    }
     const p = Pass.init(sigma, .alpha) orelse return 0;
     return @intCast(p.border);
 }
@@ -239,9 +244,125 @@ fn columnPass(pass: *const Pass, s: *Scratch, base: [*]u8, rows: usize, row_stri
     }
 }
 
+// ---- sigma > 135: shrink, blur, scale back (takumi `blur_rescaled`) ------------------------
+
+const FBounds = struct { l: f32, t: f32, r: f32, b: f32 };
+
+/// Skia's `downscale_step_count`: halvings needed to bring the sigma scale `scale` (< 1) in range.
+fn downscaleStepCount(scale: f32) u32 {
+    const v: u32 = @intFromFloat(types.clampF(@ceil(1.0 / scale), 1, 1.0e6));
+    var steps: u32 = 32 - @clz(v - 1); // ceil(log2(v))
+    if (steps > 0) {
+        const last = scale * @as(f32, @floatFromInt(@as(u32, 1) << @intCast(steps - 1)));
+        const limit: f32 = if (steps == 1) 1.0 - 1e-3 else 0.9;
+        if (last >= limit) steps -= 1;
+    }
+    return steps;
+}
+
+/// Skia's `scale_about_center`.
+fn scaleAboutCenter(b: FBounds, fx: f32, fy: f32) FBounds {
+    const cx = if (fx == 1.0) 0.0 else 0.5 * b.l + 0.5 * b.r;
+    const cy = if (fy == 1.0) 0.0 else 0.5 * b.t + 0.5 * b.b;
+    return .{ .l = cx + fx * (b.l - cx), .t = cy + fy * (b.t - cy), .r = cx + fx * (b.r - cx), .b = cy + fy * (b.b - cy) };
+}
+
+/// An `n`-channel image whose top-left pixel sits at (left, top).
+const Raster = struct {
+    left: f32,
+    top: f32,
+    w: usize,
+    h: usize,
+    n: usize,
+    px: []u8,
+
+    /// Bilinear sample at `(x, y)`, transparent outside (takumi `Raster::sample`).
+    fn sample(self: *const Raster, x_in: f32, y_in: f32, out: [*]u8) void {
+        const x = x_in - self.left - 0.5;
+        const y = y_in - self.top - 0.5;
+        const col = @floor(x);
+        const row = @floor(y);
+        const wx = x - col;
+        const wy = y - row;
+        const n = self.n;
+        var tex: [4]?[*]const u8 = undefined;
+        for (0..4) |k| {
+            const c = col + @as(f32, @floatFromInt(k & 1));
+            const r = row + @as(f32, @floatFromInt(k >> 1));
+            tex[k] = if (!(c >= 0) or !(r >= 0) or !(c < @as(f32, @floatFromInt(self.w))) or !(r < @as(f32, @floatFromInt(self.h))))
+                null
+            else
+                self.px.ptr + (@as(usize, @intFromFloat(r)) * self.w + @as(usize, @intFromFloat(c))) * n;
+        }
+        for (0..n) |ch| {
+            var t: [4]f32 = undefined;
+            for (0..4) |k| t[k] = if (tex[k]) |q| @floatFromInt(q[ch]) else 0;
+            const top = t[0] + (t[1] - t[0]) * wx;
+            const bot = t[2] + (t[3] - t[2]) * wx;
+            out[ch] = @intFromFloat(types.clampF(top + (bot - top) * wy + 0.5, 0, 255));
+        }
+    }
+};
+
+/// Blur with sigma > MAX_SIGMA: the image (bounds = the whole buffer) is resampled bilinearly
+/// to `MAX_SIGMA / sigma` of its size in halving steps, blurred, and sampled back.
+fn blurRescaled(alloc: Allocator, data: []u8, width: usize, height: usize, comptime n: usize, sigma: f32, rounding: Rounding) Allocator.Error!void {
+    const scale = @min(MAX_SIGMA / sigma, 1.0);
+    const steps = downscaleStepCount(scale);
+    const wf: f32 = @floatFromInt(width);
+    const hf: f32 = @floatFromInt(height);
+    const image_bounds: FBounds = .{ .l = 0, .t = 0, .r = wf, .b = hf };
+    var bounds = image_bounds;
+    var image: Raster = .{ .left = 0, .top = 0, .w = width, .h = height, .n = n, .px = data };
+    defer if (image.px.ptr != data.ptr) alloc.free(image.px);
+    var step = steps;
+    while (step > 0) {
+        step -= 1;
+        const fx = if (step > 0) 0.5 else wf * scale / (bounds.r - bounds.l);
+        const fy = if (step > 0) 0.5 else hf * scale / (bounds.b - bounds.t);
+        const target = scaleAboutCenter(bounds, fx, fy);
+        // the pixels `target` touches
+        const l = @floor(target.l);
+        const t = @floor(target.t);
+        const nw: usize = @intFromFloat(types.clampF(@ceil(target.r) - l, 1, wf + 2));
+        const nh: usize = @intFromFloat(types.clampF(@ceil(target.b) - t, 1, hf + 2));
+        const npx = try alloc.alloc(u8, nw * nh * n);
+        // same operation order as takumi's `map_between`
+        const bw = bounds.r - bounds.l;
+        const bh = bounds.b - bounds.t;
+        const tw = target.r - target.l;
+        const th = target.b - target.t;
+        for (0..nh) |j| {
+            const cy = t + types.fi32(j) + 0.5;
+            const my = bounds.t + (cy - target.t) * bh / th;
+            for (0..nw) |i| {
+                const cx = l + types.fi32(i) + 0.5;
+                image.sample(bounds.l + (cx - target.l) * bw / tw, my, npx.ptr + (j * nw + i) * n);
+            }
+        }
+        if (image.px.ptr != data.ptr) alloc.free(image.px);
+        image = .{ .left = l, .top = t, .w = nw, .h = nh, .n = n, .px = npx };
+        bounds = target;
+    }
+    const low = @min(@min(sigma * (bounds.r - bounds.l) / wf, sigma * (bounds.b - bounds.t) / hf), MAX_SIGMA);
+    try blurBuffer(alloc, image.px, image.w, image.h, n, low, rounding);
+    if (image.px.ptr == data.ptr) return;
+    const bw = bounds.r - bounds.l;
+    const bh = bounds.b - bounds.t;
+    for (0..height) |j| {
+        const my = bounds.t + (types.fi32(j) + 0.5) * bh / hf;
+        for (0..width) |i| {
+            image.sample(bounds.l + (types.fi32(i) + 0.5) * bw / wf, my, data.ptr + (j * width + i) * n);
+        }
+    }
+}
+
 /// Blurs a `width` x `height` buffer of `n`-channel pixels in place.
-fn blurBuffer(alloc: Allocator, data: []u8, width: usize, height: usize, comptime n: usize, sigma: f32, rounding: Rounding) !void {
+fn blurBuffer(alloc: Allocator, data: []u8, width: usize, height: usize, comptime n: usize, sigma: f32, rounding: Rounding) Allocator.Error!void {
     if (width == 0 or height == 0 or data.len < width * height * n) return;
+    if (sigma > MAX_SIGMA and std.math.isFinite(sigma)) {
+        return blurRescaled(alloc, data, width, height, n, sigma, rounding);
+    }
     const pass = Pass.init(sigma, rounding) orelse return;
     var s: Scratch = undefined;
     try s.init(alloc, &pass);

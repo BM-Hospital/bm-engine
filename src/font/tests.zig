@@ -211,9 +211,9 @@ test "contour starting off-curve and implied points" {
 }
 
 test "unsupported and invalid containers, ttc" {
-    try t.expectError(error.UnsupportedFontFormat, font.Font.init("OTTO" ++ z60, 0));
-    try t.expectError(error.UnsupportedFontFormat, font.Font.init("wOFF" ++ z60, 0));
-    try t.expectError(error.UnsupportedFontFormat, font.Font.init("wOF2" ++ z60, 0));
+    try t.expectError(error.MissingTable, font.Font.init("OTTO" ++ z60, 0));
+    try t.expectError(error.WoffContainer, font.Font.init("wOFF" ++ z60, 0));
+    try t.expectError(error.Woff2Container, font.Font.init("wOF2" ++ z60, 0));
     try t.expectError(error.InvalidFont, font.Font.init("", 0));
     try t.expectError(error.InvalidFont, font.Font.init("hello world, not a font", 0));
     try t.expectError(error.InvalidFont, font.Font.init(inter, 1));

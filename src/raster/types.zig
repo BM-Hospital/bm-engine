@@ -169,6 +169,20 @@ pub inline fn over(s: u32, d: u32) u32 {
     return s +% scalePx(d, 255 - (s >> 24));
 }
 
+/// `d[0..n] = p` with explicit 16-byte stores (ReleaseSmall keeps a plain u32 loop scalar).
+/// Full-canvas fills are memory-bound (~0.25 ms for 1200x630 in V8); replicating a chunk with
+/// `memory.copy` was measured and is not faster.
+pub fn fillPixels(d: [*]align(1) u32, n: usize, p: u32) void {
+    const V4 = @Vector(4, u32);
+    const pv: V4 = @splat(p);
+    var i: usize = 0;
+    while (i + 16 <= n) : (i += 16) {
+        inline for (0..4) |k| @as(*align(1) [4]u32, @ptrCast(d + i + k * 4)).* = pv;
+    }
+    while (i + 4 <= n) : (i += 4) @as(*align(1) [4]u32, @ptrCast(d + i)).* = pv;
+    while (i < n) : (i += 1) d[i] = p;
+}
+
 /// STRAIGHT (non-premultiplied) sRGB colour.
 pub const Color = extern struct {
     r: u8,
@@ -246,7 +260,8 @@ pub const Pixmap = struct {
 
     /// Fills the whole pixmap with `color` (replace, not blend).
     pub fn clear(self: *Pixmap, color: Color) void {
-        @memset(self.pixels(), color.premul());
+        const px = self.pixels();
+        fillPixels(px.ptr, px.len, color.premul());
     }
 
     /// Premultiplied pixel at (x, y); caller guarantees in-bounds.

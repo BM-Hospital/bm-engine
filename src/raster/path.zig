@@ -8,8 +8,11 @@ const Allocator = std.mem.Allocator;
 
 pub const Verb = enum(u8) { move, line, quad, cubic, close };
 
-/// Control-point distance factor for approximating a quarter ellipse with one cubic.
-const KAPPA: f32 = 0.5522847498;
+/// Control-point distance factor for approximating a quarter ellipse with one cubic, computed
+/// in f32 exactly like takumi (`4.0 / 3.0 * (SQRT_2 - 1.0)`).
+const KAPPA: f32 = (@as(f32, 4.0) / @as(f32, 3.0)) * (@as(f32, std.math.sqrt2) - @as(f32, 1.0));
+/// `1 - KAPPA`: control point distance from the box corner, in radii.
+const KINV: f32 = @as(f32, 1.0) - KAPPA;
 
 pub const Path = struct {
     verbs: std.ArrayList(Verb) = .empty,
@@ -92,21 +95,10 @@ pub const Path = struct {
         });
     }
 
-    fn corner(self: *Path, alloc: Allocator, from: Point, c: Point, to: Point) !void {
-        if (from.x == to.x and from.y == to.y) return;
-        try self.cubicTo(
-            alloc,
-            from.x + (c.x - from.x) * KAPPA,
-            from.y + (c.y - from.y) * KAPPA,
-            to.x + (c.x - to.x) * KAPPA,
-            to.y + (c.y - to.y) * KAPPA,
-            to.x,
-            to.y,
-        );
-    }
-
     /// Clockwise closed rounded rectangle. `radii` order: top-left, top-right, bottom-right,
     /// bottom-left; each `[rx, ry]`. The caller pre-clamps radii (CSS overlap rule).
+    /// Every coordinate is computed with the same f32 expressions as takumi's
+    /// `append_mask_commands`, so both engines scan-convert bit-identical outlines.
     pub fn addRoundRect(self: *Path, alloc: Allocator, r: Rect, radii: [4][2]f32) !void {
         const x0 = r.x;
         const y0 = r.y;
@@ -121,13 +113,13 @@ pub const Path = struct {
         try self.points.ensureUnusedCapacity(alloc, 17);
         try self.moveTo(alloc, x0 + rr[0][0], y0);
         try self.lineTo(alloc, x1 - rr[1][0], y0);
-        try self.corner(alloc, .{ .x = x1 - rr[1][0], .y = y0 }, .{ .x = x1, .y = y0 }, .{ .x = x1, .y = y0 + rr[1][1] });
+        if (rr[1][0] > 0) try self.cubicTo(alloc, x1 - rr[1][0] * KINV, y0, x1, y0 + rr[1][1] * KINV, x1, y0 + rr[1][1]);
         try self.lineTo(alloc, x1, y1 - rr[2][1]);
-        try self.corner(alloc, .{ .x = x1, .y = y1 - rr[2][1] }, .{ .x = x1, .y = y1 }, .{ .x = x1 - rr[2][0], .y = y1 });
+        if (rr[2][0] > 0) try self.cubicTo(alloc, x1, y1 - rr[2][1] * KINV, x1 - rr[2][0] * KINV, y1, x1 - rr[2][0], y1);
         try self.lineTo(alloc, x0 + rr[3][0], y1);
-        try self.corner(alloc, .{ .x = x0 + rr[3][0], .y = y1 }, .{ .x = x0, .y = y1 }, .{ .x = x0, .y = y1 - rr[3][1] });
+        if (rr[3][0] > 0) try self.cubicTo(alloc, x0 + rr[3][0] * KINV, y1, x0, y1 - rr[3][1] * KINV, x0, y1 - rr[3][1]);
         try self.lineTo(alloc, x0, y0 + rr[0][1]);
-        try self.corner(alloc, .{ .x = x0, .y = y0 + rr[0][1] }, .{ .x = x0, .y = y0 }, .{ .x = x0 + rr[0][0], .y = y0 });
+        if (rr[0][0] > 0) try self.cubicTo(alloc, x0, y0 + rr[0][1] * KINV, x0 + rr[0][0] * KINV, y0, x0 + rr[0][0], y0);
         try self.close(alloc);
     }
 

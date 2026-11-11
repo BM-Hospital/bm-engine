@@ -106,6 +106,7 @@ fn isAsciiAlnum(c: u21) bool {
 }
 
 fn uaxBreak(b: u21, a: u21, mode: WordBreak) bool {
+    if (b == 0x200d or (a >= 0x1f3fb and a <= 0x1f3ff)) return false; // emoji ZWJ / modifier sequences
     var cb = lbClass(b);
     var ca = lbClass(a);
     if (cb == .sp) return ca != .sp;
@@ -142,13 +143,339 @@ fn uaxBreak(b: u21, a: u21, mode: WordBreak) bool {
 /// 0 if none).
 pub fn canBreak(bb: u21, b: u21, a: u21, mode: WordBreak) bool {
     if (b == ' ') return a != ' ';
-    if (b > ' ' and b < 0x80 and a > ' ' and a < 0x80) {
-        if (b == '-' and a >= '0' and a <= '9') return isAsciiAlnum(bb);
-        const t = asciiBreak(b, a);
+    if (isAsciiPair(b, a)) {
+        const t = asciiPairBreak(bb, b, a);
         if (mode != .break_all) return t;
         return t or uaxBreak(b, a, mode);
     }
     return uaxBreak(b, a, mode);
+}
+
+/// Both characters are printable ASCII: Blink decides with its own table instead of UAX #14.
+pub inline fn isAsciiPair(b: u21, a: u21) bool {
+    return b > ' ' and b < 0x80 and a > ' ' and a < 0x80;
+}
+
+/// Chromium's rule for a printable-ASCII pair (`bb` = the character before `b`).
+pub fn asciiPairBreak(bb: u21, b: u21, a: u21) bool {
+    if (b == '-' and a >= '0' and a <= '9') return isAsciiAlnum(bb);
+    return asciiBreak(b, a);
+}
+
+// ------------------------------------------------------------------------------------------
+// Complex-text properties (generated tables in ucd.zig). Nothing below is referenced by the
+// simple (`complex = false`) shaping path, so the tables are dropped from such builds.
+// ------------------------------------------------------------------------------------------
+
+const ucd = @import("ucd.zig");
+pub const Lb = ucd.Lb;
+pub const Bidi = ucd.Bidi;
+pub const Gc = ucd.Gc;
+
+inline fn mk(lb: Lb, ea: u1, bd: Bidi, g: Gc) u16 {
+    return @as(u16, @intFromEnum(lb)) | (@as(u16, ea) << 6) | (@as(u16, @intFromEnum(bd)) << 7) | (@as(u16, @intFromEnum(g)) << 12);
+}
+
+/// Packed properties of `cp`: lb | east_asian << 6 | bidi << 7 | gc << 12.
+pub fn props(cp: u21) u16 {
+    if (cp < ucd.table_limit) {
+        const blk: u32 = ucd.props_s1[cp >> ucd.props_shift];
+        return ucd.props_vals[ucd.props_s2[(blk << ucd.props_shift) | (cp & ((1 << ucd.props_shift) - 1))]];
+    }
+    return switch (cp) {
+        0x1f1e6...0x1f1ff => mk(.ri, 0, .l, .other),
+        0x1f3fb...0x1f3ff => mk(.em, 1, .on, .other),
+        0x1f000...0x1f1e5, 0x1f200...0x1f3fa, 0x1f400...0x1faff => mk(.eb, 1, .on, .other),
+        0x20000...0x3fffd => mk(.id, 1, .l, .letter),
+        0xe0001, 0xe0020...0xe007f => mk(.cm, 0, .bn, .cf),
+        0xe0100...0xe01ef => mk(.cm, 0, .nsm, .mn),
+        0x10d00...0x10d3f, 0x1ec70...0x1ecbf, 0x1ed00...0x1ed4f, 0x1ee00...0x1eeff => mk(.al, 0, .al, .letter),
+        0x10800...0x10cff, 0x10d40...0x10fff, 0x1e800...0x1ec6f, 0x1ecc0...0x1ecff, 0x1ed50...0x1edff, 0x1ef00...0x1efff => mk(.al, 0, .r, .letter),
+        else => mk(.al, 0, .l, .letter),
+    };
+}
+pub inline fn bidiClass(cp: u21) Bidi {
+    return @enumFromInt(@as(u5, @truncate(props(cp) >> 7)));
+}
+pub inline fn gcOf(cp: u21) Gc {
+    return @enumFromInt(@as(u3, @truncate(props(cp) >> 12)));
+}
+pub inline fn isMark(cp: u21) bool {
+    const g = gcOf(cp);
+    return g == .mn or g == .mc or g == .me;
+}
+
+/// Script id (index into `ucd.script_iso`); `ucd.sc_*` name the ones the shaper cares about.
+pub fn script(cp: u21) u8 {
+    if (cp < 0x80) return if ((cp | 0x20) >= 'a' and (cp | 0x20) <= 'z') ucd.sc_latin else ucd.sc_common;
+    if (cp >= 0x10000) return if (cp >= 0x20000 and cp < 0xe0000) ucd.sc_han else if (cp >= 0x1f000 and cp < 0x1fb00) ucd.sc_common else ucd.sc_unknown;
+    var lo: usize = 0;
+    var hi: usize = ucd.script_start.len;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) / 2;
+        if (ucd.script_start[mid] <= cp) lo = mid else hi = mid;
+    }
+    return ucd.script_val[lo];
+}
+
+/// HarfBuzz-modified canonical combining class (0 for starters and everything outside the BMP).
+pub fn ccc(cp: u21) u8 {
+    if (cp < 0x300 or cp > 0xffff) return 0;
+    var lo: usize = 0;
+    var hi: usize = ucd.ccc_start.len;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) / 2;
+        if (ucd.ccc_start[mid] <= cp) lo = mid else hi = mid;
+    }
+    return if (cp - ucd.ccc_start[lo] <= ucd.ccc_len[lo]) ucd.ccc_val[lo] else 0;
+}
+
+pub const Joining = enum(u3) { u = 0, l = 1, r = 2, d = 3, t = 7 };
+
+/// Arabic joining type (ArabicShaping.txt for U+0600..U+08FF; elsewhere T for marks / format
+/// characters, D for ZWJ and U otherwise).
+pub fn joiningType(cp: u21) Joining {
+    if (cp >= 0x600 and cp < 0x900) {
+        const o = cp - 0x600;
+        const nib = (ucd.joining[o >> 1] >> @as(u3, @intCast((o & 1) * 4))) & 15;
+        if (nib != 0) return @enumFromInt(@as(u3, @intCast(nib - 1)));
+    } else if (cp == 0x200d) return .d else if (cp == 0x200c) return .u;
+    return switch (gcOf(cp)) {
+        .mn, .me, .cf => .t,
+        else => .u,
+    };
+}
+
+/// Bidi mirrored counterpart of `cp` (`cp` itself when it has none).
+pub fn mirror(cp: u21) u21 {
+    if (cp > 0xffff) return cp;
+    for (ucd.mirror) |p| {
+        if (p[0] == cp) return p[1];
+        if (p[1] == cp) return p[0];
+    }
+    return cp;
+}
+
+pub const Bracket = struct { open: bool, pair: u21 };
+
+/// Bidi paired bracket lookup (N0), with the canonical equivalents U+2329/232A = U+3008/3009 folded.
+pub fn bracket(cp_in: u21) ?Bracket {
+    if (cp_in < 0x0f3a) return switch (cp_in) {
+        '(' => .{ .open = true, .pair = ')' },
+        ')' => .{ .open = false, .pair = '(' },
+        '[' => .{ .open = true, .pair = ']' },
+        ']' => .{ .open = false, .pair = '[' },
+        '{' => .{ .open = true, .pair = '}' },
+        '}' => .{ .open = false, .pair = '{' },
+        else => null,
+    };
+    const cp: u21 = if (cp_in == 0x2329) 0x3008 else if (cp_in == 0x232a) 0x3009 else cp_in;
+    if (cp > 0xffff) return null;
+    for (ucd.brackets) |p| {
+        if (p[0] == cp) return .{ .open = true, .pair = p[1] };
+        if (p[1] == cp) return .{ .open = false, .pair = p[0] };
+    }
+    return null;
+}
+
+pub fn isExtPict(cp: u21) bool {
+    if (cp < 0xa9) return false;
+    for (ucd.ext_pict) |r| {
+        if (cp < r[0]) return false;
+        if (cp <= r[1]) return true;
+    }
+    return false;
+}
+
+/// Default-ignorable code points the shaper keeps in the buffer during substitution (ZWJ / ZWNJ
+/// steer joining, conjuncts and emoji sequences; variation selectors take part in ligatures
+/// such as keycaps) and removes afterwards when no lookup consumed them.
+pub inline fn isShapingControl(cp: u21) bool {
+    return cp == 0x200c or cp == 0x200d or (cp >= 0xfe00 and cp <= 0xfe0f);
+}
+
+/// Cluster continuation for the simple path (no Unicode tables): combining marks, variation
+/// selectors, emoji modifiers, ZWJ and whatever follows a ZWJ.
+pub fn isContinuationSimple(prev: u21, cp: u21) bool {
+    if (cp < 0x300) return false;
+    return isCombining(cp) or prev == 0x200d or cp == 0x200d or (cp >= 0xfe00 and cp <= 0xfe0f) or (cp >= 0x1f3fb and cp <= 0x1f3ff);
+}
+
+// ---- UAX #14 (Unicode 16 rules LB4-LB31), adjacency form ----------------------------------
+
+const lb_h2: u8 = 28; // must equal @intFromEnum(Lb.h2)
+/// Extra classes on top of `Lb`: U+2010 (a BA that also acts as the hyphen of LB20a) and
+/// U+25CC (an AL that takes part in LB28a).
+const lb_hyb: u8 = 43;
+const lb_dc: u8 = 44;
+
+/// Line-break byte of `cp` for `lineBreaks`: class in bits 0-5, East Asian (F/W/H) in bit 6.
+pub fn lbByte(cp: u21) u8 {
+    if (cp == 0x2010) return lb_hyb;
+    if (cp == 0x25cc) return lb_dc;
+    if (cp >= 0xac00 and cp <= 0xd7a3 and (cp - 0xac00) % 28 == 0) return lb_h2 | 0x40;
+    return @truncate(props(cp) & 0x7f);
+}
+
+inline fn L(comptime c: Lb) u8 {
+    return @intFromEnum(c);
+}
+inline fn isAl(c: u8) bool {
+    return c == L(.al) or c == L(.hl) or c == lb_dc;
+}
+inline fn isQu(c: u8) bool {
+    return c == L(.qu) or c == L(.qu_pi) or c == L(.qu_pf);
+}
+inline fn isAks(c: u8) bool {
+    return c == L(.ak) or c == lb_dc or c == L(.@"as");
+}
+inline fn isHangul(c: u8) bool {
+    return c == L(.jl) or c == L(.jv) or c == L(.jt) or c == L(.h2) or c == L(.h3);
+}
+
+/// UAX #14 break opportunities, step 1. On entry `cls[i]` = `lbByte` of character i (hard
+/// breaks as `Lb.bk`); on return the classes are resolved (LB9 / LB10, word-break) and
+/// `lineBreakAt` answers for any position. Spaces are left to the caller (Blink always breaks
+/// after a run of U+0020), so the "SP*" look-behind rules are not modelled.
+pub fn lineBreaksPrepare(cls: []u8, mode: WordBreak) void {
+    const n = cls.len;
+    if (n == 0) return;
+    // LB9 / LB10 + word-break remapping. Bit 7 temporarily marks "no break before" (a CM / ZWJ
+    // absorbed by its base, or the character after a ZWJ: LB8a).
+    var base: u8 = L(.bk);
+    var prev_zwj = false;
+    for (cls) |*p| {
+        var c = p.* & 0x3f;
+        const raw_zwj = c == L(.zwj);
+        var stick: u8 = if (prev_zwj) 0x80 else 0;
+        if (c == L(.cm) or raw_zwj) {
+            if (base == L(.bk) or base == L(.sp) or base == L(.zw)) {
+                c = L(.al);
+            } else {
+                c = base;
+                stick = 0x80;
+            }
+        }
+        if (mode == .break_all) {
+            if (c == L(.al) or c == L(.hl) or c == L(.nu) or c == lb_dc) c = L(.id);
+        } else if (mode == .keep_all) {
+            if (c == L(.id) or isHangul(c)) c = L(.al);
+        }
+        base = c;
+        p.* = c | (p.* & 0x40) | stick;
+        prev_zwj = raw_zwj;
+    }
+}
+
+/// Whether a break is allowed before character `i` (`cls` prepared by `lineBreaksPrepare`).
+pub fn lineBreakAt(cls: []const u8, i: usize) bool {
+    if (i == 0 or i >= cls.len) return false;
+    return cls[i] & 0x80 == 0 and pairBreak(cls, i);
+}
+
+/// Convenience: prepare + evaluate everything; bit 7 of `cls[i]` = break allowed before i.
+pub fn lineBreaks(cls: []u8, mode: WordBreak) void {
+    lineBreaksPrepare(cls, mode);
+    var i: usize = cls.len;
+    while (i > 1) {
+        i -= 1;
+        const brk = cls[i] & 0x80 == 0 and pairBreak(cls, i);
+        cls[i] = (cls[i] & 0x7f) | (if (brk) @as(u8, 0x80) else 0);
+    }
+    if (cls.len != 0) cls[0] &= 0x7f;
+}
+
+/// Break between i-1 and i (i >= 1). Bit 7 of the entries (stick flag or an earlier result) is
+/// ignored: classes are masked with 0x3f.
+fn pairBreak(cls: []const u8, i: usize) bool {
+    const n = cls.len;
+    const b = cls[i - 1] & 0x3f;
+    const a = cls[i] & 0x3f;
+    const ea_b = cls[i - 1] & 0x40 != 0;
+    const ea_a = cls[i] & 0x40 != 0;
+    const bb: u8 = if (i >= 2) cls[i - 2] & 0x3f else 0xff;
+    const nx: u8 = if (i + 1 < n) cls[i + 1] & 0x3f else 0xff;
+    if (b == L(.bk)) return true;
+    if (a == L(.bk) or a == L(.sp) or a == L(.zw)) return false;
+    if (b == L(.zw)) return true;
+    if (a == L(.wj) or b == L(.wj) or b == L(.gl)) return false;
+    if (a == L(.gl) and b != L(.sp) and b != L(.ba) and b != L(.hy) and b != lb_hyb) return false;
+    if (a == L(.cl) or a == L(.cp) or a == L(.ex) or a == L(.sy)) return false;
+    if (b == L(.op)) return false;
+    if (b == L(.qu_pi) and (bb == 0xff or bb == L(.bk) or bb == L(.op) or isQu(bb) or bb == L(.gl) or bb == L(.sp) or bb == L(.zw))) return false;
+    if (a == L(.qu_pf)) {
+        if (nx == 0xff or nx == L(.sp) or nx == L(.gl) or nx == L(.wj) or nx == L(.cl) or isQu(nx) or nx == L(.cp) or nx == L(.ex) or nx == L(.is) or nx == L(.sy) or nx == L(.bk) or nx == L(.zw)) return false;
+    }
+    if (a == L(.is)) return false;
+    if ((b == L(.cl) or b == L(.cp)) and a == L(.ns)) return false;
+    if (b == L(.b2) and a == L(.b2)) return false;
+    if (b == L(.sp)) return true;
+    if (a == L(.qu) or a == L(.qu_pf) or b == L(.qu) or b == L(.qu_pi)) return false;
+    if (isQu(a)) {
+        if (!ea_b) return false;
+        if (nx == 0xff or cls[i + 1] & 0x40 == 0) return false;
+    }
+    if (isQu(b)) {
+        if (!ea_a) return false;
+        if (bb == 0xff or cls[i - 2] & 0x40 == 0) return false;
+    }
+    if (a == L(.cb) or b == L(.cb)) return true;
+    if ((b == L(.hy) or b == lb_hyb) and isAl(a) and (bb == 0xff or bb == L(.bk) or bb == L(.sp) or bb == L(.zw) or bb == L(.cb) or bb == L(.gl))) return false;
+    if (a == L(.ba) or a == lb_hyb or a == L(.hy) or a == L(.ns) or b == L(.bb)) return false;
+    if (bb == L(.hl) and (b == L(.hy) or ((b == L(.ba) or b == lb_hyb) and !ea_b)) and a != L(.hl)) return false;
+    if (b == L(.sy) and a == L(.hl)) return false;
+    if (a == L(.in)) return false;
+    if ((isAl(b) and a == L(.nu)) or (b == L(.nu) and isAl(a))) return false;
+    const a_ideo = a == L(.id) or a == L(.eb) or a == L(.em) or a == L(.xp);
+    const b_ideo = b == L(.id) or b == L(.eb) or b == L(.em) or b == L(.xp);
+    if ((b == L(.pr) and a_ideo) or (b_ideo and a == L(.po))) return false;
+    if (((b == L(.pr) or b == L(.po)) and isAl(a)) or (isAl(b) and (a == L(.pr) or a == L(.po)))) return false;
+    // LB25
+    if (a == L(.po) or a == L(.pr) or a == L(.nu)) {
+        var k = i - 1;
+        if (a != L(.nu) and (b == L(.cl) or b == L(.cp)) and k > 0) k -= 1;
+        while (k > 0 and (cls[k] & 0x3f == L(.sy) or cls[k] & 0x3f == L(.is))) k -= 1;
+        if (cls[k] & 0x3f == L(.nu)) return false;
+    }
+    if (b == L(.po) or b == L(.pr)) {
+        if (a == L(.nu)) return false;
+        if (a == L(.op) and (nx == L(.nu) or (nx == L(.is) and i + 2 < n and cls[i + 2] & 0x3f == L(.nu)))) return false;
+    }
+    if ((b == L(.hy) or b == L(.is)) and a == L(.nu)) return false;
+    // LB26 / LB27
+    if (b == L(.jl) and (a == L(.jl) or a == L(.jv) or a == L(.h2) or a == L(.h3))) return false;
+    if ((b == L(.jv) or b == L(.h2)) and (a == L(.jv) or a == L(.jt))) return false;
+    if ((b == L(.jt) or b == L(.h3)) and a == L(.jt)) return false;
+    if ((isHangul(b) and a == L(.po)) or (b == L(.pr) and isHangul(a))) return false;
+    if (isAl(b) and isAl(a)) return false;
+    // LB28a
+    if (b == L(.ap) and isAks(a)) return false;
+    if (isAks(b) and (a == L(.vf) or a == L(.vi))) return false;
+    if (b == L(.vi) and bb != 0xff and isAks(bb) and (a == L(.ak) or a == lb_dc)) return false;
+    if (isAks(b) and isAks(a) and nx == L(.vf)) return false;
+    if (b == L(.is) and isAl(a)) return false;
+    if ((isAl(b) or b == L(.nu)) and a == L(.op) and !ea_a) return false;
+    if (b == L(.cp) and !ea_b and (isAl(a) or a == L(.nu))) return false;
+    if (b == L(.ri) and a == L(.ri)) {
+        var k = i - 1;
+        var cnt: usize = 1;
+        while (k > 0 and cls[k - 1] & 0x3f == L(.ri)) : (k -= 1) cnt += 1;
+        if (cnt & 1 == 1) return false;
+    }
+    if ((b == L(.eb) or b == L(.xp)) and a == L(.em)) return false;
+    return true;
+}
+
+/// Grapheme-cluster continuation in HarfBuzz's sense (marks, ZWJ, emoji modifiers, tags,
+/// half-width voiced marks). `prev` is the preceding character (0 if none).
+pub inline fn isContinuation(prev: u21, cp: u21) bool {
+    if (cp < 0x300) return false;
+    return isContinuationSlow(prev, cp);
+}
+fn isContinuationSlow(prev: u21, cp: u21) bool {
+    if (cp == 0x200d or (cp >= 0x1f3fb and cp <= 0x1f3ff) or (cp >= 0xe0020 and cp <= 0xe007f) or cp == 0xff9e or cp == 0xff9f) return true;
+    if (prev == 0x200d and isExtPict(cp)) return true;
+    return isMark(cp);
 }
 
 test "utf8 decoding" {

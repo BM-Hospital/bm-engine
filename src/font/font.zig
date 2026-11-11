@@ -13,18 +13,35 @@ pub const ot = @import("ot.zig");
 pub const unicode = @import("unicode.zig");
 pub const collection = @import("collection.zig");
 pub const text = @import("text.zig");
+pub const shape_mod = @import("shape.zig");
+pub const bidi = @import("bidi.zig");
+pub const normalize = @import("normalize.zig");
+/// CFF / CFF2 charstring outlines (reached through `Font.outline`).
+pub const cff = @import("cff.zig");
+/// fvar / avar / gvar / HVAR / MVAR (reached through `Font.withVariations` and friends).
+pub const variations = @import("variations.zig");
 
 pub const Font = ttf.Font;
 pub const FontError = ttf.Error;
 pub const Bounds = ttf.Bounds;
 pub const LineMetrics = ttf.LineMetrics;
 pub const emitGlyph = ttf.emitGlyph;
+pub const faceCount = ttf.faceCount;
+pub const PathOut = ttf.PathOut;
+pub const AxisValue = ttf.AxisValue;
+pub const Axis = ttf.Axis;
+pub const NamedInstance = ttf.NamedInstance;
+pub const max_axes = ttf.max_axes;
 pub const decodeUtf8 = unicode.decodeUtf8;
 
 pub const FaceId = collection.FaceId;
 pub const Face = collection.Face;
 pub const FontCollection = collection.FontCollection;
 pub const RegisterOptions = collection.RegisterOptions;
+pub const MatchRequest = collection.MatchRequest;
+pub const FamilyInfo = collection.FamilyInfo;
+pub const FaceInfo = collection.FaceInfo;
+pub const instance_base = collection.instance_base;
 
 pub const TextStyle = text.TextStyle;
 pub const Run = text.Run;
@@ -42,6 +59,10 @@ pub const TextLayout = text.TextLayout;
 pub const Paragraph = text.Paragraph;
 pub const shape = text.shape;
 pub const layoutText = text.layoutText;
+pub const FeatureSetting = text.FeatureSetting;
+pub const ShapeCache = text.ShapeCache;
+pub const Direction = text.Direction;
+pub const TextWrap = text.TextWrap;
 
 test {
     _ = ttf;
@@ -49,5 +70,11 @@ test {
     _ = unicode;
     _ = collection;
     _ = text;
+    _ = shape_mod;
+    _ = bidi;
+    _ = normalize;
+    _ = cff;
+    _ = variations;
     _ = @import("tests.zig");
+    _ = @import("tests_formats.zig");
 }

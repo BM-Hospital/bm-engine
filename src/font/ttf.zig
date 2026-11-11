@@ -1,19 +1,54 @@
-//! Zero-copy sfnt (TrueType / TrueType collection) parser.
+//! Zero-copy sfnt parser: TrueType (`glyf`) and OpenType/CFF ('OTTO': `CFF ` / `CFF2`) faces,
+//! collections (.ttc / .otc) and variable fonts (fvar/avar/gvar/HVAR/MVAR).
 //!
 //! All accessors are bounds-checked against the table slices and return 0 / empty on malformed
 //! data. Offsets are `u32` combined with saturating arithmetic so behaviour is identical on
 //! wasm32 and 64-bit hosts.
+//!
+//! Optional formats live in their own files and are reached only through the call sites
+//! guarded by the two constants below (grep `enable_cff` / `enable_variations`):
+//!  * cff.zig        — `cff.parse` in `Font.init`, `cff.outline` in `Font.outlineErased`;
+//!  * variations.zig — `Font.withVariations`, `Font.varAdvance`, `Font.mvar`,
+//!                     `Font.outlineErased` (varied glyf), `Font.itemVariationDelta`,
+//!                     `Font.axis` / `Font.namedInstance`.
 const std = @import("std");
 const ot = @import("ot.zig");
+const cff = @import("cff.zig");
+const variations = @import("variations.zig");
+
+/// INTEGRATOR: wire these to the build flags (`config.enable_cff` /
+/// `config.enable_variable_fonts`). With `false` the corresponding file is not referenced
+/// at all: CFF fonts are then rejected with `error.UnsupportedFontFormat`, variable fonts
+/// render as their default instance.
+pub const enable_cff = true;
+pub const enable_variations = true;
 
 pub const Error = error{
-    /// CFF ('OTTO'), WOFF, WOFF2 or CFF-only fonts: recognised but not supported.
+    /// Recognised but not supported: CFF outlines when CFF support is compiled out, Type 1
+    /// charstrings, fonts with neither `glyf` nor `CFF `/`CFF2`.
     UnsupportedFontFormat,
+    /// WOFF 1 container: decode it to sfnt first (src/woff).
+    WoffContainer,
+    /// WOFF 2 container: decode it to sfnt first (src/woff).
+    Woff2Container,
     /// Not an sfnt, or the table directory is out of bounds.
     InvalidFont,
     /// One of head/hhea/maxp/hmtx/cmap is missing.
     MissingTable,
 };
+
+pub const AxisValue = variations.AxisValue;
+pub const Axis = variations.Axis;
+pub const NamedInstance = variations.NamedInstance;
+pub const max_axes = variations.max_axes;
+
+/// Number of faces in a font file: the `ttcf` count for collections, else 1 (0 when the data
+/// is too short to be a font).
+pub fn faceCount(data: []const u8) u32 {
+    if (data.len < 12) return 0;
+    if (rd32(data, 0) == tag("ttcf")) return @min(rd32(data, 8), 4096);
+    return 1;
+}
 
 pub inline fn rd8(t: []const u8, off: u32) u8 {
     if (off >= t.len) return 0;
@@ -51,7 +86,7 @@ pub const Bounds = struct { x_min: i16 = 0, y_min: i16 = 0, x_max: i16 = 0, y_ma
 pub const LineMetrics = struct { ascent: i32, descent: i32, leading: i32 };
 
 /// 2x3 affine used for composite glyphs: x' = a*x + c*y + e, y' = b*x + d*y + f.
-const Xf = struct {
+pub const Xf = struct {
     a: f32 = 1,
     b: f32 = 0,
     c: f32 = 0,
@@ -59,6 +94,72 @@ const Xf = struct {
     e: f32 = 0,
     f: f32 = 0,
     ident: bool = true,
+};
+
+/// Type-erased path sink. The CFF interpreter and the gvar outline code are written against
+/// this (one copy in the binary) instead of being instantiated per `sink` type; `of` wraps
+/// any duck-typed sink pointer (`moveTo/lineTo/quadTo/cubicTo/close`).
+pub const PathOut = struct {
+    ctx: *anyopaque,
+    emit: *const fn (ctx: *anyopaque, verb: Verb, p: *const [6]f32) void,
+
+    pub const Verb = enum(u8) { move, line, quad, cubic, close };
+
+    pub fn of(sink: anytype) PathOut {
+        const P = @TypeOf(sink);
+        const Thunk = struct {
+            fn emit(ctx: *anyopaque, verb: Verb, p: *const [6]f32) void {
+                const s: P = @ptrCast(@alignCast(ctx));
+                switch (verb) {
+                    .move => s.moveTo(p[0], p[1]),
+                    .line => s.lineTo(p[0], p[1]),
+                    .quad => s.quadTo(p[0], p[1], p[2], p[3]),
+                    .cubic => s.cubicTo(p[0], p[1], p[2], p[3], p[4], p[5]),
+                    .close => s.close(),
+                }
+            }
+        };
+        return .{ .ctx = @ptrCast(@constCast(sink)), .emit = Thunk.emit };
+    }
+    pub fn moveTo(o: *const PathOut, x: f32, y: f32) void {
+        o.emit(o.ctx, .move, &.{ x, y, 0, 0, 0, 0 });
+    }
+    pub fn lineTo(o: *const PathOut, x: f32, y: f32) void {
+        o.emit(o.ctx, .line, &.{ x, y, 0, 0, 0, 0 });
+    }
+    pub fn quadTo(o: *const PathOut, cx: f32, cy: f32, x: f32, y: f32) void {
+        o.emit(o.ctx, .quad, &.{ cx, cy, x, y, 0, 0 });
+    }
+    pub fn cubicTo(o: *const PathOut, ax: f32, ay: f32, bx: f32, by: f32, x: f32, y: f32) void {
+        o.emit(o.ctx, .cubic, &.{ ax, ay, bx, by, x, y });
+    }
+    pub fn close(o: *const PathOut) void {
+        o.emit(o.ctx, .close, &.{ 0, 0, 0, 0, 0, 0 });
+    }
+};
+
+/// Control-point bounding box collector (used for CFF / varied glyph bounds).
+const BoundsSink = struct {
+    x0: f32 = std.math.inf(f32),
+    y0: f32 = std.math.inf(f32),
+    x1: f32 = -std.math.inf(f32),
+    y1: f32 = -std.math.inf(f32),
+    fn add(s: *BoundsSink, x: f32, y: f32) void {
+        s.x0 = @min(s.x0, x);
+        s.x1 = @max(s.x1, x);
+        s.y0 = @min(s.y0, y);
+        s.y1 = @max(s.y1, y);
+    }
+    fn emit(ctx: *anyopaque, verb: PathOut.Verb, p: *const [6]f32) void {
+        const s: *BoundsSink = @ptrCast(@alignCast(ctx));
+        const n: usize = switch (verb) {
+            .move, .line => 1,
+            .quad => 2,
+            .cubic => 3,
+            .close => 0,
+        };
+        for (0..n) |i| s.add(p[i * 2], p[i * 2 + 1]);
+    }
 };
 
 pub const max_feature_lookups = 24;
@@ -93,9 +194,37 @@ pub const Font = struct {
     kern_digests: [max_feature_lookups]ot.Digest = undefined,
     gsub_digests: [max_feature_lookups]ot.Digest = undefined,
 
+    /// `CFF ` or `CFF2` table (empty for glyf fonts) and the offsets parsed from it.
+    cff: []const u8 = &.{},
+    cff_info: cff.Info = .{},
+    /// Variation tables (empty when absent).
+    fvar: []const u8 = &.{},
+    avar: []const u8 = &.{},
+    gvar: []const u8 = &.{},
+    hvar: []const u8 = &.{},
+    mvar: []const u8 = &.{},
+    /// Normalised variation coordinates (F2Dot14) of this instance, `n_axes` valid entries
+    /// (0 for static fonts; at most `max_axes`).
+    coords: [max_axes]i16 = @splat(0),
+    n_axes: u8 = 0,
+    /// True when any coordinate is non-zero, i.e. this is not the default instance.
+    varied: bool = false,
+
     /// Parses the table directory. `data` must outlive the Font. `face_index` selects a face of
-    /// a .ttc (must be 0 for plain .ttf).
+    /// a .ttc / .otc (must be 0 for a single-face file). Accepts TrueType and CFF/CFF2
+    /// flavoured sfnt; WOFF/WOFF2 must be decoded first (`error.WoffContainer`,
+    /// `error.Woff2Container`). A variable font starts at its default instance, see
+    /// `withVariations`.
     pub fn init(data: []const u8, face_index: u32) Error!Font {
+        var f: Font = .{ .data = data };
+        try f.parse(face_index);
+        return f;
+    }
+
+    /// (Separate from `init` so that the error paths return a bare error code instead of
+    /// materialising a whole `Error!Font` per error site.)
+    noinline fn parse(f: *Font, face_index: u32) Error!void {
+        const data = f.data;
         if (data.len < 12 or data.len > 0x7fff_ffff) return error.InvalidFont;
         var dir: u32 = 0;
         var magic = rd32(data, 0);
@@ -106,16 +235,17 @@ pub const Font = struct {
             if (dir == 0 or dir > data.len - 12) return error.InvalidFont;
             magic = rd32(data, dir);
         } else if (face_index != 0) return error.InvalidFont;
-        if (magic == tag("OTTO") or magic == tag("wOFF") or magic == tag("wOF2")) return error.UnsupportedFontFormat;
-        if (magic != 0x00010000 and magic != tag("true")) return error.InvalidFont;
+        if (magic == tag("wOFF")) return error.WoffContainer;
+        if (magic == tag("wOF2")) return error.Woff2Container;
+        if (magic != 0x00010000 and magic != tag("true") and magic != tag("OTTO")) return error.InvalidFont;
 
         const num_tables: u32 = rd16(data, dir + 4);
         if (dir + 12 + num_tables * 16 > data.len) return error.InvalidFont;
 
-        var f: Font = .{ .data = data };
         var maxp: []const u8 = &.{};
         var cmap: []const u8 = &.{};
-        var has_cff = false;
+        var cff1: []const u8 = &.{};
+        var cff2: []const u8 = &.{};
         var i: u32 = 0;
         while (i < num_tables) : (i += 1) {
             const rec = dir + 12 + i * 16;
@@ -137,12 +267,25 @@ pub const Font = struct {
                 tag("kern") => f.kern = t,
                 tag("GPOS") => f.gpos = t,
                 tag("GSUB") => f.gsub = t,
-                tag("CFF "), tag("CFF2") => has_cff = true,
+                tag("CFF ") => cff1 = t,
+                tag("CFF2") => cff2 = t,
+                tag("fvar") => f.fvar = t,
+                tag("avar") => f.avar = t,
+                tag("gvar") => f.gvar = t,
+                tag("HVAR") => f.hvar = t,
+                tag("MVAR") => f.mvar = t,
                 else => {},
             }
         }
         if (f.head.len < 54 or f.hhea.len < 36 or maxp.len < 6 or cmap.len < 4) return error.MissingTable;
-        if (f.glyf.len == 0 and has_cff) return error.UnsupportedFontFormat;
+        if (f.glyf.len == 0 and (cff1.len != 0 or cff2.len != 0)) {
+            if (!enable_cff) return error.UnsupportedFontFormat;
+            f.cff = if (cff2.len != 0) cff2 else cff1;
+            f.cff_info = cff.parse(f.cff, cff2.len != 0) catch return error.UnsupportedFontFormat;
+        }
+        if (enable_variations) {
+            f.n_axes = @intCast(@min(variations.axisCount(f.fvar), max_axes));
+        }
 
         f.units_per_em = rd16(f.head, 18);
         if (f.units_per_em == 0) f.units_per_em = 1000;
@@ -161,7 +304,6 @@ pub const Font = struct {
         }, &f.gsub_lookups));
         for (f.kern_lookups[0..f.n_kern], 0..) |li, k| f.kern_digests[k] = ot.lookupDigest(f.gpos, li, 9);
         for (f.gsub_lookups[0..f.n_gsub], 0..) |li, k| f.gsub_digests[k] = ot.lookupDigest(f.gsub, li & 0x7fff, 7);
-        return f;
     }
 
     fn pickCmap(f: *Font, cmap: []const u8) void {
@@ -288,12 +430,21 @@ pub const Font = struct {
     pub fn useTypoMetrics(f: *const Font) bool {
         return f.os2.len >= 78 and f.fsSelection() & 0x80 != 0;
     }
-    /// OS/2 sxHeight (0 when the table is older than version 2).
-    pub fn xHeight(f: *const Font) i16 {
-        return if (rd16(f.os2, 0) >= 2) rdi16(f.os2, 86) else 0;
+    /// MVAR delta of a metric at this instance (0 for static fonts / the default instance).
+    noinline fn mvarDelta(f: *const Font, mtag: *const [4]u8) i32 {
+        if (!enable_variations or !f.varied or f.mvar.len == 0) return 0;
+        return variations.mvarDelta(f.mvar, mtag, f.coordSlice());
     }
+    inline fn sat16(v: i32) i16 {
+        return @intCast(std.math.clamp(v, -32768, 32767));
+    }
+    /// OS/2 sxHeight (0 when the table is older than version 2), MVAR `xhgt` applied.
+    pub fn xHeight(f: *const Font) i16 {
+        return if (rd16(f.os2, 0) >= 2) sat16(@as(i32, rdi16(f.os2, 86)) + f.mvarDelta("xhgt")) else 0;
+    }
+    /// OS/2 sCapHeight, MVAR `cpht` applied.
     pub fn capHeight(f: *const Font) i16 {
-        return if (rd16(f.os2, 0) >= 2) rdi16(f.os2, 88) else 0;
+        return if (rd16(f.os2, 0) >= 2) sat16(@as(i32, rdi16(f.os2, 88)) + f.mvarDelta("cpht")) else 0;
     }
     /// OS/2 usWeightClass; 700/400 from macStyle when there is no OS/2 table.
     pub fn weightClass(f: *const Font) u16 {
@@ -303,26 +454,45 @@ pub const Font = struct {
         }
         return if (rd16(f.head, 44) & 1 != 0) 700 else 400;
     }
+    /// OS/2 usWidthClass (1..9, 5 = normal); 5 when there is no OS/2 table.
+    pub fn widthClass(f: *const Font) u16 {
+        if (f.os2.len >= 8) return rd16(f.os2, 6);
+        return 5;
+    }
     pub fn isItalic(f: *const Font) bool {
         return (f.os2.len >= 64 and f.fsSelection() & 0x201 != 0) or rd16(f.head, 44) & 2 != 0;
     }
     /// post.underlinePosition (y-up font units, usually negative).
     pub fn underlinePosition(f: *const Font) i16 {
-        return rdi16(f.post, 8);
+        return sat16(@as(i32, rdi16(f.post, 8)) + f.mvarDelta("undo"));
     }
     pub fn underlineThickness(f: *const Font) i16 {
-        return rdi16(f.post, 10);
+        return sat16(@as(i32, rdi16(f.post, 10)) + f.mvarDelta("unds"));
     }
     /// OS/2 yStrikeoutPosition (y-up font units).
     pub fn strikeoutPosition(f: *const Font) i16 {
-        return rdi16(f.os2, 28);
+        return sat16(@as(i32, rdi16(f.os2, 28)) + f.mvarDelta("stro"));
     }
     pub fn strikeoutThickness(f: *const Font) i16 {
-        return rdi16(f.os2, 26);
+        return sat16(@as(i32, rdi16(f.os2, 26)) + f.mvarDelta("strs"));
     }
 
-    /// See `LineMetrics`.
+    /// See `LineMetrics`. For a varied instance the MVAR `hasc` / `hdsc` / `hlgp` deltas
+    /// (rounded to whole units, like skrifa) are added whichever table the base values came
+    /// from. The raw `hhea*` / `typo*` / `win*` accessors above are never varied.
     pub fn lineMetrics(f: *const Font) LineMetrics {
+        var m = f.staticLineMetrics();
+        if (enable_variations and f.varied and f.mvar.len != 0) {
+            const a = m.ascent +| f.mvarDelta("hasc");
+            const d = -m.descent +| f.mvarDelta("hdsc");
+            m.ascent = @intCast(@min(@abs(a), 0x7fff_ffff));
+            m.descent = @intCast(@min(@abs(d), 0x7fff_ffff));
+            m.leading +|= f.mvarDelta("hlgp");
+        }
+        return m;
+    }
+
+    fn staticLineMetrics(f: *const Font) LineMetrics {
         const has_os2 = f.os2.len >= 78;
         const use_typo = f.useTypoMetrics();
         var m: LineMetrics = .{ .ascent = 0, .descent = 0, .leading = 0 };
@@ -342,11 +512,113 @@ pub const Font = struct {
         return m;
     }
 
-    /// Advance width in font units.
+    /// Advance width in font units. For a varied instance the HVAR delta (or, without HVAR,
+    /// the gvar phantom-point delta) is added, rounded to a whole unit and clamped at 0 —
+    /// the same integer advance skrifa / HarfBuzz use.
     pub fn advanceWidth(f: *const Font, gid: u16) u16 {
         if (f.num_hmetrics == 0) return 0;
         const i: u32 = @min(gid, f.num_hmetrics - 1);
-        return rd16(f.hmtx, i * 4);
+        const base = rd16(f.hmtx, i * 4);
+        if (enable_variations and f.varied) return f.varAdvance(gid, base);
+        return base;
+    }
+
+    noinline fn varAdvance(f: *const Font, gid: u16, base: u16) u16 {
+        if (gid >= f.num_glyphs) return base;
+        const v = @as(i32, base) +| variations.advanceDelta(f, gid);
+        return @intCast(std.math.clamp(v, 0, 0xffff));
+    }
+
+    /// Left side bearing from hmtx (default instance), font units.
+    pub fn leftSideBearing(f: *const Font, gid: u16) i16 {
+        if (gid < f.num_hmetrics) return rdi16(f.hmtx, @as(u32, gid) * 4 + 2);
+        return rdi16(f.hmtx, @as(u32, f.num_hmetrics) * 4 + (@as(u32, gid) - f.num_hmetrics) * 2);
+    }
+
+    // ------------------------------------------------------------ variations
+
+    /// Normalised coordinates of this instance (F2Dot14, one per fvar axis, at most
+    /// `max_axes`); empty for static fonts. All zeros = default instance.
+    pub fn normalizedCoords(f: *const Font) []const i16 {
+        return f.coords[0..f.n_axes];
+    }
+    /// Alias of `normalizedCoords` used inside the module.
+    pub inline fn coordSlice(f: *const Font) []const i16 {
+        return f.coords[0..f.n_axes];
+    }
+    pub fn isVariable(f: *const Font) bool {
+        return f.n_axes != 0;
+    }
+    /// Number of fvar axes (may exceed `max_axes`; the excess axes stay at their default).
+    pub fn axisCount(f: *const Font) u32 {
+        if (!enable_variations) return 0;
+        return variations.axisCount(f.fvar);
+    }
+    /// Axis `i` in user units (min / default / max), null when out of range.
+    pub fn axis(f: *const Font, i: u32) ?Axis {
+        if (!enable_variations) return null;
+        return variations.axisAt(f.fvar, i);
+    }
+    /// The axis with the given tag ("wght", "wdth", "opsz", "slnt", "ital", ...).
+    pub fn findAxis(f: *const Font, axis_tag: *const [4]u8) ?Axis {
+        if (!enable_variations) return null;
+        return variations.findAxis(f.fvar, axis_tag);
+    }
+    /// Writes up to `buf.len` axes and returns the filled prefix.
+    pub fn axes(f: *const Font, buf: []Axis) []Axis {
+        var n: usize = 0;
+        while (n < buf.len) : (n += 1) buf[n] = f.axis(@intCast(n)) orelse break;
+        return buf[0..n];
+    }
+    pub fn namedInstanceCount(f: *const Font) u32 {
+        if (!enable_variations) return 0;
+        return variations.instanceCount(f.fvar);
+    }
+    /// Named instance `i`; its user-space coordinates are written to `buf` (axis order).
+    /// Use `nameString(inst.subfamily_name_id, ...)` for its name.
+    pub fn namedInstance(f: *const Font, i: u32, buf: []f32) ?NamedInstance {
+        if (!enable_variations) return null;
+        return variations.instanceAt(f.fvar, i, buf);
+    }
+
+    /// A copy of this font instanced at the given user-space axis values (unknown tags are
+    /// ignored, values are clamped to the axis range, the last setting of a tag wins, axes
+    /// that are not mentioned sit at their default; `avar` is applied). No allocation: the
+    /// copy carries the normalised coordinates inline and shares the font bytes. All metric,
+    /// advance and outline accessors of the copy honour the coordinates. Calling it on an
+    /// instance re-instances from scratch (settings do not accumulate).
+    pub fn withVariations(self: *const Font, settings: []const AxisValue) Font {
+        var f = self.*;
+        if (enable_variations and f.n_axes != 0) {
+            _ = variations.normalize(f.fvar, f.avar, settings, &f.coords);
+            f.varied = false;
+            for (f.coords[0..f.n_axes]) |c| {
+                if (c != 0) f.varied = true;
+            }
+        }
+        return f;
+    }
+
+    /// A copy of this font at explicit normalised coordinates (F2Dot14, axis order; missing
+    /// trailing axes are 0, extra ones ignored).
+    pub fn withNormalizedCoords(self: *const Font, coords: []const i16) Font {
+        var f = self.*;
+        f.varied = false;
+        for (f.coords[0..f.n_axes], 0..) |*c, i| {
+            c.* = if (i < coords.len) std.math.clamp(coords[i], -16384, 16384) else 0;
+            if (c.* != 0) f.varied = true;
+        }
+        return f;
+    }
+
+    /// Delta of ItemVariationStore item (`outer`, `inner`) at this instance, in font units
+    /// (unrounded). `table` is any table of this font and `store_offset` the offset of the
+    /// store inside it (GDEF: its itemVarStoreOffset; for GPOS/GSUB device tables with
+    /// deltaFormat 0x8000 pass the GDEF table and the two u16 of the VariationIndex).
+    /// Returns 0 for static fonts, the default instance and malformed data.
+    pub fn itemVariationDelta(f: *const Font, table: []const u8, store_offset: u32, outer: u16, inner: u16) f32 {
+        if (!enable_variations or !f.varied) return 0;
+        return variations.itemDelta(tail(table, store_offset), outer, inner, f.coordSlice());
     }
 
     // ------------------------------------------------------------------ name
@@ -475,7 +747,8 @@ pub const Font = struct {
 
     // ---------------------------------------------------------------- glyphs
 
-    fn glyphData(f: *const Font, gid: u16) []const u8 {
+    /// Raw `glyf` record of a glyph (empty for CFF fonts, empty glyphs and bad ids).
+    pub fn glyphData(f: *const Font, gid: u16) []const u8 {
         if (gid >= f.num_glyphs) return &.{};
         var a: u32 = undefined;
         var b: u32 = undefined;
@@ -492,20 +765,65 @@ pub const Font = struct {
         return f.glyf[a..b];
     }
 
-    /// Bounding box from the glyf header (font units, y-up); zeros for empty glyphs.
+    /// Bounding box in font units (y-up); zeros for empty glyphs.
+    ///  * static glyf fonts: the box stored in the glyf header (O(1));
+    ///  * CFF/CFF2 fonts and varied instances: computed by running the outline — the box of
+    ///    all on- and off-curve control points (may slightly exceed the tight curve box),
+    ///    rounded outwards. Not cached: callers that need it repeatedly should cache it.
     pub fn glyphBounds(f: *const Font, gid: u16) Bounds {
+        if (f.cff.len != 0 or f.varied) return f.outlineBounds(gid);
+        return f.headerBounds(gid);
+    }
+
+    fn headerBounds(f: *const Font, gid: u16) Bounds {
         const g = f.glyphData(gid);
         if (g.len < 10) return .{};
         return .{ .x_min = rdi16(g, 2), .y_min = rdi16(g, 4), .x_max = rdi16(g, 6), .y_max = rdi16(g, 8) };
     }
 
+    fn outlineBounds(f: *const Font, gid: u16) Bounds {
+        var b: BoundsSink = .{};
+        const po: PathOut = .{ .ctx = &b, .emit = BoundsSink.emit };
+        const drawn = f.outlineErased(gid, &po) orelse return f.headerBounds(gid);
+        if (!drawn or !(b.x0 <= b.x1)) return .{};
+        return .{ .x_min = satF(@floor(b.x0)), .y_min = satF(@floor(b.y0)), .x_max = satF(@ceil(b.x1)), .y_max = satF(@ceil(b.y1)) };
+    }
+    fn satF(v: f32) i16 {
+        return @intFromFloat(std.math.clamp(v, -32768, 32767));
+    }
+
+    /// Outline paths that go through the type-erased sink: CFF charstrings and gvar-varied
+    /// glyf outlines. Returns false when neither applies or the glyph is empty.
+    /// Null: the glyph has to be drawn through the static glyf path instead.
+    fn outlineErased(f: *const Font, gid: u16, out: *const PathOut) ?bool {
+        if (enable_cff and f.cff.len != 0)
+            return cff.outline(f.cff, f.cff_info, if (enable_variations) f.coordSlice() else &.{}, gid, out);
+        if (enable_variations and f.varied and f.gvar.len != 0)
+            return variations.glyfOutline(f, gid, out);
+        return null;
+    }
+
     /// Emits the outline of `gid` in font units (y-up) to `sink`, which needs
     /// `moveTo(x,y)`, `lineTo(x,y)`, `quadTo(cx,cy,x,y)`, `cubicTo(c1x,c1y,c2x,c2y,x,y)`, `close()`
-    /// (f32 args, void result; `cubicTo` is unused by glyf outlines). Every contour is a
-    /// moveTo ... close sequence. Returns false when the glyph has no outline.
+    /// (f32 args, void result; glyf outlines emit quads, CFF outlines cubics). Every contour
+    /// is a moveTo ... close sequence. Returns false when the glyph has no outline.
+    /// Honours the instance coordinates (gvar deltas with IUP / CFF2 blends).
+    ///
+    /// Like FreeType and skrifa the outline is shifted so that the glyph origin sits at the
+    /// first phantom point, i.e. by `lsb - xMin` (0 for nearly every font).
     pub fn outline(f: *const Font, gid: u16, sink: anytype) bool {
+        if ((enable_cff and f.cff.len != 0) or (enable_variations and f.varied and f.gvar.len != 0)) {
+            const po = PathOut.of(sink);
+            if (f.outlineErased(gid, &po)) |drawn| return drawn;
+        }
         var budget: u32 = 256;
-        return f.outlineRec(gid, .{}, 0, &budget, sink);
+        var xf: Xf = .{};
+        const g = f.glyphData(gid);
+        if (g.len >= 10) {
+            const sh = @as(i32, rdi16(g, 2)) - f.leftSideBearing(gid);
+            if (sh != 0) xf = .{ .e = @floatFromInt(-sh), .ident = false };
+        }
+        return f.outlineRec(gid, xf, 0, &budget, sink);
     }
 
     fn outlineRec(f: *const Font, gid: u16, xf: Xf, depth: u32, budget: *u32, sink: anytype) bool {
@@ -576,7 +894,7 @@ fn f2dot14(t: []const u8, off: u32) f32 {
 
 const Pt = struct { x: f32, y: f32 };
 
-fn simpleOutline(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
+pub fn simpleOutline(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
     if (nc == 0) return false;
     const end_pts: u32 = 10;
     const npts: u32 = @as(u32, rd16(g, end_pts + (nc - 1) * 2)) + 1;
@@ -723,20 +1041,28 @@ pub fn encodeUtf8(cp: u21, out: *[4]u8) u8 {
 fn ScaleSink(comptime S: type) type {
     return struct {
         inner: S,
+        /// 64 * px per font unit.
         s: f32,
         ox: f32,
         oy: f32,
+        /// Scales a font-unit coordinate to px on the 26.6 grid (round half away from zero),
+        /// which is where FreeType / skrifa place every unhinted outline point.
+        inline fn q(self: *const @This(), v: f32) f32 {
+            const t = v * self.s;
+            const r = @floor(@abs(t) + 0.5) * (1.0 / 64.0);
+            return if (t < 0) -r else r;
+        }
         pub fn moveTo(self: *@This(), x: f32, y: f32) void {
-            self.inner.moveTo(self.ox + x * self.s, self.oy - y * self.s);
+            self.inner.moveTo(self.ox + self.q(x), self.oy - self.q(y));
         }
         pub fn lineTo(self: *@This(), x: f32, y: f32) void {
-            self.inner.lineTo(self.ox + x * self.s, self.oy - y * self.s);
+            self.inner.lineTo(self.ox + self.q(x), self.oy - self.q(y));
         }
         pub fn quadTo(self: *@This(), cx: f32, cy: f32, x: f32, y: f32) void {
-            self.inner.quadTo(self.ox + cx * self.s, self.oy - cy * self.s, self.ox + x * self.s, self.oy - y * self.s);
+            self.inner.quadTo(self.ox + self.q(cx), self.oy - self.q(cy), self.ox + self.q(x), self.oy - self.q(y));
         }
         pub fn cubicTo(self: *@This(), ax: f32, ay: f32, bx: f32, by: f32, x: f32, y: f32) void {
-            self.inner.cubicTo(self.ox + ax * self.s, self.oy - ay * self.s, self.ox + bx * self.s, self.oy - by * self.s, self.ox + x * self.s, self.oy - y * self.s);
+            self.inner.cubicTo(self.ox + self.q(ax), self.oy - self.q(ay), self.ox + self.q(bx), self.oy - self.q(by), self.ox + self.q(x), self.oy - self.q(y));
         }
         pub fn close(self: *@This()) void {
             self.inner.close();
@@ -744,13 +1070,27 @@ fn ScaleSink(comptime S: type) type {
     };
 }
 
+/// The 16.16 scale factor skrifa / FreeType derive for a pixel size: `trunc(size * 64)`
+/// 26.6 px per em, divided (rounded) by unitsPerEm. Returned as 64 * px per font unit.
+pub fn scale26_6(size_px: f32, units_per_em: u16) f32 {
+    const sz: f32 = if (size_px > 0 and size_px < 30000.0) size_px else 0;
+    const a: u64 = @intFromFloat(sz * 64.0);
+    const upem: u64 = @max(1, units_per_em);
+    const bits = ((a << 16) + upem / 2) / upem;
+    return @as(f32, @floatFromInt(bits)) * (1.0 / 65536.0);
+}
+
 /// Emits glyph `gid` scaled to `size_px` with its origin (baseline, pen position) at
 /// (`origin_x`, `origin_y`) in a y-DOWN device space. `sink` is the same duck type as for
 /// `Font.outline` (pass a pointer). No hinting. Returns false for empty glyphs.
+///
+/// To be pixel-compatible with takumi (skrifa in FreeType mode) every coordinate is snapped
+/// to 1/64 px relative to the glyph origin, using FreeType's 16.16 scale factor (see
+/// `scale26_6`; e.g. 13.33 px is rendered at 853/64 px).
 pub fn emitGlyph(face: *const Font, gid: u16, size_px: f32, origin_x: f32, origin_y: f32, sink: anytype) bool {
     var s: ScaleSink(@TypeOf(sink)) = .{
         .inner = sink,
-        .s = size_px / @as(f32, @floatFromInt(face.units_per_em)),
+        .s = scale26_6(size_px, face.units_per_em),
         .ox = origin_x,
         .oy = origin_y,
     };

@@ -346,10 +346,10 @@ pub const Shader = struct {
         const yc: f32 = @as(f32, @floatFromInt(y)) + 0.5;
         switch (self.kind) {
             .none => @memset(out[0..n], 0),
-            .solid => @memset(out[0..n], self.color),
+            .solid => fillPixels(out, n, self.color),
             .linear => {
                 if (self.gx == 0) {
-                    @memset(out[0..n], self.lut[self.lutIndex(yc * self.gy + self.gb)]);
+                    fillPixels(out, n, self.lut[self.lutIndex(yc * self.gy + self.gb)]);
                     return;
                 }
                 self.shadeGradient(x, yc, out, n);
@@ -751,20 +751,23 @@ pub fn blendPixels(d: PxPtr, s: ConstPxPtr, n: usize, cov: ?[*]const u8, ca: u32
     }
 }
 
+pub const fillPixels = types.fillPixels;
+
 fn blendSolid(d: PxPtr, color: u32, n: usize, cov: ?[*]const u8, ca: u32) void {
     if (cov) |c| {
         const is_opaque = (color >> 24) == 255;
         const colv: VU = @splat(color);
+        const CW = if (VL == 4) u32 else u64;
         var i: usize = 0;
         while (i + VL <= n) : (i += VL) {
-            const cb: @Vector(VL, u8) = c[i..][0..VL].*;
-            const lo = @reduce(.Min, cb);
-            const hi = @reduce(.Max, cb);
-            if (hi == 0) continue;
-            if (lo == 255 and is_opaque) {
+            // all-zero / all-255 tests on the packed coverage bytes (a vector reduce is slow in wasm)
+            const cw = @as(*align(1) const CW, @ptrCast(c + i)).*;
+            if (cw == 0) continue;
+            if (cw == std.math.maxInt(CW) and is_opaque) {
                 storeV(d + i, colv);
                 continue;
             }
+            const cb: @Vector(VL, u8) = c[i..][0..VL].*;
             storeV(d + i, overV(scalePxV(colv, @as(VU, cb)), loadV(d + i)));
         }
         while (i < n) : (i += 1) {
@@ -777,7 +780,7 @@ fn blendSolid(d: PxPtr, color: u32, n: usize, cov: ?[*]const u8, ca: u32) void {
         const p = if (ca == 255) color else scalePx(color, ca);
         const sa = p >> 24;
         if (sa == 255) {
-            @memset(d[0..n], p);
+            fillPixels(d, n, p);
         } else if (sa != 0) {
             const ia = 255 - sa;
             const pv: VU = @splat(p);
@@ -885,7 +888,7 @@ pub fn clipRegion(dst: *const Pixmap, clip: ?*const ClipMask) IRect {
     return r;
 }
 
-inline fn clipRow(clip: ?*const ClipMask, x: i32, y: i32) ?[*]const u8 {
+pub inline fn clipRow(clip: ?*const ClipMask, x: i32, y: i32) ?[*]const u8 {
     const c = clip orelse return null;
     const d = c.data orelse return null;
     return covRow(d, c.bounds, x, y);
