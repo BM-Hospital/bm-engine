@@ -13,6 +13,7 @@ const block = @import("block.zig");
 const grid = @import("grid.zig");
 const table = @import("table.zig");
 const inline_row = @import("inline.zig");
+const flow = @import("flow.zig");
 const fl = @import("floats.zig");
 
 const Style = st.Style;
@@ -121,6 +122,9 @@ pub const Out = struct {
     content: [2]f32 = .{ 0, 0 },
     /// first baseline, distance from border-box top (NaN = none)
     baseline: f32 = NONE,
+    /// baseline of the last line box of a block container / inline content (NaN = none): what an
+    /// inline-block sits on
+    last_baseline: f32 = NONE,
     top_margin: MarginSet = .{},
     bottom_margin: MarginSet = .{},
     collapse_through: bool = false,
@@ -152,8 +156,69 @@ pub const Layout = struct {
 /// text leaf in a flex row the typical calls are: max-content, min-content, then the final known width.
 /// The available height is always reported as max_content (an auto height is content-based).
 pub const MeasureFn = *const fn (ctx: *anyopaque, node: NodeId, known: [2]?f32, available: [2]st.AvailableSpace) [2]f32;
-/// Optional: first-baseline offset from the content-box top for a measured leaf of the given content size.
-pub const BaselineFn = *const fn (ctx: *anyopaque, node: NodeId, content_size: [2]f32) f32;
+/// Optional: first and last baseline offsets from the content-box top for a measured leaf of the given
+/// content size (NaN = the leaf has no baseline, e.g. an image).
+pub const BaselineFn = *const fn (ctx: *anyopaque, node: NodeId, content_size: [2]f32) [2]f32;
+
+/// An inline-level child of an inline formatting context (`Display.inline_row` node), see `InlineFn`.
+pub const InlineItem = struct {
+    node: NodeId,
+    kind: Kind,
+    /// atomic, set by the engine before the callback: margin-box size and the baseline as a distance from
+    /// the margin-box top (the bottom margin edge when the box has no baseline)
+    width: f32 = 0,
+    height: f32 = 0,
+    baseline: f32 = 0,
+    /// set by the callback, relative to the content-box origin: the margin-box position of an atomic item,
+    /// the static position of an out-of-flow one (`placed` = false: the item is hidden)
+    x: f32 = 0,
+    y: f32 = 0,
+    placed: bool = false,
+    /// out-of-flow, set by the callback: the static position is the inline END of the box (right-to-left
+    /// content: the box's right edge sits at `x`)
+    rtl: bool = false,
+    /// (engine) left / top margin
+    margin: [2]f32 = .{ 0, 0 },
+
+    pub const Kind = enum(u8) { atomic, float, out_of_flow };
+};
+
+pub const InlineBand = struct { x0: f32, x1: f32, next_y: f32 };
+
+/// Request / result of an `InlineFn` call.
+pub const InlineIo = struct {
+    /// content-box width the lines are broken at: definite, `+inf` (max-content) or `-inf` (min-content)
+    width: f32,
+    /// a layout pass: item positions are wanted (and the caller should keep its line layout for painting);
+    /// false = only `size`
+    layout: bool = false,
+    /// only `size[0]` is needed
+    width_only: bool = false,
+    /// the children of the node that are not `display: none`, in document order (empty for a measured leaf)
+    items: []InlineItem = &.{},
+    /// results: content size (widest line, bottom of the last line), first / last baseline from the
+    /// content-box top (NaN = no line box)
+    size: [2]f32 = .{ 0, 0 },
+    first_baseline: f32 = NONE,
+    last_baseline: f32 = NONE,
+    /// Exclusion space of the block formatting context (both null when no float can affect the lines).
+    /// `band`: the inline range [x0, x1] free for a line box spanning [y, y + h) (from the content-box
+    /// origin) and the y below which it may widen (NaN: it is the full width already).
+    /// `float`: place float item `item` for a line at `y` holding `used` px of content in a range of
+    /// `avail` px; `how`: 0 = at or below y, 1 = beside the line if it fits (false = it does not: call
+    /// again with 2 once the line is finished), 2 = below (y = the line's bottom), 3 = take back the
+    /// float the last call placed (nothing else was placed since).
+    band_fn: ?*const fn (io: *const InlineIo, y: f32, h: f32) InlineBand = null,
+    float_fn: ?*const fn (io: *const InlineIo, item: u32, y: f32, used: f32, avail: f32, how: u8) bool = null,
+    /// (engine)
+    host: *anyopaque = undefined,
+};
+
+/// Lays out the inline content (text + `io.items`) of an inline formatting context: breaks lines of
+/// `io.width`, aligns the atomic items on them and reports sizes / positions through `io`. Called for
+/// `Display.inline_row` nodes, and for measured leaves flagged `Style.is_inline_content` when floats may
+/// intrude (such a leaf is otherwise sized by the `MeasureFn`). Needs `Config.inline_fn`.
+pub const InlineFn = *const fn (ctx: *anyopaque, node: NodeId, io: *InlineIo) void;
 
 pub const Options = struct {
     /// taffy-style rounding to whole pixels (edges are rounded in absolute space, sizes derived from them)
@@ -166,6 +231,8 @@ pub const Options = struct {
     quantize64: bool = false,
     /// called for measured leaves during the final layout pass; without it a leaf's baseline is its bottom
     baseline: ?BaselineFn = null,
+    /// inline formatting driver (see `InlineFn`)
+    inline_fn: ?InlineFn = null,
 };
 
 const Node = struct {
@@ -394,6 +461,10 @@ pub const Config = struct {
     tables: bool = true,
     floats: bool = true,
     inline_row: bool = true,
+    /// `inline_row` nodes are inline formatting contexts driven by `Options.inline_fn` (flow.zig: real
+    /// lines of text and atomic inlines, lines shortened by floats) instead of the built-in rows of atomic
+    /// boxes (inline.zig, then not compiled).
+    inline_fn: bool = false,
 };
 
 pub const Tree = TreeWith(.{});
@@ -416,6 +487,7 @@ pub fn TreeWith(comptime cfg: Config) type {
         ctx: *anyopaque = undefined,
         measure_fn: ?MeasureFn = null,
         baseline_fn: ?BaselineFn = null,
+        inline_fn: ?InlineFn = null,
         depth: u32 = 0,
         /// result slot of size-only requests (`measureChild`)
         tmp_out: Out = undefined,
@@ -554,6 +626,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             self.ctx = ctx;
             self.measure_fn = measure;
             self.baseline_fn = opts.baseline;
+            self.inline_fn = opts.inline_fn;
             self.depth = 0;
             if (cfg.floats) self.markFloats();
             self.measure_calls = 0;
@@ -873,12 +946,17 @@ pub fn TreeWith(comptime cfg: Config) type {
             if (in.layout or has(in.known[0])) in.width_only = false;
             const flags: u8 = @as(u8, @intFromBool(in.content_sizing)) | (@as(u8, @intFromBool(in.collapse)) << 1) | (@as(u8, @intFromBool(in.indef_h)) << 2) |
                 ((in.cs_axis & 1) << 3) | (if (in.width_only) flag_width_only else 0) | (@as(u8, @intFromBool(in.flex_main)) << 5);
-            const leaf = n.child_count == 0 or n.measured;
+            var leaf = n.child_count == 0 or n.measured;
             const algo = algoOf(n.style.display);
             // floats: a block container inside a formatting context with floats depends on the exclusion
-            // space and on its position in it, which are not part of the cache key
-            const fctx = cfg.floats and self.has_floats and in.collapse and !leaf and algo == .block and self.bfc != null and
+            // space and on its position in it, which are not part of the cache key; so does inline content
+            // (its lines are shortened by the floats)
+            const in_floats = cfg.floats and self.has_floats and in.collapse and self.bfc != null and
                 !block.isRoot(&n.style, in) and (n.float_sub or self.float_rects.items.len > self.bfc.?.start);
+            const ictx = cfg.inline_fn and in_floats and n.style.is_inline_content and (n.measured or algo == .inline_row) and has(in.known[0]);
+            const fctx = ictx or (in_floats and !leaf and algo == .block);
+            const as_flow = cfg.inline_fn and self.inline_fn != null and (ictx or (algo == .inline_row and !n.measured));
+            if (as_flow) leaf = false;
             if (!fctx and c.valid & 0x8000 != 0 and matches(&c.final, in, n.pct, flags, n.ratio)) {
                 out.* = c.final_out;
                 return;
@@ -899,14 +977,16 @@ pub fn TreeWith(comptime cfg: Config) type {
             defer self.depth -= 1;
             self.node_computes += 1;
 
-            if (leaf) {
+            if (as_flow) {
+                try flow.compute(self, node, in, out, ictx);
+            } else if (leaf) {
                 self.computeLeaf(node, in, out);
             } else switch (algo) {
                 .flex => try flex.compute(self, node, in, out),
                 .block => try block.compute(self, node, in, out),
                 .grid => try grid.compute(self, node, in, out),
                 .table => if (cfg.tables) try table.compute(self, node, in, out) else try block.compute(self, node, in, out),
-                .inline_row => if (cfg.inline_row) try inline_row.compute(self, node, in, out) else try block.compute(self, node, in, out),
+                .inline_row => if (cfg.inline_row and !cfg.inline_fn) try inline_row.compute(self, node, in, out) else try block.compute(self, node, in, out),
                 .none => out.* = .{ .size = .{ 0, 0 } },
             }
 
@@ -997,7 +1077,8 @@ pub fn TreeWith(comptime cfg: Config) type {
                 if (self.baseline_fn) |bf| {
                     const cb: [2]f32 = .{ @max(out.size[0] - b.pb[0], 0), @max(out.size[1] - b.pb[1], 0) };
                     const bl = bf(self.ctx, node, cb);
-                    if (has(bl)) out.baseline = b.border[1] + b.padding[1] + bl;
+                    if (has(bl[0])) out.baseline = b.border[1] + b.padding[1] + bl[0];
+                    if (has(bl[1])) out.last_baseline = b.border[1] + b.padding[1] + bl[1];
                 }
             }
             out.collapse_through = !prevents_collapse and out.size[1] == 0;

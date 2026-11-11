@@ -188,10 +188,9 @@ fn clipNode(s: *S, id: u32, x: f32, y: f32, depth: u32) Error!void {
     const n = &f.nodes.items[id];
     if (depth > 64 or (n.kind != .anon_text and n.cs.display == .none)) return;
     const l = f.tree.layout(n.lid);
-    if (n.para) |para| {
+    if (n.para != null) {
         const cw = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
-        const tl = para.layout(s.a, cw) catch return error.OutOfMemory;
-        try glyphUses(s, n, &tl, x + l.border.left + l.padding.left, y + l.border.top + l.padding.top, true);
+        if (try f.textLayout(id, cw)) |tl| try glyphUses(s, n, tl, x + l.border.left + l.padding.left, y + l.border.top + l.padding.top, true);
     }
     var c = n.first_child;
     while (c != none) : (c = f.nodes.items[c].next) {
@@ -494,41 +493,6 @@ fn skipInk(s: *S, tl: *const font.TextLayout, x: f32, y: f32, run: *const RunSeg
 
 // ---- inline box decorations (painter `paintInlineBoxes`)
 
-const has_inline_boxes = @hasField(render.Frame, "inline_boxes") and @hasField(render.Frame, "run_box");
-
-fn runInBox(s: *S, user: u32, box: u32) bool {
-    if (comptime !has_inline_boxes) return false;
-    const f = s.f;
-    if (user >= f.run_box.items.len) return false;
-    var b = f.run_box.items[user];
-    var guard: u32 = 0;
-    while (b != none and b < f.inline_boxes.items.len and guard < 64) : (guard += 1) {
-        if (b == box) return true;
-        b = f.inline_boxes.items[b].parent;
-    }
-    return false;
-}
-
-const BoxRef = struct { cs: *const CS, id: u32 };
-
-fn inBox(s: *S, user: u32, b: BoxRef) bool {
-    if (comptime has_inline_boxes) return runInBox(s, user, b.id);
-    const rs = s.f.run_styles.items;
-    return user < rs.len and rs[user] == b.cs;
-}
-
-fn lineHasBox(s: *S, tl: *const font.TextLayout, line: *const font.Line, box: BoxRef, at_end: bool) bool {
-    if (line.glyph_end <= line.glyph_start) return false;
-    const g = tl.glyphs[if (at_end) line.glyph_end - 1 else line.glyph_start];
-    return inBox(s, g.user, box);
-}
-
-fn isElementStyle(s: *S, cs: *const CS) bool {
-    for (s.f.pseudos.items) |ps| if (ps.cs == cs) return true;
-    for (s.f.dom.els.items) |*el| if (el.cs == cs) return !el.run and el.tag.len > 0;
-    return false;
-}
-
 fn isInlineBox(cs: *const CS) bool {
     if (cs.resolveColor(cs.background_color).a != 0) return true;
     if (cs.background_image.len > 0) return true;
@@ -536,98 +500,62 @@ fn isInlineBox(cs: *const CS) bool {
     return bw[0] > 0 or bw[1] > 0 or bw[2] > 0 or bw[3] > 0;
 }
 
+
 noinline fn paintInlineBoxes(s: *S, ctx: *const Ctx, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32) Error!void {
     const f = s.f;
-    var boxes: [24]BoxRef = undefined;
-    var nb: usize = 0;
-    if (comptime has_inline_boxes) {
-        for (f.inline_boxes.items, 0..) |ib, bi| {
-            if (nb < boxes.len and isInlineBox(ib.cs) and ib.cs.visibility == .visible) {
-                boxes[nb] = .{ .cs = ib.cs, .id = @intCast(bi) };
-                nb += 1;
-            }
-        }
-    } else {
-        const rs = f.run_styles.items;
-        var prev: u32 = none;
-        for (tl.glyphs) |g| {
-            if (g.user == prev or g.user >= rs.len) continue;
-            prev = g.user;
-            const cs = rs[g.user];
-            if (cs == n.cs or nb == boxes.len or cs.display != .@"inline" or cs.visibility != .visible or !isInlineBox(cs)) continue;
-            var seen = false;
-            for (boxes[0..nb]) |b| {
-                if (b.cs == cs) seen = true;
-            }
-            if (seen or !isElementStyle(s, cs)) continue;
-            boxes[nb] = .{ .cs = cs, .id = none };
-            nb += 1;
-        }
+    for (tl.boxes) |*fr| {
+        const fi = f.boxFragment(n, fr) orelse continue;
+        if (!isInlineBox(fi.cs)) continue;
+        try paintFragment(s, ctx, fi.cs, fr.face, fi.x0, fi.x1, fr.baseline, fi.left, fi.right, x, y);
     }
-    for (boxes[0..nb]) |box| {
-        const cs = box.cs;
-        for (tl.lines, 0..) |*line, li| {
-            var x0: f32 = std.math.floatMax(f32);
-            var x1: f32 = -std.math.floatMax(f32);
-            var face: font.FaceId = 0;
-            var gi = line.glyph_start;
-            while (gi < line.glyph_end) : (gi += 1) {
-                const g = &tl.glyphs[gi];
-                if (!inBox(s, g.user, box)) continue;
-                if (x0 > x1) face = g.face;
-                x0 = @min(x0, g.x);
-                x1 = @max(x1, if (gi + 1 < line.glyph_end) tl.glyphs[gi + 1].x else line.x + line.width);
-            }
-            if (!(x1 >= x0)) continue;
-            const first = cs.box_decoration_break == .clone or !(li > 0 and lineHasBox(s, tl, &tl.lines[li - 1], box, true) and inBox(s, tl.glyphs[line.glyph_start].user, box));
-            const last = cs.box_decoration_break == .clone or !(li + 1 < tl.lines.len and lineHasBox(s, tl, &tl.lines[li + 1], box, false) and inBox(s, tl.glyphs[line.glyph_end - 1].user, box));
-            const m = metricsOf(s, face, cs.font_size);
-            var bw = cs.usedBorderWidths();
-            const fs = cs.font_size;
-            var pad = [4]f32{ cs.padding[0].resolve(fs), cs.padding[1].resolve(fs), cs.padding[2].resolve(fs), cs.padding[3].resolve(fs) };
-            if (!first) {
-                bw[3] = 0;
-                pad[3] = 0;
-            }
-            if (!last) {
-                bw[1] = 0;
-                pad[1] = 0;
-            }
-            const fx = x + x0 - pad[3] - bw[3];
-            const fy = y + line.baseline - m.ascent - pad[0] - bw[0];
-            const fw = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1];
-            const fh = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2];
-            var g: pm.Geom = .{
-                .bx = if (ctx.plain()) pm.snapRect(fx, fy, fw, fh) else .{ .x = fx, .y = fy, .w = fw, .h = fh },
-                .bw = bw,
-                .pad = pad,
-                .radii = undefined,
-                .rounded = false,
-                .snapped = ctx.plain(),
-            };
-            g.radii = pm.resolveRadiiRaw(cs, g.bx.w, g.bx.h);
-            if (!first) {
-                g.radii[0] = .{ 0, 0 };
-                g.radii[3] = .{ 0, 0 };
-            }
-            if (!last) {
-                g.radii[1] = .{ 0, 0 };
-                g.radii[2] = .{ 0, 0 };
-            }
-            pm.scaleRadii(&g.radii, g.bx.w, g.bx.h);
-            g.rounded = pm.hasAnyRadius(g.radii);
-            const col = cs.resolveColor(cs.background_color);
-            if (col.a != 0) try s.fillRRect(g.bx, g.outerRadii(), col);
-            var i = cs.background_image.len;
-            while (i > 0) {
-                i -= 1;
-                const layer = cs.bgLayer(i);
-                if (layer.image == .none or layer.clip == .text) continue;
-                try s.paintBgLayer(cs, &g, &layer, true);
-            }
-            try sborder.paintBorder(s, cs, &g);
-        }
+}
+
+noinline fn paintFragment(s: *S, ctx: *const Ctx, cs: *const CS, face: font.FaceId, x0: f32, x1: f32, baseline: f32, first: bool, last: bool, x: f32, y: f32) Error!void {
+    const m = metricsOf(s, face, cs.font_size);
+    var bw = cs.usedBorderWidths();
+    const fs = cs.font_size;
+    var pad = [4]f32{ cs.padding[0].resolve(fs), cs.padding[1].resolve(fs), cs.padding[2].resolve(fs), cs.padding[3].resolve(fs) };
+    if (!first) {
+        bw[3] = 0;
+        pad[3] = 0;
     }
+    if (!last) {
+        bw[1] = 0;
+        pad[1] = 0;
+    }
+    const fx = x + x0 - pad[3] - bw[3];
+    const fy = y + baseline - m.ascent - pad[0] - bw[0];
+    const fw = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1];
+    const fh = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2];
+    var g: pm.Geom = .{
+        .bx = if (ctx.plain()) pm.snapRect(fx, fy, fw, fh) else .{ .x = fx, .y = fy, .w = fw, .h = fh },
+        .bw = bw,
+        .pad = pad,
+        .radii = undefined,
+        .rounded = false,
+        .snapped = ctx.plain(),
+    };
+    g.radii = pm.resolveRadiiRaw(cs, g.bx.w, g.bx.h);
+    if (!first) {
+        g.radii[0] = .{ 0, 0 };
+        g.radii[3] = .{ 0, 0 };
+    }
+    if (!last) {
+        g.radii[1] = .{ 0, 0 };
+        g.radii[2] = .{ 0, 0 };
+    }
+    pm.scaleRadii(&g.radii, g.bx.w, g.bx.h);
+    g.rounded = pm.hasAnyRadius(g.radii);
+    const col = cs.resolveColor(cs.background_color);
+    if (col.a != 0) try s.fillRRect(g.bx, g.outerRadii(), col);
+    var i = cs.background_image.len;
+    while (i > 0) {
+        i -= 1;
+        const layer = cs.bgLayer(i);
+        if (layer.image == .none or layer.clip == .text) continue;
+        try s.paintBgLayer(cs, &g, &layer, true);
+    }
+    try sborder.paintBorder(s, cs, &g);
 }
 
 // ---- paragraphs
@@ -636,11 +564,10 @@ noinline fn paintInlineBoxes(s: *S, ctx: *const Ctx, n: *const Node, tl: *const 
 /// `paintText`): inline boxes, shadows, then per run: underline / overline, fill, stroke,
 /// line-through.
 pub noinline fn paintText(s: *S, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
-    const para = n.para orelse return;
-    const tl = para.layout(s.a, cw) catch return error.OutOfMemory;
     const f = s.f;
-    if (f.run_styles.items.len > 1) try paintInlineBoxes(s, ctx, n, &tl, x, y);
-    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) try paintTextShadows(s, n, &tl, x, y, cw);
+    const tl = (try f.textLayout(f.nodeId(n), cw)) orelse return;
+    if (tl.boxes.len > 0) try paintInlineBoxes(s, ctx, n, tl, x, y);
+    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) try paintTextShadows(s, n, tl, x, y, cw);
 
     var block_deco: ?*const CS = null;
     if (hasLine(n.cs)) {
@@ -650,22 +577,11 @@ pub noinline fn paintText(s: *S, ctx: *const Ctx, n: *const Node, x: f32, y: f32
         if (hasLine(pcs)) block_deco = pcs;
     }
 
-    for (tl.lines) |line| {
-        var gi = line.glyph_start;
-        while (gi < line.glyph_end) {
-            const g0 = &tl.glyphs[gi];
-            var ge = gi + 1;
-            while (ge < line.glyph_end and tl.glyphs[ge].user == g0.user and tl.glyphs[ge].face == g0.face) ge += 1;
-            const rcs = runStyle(s, n, g0);
-            const run: RunSeg = .{
-                .g0 = gi,
-                .g1 = ge,
-                .x0 = g0.x,
-                .x1 = if (ge < line.glyph_end) tl.glyphs[ge].x else @max(g0.x, line.x + line.width),
-                .baseline = line.baseline,
-                .rcs = rcs,
-            };
-            gi = ge;
+    {
+        var it: render.RunIter = .{ .tl = tl };
+        while (it.next()) |r| {
+            const rcs = runStyle(s, n, &tl.glyphs[r.g0]);
+            const run: RunSeg = .{ .g0 = r.g0, .g1 = r.g1, .x0 = r.x0, .x1 = r.x1, .baseline = r.baseline, .rcs = rcs };
             if (rcs.visibility != .visible) continue;
             var decos: [2]*const CS = undefined;
             var nd: usize = 0;
@@ -677,10 +593,10 @@ pub noinline fn paintText(s: *S, ctx: *const Ctx, n: *const Node, x: f32, y: f32
                 decos[nd] = rcs;
                 nd += 1;
             }
-            if (nd > 0) try paintRunDecos(s, ctx, &tl, x, y, &run, decos[0..nd], false);
-            try paintGlyphPhase(s, &tl, x, y, &run, false);
-            try paintGlyphPhase(s, &tl, x, y, &run, true);
-            if (nd > 0) try paintRunDecos(s, ctx, &tl, x, y, &run, decos[0..nd], true);
+            if (nd > 0) try paintRunDecos(s, ctx, tl, x, y, &run, decos[0..nd], false);
+            try paintGlyphPhase(s, tl, x, y, &run, false);
+            try paintGlyphPhase(s, tl, x, y, &run, true);
+            if (nd > 0) try paintRunDecos(s, ctx, tl, x, y, &run, decos[0..nd], true);
         }
     }
 }

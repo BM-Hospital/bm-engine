@@ -334,6 +334,10 @@ pub const S = struct {
     images: std.ArrayList(ImgDef) = .empty,
     /// open clip groups (re-emitted for deferred outlines)
     clips: std.ArrayList(ClipEnt) = .empty,
+    /// floats waiting for the in-flow content of their stacking context (painter `float_q`); here an
+    /// overflow clip is a flush point as well, since clips are open groups of the document
+    float_q: std.ArrayList(QueuedFloat) = .empty,
+    float_now: u32 = none,
     outlines: std.ArrayList(Deferred) = .empty,
     outline_clips: std.ArrayList(ClipEnt) = .empty,
     path: Path = .empty,
@@ -590,6 +594,27 @@ pub const S = struct {
     // frames stay small, the per-node work lives in `noinline` helpers.
 
     const Place = struct { x: f32, y: f32, ctx: Ctx, transformed: bool };
+    const QueuedFloat = struct { id: u32, ox: f32, oy: f32, ctx: Ctx, depth: u32 };
+    const enable_floats = @import("config.zig").enable_floats;
+
+    noinline fn queueFloat(s: *S, id: u32, ox: f32, oy: f32, ctx: *const Ctx, depth: u32) Error!bool {
+        const n = &s.f.nodes.items[id];
+        if (n.cs.float == .none or n.kind == .anon_text or id == s.float_now or id == s.f.root or n.cs.display == .none or stacks(n.cs)) return false;
+        try s.float_q.append(s.a, .{ .id = id, .ox = ox, .oy = oy, .ctx = ctx.*, .depth = depth });
+        return true;
+    }
+
+    noinline fn flushFloats(s: *S, q0: usize) Error!void {
+        var i = q0;
+        while (i < s.float_q.items.len) : (i += 1) {
+            const q = s.float_q.items[i];
+            const saved = s.float_now;
+            s.float_now = q.id;
+            defer s.float_now = saved;
+            try s.paintNode(q.id, q.ox, q.oy, &q.ctx, q.depth);
+        }
+        s.float_q.items.len = @min(q0, s.float_q.items.len);
+    }
 
     fn paintNode(s: *S, id: u32, ox: f32, oy: f32, ctx_in: *const Ctx, depth: u32) Error!void {
         try s.check();
@@ -599,6 +624,7 @@ pub const S = struct {
             return;
         }
         if (depth > 600) return;
+        if (enable_floats and try s.queueFloat(id, ox, oy, ctx_in, depth)) return;
         var pl: Place = undefined;
         if (!s.place(id, ox, oy, ctx_in, &pl)) return;
         if (s.f.nodes.items[id].kind != .anon_text and pfx.needsGroup(s.f.nodes.items[id].cs)) {
@@ -699,12 +725,17 @@ pub const S = struct {
         while (c != none) : (c = s.f.nodes.items[c].next) {
             if (s.f.nodes.items[c].kind != .anon_text and stacks(s.f.nodes.items[c].cs)) special = true;
         }
+        const froot = enable_floats and (id == s.f.root or clip == .clipped or n.cs.float != .none or stacks(n.cs));
+        const q0 = s.float_q.items.len;
         if (!special) {
             c = n.first_child;
             while (c != none) : (c = s.f.nodes.items[c].next) try s.paintNode(c, x, y, ctx, depth + 1);
+            if (froot) try s.flushFloats(q0);
         } else {
-            const items = try s.sortedChildren(n);
-            for (items) |it| try s.paintNode(it, x, y, ctx, depth + 1);
+            const sc = try s.sortedChildren(n);
+            for (sc.items[0..sc.n_low]) |it| try s.paintNode(it, x, y, ctx, depth + 1);
+            if (froot) try s.flushFloats(q0);
+            for (sc.items[sc.n_low..]) |it| try s.paintNode(it, x, y, ctx, depth + 1);
         }
         if (clip == .clipped) s.closeClip();
     }
@@ -729,7 +760,7 @@ pub const S = struct {
             if (cs.outline_style != .none and cs.outline_style != .hidden) try s.deferOutline(cs, &g, ctx.tf);
             if (n.kind == .image) try s.paintImage(n, &g);
         }
-        if (n.kind == .text) try stext.paintText(s, ctx, n, content_x, content_y, content_w);
+        if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try stext.paintText(s, ctx, n, content_x, content_y, content_w);
     }
 
     const Overflow = enum { none, clipped, empty };
@@ -747,12 +778,13 @@ pub const S = struct {
         return .clipped;
     }
 
-    noinline fn sortedChildren(s: *S, n: *const Node) Error![]u32 {
+    noinline fn sortedChildren(s: *S, n: *const Node) Error!struct { items: []u32, n_low: usize } {
         const f = s.f;
         const Item = struct { id: u32, key: i64 };
         var items: std.ArrayList(Item) = .empty;
         var c = n.first_child;
         var seq: i64 = 0;
+        var n_low: usize = 0;
         while (c != none) : (c = f.nodes.items[c].next) {
             const cn = &f.nodes.items[c];
             var layer: i64 = 0;
@@ -766,6 +798,7 @@ pub const S = struct {
                 } else if (stacks(cn.cs)) layer = 1;
             }
             const zc = std.math.clamp(z, -1000000, 1000000);
+            if (layer <= 0) n_low += 1;
             try items.append(s.a, .{ .id = c, .key = (layer * 4000000 + zc) * 1000000 + seq });
             seq += 1;
         }
@@ -778,7 +811,7 @@ pub const S = struct {
         }
         const out = try s.a.alloc(u32, items.items.len);
         for (out, items.items) |*o, it| o.* = it.id;
-        return out;
+        return .{ .items = out, .n_low = n_low };
     }
 
     // ---- outlines (painted at the end of their stacking context, like the painter)

@@ -266,8 +266,9 @@ pub const Style = struct {
     clear: Clear = .none,
     /// `display: flow-root` (and anything else that makes a block container establish a formatting context)
     flow_root: bool = false,
-    /// The node is an anonymous inline box (text) of a block container: next to floats its lines shorten
-    /// instead of the whole box avoiding them (approximated, see block.zig).
+    /// The node is the inline content of a block container (a measured text leaf or an `inline_row`): with
+    /// `Config.inline_fn` it keeps its full width next to floats and its lines are shortened instead of
+    /// the whole box avoiding them (flow.zig).
     is_inline_content: bool = false,
 
     // tables (table.zig)

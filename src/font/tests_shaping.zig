@@ -539,3 +539,308 @@ test "forced breaks: U+2028 and Run.hard_break_after in every white-space mode" 
         }
     }
 }
+
+// ---- inline formatting: inline boxes, objects, bands (values from the takumi oracle, Inter 16 px)
+
+const inl_st: font.TextStyle = .{ .families = &.{"Inter"}, .size = 16 };
+
+test "inline boxes: edges take inline space on the first / last fragment" {
+    var fc = try collection(t.allocator);
+    defer fc.deinit(t.allocator);
+    // <span style="padding:0 8px; border:1px solid; margin:0 4px"> around the middle run
+    const boxes = [_]font.InlineBox{.{ .style = inl_st, .start = 13, .end = 13, .margin_start = 4, .margin_end = 4 }};
+    var p = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "The quick ", .style = inl_st },
+        .{ .text = "brown fox jumps over the lazy", .style = inl_st, .box = 0 },
+        .{ .text = " dog and keeps running", .style = inl_st },
+    }, .{ .boxes = &boxes });
+    defer p.deinit();
+    try t.expect(p.complex);
+    try t.expectEqual(@as(u32, 2), p.measure(300).line_count);
+    var tl = try p.layout(t.allocator, 300);
+    defer tl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 4), tl.segments.len);
+    try t.expectApproxEqAbs(@as(f32, 79.17 + 13.0), tl.segments[1].x0, 0.02);
+    try t.expectApproxEqAbs(@as(f32, 0), tl.segments[2].x0, 0.02);
+    try t.expectApproxEqAbs(@as(f32, 30.69 + 13.0), tl.segments[3].x0, 0.02);
+    // two fragments: the first has the start edge (border box starts after the margin), the second the end edge
+    try t.expectEqual(@as(usize, 2), tl.boxes.len);
+    try t.expect(tl.boxes[0].first and !tl.boxes[0].last and !tl.boxes[1].first and tl.boxes[1].last);
+    try t.expectApproxEqAbs(@as(f32, 79.17 + 4.0), tl.boxes[0].x0, 0.02);
+    try t.expectApproxEqAbs(@as(f32, 30.69 + 9.0), tl.boxes[1].x1, 0.02);
+    // intrinsic sizes count the edges
+    var plain = try font.Paragraph.init(t.allocator, &fc, &.{.{ .text = "The quick brown fox jumps over the lazy dog and keeps running", .style = inl_st }}, .{});
+    defer plain.deinit();
+    try t.expectApproxEqAbs(plain.maxContentWidth() + 26, p.maxContentWidth(), 0.05);
+    // box-decoration-break: clone: every fragment has both edges, lines reserve room for them
+    const cl = [_]font.InlineBox{.{ .style = inl_st, .start = 8, .end = 8, .clone = true }};
+    var c = try font.Paragraph.init(t.allocator, &fc, &.{ .{ .text = "The ", .style = inl_st }, .{ .text = "quick brown fox jumps over", .style = inl_st, .box = 0 }, .{ .text = " dog", .style = inl_st } }, .{ .boxes = &cl });
+    defer c.deinit();
+    var ctl = try c.layout(t.allocator, 120);
+    defer ctl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 4), ctl.lines.len);
+    try t.expectApproxEqAbs(@as(f32, 8), ctl.segments[2].x0, 0.02);
+    for (ctl.boxes) |b| try t.expect(b.first and b.last);
+}
+
+test "inline boxes: nowrap runs, forced breaks, struts and vertical-align" {
+    var fc = try collection(t.allocator);
+    defer fc.deinit(t.allocator);
+    // a nowrap span moves to the next line as a whole
+    var nw = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "The quick brown ", .style = inl_st },
+        .{ .text = "fox jumps over the", .style = inl_st, .white_space = .nowrap },
+        .{ .text = " lazy dog", .style = inl_st },
+    }, .{});
+    defer nw.deinit();
+    var ntl = try nw.layout(t.allocator, 200);
+    defer ntl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 3), ntl.lines.len);
+    try t.expectApproxEqAbs(@as(f32, 126.58), ntl.lines[0].width, 0.02);
+    try t.expectApproxEqAbs(@as(f32, 175.05), ntl.lines[1].width, 0.05);
+    // sub / super / lengths shift baselines and grow the line: "E = mc<sup>2</sup> ... <span +10px> <span -6px>"
+    const small: font.TextStyle = .{ .families = &.{"Inter"}, .size = 13.333333 };
+    const boxes = [_]font.InlineBox{
+        .{ .style = small, .valign = .super },
+        .{ .style = small, .valign = .sub },
+        .{ .style = inl_st, .valign = .{ .length = 10 } },
+        .{ .style = inl_st, .valign = .{ .length = -6 } },
+    };
+    var va = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "E = mc", .style = inl_st },
+        .{ .text = "2", .style = small, .box = 0 },
+        .{ .text = " H", .style = inl_st },
+        .{ .text = "2", .style = small, .box = 1 },
+        .{ .text = "O ", .style = inl_st },
+        .{ .text = "up", .style = inl_st, .box = 2 },
+        .{ .text = " ", .style = inl_st },
+        .{ .text = "down", .style = inl_st, .box = 3 },
+    }, .{ .boxes = &boxes });
+    defer va.deinit();
+    const sz = va.measure(300);
+    try t.expectEqual(@as(f32, 36), sz.height);
+    try t.expectEqual(@as(f32, 26), sz.first_baseline);
+    var vtl = try va.layout(t.allocator, 300);
+    defer vtl.deinit(t.allocator);
+    try t.expectApproxEqAbs(@as(f32, 26.0 - 6.328125), vtl.segments[1].baseline, 0.001);
+    try t.expectApproxEqAbs(@as(f32, 26.0 + 4.1875), vtl.segments[3].baseline, 0.001);
+    try t.expectApproxEqAbs(@as(f32, 16), vtl.segments[5].baseline, 0.001);
+    try t.expectApproxEqAbs(@as(f32, 32), vtl.segments[7].baseline, 0.001);
+    // a span with its own line-height / font size makes a strut (line-height: 1.5 block, 32 px span -> 48)
+    const big: font.TextStyle = .{ .families = &.{"Inter"}, .size = 32 };
+    const bb = [_]font.InlineBox{.{ .style = big }};
+    var lh = try font.Paragraph.init(t.allocator, &fc, &.{ .{ .text = "aaa ", .style = inl_st }, .{ .text = "big", .style = big, .box = 0 }, .{ .text = " bbb", .style = inl_st } }, .{ .boxes = &bb, .line_height = .{ .multiple = 1.5 } });
+    defer lh.deinit();
+    try t.expectEqual(@as(f32, 48), lh.measure(300).height);
+    // closing edges after a forced break stay on its line; an empty span without edges makes no line
+    const eb = [_]font.InlineBox{ .{ .style = inl_st, .start = 3, .end = 3 }, .{ .style = inl_st } };
+    var br = try font.Paragraph.init(t.allocator, &fc, &.{ .{ .text = "a", .style = inl_st, .box = 0, .hard_break_after = true }, .{ .text = "", .style = inl_st, .box = 1 } }, .{ .boxes = &eb });
+    defer br.deinit();
+    const bs = br.measure(300);
+    try t.expectEqual(@as(u32, 1), bs.line_count);
+    try t.expectEqual(@as(f32, 20), bs.height);
+}
+
+const FlowTest = struct {
+    /// a left float of 80 x 50 at the top
+    fn band(_: *const font.Flow, y: f32, h: f32) font.Band {
+        _ = h;
+        return if (y < 50) .{ .x0 = 80, .x1 = 300, .next_y = 50 } else .{ .x0 = 0, .x1 = 300 };
+    }
+    var calls: [8]struct { id: u32, y: f32, how: font.FloatPlace } = undefined;
+    var n_calls: usize = 0;
+    fn float(_: *const font.Flow, id: u32, y: f32, used: f32, avail: f32, how: font.FloatPlace) bool {
+        if (n_calls < calls.len) calls[n_calls] = .{ .id = id, .y = y, .how = how };
+        n_calls += 1;
+        // a 200 px float: beside the line only when it fits
+        return how != .beside or used + 200 <= avail;
+    }
+};
+
+test "flow: atomic objects, bands and floats" {
+    var fc = try collection(t.allocator);
+    defer fc.deinit(t.allocator);
+    const obj: [4]font.ObjectMetrics = @splat(.{ .width = 40, .ascent = 10, .descent = 0 });
+    // aaaa[]bbbb cccc[][][] at 120 px: an object breaks before and after
+    var p = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "aaaa", .style = inl_st },
+        .{ .text = "", .object = .{ .id = 0 } },
+        .{ .text = "bbbb cccc", .style = inl_st },
+        .{ .text = "", .object = .{ .id = 1 } },
+        .{ .text = "", .object = .{ .id = 2 } },
+        .{ .text = "", .object = .{ .id = 3 } },
+    }, .{ .strut = inl_st });
+    defer p.deinit();
+    const flow: font.Flow = .{ .alloc = t.allocator, .objects = &obj };
+    var tl = try p.layoutFlow(t.allocator, &flow, 120);
+    defer tl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 3), tl.lines.len);
+    try t.expectEqual(@as(usize, 4), tl.objects.len);
+    const want = [_][2]f32{ .{ 35.94, 6 }, .{ 36.56, 26 }, .{ 76.56, 26 }, .{ 0, 46 } };
+    for (tl.objects, want) |o, w| {
+        try t.expectApproxEqAbs(w[0], o.x, 0.02);
+        try t.expectApproxEqAbs(w[1], o.y, 0.02);
+    }
+    try t.expectEqual(@as(f32, 60), p.measureFlow(&flow, 120).height);
+    try t.expectApproxEqAbs(@as(f32, 40), p.minContentWidthFlow(&flow), 0.02);
+
+    // vertical-align of 20 x 30 boxes: baseline, top, bottom, middle, text-top, text-bottom -> line height 44
+    const o2: [6]font.ObjectMetrics = @splat(.{ .width = 20, .ascent = 30, .descent = 0 });
+    var v = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "x ", .style = inl_st },
+        .{ .text = "", .object = .{ .id = 0 } },
+        .{ .text = "", .object = .{ .id = 1, .valign = .top } },
+        .{ .text = "", .object = .{ .id = 2, .valign = .bottom } },
+        .{ .text = "", .object = .{ .id = 3, .valign = .middle } },
+        .{ .text = "", .object = .{ .id = 4, .valign = .text_top } },
+        .{ .text = "", .object = .{ .id = 5, .valign = .text_bottom } },
+    }, .{ .strut = inl_st });
+    defer v.deinit();
+    const f2: font.Flow = .{ .alloc = t.allocator, .objects = &o2 };
+    var vtl = try v.layoutFlow(t.allocator, &f2, 300);
+    defer vtl.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 44), vtl.height);
+    const ys = [_]f32{ 0, 0, 14, 10.640625, 14, 3.859375 };
+    for (vtl.objects, ys) |o, y| try t.expectApproxEqAbs(y, o.y, 0.02);
+
+    // lines beside a float are shortened and offset, the line below it has the full width again
+    const words = "The quick brown fox jumps over the lazy dog and keeps running through the forest until night falls";
+    var w = try font.Paragraph.init(t.allocator, &fc, &.{.{ .text = words, .style = inl_st }}, .{});
+    defer w.deinit();
+    const f3: font.Flow = .{ .alloc = t.allocator, .band_fn = FlowTest.band };
+    var wtl = try w.layoutFlow(t.allocator, &f3, 300);
+    defer wtl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 4), wtl.lines.len);
+    try t.expectEqual(@as(f32, 80), wtl.lines[0].x);
+    try t.expectEqual(@as(f32, 80), wtl.lines[2].x);
+    try t.expectEqual(@as(f32, 0), wtl.lines[3].x);
+    try t.expectApproxEqAbs(@as(f32, 204.59), wtl.lines[0].width, 0.02);
+    try t.expectEqual(@as(f32, 80), w.measureFlow(&f3, 300).height);
+    // without a band function the flow layout equals the plain one
+    var plain = try w.layout(t.allocator, 300);
+    defer plain.deinit(t.allocator);
+    var same = try w.layoutFlow(t.allocator, &.{ .alloc = t.allocator }, 300);
+    defer same.deinit(t.allocator);
+    try t.expectEqual(plain.lines.len, same.lines.len);
+    try t.expectEqual(plain.height, same.height);
+    for (plain.glyphs, same.glyphs) |a, b| try t.expect(a.x == b.x and a.y == b.y and a.gid == b.gid);
+    // a word that does not fit beside the float moves below it
+    var lw = try font.Paragraph.init(t.allocator, &fc, &.{.{ .text = "Supercalifragilisticexpialidocious word", .style = inl_st }}, .{});
+    defer lw.deinit();
+    var ltl = try lw.layoutFlow(t.allocator, &f3, 300);
+    defer ltl.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 50), ltl.lines[0].top);
+    try t.expectEqual(@as(f32, 0), ltl.lines[0].x);
+
+    // a float inside the text: asked beside its line (does not fit), then placed below the finished line
+    var fl = try font.Paragraph.init(t.allocator, &fc, &.{
+        .{ .text = "The quick brown fox ", .style = inl_st },
+        .{ .text = "", .object = .{ .id = 0, .kind = .float } },
+        .{ .text = "jumps over the lazy dog", .style = inl_st },
+    }, .{});
+    defer fl.deinit();
+    FlowTest.n_calls = 0;
+    const f4: font.Flow = .{ .alloc = t.allocator, .float_fn = FlowTest.float };
+    const fs = fl.measureFlow(&f4, 300);
+    try t.expectEqual(@as(u32, 2), fs.line_count);
+    try t.expectEqual(@as(usize, 2), FlowTest.n_calls);
+    try t.expect(FlowTest.calls[0].how == .beside and FlowTest.calls[0].y == 0);
+    try t.expect(FlowTest.calls[1].how == .below and FlowTest.calls[1].y == 20);
+    // a float before any content is placed first
+    var lead = try font.Paragraph.init(t.allocator, &fc, &.{ .{ .text = "", .object = .{ .id = 0, .kind = .float } }, .{ .text = "text", .style = inl_st } }, .{});
+    defer lead.deinit();
+    FlowTest.n_calls = 0;
+    _ = lead.measureFlow(&f4, 300);
+    try t.expect(FlowTest.n_calls == 1 and FlowTest.calls[0].how == .leading);
+    // out-of-flow boxes report their static position; a paragraph of only such boxes has no line
+    var oof = try font.Paragraph.init(t.allocator, &fc, &.{ .{ .text = "hello ", .style = inl_st }, .{ .text = "", .object = .{ .id = 0, .kind = .out_of_flow } }, .{ .text = "world", .style = inl_st } }, .{});
+    defer oof.deinit();
+    var otl = try oof.layoutFlow(t.allocator, &.{ .alloc = t.allocator }, 300);
+    defer otl.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 1), otl.objects.len);
+    try t.expectApproxEqAbs(@as(f32, 40.64), otl.objects[0].x, 0.02);
+    var only = try font.Paragraph.init(t.allocator, &fc, &.{.{ .text = "", .object = .{ .id = 0, .kind = .out_of_flow } }}, .{ .strut = inl_st });
+    defer only.deinit();
+    try t.expectEqual(@as(f32, 0), only.measure(300).height);
+}
+
+test "flow: random runs, boxes and objects never crash and stay finite" {
+    var fc = try collection(t.allocator);
+    defer fc.deinit(t.allocator);
+    var prng = std.Random.DefaultPrng.init(7);
+    const r = prng.random();
+    const texts = [_][]const u8{ "", " ", "word", "two words ", " lead", "a\u{ad}b", "x\ty", "\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} ", "long-unbreakable-token" };
+    var round: usize = 0;
+    while (round < 300) : (round += 1) {
+        var boxes: [6]font.InlineBox = undefined;
+        const nb = r.uintLessThan(usize, boxes.len + 1);
+        for (boxes[0..nb], 0..) |*b, k| b.* = .{
+            .parent = if (k > 0 and r.boolean()) r.uintLessThan(u32, @intCast(k)) else if (r.uintLessThan(u8, 8) == 0) 99 else font.no_box,
+            .style = .{ .families = &.{"Inter"}, .size = @floatFromInt(r.intRangeAtMost(u8, 0, 40)) },
+            .valign = switch (r.uintLessThan(u8, 9)) {
+                0 => .sub,
+                1 => .super,
+                2 => .top,
+                3 => .bottom,
+                4 => .middle,
+                5 => .text_top,
+                6 => .text_bottom,
+                7 => .{ .length = (r.float(f32) - 0.5) * 60 },
+                else => .baseline,
+            },
+            .start = if (r.boolean()) (r.float(f32) - 0.2) * 20 else 0,
+            .end = if (r.boolean()) (r.float(f32) - 0.2) * 20 else if (r.uintLessThan(u8, 20) == 0) std.math.nan(f32) else 0,
+            .clone = r.uintLessThan(u8, 4) == 0,
+            .line_height = switch (r.uintLessThan(u8, 4)) {
+                0 => .{ .px = r.float(f32) * 50 },
+                1 => .{ .multiple = r.float(f32) * 3 },
+                else => null,
+            },
+        };
+        var runs: [12]font.Run = undefined;
+        const nr = r.uintLessThan(usize, runs.len + 1);
+        var n_obj: u32 = 0;
+        for (runs[0..nr]) |*run| {
+            run.* = .{ .text = texts[r.uintLessThan(usize, texts.len)], .style = .{ .families = &.{"Inter"}, .size = @floatFromInt(r.intRangeAtMost(u8, 1, 30)) } };
+            run.box = if (r.boolean()) r.uintLessThan(u32, 8) else font.no_box;
+            if (r.uintLessThan(u8, 5) == 0) run.white_space = r.enumValue(font.WhiteSpace);
+            run.hard_break_after = r.uintLessThan(u8, 8) == 0;
+            if (r.uintLessThan(u8, 4) == 0) {
+                run.object = .{ .id = if (r.uintLessThan(u8, 10) == 0) 1000 else n_obj, .kind = r.enumValue(font.Object.Kind), .block_level = r.boolean(), .valign = if (r.boolean()) .middle else .top };
+                n_obj += 1;
+            }
+        }
+        var objs: [12]font.ObjectMetrics = undefined;
+        for (&objs) |*o| o.* = .{ .width = (r.float(f32) - 0.1) * 80, .ascent = r.float(f32) * 40, .descent = if (r.uintLessThan(u8, 10) == 0) std.math.inf(f32) else r.float(f32) * 10 };
+        var p = try font.Paragraph.init(t.allocator, &fc, runs[0..nr], .{
+            .boxes = boxes[0..nb],
+            .white_space = r.enumValue(font.WhiteSpace),
+            .text_align = r.enumValue(font.TextAlign),
+            .direction = if (r.boolean()) .rtl else .ltr,
+            .overflow_wrap = r.enumValue(font.OverflowWrap),
+            .max_lines = if (r.uintLessThan(u8, 6) == 0) r.intRangeAtMost(u32, 0, 3) else null,
+            .ellipsis = r.boolean(),
+            .line_height = if (r.boolean()) .normal else .{ .px = 18 },
+        });
+        defer p.deinit();
+        const flow: font.Flow = .{ .alloc = t.allocator, .objects = objs[0..@min(n_obj, objs.len)], .band_fn = if (r.boolean()) FlowTest.band else null, .float_fn = if (r.boolean()) FlowTest.float else null };
+        const width: ?f32 = switch (r.uintLessThan(u8, 5)) {
+            0 => null,
+            1 => 0,
+            else => r.float(f32) * 300,
+        };
+        const sz = p.measureFlow(&flow, width);
+        try t.expect(std.math.isFinite(sz.width) and std.math.isFinite(sz.height));
+        _ = p.minContentWidthFlow(&flow);
+        _ = p.maxContentWidthFlow(&flow);
+        _ = p.measure(width);
+        var tl = try p.layoutFlow(t.allocator, &flow, width);
+        defer tl.deinit(t.allocator);
+        for (tl.glyphs) |g| try t.expect(std.math.isFinite(g.x) and std.math.isFinite(g.y));
+        for (tl.objects) |o| try t.expect(std.math.isFinite(o.x) and std.math.isFinite(o.y));
+        for (tl.segments) |s| try t.expect(s.g0 <= s.g1 and s.g1 <= tl.glyphs.len and s.line < tl.lines.len);
+        for (tl.boxes) |b| try t.expect(b.box < nb and b.line < tl.lines.len);
+        var tl2 = try p.layout(t.allocator, width);
+        tl2.deinit(t.allocator);
+    }
+}

@@ -19,9 +19,13 @@
 //!    `.position = .static` on boxes that must not be the containing block of absolute descendants.
 //!  * The root is blockified: an auto width fills a definite available width, an auto height is content-sized,
 //!    the root's margins offset it inside the viewport.
-//!  * Text is always a measured leaf; there is no real inline formatting. `Display.inline_row` (inline.zig) lays
-//!    atomic inline boxes and measured leaves out on wrapping lines; next to floats a measured leaf / formatting
-//!    context root is fitted into the free band at its top edge (block.zig).
+//!  * Text is owned by the caller. A block of plain text is a measured leaf (`MeasureFn`). Mixed inline content
+//!    is a `Display.inline_row` node: with `Config.inline_fn` (flow.zig) the caller's `Options.inline_fn` breaks
+//!    the lines (text and the node's atomic inline children together) and the engine supplies item sizes and,
+//!    per line, the inline range left free by floats; inline content flagged `Style.is_inline_content` keeps
+//!    its full width beside floats and only its lines shorten. Without `Config.inline_fn`, `inline_row`
+//!    (inline.zig) lays atomic boxes and whole measured leaves out on wrapping rows, and next to floats a
+//!    measured leaf / formatting context root is fitted into the free band at its top edge (block.zig).
 //!  * `Style.order` reorders flex / grid items inside the tree (pre-sorted children with order 0 work as before).
 //!  * `Position.fixed` boxes resolve against the `available` size passed to `compute`.
 //!  * Results are unrounded f32. `Options.quantize64` snaps edges to Blink's 1/64 px grid, `Options.round` to
@@ -65,6 +69,10 @@ pub const Layout = tree.Layout;
 pub const TableGeom = @import("table.zig").Geom;
 pub const MeasureFn = tree.MeasureFn;
 pub const BaselineFn = tree.BaselineFn;
+pub const InlineFn = tree.InlineFn;
+pub const InlineIo = tree.InlineIo;
+pub const InlineItem = tree.InlineItem;
+pub const InlineBand = tree.InlineBand;
 pub const Options = tree.Options;
 pub const Error = tree.Error;
 pub const max_depth = tree.max_depth;
@@ -74,4 +82,5 @@ test {
     _ = @import("tests_table.zig");
     _ = @import("tests_inline.zig");
     _ = @import("tests_float.zig");
+    _ = @import("tests_flow.zig");
 }

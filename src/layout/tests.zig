@@ -694,8 +694,8 @@ const TextCtx = struct {
         const lines = @ceil(total / word / per_line);
         return .{ if (known[0] != null) w else @min(w, per_line * word), known[1] orelse lines * 10 };
     }
-    fn baseline(_: *anyopaque, _: L.NodeId, _: [2]f32) f32 {
-        return 8;
+    fn baseline(_: *anyopaque, _: L.NodeId, _: [2]f32) [2]f32 {
+        return .{ 8, 8 };
     }
 };
 

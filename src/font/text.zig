@@ -10,7 +10,13 @@
 //!    floor((line_height - (asc + desc)) / 2) in whole px, the rest goes below;
 //!  * a line box is the strut (font + line-height of the block); with `line-height: normal` it is
 //!    united with the normal-line-height box of every font actually used on the line. With an
-//!    explicit line-height the strut alone decides (verified against takumi for mixed-size runs).
+//!    explicit line-height the strut alone decides for plain runs.
+//!  * inline formatting (`Paragraph.complex`): runs may lie in inline boxes (`InlineBox`: own strut,
+//!    `vertical-align`, inline edges that take space on the first / last fragment, `nowrap`) and
+//!    may be objects (`Object`: atomic inlines with caller-given metrics, floats, out-of-flow
+//!    boxes). Lines are then built by Blink's inline box state machine (`lineBox`), and a `Flow`
+//!    gives every line the inline range left free by floats (`measureFlow` / `layoutFlow`).
+//!    Plain paragraphs never touch that machinery.
 const std = @import("std");
 const ttf = @import("ttf.zig");
 const uni = @import("unicode.zig");
@@ -69,6 +75,63 @@ pub const Run = struct {
     /// A forced line break follows this run in every white-space mode (HTML `<br>`: pass an
     /// empty or non-empty run with this set). U+2028 inside the text does the same.
     hard_break_after: bool = false,
+    /// `white-space` of this run when it differs from the paragraph's (a `nowrap` span inside
+    /// wrapping text): collapsing follows the run, a soft wrap opportunity between two characters
+    /// exists when either side wraps.
+    white_space: ?WhiteSpace = null,
+    /// Innermost inline box (index into `ParagraphOptions.boxes`) the run lies in, `no_box` =
+    /// directly in the block. An empty run still opens / closes its boxes.
+    box: u32 = no_box,
+    /// The run is a non-text inline item (its `text` is ignored): see `Object`.
+    object: ?Object = null,
+};
+
+pub const no_box: u32 = 0xffff_ffff;
+
+/// `vertical-align` of an inline box or atomic inline (percentages already resolved against the
+/// element's own line-height; `length` is positive upwards).
+pub const VerticalAlign = union(enum) { baseline, sub, super, top, text_top, middle, bottom, text_bottom, length: f32 };
+
+/// A non-text inline item at the position of its run.
+///  * `atomic`: an inline-block / replaced element. It takes part in line breaking as one
+///    unbreakable unit (a soft wrap opportunity before and after it) with the size found in
+///    `Flow.objects[id]`, and is aligned by `valign`; its position is reported in
+///    `TextLayout.objects`.
+///  * `float`: transparent to text; when the line it occurs on is laid out, `Flow.float_fn` is
+///    asked to place it (beside the line when it fits, else below it).
+///  * `out_of_flow`: transparent; its static position is reported in `TextLayout.objects`.
+pub const Object = struct {
+    id: u32,
+    kind: Kind = .atomic,
+    valign: VerticalAlign = .baseline,
+    /// out_of_flow only: the box was block-level before it was positioned (static position below
+    /// the line instead of at the current point).
+    block_level: bool = false,
+
+    pub const Kind = enum(u8) { atomic, float, out_of_flow };
+};
+
+/// An inline box (`<span>`): its font and line-height make a strut on every line it has a
+/// fragment on, its `valign` shifts everything inside, its inline-start / -end edges take
+/// inline space before its first / after its last character.
+pub const InlineBox = struct {
+    parent: u32 = no_box,
+    style: TextStyle = .{},
+    /// null = the paragraph's line-height
+    line_height: ?LineHeight = null,
+    valign: VerticalAlign = .baseline,
+    /// margin + border + padding at the inline start / end (may be negative through margins)
+    start: f32 = 0,
+    end: f32 = 0,
+    /// the margin part of `start` / `end` (outside the painted fragment)
+    margin_start: f32 = 0,
+    margin_end: f32 = 0,
+    /// `box-decoration-break: clone`: every fragment has both edges (a line the box continues on
+    /// starts with its start edge and reserves room for its end edge).
+    clone: bool = false,
+    /// The box paints something (background, border): its fragments are wanted in
+    /// `TextLayout.boxes` even when it does not affect the layout.
+    decorated: bool = false,
 };
 
 pub const LineHeight = union(enum) {
@@ -117,6 +180,42 @@ pub const ParagraphOptions = struct {
     features: []const FeatureSetting = &.{},
     /// Long-lived shape-plan cache (see `shape.Cache`); null = rebuild plans per paragraph.
     shape_cache: ?*ShapeCache = null,
+    /// Inline boxes referenced by `Run.box` (parents before children). Only read during `init`.
+    boxes: []const InlineBox = &.{},
+};
+
+/// Size of an atomic inline: margin-box width, and the margin-box extent above / below its
+/// baseline (`ascent + descent` = margin-box height).
+pub const ObjectMetrics = struct { width: f32 = 0, ascent: f32 = 0, descent: f32 = 0 };
+
+/// Free inline range of a line box, as offsets from the paragraph's left edge.
+pub const Band = struct {
+    x0: f32,
+    x1: f32,
+    /// Lowest y below which the range may be wider (NaN = the range is already the full width).
+    next_y: f32 = std.math.nan(f32),
+};
+
+pub const FloatPlace = enum(u8) { leading, beside, below, undo };
+
+/// The environment a paragraph with objects, or one beside floats, is laid out in
+/// (`Paragraph.measureFlow` / `layoutFlow`).
+pub const Flow = struct {
+    /// Scratch for the line box builder (small; a per-render arena is the expected choice).
+    alloc: std.mem.Allocator,
+    /// Indexed by `Object.id` (atomic objects); missing entries are zero-sized.
+    objects: []const ObjectMetrics = &.{},
+    /// Free range for a line box spanning [y, y + h) (y from the paragraph top); null = the whole
+    /// width at every position.
+    band_fn: ?*const fn (flow: *const Flow, y: f32, h: f32) Band = null,
+    /// Places float `id`. `.leading` / `.below`: place it at or below `y` (always succeeds).
+    /// `.beside`: the float occurs on a line at `y` that already has `used` px of content and
+    /// `avail` px of room; return true when it was placed on that line (the line is then broken
+    /// again with the new band), false to have it placed `.below` the finished line.
+    /// `.undo`: take back the float placed by the last `.beside` call (the shortened line ended
+    /// before the inline box the float is in: it belongs to the next line).
+    float_fn: ?*const fn (flow: *const Flow, id: u32, y: f32, used: f32, avail: f32, how: FloatPlace) bool = null,
+    ctx: ?*anyopaque = null,
 };
 
 pub const ShapedGlyph = struct {
@@ -154,6 +253,19 @@ pub const ShapedGlyph = struct {
     /// Tab (white-space: pre / pre-wrap): `x_advance` holds the tab-stop interval; the real
     /// advance depends on the position in the line (`Paragraph` resolves it).
     pub const TAB: u8 = 64;
+    /// Not a glyph: an inline box edge or an object. `gid` holds the `Special` kind, `cluster`
+    /// the inline box (internal index) or the `Object.id`, `x_advance` the edge width.
+    pub const SPECIAL: u8 = 128;
+};
+
+const Special = struct {
+    const open: u16 = 0;
+    const close: u16 = 1;
+    const atomic: u16 = 2;
+    const float: u16 = 3;
+    const oof: u16 = 4;
+    /// `oof` whose box was block-level
+    const oof_block: u16 = 5;
 };
 
 pub const PositionedGlyph = struct {
@@ -189,6 +301,34 @@ pub const Line = struct {
     rtl: bool = false,
 };
 
+/// Position of an atomic inline (margin-box top-left) or the static position of an out-of-flow
+/// box, in paragraph space.
+pub const ObjectPos = struct { id: u32, x: f32, y: f32, line: u32 };
+
+/// Fragment of an inline box on one line: the horizontal extent of its border box (edges
+/// included when `first` / `last`) and the baseline its text sits on.
+pub const BoxFragment = struct {
+    /// index into `ParagraphOptions.boxes`
+    box: u32,
+    line: u32,
+    x0: f32,
+    x1: f32,
+    baseline: f32,
+    /// the fragment has the box's inline-start / inline-end edge
+    first: bool = false,
+    last: bool = false,
+    /// the start edge is on the right (fragment of a right-to-left run)
+    rtl: bool = false,
+    /// primary face of the box's font
+    face: FaceId = 0,
+    /// (internal: vertical shift slot)
+    slot: u32 = 0,
+};
+
+/// A maximal sequence of glyphs of one run on one line (`glyphs[g0..g1]`), with its exact
+/// horizontal extent and its (possibly shifted) baseline.
+pub const Segment = struct { g0: u32, g1: u32, x0: f32, x1: f32, baseline: f32, line: u32 };
+
 pub const Size = struct {
     /// Widest line, ceiled to 1/64 px (what takumi reports as the text box inline size).
     width: f32,
@@ -197,6 +337,9 @@ pub const Size = struct {
     line_count: u32 = 0,
     /// Widest line, exact float.
     exact_width: f32 = 0,
+    /// Baseline of the first / last line from the top (0 without lines).
+    first_baseline: f32 = 0,
+    last_baseline: f32 = 0,
 };
 
 pub const TextLayout = struct {
@@ -206,8 +349,17 @@ pub const TextLayout = struct {
     exact_width: f32,
     lines: []Line,
     glyphs: []PositionedGlyph,
+    /// Paragraphs with inline boxes / objects (`Paragraph.complex`) only: atomic inlines and
+    /// out-of-flow static positions, inline box fragments (ordered by box, outer boxes first,
+    /// then by line), and the run segments covering `glyphs` in order.
+    objects: []ObjectPos = &.{},
+    boxes: []BoxFragment = &.{},
+    segments: []Segment = &.{},
 
     pub fn deinit(self: *TextLayout, alloc: std.mem.Allocator) void {
+        alloc.free(self.objects);
+        alloc.free(self.boxes);
+        alloc.free(self.segments);
         alloc.free(self.lines);
         alloc.free(self.glyphs);
         self.* = undefined;
@@ -230,6 +382,8 @@ pub const Metric = struct {
     /// Hyphen shown when a line breaks at a soft hyphen (U+2010, else '-', in this face).
     hyphen_gid: u16 = 0,
     hyphen_adv: f32 = 0,
+    /// The run does not wrap (no emergency break inside it either).
+    nowrap: bool = false,
 };
 
 pub inline fn ceil64(x: f32) f32 {
@@ -271,7 +425,68 @@ inline fn scaleAdvance(units: i32, scale: f64) f32 {
     return @floatCast(r * (1.0 / 65536.0));
 }
 
-const Char = struct { cp: u21, brk: bool = false, level: u8 = 0, run: u16, cluster: u32 };
+const Char = struct {
+    cp: u21,
+    brk: bool = false,
+    level: u8 = 0,
+    run: u16,
+    cluster: u32,
+    /// the run does not wrap (white-space: nowrap / pre)
+    nw: bool = false,
+    /// stands for an atomic inline (U+FFFC)
+    obj: bool = false,
+};
+
+const CharInfo = struct { n: usize = 0, any_wrap: bool = false, any_nowrap: bool = false, any_obj: bool = false };
+
+/// Per inline box data resolved at `init` ([0] = the block itself).
+const BoxInfo = struct {
+    parent: u32 = 0,
+    valign: VerticalAlign = .baseline,
+    /// strut of the box (its font with the half-leading of its line-height)
+    ascent: f32 = 0,
+    descent: f32 = 0,
+    /// rounded font ascent (Blink's text top) and the unrounded font ascent / descent
+    text_ascent: f32 = 0,
+    font_ascent: f32 = 0,
+    font_descent: f32 = 0,
+    x_height: f32 = 0,
+    font_size: f32 = 0,
+    /// line-height: normal (every font used inside grows the box)
+    normal_lh: bool = true,
+    start: f32 = 0,
+    end: f32 = 0,
+    margin_start: f32 = 0,
+    margin_end: f32 = 0,
+    face: FaceId = 0,
+    clone: bool = false,
+};
+
+const ObjInfo = struct { box: u32, valign: VerticalAlign };
+
+fn wsWraps(ws: WhiteSpace) bool {
+    return ws != .nowrap and ws != .pre;
+}
+
+noinline fn boxInfo(fonts: *const FontCollection, st: TextStyle, lh: LineHeight) BoxInfo {
+    var bi: BoxInfo = .{ .font_size = st.size, .normal_lh = lh == .normal };
+    var buf: [max_faces]FaceId = undefined;
+    const faces = matchStyle(fonts, st, &buf);
+    if (faces.len == 0) return bi;
+    const f = fonts.font(faces[0]);
+    const m = computeMetric(f, st.size, lh);
+    bi.face = faces[0];
+    bi.ascent = m[0];
+    bi.descent = m[1];
+    bi.font_ascent = m[2];
+    bi.font_descent = m[3];
+    bi.text_ascent = roundAway(m[2]);
+    const xh = f.xHeight();
+    const upm: f32 = @floatFromInt(@max(f.units_per_em, 1));
+    // (Blink's fallback without an OS/2 x-height)
+    bi.x_height = if (xh > 0) @as(f32, @floatFromInt(xh)) * st.size / upm else m[2] * 0.56;
+    return bi;
+}
 
 const max_faces = 16;
 
@@ -316,6 +531,21 @@ pub const Paragraph = struct {
     rtl: bool = false,
     /// Some glyph has a non-zero bidi level (lines need visual reordering).
     has_bidi: bool = false,
+    /// Some run allows soft wraps.
+    any_wrap: bool = true,
+    /// The paragraph has objects, or inline boxes with edges / a `vertical-align` / a strut of
+    /// their own: `glyphs` then contains `SPECIAL` entries, lines are built by the inline box
+    /// state machine and `layout*` reports `objects`, `boxes` and `segments`.
+    /// `measureFlow` / `layoutFlow` must be used when there are atomic objects.
+    complex: bool = false,
+    /// complex only: [0] = the block, [k + 1] = `ParagraphOptions.boxes[k]`
+    boxes: []BoxInfo = &.{},
+    /// complex only: internal box index per run
+    run_box: []u32 = &.{},
+    /// complex only: indexed by `ShapedGlyph.metric` of object specials
+    objs: []ObjInfo = &.{},
+    /// Some inline box with edges is `box-decoration-break: clone`.
+    has_clone: bool = false,
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -355,14 +585,19 @@ pub const Paragraph = struct {
         for (runs) |r| total += r.text.len;
         if (total > 0x3fff_ffff or runs.len > 0xffff) return error.OutOfMemory;
 
-        const chars = try alloc.alloc(Char, total + runs.len);
+        const chars = try alloc.alloc(Char, total + 2 * runs.len);
         defer alloc.free(chars);
-        const n_chars = collectChars(runs, opts, chars);
+        var info: CharInfo = .{};
+        collectChars(runs, opts, chars, &info);
+        const n_chars = info.n;
         const rtl_base = complex and opts.direction == .rtl;
-        if (complex) {
-            try markBreaksFull(alloc, chars[0..n_chars], opts);
-            try resolveBidi(alloc, chars[0..n_chars], rtl_base);
-        } else markBreaks(chars[0..n_chars], opts);
+        if (info.any_wrap) {
+            if (complex) {
+                try markBreaksFull(alloc, chars[0..n_chars], opts);
+            } else markBreaks(chars[0..n_chars], opts);
+            if (info.any_nowrap or info.any_obj) fixBreaks(chars[0..n_chars]);
+        }
+        if (complex) try resolveBidi(alloc, chars[0..n_chars], rtl_base);
 
         var local_cache = shp.Cache.init(alloc);
         defer local_cache.deinit();
@@ -377,11 +612,18 @@ pub const Paragraph = struct {
         defer b.buf.deinit();
         errdefer b.glyphs.deinit(alloc);
         errdefer b.metrics.deinit(alloc);
+        errdefer b.objs.deinit(alloc);
+        errdefer alloc.free(b.boxes);
+        errdefer alloc.free(b.run_box);
+        defer b.open_tmp.deinit(alloc);
+        try b.prepareBoxes(runs);
         try b.glyphs.ensureTotalCapacity(alloc, n_chars);
         try b.buf.list.ensureTotalCapacity(alloc, @min(n_chars, 256));
         try b.build(feat, runs);
+        if (b.cx) moveBreaks(b.glyphs.items);
 
-        var p: Paragraph = .{ .alloc = alloc, .opts = opts, .glyphs = &.{}, .metrics = &.{}, .multi_run = b.item > 1, .rtl = rtl_base, .has_bidi = b.any_rtl or rtl_base };
+        var p: Paragraph = .{ .alloc = alloc, .opts = opts, .glyphs = &.{}, .metrics = &.{}, .multi_run = b.item > 1, .rtl = rtl_base, .has_bidi = b.any_rtl or rtl_base, .any_wrap = info.any_wrap, .complex = b.cx };
+        p.opts.boxes = &.{};
         // strut + ellipsis
         const strut_style: ?TextStyle = opts.strut orelse if (runs.len > 0) runs[0].style else null;
         if (strut_style) |st| {
@@ -410,23 +652,33 @@ pub const Paragraph = struct {
                 }
             }
         }
+        if (b.cx and b.boxes.len > 0) {
+            // the block's own box: the strut
+            b.boxes[0].ascent = p.strut_ascent;
+            b.boxes[0].descent = p.strut_descent;
+        }
         p.glyphs = try b.glyphs.toOwnedSlice(alloc);
         errdefer alloc.free(p.glyphs);
         p.metrics = try b.metrics.toOwnedSlice(alloc);
+        errdefer alloc.free(p.metrics);
+        p.objs = try b.objs.toOwnedSlice(alloc);
+        p.has_clone = b.cx and b.has_clone;
+        p.boxes = b.boxes;
+        p.run_box = b.run_box;
         return p;
     }
 
     pub fn deinit(self: *Paragraph) void {
         self.alloc.free(self.glyphs);
         self.alloc.free(self.metrics);
+        self.alloc.free(self.objs);
+        self.alloc.free(self.boxes);
+        self.alloc.free(self.run_box);
         self.* = undefined;
     }
 
     fn wraps(self: *const Paragraph) bool {
-        return switch (self.opts.white_space) {
-            .normal, .pre_wrap, .pre_line => true,
-            .nowrap, .pre => false,
-        };
+        return self.any_wrap;
     }
 
     const LineInfo = struct {
@@ -439,6 +691,8 @@ pub const Paragraph = struct {
         content_w: f32 = 0,
         /// Line ends the paragraph or at a forced break (not justified).
         last: bool,
+        /// Line ends at a forced break.
+        hard: bool = false,
         /// Broken at a soft hyphen: a visible hyphen follows the content.
         hyphen: bool = false,
         ellipsis: bool = false,
@@ -446,6 +700,14 @@ pub const Paragraph = struct {
         cum: f64 = 0,
         ascent: f32 = 0,
         descent: f32 = 0,
+        /// Width without hanging spaces (what has to fit beside a float).
+        ink_w: f32 = 0,
+        /// Flow layout: top of the line box, start and width of its free inline range.
+        top: f32 = 0,
+        band_x: f32 = 0,
+        band_w: f32 = 0,
+        /// Flow layout: the line holds nothing but floats / out-of-flow boxes (no line box).
+        empty: bool = false,
     };
 
     const Mode = struct {
@@ -455,6 +717,8 @@ pub const Paragraph = struct {
         emergency: bool,
         /// text-wrap strategy (only set by measure / layout proper, not by min/max content).
         strategy: TextWrap = .wrap,
+        /// Sizes of the atomic objects (null: they are zero-sized).
+        flow: ?*const Flow = null,
     };
 
     const no_stop: u32 = 0xffff_ffff;
@@ -471,20 +735,49 @@ pub const Paragraph = struct {
         const forced = stop_at < n;
         const end_i = if (forced) stop_at else n;
         const wrap = !forced and m.avail != null and self.wraps();
-        const limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) else 0);
+        var limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) else 0);
         var i = start;
         var cum = s_cum;
-        var cum_content = s_cum;
+        // box-decoration-break: clone: the end edges of the open cloned boxes (room reserved at
+        // the line end); the boxes continued from the previous line start with their start edge
+        var clone_end: f64 = 0;
+        if (self.has_clone and start < n) {
+            var b = self.boxBefore(start);
+            while (b != 0) : (b = self.boxes[b].parent) {
+                if (!self.boxes[b].clone) continue;
+                cum += self.boxes[b].start;
+                clone_end += self.boxes[b].end;
+            }
+            limit -= clone_end;
+        }
+        var cum_content = cum;
         var content_end = start;
         var brk: LineInfo = undefined;
         var has_brk = false;
+        // collapsible spaces since the last content; width of the closing edges after such spaces
+        // (Blink: trailable items, they may overhang the line end)
+        var sp = false;
+        var oh: f64 = 0;
         while (i < end_i) : (i += 1) {
             const g = gs[i];
             // every inline item (style run / bidi run) has its origin snapped to 1/64 px
             if (self.multi_run and i > start and g.item != gs[i - 1].item)
                 cum = s_cum + ceil64d(cum - s_cum);
-            if (g.flags & ShapedGlyph.HARD_BREAK != 0)
-                return self.fin(.{ .start = start, .end = content_end, .next = i + 1, .width = @floatCast(cum_content - s_cum), .last = true, .cum = cum }, s_cum);
+            if (g.flags & ShapedGlyph.HARD_BREAK != 0) {
+                // closing edges right after a forced break still belong to its line
+                var nx = i + 1;
+                if (self.complex) while (nx < n) : (nx += 1) {
+                    const q = gs[nx];
+                    if (q.flags & ShapedGlyph.SPECIAL == 0) break;
+                    if (q.gid == Special.close) {
+                        if (self.has_clone and q.cluster < self.boxes.len and self.boxes[q.cluster].clone) clone_end -= self.boxes[q.cluster].end;
+                        cum += q.x_advance;
+                        cum_content += q.x_advance;
+                        content_end = nx + 1;
+                    } else break;
+                };
+                return self.fin(.{ .start = start, .end = content_end, .next = nx, .width = @floatCast(cum_content - s_cum + clone_end), .last = true, .hard = true, .cum = cum }, s_cum);
+            }
             if (wrap and i > start and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
                 var e = cum_content;
                 var hyphen = false;
@@ -495,28 +788,63 @@ pub const Paragraph = struct {
                         e += self.metrics[gs[i - 1].metric].hyphen_adv;
                     }
                 }
-                if (!has_brk or e <= limit) {
+                if (!has_brk or e - oh <= limit) {
                     has_brk = true;
-                    brk = .{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum), .last = false, .hyphen = hyphen, .cum = cum };
+                    brk = .{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum + clone_end), .last = false, .hyphen = hyphen, .cum = cum };
                 }
             }
-            const nc = cum + self.advanceOf(g, @floatCast(cum - s_cum));
-            if (g.flags & ShapedGlyph.SPACE != 0) {
+            const nc = cum + self.advanceOf(g, @floatCast(cum - s_cum), m.flow);
+            if (g.flags & (ShapedGlyph.SPACE | ShapedGlyph.SPECIAL) != 0) {
+                if (g.flags & ShapedGlyph.SPECIAL == 0) {
+                    cum = nc;
+                    sp = true;
+                    continue;
+                }
+                // floats and out-of-flow boxes are transparent
+                if (g.gid >= Special.float) continue;
+                if (self.has_clone and g.cluster < self.boxes.len and self.boxes[g.cluster].clone) {
+                    const ee: f64 = self.boxes[g.cluster].end;
+                    const d: f64 = if (g.gid == Special.open) ee else -ee;
+                    clone_end += d;
+                    limit -= d;
+                }
+                if (g.gid == Special.atomic) {
+                    sp = false;
+                    oh = 0;
+                    if (wrap and has_brk and ceil64d(nc) > limit) return self.fin(brk, s_cum);
+                    cum = nc;
+                    cum_content = nc;
+                    content_end = i + 1;
+                    continue;
+                }
+                // an inline box edge: spaces before it collapse when the line ends after it, and a
+                // closing edge after such spaces never forces a break (it overhangs)
+                const cc = cum_content + (nc - cum);
+                if (g.gid == Special.close and (sp or oh > 0)) {
+                    oh += nc - cum;
+                } else {
+                    oh = 0;
+                    if (wrap and has_brk and ceil64d(cc) > limit) return self.fin(brk, s_cum);
+                }
                 cum = nc;
+                cum_content = cc;
+                content_end = i + 1;
                 continue;
             }
             if (wrap and ceil64d(nc) > limit) {
                 if (has_brk) return self.fin(brk, s_cum);
-                if (m.emergency and i > start and g.flags & ShapedGlyph.NO_SPLIT == 0)
-                    return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(cum_content - gs[i - 1].kern - s_cum), .last = false, .cum = cum }, s_cum);
+                if (m.emergency and i > start and g.flags & ShapedGlyph.NO_SPLIT == 0 and !self.metrics[g.metric].nowrap)
+                    return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(cum_content - gs[i - 1].kern - s_cum + clone_end), .last = false, .cum = cum }, s_cum);
             }
             cum = nc;
             cum_content = nc;
             content_end = i + 1;
+            sp = false;
+            oh = 0;
         }
         if (forced) {
             if (gs[i].flags & ShapedGlyph.HARD_BREAK != 0)
-                return self.fin(.{ .start = start, .end = content_end, .next = i + 1, .width = @floatCast(cum_content - s_cum), .last = true, .cum = cum }, s_cum);
+                return self.fin(.{ .start = start, .end = content_end, .next = i + 1, .width = @floatCast(cum_content - s_cum), .last = true, .hard = true, .cum = cum }, s_cum);
             var e = cum_content;
             var hyphen = false;
             if (content_end == i and i > start) {
@@ -526,9 +854,9 @@ pub const Paragraph = struct {
                     e += self.metrics[gs[i - 1].metric].hyphen_adv;
                 }
             }
-            return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum), .last = false, .hyphen = hyphen, .cum = cum }, s_cum);
+            return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum + clone_end), .last = false, .hyphen = hyphen, .cum = cum }, s_cum);
         }
-        return self.fin(.{ .start = start, .end = content_end, .next = n, .width = @floatCast(cum_content - s_cum), .last = true, .cum = cum }, s_cum);
+        return self.fin(.{ .start = start, .end = content_end, .next = n, .width = @floatCast(cum_content - s_cum + clone_end), .last = true, .cum = cum }, s_cum);
     }
 
     /// pre-wrap: hanging spaces count in the reported width (as takumi reports them) but only
@@ -536,6 +864,7 @@ pub const Paragraph = struct {
     fn fin(self: *const Paragraph, line: LineInfo, s_cum: f64) LineInfo {
         var li = line;
         li.content_w = li.width;
+        li.ink_w = li.width;
         if (self.opts.white_space == .pre_wrap) {
             li.width = @max(li.width, @as(f32, @floatCast(li.cum - s_cum)));
             if (li.last) li.content_w = li.width;
@@ -544,8 +873,19 @@ pub const Paragraph = struct {
     }
 
     /// Advance of a glyph at `line_pos` px from the line start (tabs depend on the position).
-    inline fn advanceOf(self: *const Paragraph, g: ShapedGlyph, line_pos: f32) f32 {
-        if (g.flags & ShapedGlyph.TAB == 0) return g.x_advance;
+    inline fn advanceOf(self: *const Paragraph, g: ShapedGlyph, line_pos: f32, flow: ?*const Flow) f32 {
+        if (g.flags & (ShapedGlyph.TAB | ShapedGlyph.SPECIAL) == 0) return g.x_advance;
+        return self.advanceSlow(g, line_pos, flow);
+    }
+
+    fn advanceSlow(self: *const Paragraph, g: ShapedGlyph, line_pos: f32, flow: ?*const Flow) f32 {
+        if (g.flags & ShapedGlyph.SPECIAL != 0) {
+            if (g.gid != Special.atomic) return g.x_advance;
+            const fl = flow orelse return 0;
+            if (g.cluster >= fl.objects.len) return 0;
+            const w = fl.objects[g.cluster].width;
+            return if (std.math.isFinite(w)) w else 0;
+        }
         const interval = g.x_advance;
         if (!(interval > 0)) return 0;
         var d = interval - (line_pos - interval * @floor(line_pos / interval));
@@ -576,6 +916,11 @@ pub const Paragraph = struct {
         forced_i: u8 = 0,
         /// The current paragraph part has been examined: no new attempt until it ends.
         suspended: bool = false,
+        /// Flow layout (`measureFlow` / `layoutFlow`): top of the next line, scratch of the line
+        /// box builder, first glyph whose float has not been handled yet.
+        y: f32 = 0,
+        cx: ?*Cx = null,
+        float_next: u32 = 0,
 
         /// Blink's `ScoreLineBreaker` for the paragraph part starting at the current position:
         /// fills `forced` when better break points than the greedy ones are found; `balance`
@@ -679,7 +1024,7 @@ pub const Paragraph = struct {
                     pen[nc] = if (hy) hyphen_penalty else 0;
                     nc += 1;
                 }
-                const nx = cum + p.advanceOf(g, @floatCast(cum - s_cum));
+                const nx = cum + p.advanceOf(g, @floatCast(cum - s_cum), null);
                 cum = nx;
                 if (g.flags & ShapedGlyph.SPACE != 0) continue;
                 cum_content = nx;
@@ -754,6 +1099,7 @@ pub const Paragraph = struct {
         }
 
         fn next(it: *LineIter) ?LineInfo {
+            if (it.cx != null) return it.nextFlow();
             const p = it.p;
             const n: u32 = @intCast(p.glyphs.len);
             if (it.pos >= n) return null;
@@ -780,17 +1126,153 @@ pub const Paragraph = struct {
             it.pos = li.next;
             it.cum = li.cum;
             it.index += 1;
+            it.clampLine(&li, it.mode.avail);
+            p.simpleBox(&li);
+            return li;
+        }
+
+        /// One line of a paragraph laid out in a `Flow`: the line gets the inline range that is
+        /// free beside the floats at its position (asked again when the line box turns out
+        /// taller), moves below them when not even its first unbreakable unit fits, and floats
+        /// occurring on it are placed beside it or below it.
+        noinline fn nextFlow(it: *LineIter) ?LineInfo {
+            const p = it.p;
+            const cx = it.cx.?;
+            const flow = cx.flow;
+            const gs = p.glyphs;
+            const n: u32 = @intCast(gs.len);
+            if (it.pos >= n) return null;
+            if (it.mode.clamp) {
+                if (p.opts.max_lines) |ml| if (it.index >= ml) return null;
+            }
+            const full = it.mode.avail;
+            var y = it.y;
+            var hq: f32 = 0;
+            var tries: u32 = 0;
+            var li: LineInfo = undefined;
+            var band: Band = undefined;
+            var deferred: u32 = no_stop;
+            var h: f32 = 0;
+            // the float placed beside this line last, and a break position that is settled
+            var beside: u32 = no_stop;
+            var stop: u32 = no_stop;
+            while (true) {
+                band = .{ .x0 = 0, .x1 = @max(full orelse 0, 0) };
+                if (full != null) if (flow.band_fn) |bf| {
+                    band = bf(flow, y, hq);
+                    if (!std.math.isFinite(band.x0)) band.x0 = 0;
+                    if (!(band.x1 >= band.x0) or !std.math.isFinite(band.x1)) band.x1 = band.x0;
+                };
+                var m = it.mode;
+                if (full != null) m.avail = band.x1 - band.x0;
+                li = p.nextLine(it.pos, it.cum, m, stop);
+                it.clampLine(&li, m.avail);
+                deferred = no_stop;
+                if (flow.float_fn) |ff| {
+                    if (beside != no_stop) {
+                        // The line shortened by a float ends before the inline box that float is in
+                        // (Blink rewinds trailing open tags, and the floats after them): the float
+                        // belongs to the next line, this one keeps its break.
+                        var undo = false;
+                        if (li.next <= beside) for (gs[li.next..beside]) |g| {
+                            if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid == Special.open) undo = true;
+                        };
+                        const b = beside;
+                        beside = no_stop;
+                        if (undo) {
+                            _ = ff(flow, gs[b].cluster, y, 0, 0, .undo);
+                            it.float_next = @min(it.float_next, b);
+                            stop = li.next;
+                            continue;
+                        }
+                    }
+                    var placed = false;
+                    var k = @max(it.pos, it.float_next);
+                    while (k < li.next) : (k += 1) {
+                        const g = gs[k];
+                        if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid != Special.float) continue;
+                        const how: FloatPlace = if (p.leadingAt(it.pos, k)) .leading else .beside;
+                        if (ff(flow, g.cluster, y, p.widthTo(it.pos, k, it.cum, flow), band.x1 - band.x0, how)) {
+                            it.float_next = k + 1;
+                            placed = true;
+                            if (how == .beside and stop == no_stop) beside = k;
+                        } else deferred = k;
+                        break;
+                    }
+                    // (bounded: `float_next` grows with every float placed)
+                    if (placed) continue;
+                }
+                // a line without text, atomic inlines, inline edges or a forced break has no line box
+                // (a line broken again starts its fragments again)
+                if (cx.frags) |fr| fr.items.len = @min(cx.frag_start, fr.items.len);
+                li.empty = !li.hard;
+                if (li.empty) for (gs[li.start..li.end]) |g| {
+                    if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid == Special.atomic or g.x_advance != 0) {
+                        li.empty = false;
+                        break;
+                    }
+                };
+                if (li.empty) {
+                    li.ascent = 0;
+                    li.descent = 0;
+                } else p.lineBox(&li, cx);
+                h = li.ascent + li.descent;
+                if (full != null and tries < 16) if (flow.band_fn) |bf| {
+                    if (h > hq) {
+                        const b2 = bf(flow, y, h);
+                        if (b2.x0 != band.x0 or b2.x1 != band.x1) {
+                            hq = h;
+                            tries += 1;
+                            continue;
+                        }
+                    }
+                    // (a line that does not fit moves below the floats, unless the block does not wrap)
+                    if (band.next_y > y and wsWraps(p.opts.white_space) and ceil64(li.ink_w) > floor64(band.x1 - band.x0) + 1.0 / 128.0) {
+                        y = band.next_y;
+                        hq = 0;
+                        tries += 1;
+                        continue;
+                    }
+                };
+                break;
+            }
+            if (flow.float_fn) |ff| {
+                if (deferred != no_stop) {
+                    var k = deferred;
+                    while (k < li.next) : (k += 1) {
+                        const g = gs[k];
+                        if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid == Special.float) _ = ff(flow, g.cluster, y + h, 0, 0, .below);
+                    }
+                }
+                it.float_next = @max(it.float_next, li.next);
+            }
+            li.top = y;
+            li.band_x = band.x0;
+            li.band_w = band.x1 - band.x0;
+            it.y = y + h;
+            it.pos = li.next;
+            it.cum = li.cum;
+            it.index += 1;
+            return li;
+        }
+
+        /// text-overflow / line-clamp: truncates `li` (line number `it.index + 1`) so that its
+        /// content and the ellipsis fit `avail_w`.
+        fn clampLine(it: *const LineIter, li: *LineInfo, avail_w: ?f32) void {
+            const p = it.p;
+            const n: u32 = @intCast(p.glyphs.len);
+            const index = if (it.cx != null) it.index + 1 else it.index;
             if (it.mode.clamp and p.ell_count != 0) {
-                const clamped = if (p.opts.max_lines) |ml| it.index >= ml and li.next < n else false;
+                const clamped = if (p.opts.max_lines) |ml| index >= ml and li.next < n else false;
                 const ell_w = p.ell_adv * @as(f32, @floatFromInt(p.ell_count));
-                if (it.mode.avail) |a| {
+                if (avail_w) |a| {
                     const avail = floor64(@max(a, 0));
                     if ((p.opts.ellipsis and ceil64(li.width) > avail) or (clamped and ceil64(li.width + ell_w) > avail)) {
                         // truncate so that content + ellipsis fits
                         var w: f32 = 0;
                         var k = li.start;
                         while (k < li.end) : (k += 1) {
-                            const nw = w + p.advanceOf(p.glyphs[k], w);
+                            const nw = w + p.advanceOf(p.glyphs[k], w, it.mode.flow);
                             if (ceil64(nw + ell_w) > avail) break;
                             w = nw;
                         }
@@ -815,41 +1297,343 @@ pub const Paragraph = struct {
                     li.ellipsis = true;
                 }
             }
-            // line box: strut united with every (run, face) on the line
-            var a = p.strut_ascent;
-            var d = p.strut_descent;
-            if (p.opts.line_height != .normal) {
-                // explicit line-height: the strut alone decides (takumi/Blink text items)
-            } else if (p.metrics.len == 1) {
-                a = @max(a, p.metrics[0].ascent);
-                d = @max(d, p.metrics[0].descent);
-            } else {
-                var last_m: u16 = 0xffff;
-                for (p.glyphs[li.start..li.end]) |g| {
-                    if (g.metric == last_m) continue;
-                    last_m = g.metric;
-                    a = @max(a, p.metrics[g.metric].ascent);
-                    d = @max(d, p.metrics[g.metric].descent);
-                }
-            }
-            li.ascent = a;
-            li.descent = d;
-            return li;
         }
     };
+
+    /// Line box of a line without inline boxes: the strut united with every (run, face) on it.
+    inline fn simpleBox(p: *const Paragraph, li: *LineInfo) void {
+        var a = p.strut_ascent;
+        var d = p.strut_descent;
+        if (p.opts.line_height != .normal) {
+            // explicit line-height: the strut alone decides (takumi/Blink text items)
+        } else if (p.metrics.len == 1) {
+            a = @max(a, p.metrics[0].ascent);
+            d = @max(d, p.metrics[0].descent);
+        } else {
+            var last_m: u16 = 0xffff;
+            for (p.glyphs[li.start..li.end]) |g| {
+                if (g.metric == last_m or g.flags & ShapedGlyph.SPECIAL != 0) continue;
+                last_m = g.metric;
+                a = @max(a, p.metrics[g.metric].ascent);
+                d = @max(d, p.metrics[g.metric].descent);
+            }
+        }
+        li.ascent = a;
+        li.descent = d;
+    }
+
+    /// Advance from glyph `start` (cumulative position `s_cum`) up to glyph `k`.
+    fn widthTo(self: *const Paragraph, start: u32, k: u32, s_cum: f64, flow: ?*const Flow) f32 {
+        const gs = self.glyphs;
+        var cum = s_cum;
+        var i = start;
+        while (i < k) : (i += 1) {
+            const g = gs[i];
+            if (self.multi_run and i > start and g.item != gs[i - 1].item) cum = s_cum + ceil64d(cum - s_cum);
+            cum += self.advanceOf(g, @floatCast(cum - s_cum), flow);
+        }
+        return @floatCast(cum - s_cum);
+    }
+
+    /// Nothing but floats, out-of-flow boxes and opening edges in glyphs [start, k).
+    fn leadingAt(self: *const Paragraph, start: u32, k: u32) bool {
+        for (self.glyphs[start..k]) |g| {
+            if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid == Special.close or g.gid == Special.atomic) return false;
+        }
+        return true;
+    }
+
+    // ---- inline box state machine (complex paragraphs), after Blink's InlineBoxState
+
+    const no_state: u32 = 0xffff_ffff;
+
+    const BoxState = struct {
+        /// index into `boxes` (`no_state` for an atomic inline)
+        box: u32,
+        /// first shift slot of the box's content
+        start: u32,
+        /// everything in the box, relative to the box's own baseline
+        asc: f32,
+        desc: f32,
+        valign: VerticalAlign,
+    };
+
+    const Pending = struct { owner: u32, start: u32, end: u32, asc: f32, desc: f32, valign: VerticalAlign };
+
+    /// Scratch of one `measureFlow` / `layoutFlow` call.
+    const Cx = struct {
+        flow: *const Flow,
+        alloc: std.mem.Allocator,
+        stack: std.ArrayList(BoxState) = .empty,
+        pending: std.ArrayList(Pending) = .empty,
+        tmp: std.ArrayList(u32) = .empty,
+        /// layout only: vertical shift per slot of the current line (one per box continued
+        /// from the previous line, then one per glyph of the line)
+        dy: std.ArrayList(f32) = .empty,
+        want_dy: bool = false,
+        n_cont: u32 = 0,
+        /// layout only: the fragments of the boxes on the lines so far
+        frags: ?*std.ArrayList(BoxFragment) = null,
+        frag_alloc: std.mem.Allocator = undefined,
+        /// index of the line being built and of its first fragment
+        line: u32 = 0,
+        frag_start: usize = 0,
+        oom: bool = false,
+
+        fn deinit(cx: *Cx) void {
+            cx.dy.deinit(cx.alloc);
+            cx.tmp.deinit(cx.alloc);
+            cx.pending.deinit(cx.alloc);
+            cx.stack.deinit(cx.alloc);
+        }
+
+        fn push(cx: *Cx, st: BoxState) void {
+            cx.stack.append(cx.alloc, st) catch {
+                cx.oom = true;
+            };
+        }
+
+        fn move(cx: *Cx, start: u32, end: u32, shift: f32) void {
+            if (!cx.want_dy or shift == 0) return;
+            const d = cx.dy.items;
+            const e = @min(end, d.len);
+            if (start < e) for (d[start..e]) |*v| {
+                v.* += shift;
+            };
+        }
+    };
+
+    inline fn trunc64(v: f32) f32 {
+        return @trunc(v * 64.0) * (1.0 / 64.0);
+    }
+
+    /// Aligns the pending descendants of stack entry `idx` (`text-top` / `text-bottom` against
+    /// its font, then `top` / `bottom` against its extent, which they may grow).
+    fn resolvePending(self: *const Paragraph, cx: *Cx, idx: u32) void {
+        const st = &cx.stack.items[idx];
+        const bi = self.boxes[st.box];
+        var any_tb = false;
+        for (cx.pending.items) |*c| {
+            if (c.owner != idx) continue;
+            var shift: f32 = 0;
+            switch (c.valign) {
+                .text_top => shift = c.asc - bi.text_ascent,
+                .text_bottom => shift = trunc64(bi.font_descent) - c.desc,
+                else => {
+                    any_tb = true;
+                    continue;
+                },
+            }
+            st.asc = @max(st.asc, c.asc - shift);
+            st.desc = @max(st.desc, c.desc + shift);
+            cx.move(c.start, c.end, shift);
+        }
+        if (any_tb) {
+            // a taller box aligned `top` / `bottom` keeps one edge and extends the other
+            const ma = st.asc;
+            const md = st.desc;
+            var xa = ma;
+            var xd = md;
+            for (cx.pending.items) |c| {
+                if (c.owner != idx or (c.valign != .top and c.valign != .bottom)) continue;
+                const lh = c.asc + c.desc;
+                if (lh > xa + xd) {
+                    if (c.valign == .top) {
+                        xa = ma;
+                        xd = lh - ma;
+                    } else {
+                        xa = lh - md;
+                        xd = md;
+                    }
+                }
+            }
+            for (cx.pending.items) |c| {
+                if (c.owner != idx or (c.valign != .top and c.valign != .bottom)) continue;
+                const shift = if (c.valign == .top) c.asc - xa else xd - c.desc;
+                st.asc = @max(st.asc, c.asc - shift);
+                st.desc = @max(st.desc, c.desc + shift);
+                cx.move(c.start, c.end, shift);
+            }
+        }
+        // drop the resolved entries
+        var w: usize = 0;
+        for (cx.pending.items) |c| {
+            if (c.owner == idx) continue;
+            cx.pending.items[w] = c;
+            w += 1;
+        }
+        cx.pending.items.len = w;
+    }
+
+    /// Ends the innermost open box (or atomic inline) at shift slot `end`: applies its
+    /// `vertical-align` and unites it into its parent, or leaves it pending.
+    fn endBox(self: *const Paragraph, cx: *Cx, end: u32) void {
+        const idx: u32 = @intCast(cx.stack.items.len - 1);
+        if (cx.stack.items[idx].box != no_state) self.resolvePending(cx, idx);
+        if (idx == 0) return;
+        const st = cx.stack.items[idx];
+        cx.stack.items.len = idx;
+        const parent = &cx.stack.items[idx - 1];
+        const pbi = self.boxes[parent.box];
+        var shift: f32 = 0;
+        switch (st.valign) {
+            .baseline => {},
+            .sub => shift = @trunc(@round(pbi.font_size * 64.0) / 5.0) / 64.0 + 1.0,
+            .super => shift = -(@trunc(@round(pbi.font_size * 64.0) / 3.0) / 64.0 + 1.0),
+            .length => |v| shift = -trunc64(v),
+            .middle => shift = @trunc((st.asc - st.desc) * 64.0 / 2.0) / 64.0 - @round(pbi.x_height * 0.5 * 64.0) / 64.0,
+            .top, .bottom, .text_top, .text_bottom => {
+                var owner = idx - 1;
+                if (st.valign == .top or st.valign == .bottom) {
+                    while (owner > 0) : (owner -= 1) {
+                        const ov = cx.stack.items[owner].valign;
+                        if (ov == .top or ov == .bottom) break;
+                    }
+                }
+                cx.pending.append(cx.alloc, .{ .owner = owner, .start = st.start, .end = end, .asc = st.asc, .desc = st.desc, .valign = st.valign }) catch {
+                    cx.oom = true;
+                };
+                return;
+            },
+        }
+        cx.move(st.start, end, shift);
+        parent.asc = @max(parent.asc, st.asc - shift);
+        parent.desc = @max(parent.desc, st.desc + shift);
+    }
+
+    /// Innermost inline box that is open just before glyph `i`.
+    fn boxBefore(self: *const Paragraph, i: u32) u32 {
+        const g = self.glyphs[i];
+        if (g.flags & ShapedGlyph.SPECIAL != 0) {
+            const b: u32 = switch (g.gid) {
+                Special.open => if (g.cluster < self.boxes.len) self.boxes[g.cluster].parent else 0,
+                Special.close => g.cluster,
+                else => if (g.metric < self.objs.len) self.objs[g.metric].box else 0,
+            };
+            return if (b < self.boxes.len) b else 0;
+        }
+        if (g.metric >= self.metrics.len) return 0;
+        const r = self.metrics[g.metric].run;
+        return if (r < self.run_box.len) self.run_box[r] else 0;
+    }
+
+    /// The fragment of `box` on the current line ends with the box's end edge.
+    fn markLast(cx: *Cx, box: u32) void {
+        const fr = cx.frags orelse return;
+        var k = fr.items.len;
+        while (k > 0) {
+            k -= 1;
+            if (fr.items[k].line != cx.line) break;
+            if (fr.items[k].box == box - 1) {
+                fr.items[k].last = true;
+                break;
+            }
+        }
+    }
+
+    fn openState(self: *const Paragraph, cx: *Cx, box: u32, slot: u32, first_in: bool) void {
+        const bi = self.boxes[box];
+        const first = first_in or bi.clone;
+        cx.push(.{ .box = box, .start = slot, .asc = bi.ascent, .desc = bi.descent, .valign = bi.valign });
+        if (cx.frags) |fr| {
+            fr.append(cx.frag_alloc, .{ .box = box - 1, .line = cx.line, .x0 = std.math.inf(f32), .x1 = -std.math.inf(f32), .baseline = 0, .first = first, .face = bi.face, .slot = slot }) catch {
+                cx.oom = true;
+            };
+        }
+    }
+
+    /// Line box of `li`: every inline box with a fragment on the line contributes its strut,
+    /// text under `line-height: normal` the fonts it used, atomic inlines their margin box, each
+    /// aligned by its `vertical-align`. With `cx.want_dy` the vertical shifts are left in `cx.dy`.
+    noinline fn lineBox(self: *const Paragraph, li: *LineInfo, cx: *Cx) void {
+        if (!self.complex or self.boxes.len == 0) return self.simpleBox(li);
+        const gs = self.glyphs;
+        cx.stack.clearRetainingCapacity();
+        cx.pending.clearRetainingCapacity();
+        cx.tmp.clearRetainingCapacity();
+        cx.push(.{ .box = 0, .start = 0, .asc = self.boxes[0].ascent, .desc = self.boxes[0].descent, .valign = .baseline });
+        if (cx.stack.items.len == 0) return self.simpleBox(li);
+        // boxes continued from the previous line, outer first
+        if (li.start < gs.len) {
+            var b = self.boxBefore(li.start);
+            while (b != 0) : (b = self.boxes[b].parent) cx.tmp.append(cx.alloc, b) catch {
+                cx.oom = true;
+            };
+        }
+        const n_cont: u32 = @intCast(cx.tmp.items.len);
+        const count = li.end - li.start;
+        cx.n_cont = n_cont;
+        if (cx.want_dy) {
+            cx.dy.resize(cx.alloc, n_cont + count) catch {
+                cx.oom = true;
+                cx.dy.items.len = 0;
+            };
+            @memset(cx.dy.items, 0);
+        }
+        {
+            var k = n_cont;
+            while (k > 0) {
+                k -= 1;
+                self.openState(cx, cx.tmp.items[k], n_cont - 1 - k, false);
+            }
+        }
+        var last_m: u32 = 0xffff_ffff;
+        for (gs[li.start..li.end], 0..) |g, off| {
+            const slot: u32 = n_cont + @as(u32, @intCast(off));
+            const top = &cx.stack.items[cx.stack.items.len - 1];
+            if (g.flags & ShapedGlyph.SPECIAL == 0) {
+                // the fonts used by the text grow a box whose line-height is normal
+                if (g.metric != last_m and self.boxes[top.box].normal_lh and g.metric < self.metrics.len) {
+                    last_m = g.metric;
+                    top.asc = @max(top.asc, self.metrics[g.metric].ascent);
+                    top.desc = @max(top.desc, self.metrics[g.metric].descent);
+                }
+                continue;
+            }
+            last_m = 0xffff_ffff;
+            switch (g.gid) {
+                Special.open => if (g.cluster < self.boxes.len and g.cluster != 0) self.openState(cx, g.cluster, slot, true),
+                Special.close => if (cx.stack.items.len > 1 and top.box == g.cluster) {
+                    markLast(cx, g.cluster);
+                    self.endBox(cx, slot + 1);
+                },
+                Special.atomic => {
+                    var om: ObjectMetrics = .{};
+                    if (g.cluster < cx.flow.objects.len) om = cx.flow.objects[g.cluster];
+                    if (!std.math.isFinite(om.ascent) or !std.math.isFinite(om.descent)) om = .{};
+                    const before = cx.stack.items.len;
+                    cx.push(.{ .box = no_state, .start = slot, .asc = om.ascent, .desc = om.descent, .valign = if (g.metric < self.objs.len) self.objs[g.metric].valign else .baseline });
+                    if (cx.stack.items.len > before) self.endBox(cx, slot + 1);
+                },
+                else => {},
+            }
+        }
+        const end = n_cont + count;
+        while (cx.stack.items.len > 1) {
+            const tb = cx.stack.items[cx.stack.items.len - 1].box;
+            if (self.has_clone and tb < self.boxes.len and self.boxes[tb].clone) markLast(cx, tb);
+            self.endBox(cx, end);
+        }
+        self.resolvePending(cx, 0);
+        li.ascent = cx.stack.items[0].asc;
+        li.descent = cx.stack.items[0].desc;
+    }
 
     fn modeFor(self: *const Paragraph, max_width: ?f32) Mode {
         const avail = max_width orelse self.opts.max_width;
         return .{
             .avail = avail,
             .emergency = self.opts.overflow_wrap != .normal,
-            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps()) self.opts.text_wrap else .wrap,
+            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps() and !self.complex) self.opts.text_wrap else .wrap,
         };
     }
 
     /// Size of the paragraph wrapped at `max_width` (null = `opts.max_width`, which may itself
-    /// be null = no wrapping). Allocation-free; safe to call repeatedly from a measure callback.
+    /// be null = no wrapping). Allocation-free for plain paragraphs; safe to call repeatedly from
+    /// a measure callback. (A `complex` paragraph is measured in an empty `Flow`: objects are
+    /// zero-sized; use `measureFlow` to give them sizes.)
     pub fn measure(self: *const Paragraph, max_width: ?f32) Size {
+        if (self.complex) return self.measureFlow(&.{ .alloc = self.alloc }, max_width);
         return self.measureMode(self.modeFor(max_width));
     }
 
@@ -858,6 +1642,8 @@ pub const Paragraph = struct {
         var s: Size = .{ .width = 0, .height = 0 };
         while (it.next()) |li| {
             s.exact_width = @max(s.exact_width, li.width);
+            s.last_baseline = s.height + li.ascent;
+            if (s.line_count == 0) s.first_baseline = li.ascent;
             s.height += li.ascent + li.descent;
             s.line_count += 1;
         }
@@ -865,15 +1651,84 @@ pub const Paragraph = struct {
         return s;
     }
 
+    /// `measure` in a `Flow`: atomic objects have the sizes of `flow.objects`, every line gets
+    /// the inline range `flow.band_fn` reports for its position (when `max_width` is definite)
+    /// and floats in the paragraph are handed to `flow.float_fn`. `Size.width` is the widest
+    /// line (not its right edge), `Size.height` the bottom of the last line.
+    pub fn measureFlow(self: *const Paragraph, flow: *const Flow, max_width: ?f32) Size {
+        var cx: Cx = .{ .flow = flow, .alloc = flow.alloc };
+        defer cx.deinit();
+        var m = self.modeFor(max_width);
+        m.flow = flow;
+        m.strategy = .wrap;
+        var it: LineIter = .{ .p = self, .mode = m, .cx = &cx };
+        var s: Size = .{ .width = 0, .height = 0 };
+        while (it.next()) |li| {
+            if (li.empty) continue;
+            s.exact_width = @max(s.exact_width, li.width);
+            s.last_baseline = li.top + li.ascent;
+            if (s.line_count == 0) s.first_baseline = s.last_baseline;
+            s.line_count += 1;
+        }
+        s.height = it.y;
+        s.width = ceil64(s.exact_width);
+        return s;
+    }
+
     /// Widest line when breaking only at forced breaks (1/64-ceiled).
     pub fn maxContentWidth(self: *const Paragraph) f32 {
-        return self.measureMode(.{ .avail = null, .clamp = false, .emergency = false }).width;
+        return self.maxContentWidthFlow(null);
     }
 
     /// Widest unbreakable piece (1/64-ceiled): the width when every soft wrap opportunity is
     /// taken (`overflow-wrap: anywhere` also splits words; `break-word` does not, as in CSS).
     pub fn minContentWidth(self: *const Paragraph) f32 {
-        return self.measureMode(.{ .avail = 0, .clamp = false, .emergency = self.opts.overflow_wrap == .anywhere }).width;
+        return self.minContentWidthFlow(null);
+    }
+
+    /// `maxContentWidth` / `minContentWidth` with the atomic objects sized by `flow.objects`
+    /// (floats and bands do not take part in intrinsic sizes).
+    pub fn maxContentWidthFlow(self: *const Paragraph, flow: ?*const Flow) f32 {
+        return self.measureMode(.{ .avail = null, .clamp = false, .emergency = false, .flow = flow }).width;
+    }
+    pub fn minContentWidthFlow(self: *const Paragraph, flow: ?*const Flow) f32 {
+        const m: Mode = .{ .avail = 0, .clamp = false, .emergency = self.opts.overflow_wrap == .anywhere, .flow = flow };
+        if (!self.complex) return self.measureMode(m).width;
+        // Blink's fast min-content path makes one item of a text run, as wide as its widest word,
+        // and the closing edges after a run that ends in a space trail on that item's "line":
+        // they add to the widest word of the run, not to its last one (oracle-verified quirk).
+        const gs = self.glyphs;
+        var it: LineIter = .{ .p = self, .mode = m };
+        var best: f32 = 0;
+        var run_max: f32 = 0;
+        var cur_run: u32 = no_stop;
+        while (it.next()) |li| {
+            best = @max(best, li.width);
+            var trail: f32 = 0;
+            var k = li.end;
+            while (k > li.start and gs[k - 1].flags & ShapedGlyph.SPECIAL != 0 and gs[k - 1].gid == Special.close) : (k -= 1) trail += gs[k - 1].x_advance;
+            var plain = true;
+            var run: u32 = no_stop;
+            for (gs[li.start..k]) |g| {
+                if (g.flags & ShapedGlyph.SPECIAL != 0) {
+                    if (g.gid == Special.atomic or g.x_advance != 0) plain = false;
+                } else if (run == no_stop and g.metric < self.metrics.len) run = self.metrics[g.metric].run;
+            }
+            if (!plain or run == no_stop or li.hard) {
+                run_max = 0;
+                cur_run = no_stop;
+                continue;
+            }
+            if (run != cur_run) run_max = 0;
+            cur_run = run;
+            run_max = @max(run_max, li.width - trail);
+            if (k < li.end) {
+                if (k > li.start and gs[k - 1].flags & ShapedGlyph.SPACE != 0) best = @max(best, run_max + trail);
+                run_max = 0;
+                cur_run = no_stop;
+            }
+        }
+        return ceil64(best);
     }
 
     /// Full layout at `max_width` (null = `opts.max_width`; alignment then uses the widest
@@ -881,8 +1736,56 @@ pub const Paragraph = struct {
     /// (typically the per-render arena) and freed with `TextLayout.deinit`. Glyph x positions
     /// are visual (left to right on screen) whatever the direction of their run.
     pub fn layout(self: *const Paragraph, alloc: std.mem.Allocator, max_width: ?f32) !TextLayout {
-        const m = self.modeFor(max_width);
-        const size = self.measureMode(m);
+        if (self.complex) return self.layoutFlow(alloc, &.{ .alloc = alloc }, max_width);
+        return self.layoutImpl(alloc, self.modeFor(max_width), null);
+    }
+
+    /// `layout` in a `Flow` (see `measureFlow`): lines are aligned inside their own free range,
+    /// `TextLayout.objects` reports the atomic objects and out-of-flow static positions.
+    /// `TextLayout.height` is the bottom of the last line.
+    pub fn layoutFlow(self: *const Paragraph, alloc: std.mem.Allocator, flow: *const Flow, max_width: ?f32) !TextLayout {
+        var cx: Cx = .{ .flow = flow, .alloc = flow.alloc, .want_dy = self.complex };
+        defer cx.deinit();
+        var m = self.modeFor(max_width);
+        m.flow = flow;
+        m.strategy = .wrap;
+        return self.layoutImpl(alloc, m, &cx);
+    }
+
+    fn touchBox(frags: []BoxFragment, box: u32, x0: f32, x1: f32) void {
+        var k = frags.len;
+        while (k > 0) {
+            k -= 1;
+            if (frags[k].box == box - 1) {
+                frags[k].x0 = @min(frags[k].x0, x0);
+                frags[k].x1 = @max(frags[k].x1, x1);
+                return;
+            }
+        }
+    }
+
+    /// Extends the fragments (of the current line) of `box` and its ancestors over [x0, x1].
+    noinline fn touchChain(self: *const Paragraph, frags: []BoxFragment, box_in: u32, xa: f32, xb: f32) void {
+        var b = box_in;
+        while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) touchBox(frags, b, @min(xa, xb), @max(xa, xb));
+    }
+
+    noinline fn pushObj(list: *std.ArrayList(ObjectPos), alloc: std.mem.Allocator, id: u32, x: f32, y: f32, line: usize) !void {
+        try list.append(alloc, .{ .id = id, .x = x, .y = y, .line = @intCast(line) });
+    }
+
+    /// Ends a run segment `glyphs[g0..g1]` spanning [x0, x1]: records it and grows the fragments of
+    /// the boxes around run `run`.
+    noinline fn pushSeg(self: *const Paragraph, list: *std.ArrayList(Segment), alloc: std.mem.Allocator, frags: []BoxFragment, run: u32, g0: usize, g1: usize, x0: f32, x1: f32, baseline: f32, line: usize) !void {
+        if (g1 <= g0) return;
+        try list.append(alloc, .{ .g0 = @intCast(g0), .g1 = @intCast(g1), .x0 = x0, .x1 = x1, .baseline = baseline, .line = @intCast(line) });
+        if (run < self.run_box.len) self.touchChain(frags, self.run_box[run], x0, x1);
+    }
+
+    /// `cx_` = null: plain layout (lines counted first, contiguous line boxes); else a flow layout.
+    noinline fn layoutImpl(self: *const Paragraph, alloc: std.mem.Allocator, m: Mode, cx_: ?*Cx) !TextLayout {
+        const flow = cx_ != null;
+        const size: Size = if (flow) .{ .width = 0, .height = 0 } else self.measureMode(m);
         // scratch for visual reordering (allocated first: the outputs can then grow in place
         // in a bump arena)
         const scratch_n = if (self.has_bidi) self.glyphs.len else 0;
@@ -890,20 +1793,50 @@ pub const Paragraph = struct {
         defer alloc.free(order);
         const levels = try alloc.alloc(u8, scratch_n);
         defer alloc.free(levels);
-        var lines = try alloc.alloc(Line, size.line_count);
-        errdefer alloc.free(lines);
-        @memset(lines, std.mem.zeroes(Line));
-        var out: std.ArrayList(PositionedGlyph) = .empty;
-        errdefer out.deinit(alloc);
-        try out.ensureTotalCapacity(alloc, self.glyphs.len + @as(usize, size.line_count) * (@as(usize, self.ell_count) + 1));
+        var acc: LayoutAcc = .{};
+        errdefer acc.deinit(alloc);
+        const lines = &acc.lines;
+        const out = &acc.out;
+        const objects = &acc.objects;
+        const frags = &acc.frags;
+        const segs = &acc.segs;
+        if (!flow) try lines.ensureTotalCapacityPrecise(alloc, size.line_count);
+        try out.ensureTotalCapacity(alloc, self.glyphs.len + (if (flow) 8 else @as(usize, size.line_count) * (@as(usize, self.ell_count) + 1)));
+        const cplx = flow and self.complex;
+        if (flow) {
+            cx_.?.frags = if (cplx) frags else null;
+            cx_.?.frag_alloc = alloc;
+        }
 
-        const container = if (m.avail) |a| a else size.width;
+        var container: f32 = if (m.avail) |a| a else size.width;
         const base_level: u8 = @intFromBool(self.rtl);
-        var it: LineIter = .{ .p = self, .mode = m };
+        var it: LineIter = .{ .p = self, .mode = m, .cx = cx_ };
         var top: f32 = 0;
         var li_index: usize = 0;
-        while (it.next()) |li| : (li_index += 1) {
-            if (li_index >= lines.len) break;
+        var max_w: f32 = 0;
+        while (true) : (li_index +%= 1) {
+            const frag_start = frags.items.len;
+            if (flow) {
+                cx_.?.line = @intCast(lines.items.len);
+                cx_.?.frag_start = frag_start;
+            }
+            const li = it.next() orelse break;
+            if (flow) {
+                if (li.empty) {
+                    // (only floats / out-of-flow boxes: their static position is the line top)
+                    if (cplx) for (self.glyphs[li.start..li.next]) |g| {
+                        if (g.flags & ShapedGlyph.SPECIAL != 0 and (g.gid == Special.oof or g.gid == Special.oof_block))
+                            try pushObj(objects, alloc, g.cluster, li.band_x, li.top, lines.items.len);
+                    };
+                    li_index -%= 1;
+                    continue;
+                }
+                try lines.ensureUnusedCapacity(alloc, 1);
+                try out.ensureUnusedCapacity(alloc, (li.end - li.start) + @as(usize, self.ell_count) + 2);
+                top = li.top;
+                if (m.avail != null) container = li.band_w;
+                max_w = @max(max_w, li.width);
+            } else if (li_index >= size.line_count) break;
             // Blink aligns on the LayoutUnit grid: free space = available - snapped line width
             const free_raw = floor64(container) - ceil64(li.content_w);
             const free = @max(free_raw, 0);
@@ -926,6 +1859,7 @@ pub const Paragraph = struct {
             // an overflowing line keeps its start edge: in a right-to-left paragraph it sticks
             // out on the left
             if (free_raw < 0) x = if (self.rtl) free_raw else 0;
+            if (flow) x += li.band_x;
             const line_x = x;
             const baseline = top + li.ascent;
             const g_start = out.items.len;
@@ -952,43 +1886,152 @@ pub const Paragraph = struct {
                 }
                 if (visual) bidi.reorderVisual(lv, order[0..count]);
             }
+            // complex lines: the spaces before a closing edge at the line end are collapsed
+            var tail: u32 = li.end;
+            // the open run segment: first output glyph, left edge, run, shift
+            var seg_g0: usize = out.items.len;
+            var seg_x0: f32 = x;
+            var seg_run: u32 = 0xffff_ffff;
+            var seg_dy: f32 = 0;
+            if (cplx) {
+                while (tail > li.start) : (tail -= 1) {
+                    const q = self.glyphs[tail - 1];
+                    if (q.flags & ShapedGlyph.SPECIAL != 0) {
+                        if (q.gid == Special.atomic) break;
+                    } else if (q.flags & ShapedGlyph.SPACE == 0) break;
+                }
+            }
+            if (cplx and self.has_clone) {
+                // start edges of the cloned boxes continued from the previous line (outer first)
+                const cx = cx_.?;
+                var k: usize = @min(cx.n_cont, cx.tmp.items.len);
+                while (k > 0) {
+                    k -= 1;
+                    const b = cx.tmp.items[k];
+                    const bi = self.boxes[b];
+                    if (!bi.clone) continue;
+                    touchBox(frags.items[frag_start..], b, x + bi.margin_start, x + bi.start);
+                    self.touchChain(frags.items[frag_start..], bi.parent, x, x + bi.start);
+                    x += bi.start;
+                }
+                seg_x0 = x;
+            }
             // in a right-to-left paragraph the ellipsis sits at the left (end) edge
-            if (li.ellipsis and self.rtl) x = self.putEllipsis(&out, x, baseline, ell_cluster);
+            if (li.ellipsis and self.rtl) {
+                x = self.putEllipsis(out, x, baseline, ell_cluster);
+                if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, g_start, out.items.len, line_x, x, baseline, lines.items.len);
+            }
             var prev_item: u32 = 0xffff_ffff;
             var v: usize = 0;
             while (v < count) : (v += 1) {
                 const gi = li.start + (if (visual) order[v] else @as(u32, @intCast(v)));
                 const g = self.glyphs[gi];
-                const mt = self.metrics[g.metric];
                 if (self.multi_run and g.item != prev_item) {
                     if (prev_item != 0xffff_ffff) x = line_x + ceil64(x - line_x);
                     prev_item = g.item;
                 }
+                var dy: f32 = 0;
+                if (cplx) {
+                    const cx = cx_.?;
+                    const slot = cx.n_cont + (gi - li.start);
+                    if (slot < cx.dy.items.len) dy = cx.dy.items[slot];
+                    const run: u32 = if (g.flags & ShapedGlyph.SPECIAL != 0) 0xffff_fffe else if (g.metric < self.metrics.len) self.metrics[g.metric].run else 0;
+                    if (run != seg_run) {
+                        // close the open segment
+                        if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                        seg_g0 = out.items.len;
+                        seg_x0 = x;
+                        seg_run = run;
+                        seg_dy = dy;
+                    }
+                    if (g.flags & ShapedGlyph.SPECIAL != 0) {
+                        const adv = self.advanceOf(g, x - line_x, m.flow);
+                        const fr = frags.items[frag_start..];
+                        switch (g.gid) {
+                            Special.open, Special.close => if (g.cluster < self.boxes.len and g.cluster != 0) {
+                                const bi = self.boxes[g.cluster];
+                                const is_open = g.gid == Special.open;
+                                const rtl_run = g.level & 1 != 0;
+                                const mg = if (is_open) bi.margin_start else bi.margin_end;
+                                // (the margin is on the outer side of the edge)
+                                if (is_open != rtl_run) {
+                                    touchBox(fr, g.cluster, x + mg, x + adv);
+                                } else touchBox(fr, g.cluster, x, x + adv - mg);
+                                self.touchChain(fr, bi.parent, x, x + adv);
+                            },
+                            Special.atomic => {
+                                var asc: f32 = 0;
+                                if (g.cluster < m.flow.?.objects.len) asc = m.flow.?.objects[g.cluster].ascent;
+                                if (!std.math.isFinite(asc)) asc = 0;
+                                try pushObj(objects, alloc, g.cluster, x, baseline + dy - asc, lines.items.len);
+                                if (g.metric < self.objs.len) self.touchChain(fr, self.objs[g.metric].box, x, x + adv);
+                            },
+                            Special.oof => try pushObj(objects, alloc, g.cluster, x, top, lines.items.len),
+                            // a block-level box: below the line when something precedes it
+                            Special.oof_block => try pushObj(objects, alloc, g.cluster, if (self.rtl) (m.avail orelse 0) else 0, if (x != line_x or out.items.len > g_start) top + li.ascent + li.descent else top, lines.items.len),
+                            else => {},
+                        }
+                        x += adv;
+                        continue;
+                    }
+                    if (gi >= tail or g.flags & ShapedGlyph.HARD_BREAK != 0) continue;
+                }
+                const mt = self.metrics[g.metric];
                 // soft-hyphen break: the hyphen follows the last logical glyph of the line
                 const hyphen_here = li.hyphen and gi + 1 == li.end;
                 if (hyphen_here and g.level & 1 != 0) {
-                    out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x, .y = baseline, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
+                    out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x, .y = baseline + dy, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
                     x += mt.hyphen_adv - g.kern;
                 }
                 out.appendAssumeCapacity(.{
                     .face = g.face,
                     .gid = g.gid,
                     .x = x + g.x_offset,
-                    .y = baseline - g.y_offset,
+                    .y = baseline + dy - g.y_offset,
                     .size = mt.size,
                     .user = mt.user,
                     .cluster = g.cluster,
                     .bidi_level = g.level,
                 });
-                x += self.advanceOf(g, x - line_x);
+                x += self.advanceOf(g, x - line_x, null);
                 if (g.flags & ShapedGlyph.WORD_SPACE != 0) x += extra;
                 if (hyphen_here and g.level & 1 == 0) {
-                    out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x - g.kern, .y = baseline, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
+                    out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x - g.kern, .y = baseline + dy, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
                     x += mt.hyphen_adv - g.kern;
                 }
             }
-            if (li.ellipsis and !self.rtl) x = self.putEllipsis(&out, x, baseline, ell_cluster);
-            lines[li_index] = .{
+            if (cplx) {
+                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                // end edges of the cloned boxes that continue on the next line (inner first)
+                if (self.has_clone and li.end < self.glyphs.len) {
+                    var b = self.boxBefore(li.end);
+                    while (b != 0) : (b = self.boxes[b].parent) {
+                        const bi = self.boxes[b];
+                        if (!bi.clone) continue;
+                        touchBox(frags.items[frag_start..], b, x, x + bi.end - bi.margin_end);
+                        self.touchChain(frags.items[frag_start..], bi.parent, x, x + bi.end);
+                        x += bi.end;
+                    }
+                }
+                // out-of-flow boxes after the visible content
+                for (self.glyphs[li.end..li.next]) |g| {
+                    if (g.flags & ShapedGlyph.SPECIAL == 0) continue;
+                    if (g.gid == Special.oof) try pushObj(objects, alloc, g.cluster, x, top, lines.items.len);
+                    if (g.gid == Special.oof_block) try pushObj(objects, alloc, g.cluster, if (self.rtl) (m.avail orelse 0) else 0, top + li.ascent + li.descent, lines.items.len);
+                }
+                const cx = cx_.?;
+                for (frags.items[frag_start..]) |*f| {
+                    f.baseline = baseline + (if (f.slot < cx.dy.items.len) cx.dy.items[f.slot] else 0);
+                    f.line = @intCast(lines.items.len);
+                }
+            }
+            if (li.ellipsis and !self.rtl) {
+                const e0 = out.items.len;
+                const ex = x;
+                x = self.putEllipsis(out, x, baseline, ell_cluster);
+                if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, e0, out.items.len, ex, x, baseline, lines.items.len);
+            }
+            lines.appendAssumeCapacity(.{
                 .baseline = baseline,
                 .top = top,
                 .height = li.ascent + li.descent,
@@ -999,17 +2042,63 @@ pub const Paragraph = struct {
                 .ascent = li.ascent,
                 .descent = li.descent,
                 .rtl = self.rtl,
-            };
+            });
             top += li.ascent + li.descent;
         }
-        return .{
-            .width = size.width,
-            .height = size.height,
-            .exact_width = size.exact_width,
-            .lines = lines,
-            .glyphs = try out.toOwnedSlice(alloc),
+        if (flow and cx_.?.oom) return error.OutOfMemory;
+
+        // paint order: box by box (outer boxes first), each box line by line
+        {
+            const fr = frags.items;
+            var i: usize = 1;
+            while (i < fr.len) : (i += 1) {
+                const v = fr[i];
+                var j = i;
+                while (j > 0 and fr[j - 1].box > v.box) : (j -= 1) fr[j] = fr[j - 1];
+                fr[j] = v;
+            }
+        }
+        var res: TextLayout = .{
+            .width = if (flow) ceil64(max_w) else size.width,
+            .height = if (flow) it.y else size.height,
+            .exact_width = if (flow) max_w else size.exact_width,
+            .lines = &.{},
+            .glyphs = &.{},
         };
+        return acc.finish(alloc, &res);
     }
+
+    /// Output lists of `layoutImpl` (one cleanup path for all of them).
+    const LayoutAcc = struct {
+        lines: std.ArrayList(Line) = .empty,
+        out: std.ArrayList(PositionedGlyph) = .empty,
+        objects: std.ArrayList(ObjectPos) = .empty,
+        frags: std.ArrayList(BoxFragment) = .empty,
+        segs: std.ArrayList(Segment) = .empty,
+
+        noinline fn deinit(a: *LayoutAcc, alloc: std.mem.Allocator) void {
+            a.lines.deinit(alloc);
+            a.out.deinit(alloc);
+            a.objects.deinit(alloc);
+            a.frags.deinit(alloc);
+            a.segs.deinit(alloc);
+        }
+
+        noinline fn finish(a: *LayoutAcc, alloc: std.mem.Allocator, res: *TextLayout) !TextLayout {
+            errdefer {
+                alloc.free(res.objects);
+                alloc.free(res.boxes);
+                alloc.free(res.segments);
+                alloc.free(res.lines);
+            }
+            res.objects = try a.objects.toOwnedSlice(alloc);
+            res.boxes = try a.frags.toOwnedSlice(alloc);
+            res.segments = try a.segs.toOwnedSlice(alloc);
+            res.lines = try a.lines.toOwnedSlice(alloc);
+            res.glyphs = try a.out.toOwnedSlice(alloc);
+            return res.*;
+        }
+    };
 
     fn putEllipsis(self: *const Paragraph, out: *std.ArrayList(PositionedGlyph), x_in: f32, baseline: f32, cluster: u32) f32 {
         var x = x_in;
@@ -1040,16 +2129,39 @@ const hard_break_cp: u21 = '\n';
 
 /// White-space processing: UTF-8 decode all runs into `out`, collapsing / preserving spaces
 /// per `white-space`. Returns the number of characters written.
-fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
-    const collapse = switch (opts.white_space) {
-        .normal, .nowrap, .pre_line => true,
-        .pre, .pre_wrap => false,
-    };
+fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char, info: *CharInfo) void {
     var n: usize = 0;
     var base: u32 = 0;
     var prev_space = true; // strips leading collapsible space
     var prev_cr = false;
+    defer info.n = n;
+    if (runs.len == 0) info.any_wrap = wsWraps(opts.white_space);
     for (runs, 0..) |r, ri| {
+        const ws = r.white_space orelse opts.white_space;
+        const collapse = switch (ws) {
+            .normal, .nowrap, .pre_line => true,
+            .pre, .pre_wrap => false,
+        };
+        const nw = !wsWraps(ws);
+        if (nw) info.any_nowrap = true else info.any_wrap = true;
+        if (r.object) |o| {
+            // an atomic inline is one character (U+FFFC) that is no white space; floats and
+            // out-of-flow boxes are transparent
+            if (o.kind == .atomic) {
+                out[n] = .{ .cp = 0xfffc, .run = @intCast(ri), .cluster = base, .nw = nw, .obj = true };
+                n += 1;
+                info.any_obj = true;
+                prev_space = false;
+                prev_cr = false;
+            }
+            if (r.hard_break_after) {
+                if (collapse and n > 0 and out[n - 1].cp == ' ') n -= 1;
+                if (collapse) prev_space = true;
+                out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = base, .nw = nw };
+                n += 1;
+            }
+            continue;
+        }
         const s = r.text;
         var i: usize = 0;
         while (i < s.len) {
@@ -1063,12 +2175,12 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
                 // LINE SEPARATOR: a preserved segment break in every white-space mode
                 if (collapse and n > 0 and out[n - 1].cp == ' ') n -= 1;
                 if (collapse) prev_space = true;
-                out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = cluster };
+                out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = cluster, .nw = nw };
                 n += 1;
                 continue;
             }
             if (cp == '\n' or cp == '\r' or cp == 0x0c) {
-                if (collapse and opts.white_space != .pre_line) {
+                if (collapse and ws != .pre_line) {
                     cp = ' ';
                 } else {
                     if (cp == '\n' and was_cr) continue; // CRLF
@@ -1077,7 +2189,7 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
                         if (n > 0 and out[n - 1].cp == ' ') n -= 1;
                         prev_space = true;
                     }
-                    out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = cluster };
+                    out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = cluster, .nw = nw };
                     n += 1;
                     continue;
                 }
@@ -1090,23 +2202,62 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
                 } else prev_space = false;
             }
             if (cp != '\t' and (cp < 0x20 or (cp >= 0x7f and cp < 0xa0))) continue;
-            out[n] = .{ .cp = cp, .run = @intCast(ri), .cluster = cluster };
+            out[n] = .{ .cp = cp, .run = @intCast(ri), .cluster = cluster, .nw = nw };
             n += 1;
         }
         base += @intCast(s.len);
         if (r.hard_break_after) {
             if (collapse and n > 0 and out[n - 1].cp == ' ') n -= 1;
             if (collapse) prev_space = true;
-            out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = base };
+            out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = base, .nw = nw };
             n += 1;
             prev_cr = false;
         }
     }
-    return n;
+}
+
+/// Soft wrap opportunities around non-wrapping runs and atomic inlines (Blink's `LineBreaker`):
+/// none between two characters of non-wrapping runs; always one before an atomic inline and one
+/// after it (unless a space follows: the opportunity is then after the spaces).
+fn fixBreaks(chars: []Char) void {
+    for (chars, 0..) |*c, i| {
+        if (i == 0) continue;
+        const prev = chars[i - 1];
+        if (c.nw and prev.nw) {
+            c.brk = false;
+        } else if (c.cp == hard_break_cp or prev.cp == hard_break_cp) {
+            // (forced breaks are not opportunities)
+        } else if (c.obj) {
+            if (!c.nw) c.brk = true;
+        } else if (prev.obj and !prev.nw and c.cp != ' ' and c.cp != '\t') c.brk = true;
+    }
+}
+
+/// A break opportunity before the first character of an inline box is one before its opening
+/// edge (the edge stays with the text); floats and out-of-flow boxes between that edge and the
+/// text go to the next line with it.
+fn moveBreaks(gs: []ShapedGlyph) void {
+    for (gs, 0..) |*g, i| {
+        if (g.flags & ShapedGlyph.BREAK_BEFORE == 0 or i == 0) continue;
+        if (gs[i - 1].flags & ShapedGlyph.SPECIAL == 0) continue;
+        g.flags &= ~ShapedGlyph.SOFT_HYPHEN;
+        var target = i;
+        var j = i;
+        while (j > 0) : (j -= 1) {
+            const q = gs[j - 1];
+            if (q.flags & ShapedGlyph.SPECIAL == 0) break;
+            if (q.gid == Special.open) {
+                target = j - 1;
+            } else if (q.gid < Special.float) break;
+        }
+        if (target != i) {
+            g.flags &= ~ShapedGlyph.BREAK_BEFORE;
+            gs[target].flags |= ShapedGlyph.BREAK_BEFORE;
+        }
+    }
 }
 
 fn markBreaks(chars: []Char, opts: ParagraphOptions) void {
-    if (opts.white_space == .nowrap or opts.white_space == .pre) return;
     var bb: u21 = 0;
     var b: u21 = 0;
     for (chars, 0..) |*c, i| {
@@ -1120,7 +2271,6 @@ fn markBreaks(chars: []Char, opts: ParagraphOptions) void {
 /// `markBreaks` with the full UAX #14 rules (`unicode.lineBreaks`) behind Blink's overrides:
 /// always break after a run of spaces, Chromium's table for printable-ASCII pairs.
 fn markBreaksFull(alloc: std.mem.Allocator, chars: []Char, opts: ParagraphOptions) !void {
-    if (opts.white_space == .nowrap or opts.white_space == .pre) return;
     // pure ASCII without break-all never consults UAX #14
     var need_uax = opts.word_break == .break_all;
     if (!need_uax) {
@@ -1227,6 +2377,113 @@ const Builder = struct {
     any_rtl: bool = false,
     /// Index of the first char whose break flag has not been attributed to a glyph yet.
     brk_from: usize = 0,
+    // inline boxes / objects (see `Paragraph.complex`)
+    cx: bool = false,
+    boxes: []BoxInfo = &.{},
+    run_box: []u32 = &.{},
+    objs: std.ArrayList(ObjInfo) = .empty,
+    open_tmp: std.ArrayList(u32) = .empty,
+    /// innermost open inline box / first run whose boxes and objects have not been entered yet
+    cur_box: u32 = 0,
+    next_run: u32 = 0,
+    /// spaces of the current run hang at a line end (its white-space is not `pre`)
+    hang: bool = true,
+    nowrap: bool = false,
+    has_clone: bool = false,
+    base_level: u8 = 0,
+
+    /// Resolves `ParagraphOptions.boxes` and decides whether the paragraph needs the inline box
+    /// machinery at all (plain styled runs do not).
+    fn prepareBoxes(b: *Builder, runs: []const Run) !void {
+        const src = b.opts.boxes;
+        var cx = false;
+        for (runs) |r| {
+            if (r.object != null) cx = true;
+        }
+        if (!cx and src.len == 0) return;
+        if (src.len >= 0x7fff_ffff) return error.OutOfMemory;
+        const ib = try b.alloc.alloc(BoxInfo, src.len + 1);
+        errdefer b.alloc.free(ib);
+        const strut_style: TextStyle = b.opts.strut orelse (if (runs.len > 0) runs[0].style else TextStyle{});
+        ib[0] = boxInfo(b.fonts, strut_style, b.opts.line_height);
+        for (src, 1..) |s, k| {
+            var bi = boxInfo(b.fonts, s.style, s.line_height orelse b.opts.line_height);
+            bi.parent = if (s.parent != no_box and s.parent + 1 < k) s.parent + 1 else 0;
+            bi.valign = switch (s.valign) {
+                .length => |v| if (std.math.isFinite(v)) s.valign else .baseline,
+                else => s.valign,
+            };
+            const e = [4]f32{ s.start, s.end, s.margin_start, s.margin_end };
+            if (std.math.isFinite(e[0]) and std.math.isFinite(e[1]) and std.math.isFinite(e[2]) and std.math.isFinite(e[3])) {
+                bi.start = e[0];
+                bi.end = e[1];
+                bi.margin_start = e[2];
+                bi.margin_end = e[3];
+                bi.clone = s.clone and (e[0] != 0 or e[1] != 0);
+                if (bi.clone) b.has_clone = true;
+            }
+            ib[k] = bi;
+            if (s.decorated or bi.valign != .baseline or bi.start != 0 or bi.end != 0 or bi.normal_lh != ib[0].normal_lh or
+                (!bi.normal_lh and (bi.ascent != ib[0].ascent or bi.descent != ib[0].descent))) cx = true;
+        }
+        if (!cx) {
+            b.alloc.free(ib);
+            return;
+        }
+        b.run_box = try b.alloc.alloc(u32, runs.len);
+        b.boxes = ib;
+        for (runs, b.run_box) |r, *rb| rb.* = if (r.box < src.len) r.box + 1 else 0;
+        b.cx = true;
+    }
+
+    fn special(b: *Builder, kind: u16, id: u32, adv: f32, metric: u16, level: u8, flags: u8) !void {
+        b.item +|= 1;
+        try b.glyphs.append(b.alloc, .{ .face = 0, .gid = kind, .cluster = id, .x_advance = adv, .metric = metric, .flags = ShapedGlyph.SPECIAL | ShapedGlyph.NO_SPLIT | flags, .level = level, .item = b.item });
+        b.item +|= 1;
+    }
+
+    fn objIndex(b: *Builder, o: Object) !u16 {
+        if (b.objs.items.len >= 0xffff) return error.OutOfMemory;
+        try b.objs.append(b.alloc, .{ .box = b.cur_box, .valign = o.valign });
+        return @intCast(b.objs.items.len - 1);
+    }
+
+    /// Closes / opens inline boxes until `to` is the innermost open one.
+    fn moveToBox(b: *Builder, to: u32, level: u8) !void {
+        var a = b.cur_box;
+        var t = to;
+        b.open_tmp.clearRetainingCapacity();
+        // (a parent always has a smaller index than its children)
+        while (a != t) {
+            if (a > t) {
+                const lv = if (b.glyphs.items.len > 0) b.glyphs.items[b.glyphs.items.len - 1].level else b.base_level;
+                try b.special(Special.close, a, b.boxes[a].end, 0, lv, 0);
+                a = b.boxes[a].parent;
+            } else {
+                try b.open_tmp.append(b.alloc, t);
+                t = b.boxes[t].parent;
+            }
+        }
+        var k = b.open_tmp.items.len;
+        while (k > 0) {
+            k -= 1;
+            const x = b.open_tmp.items[k];
+            try b.special(Special.open, x, b.boxes[x].start, 0, level, 0);
+        }
+        b.cur_box = to;
+    }
+
+    /// Box edges and transparent objects of the runs up to and including `upto`.
+    fn enterRuns(b: *Builder, runs: []const Run, upto: usize, level: u8) !void {
+        while (b.next_run <= upto and b.next_run < runs.len) : (b.next_run += 1) {
+            const r = b.next_run;
+            try b.moveToBox(b.run_box[r], level);
+            if (runs[r].object) |o| if (o.kind != .atomic) {
+                const oi = try b.objIndex(o);
+                try b.special(if (o.kind == .float) Special.float else if (o.block_level) Special.oof_block else Special.oof, o.id, 0, oi, level, 0);
+            };
+        }
+    }
 
     fn metricFor(b: *Builder, run: u16, face: FaceId, style: TextStyle) !u16 {
         for (b.metrics.items, 0..) |m, i| {
@@ -1248,6 +2505,7 @@ const Builder = struct {
             .font_descent = m[3],
             .hyphen_gid = hy,
             .hyphen_adv = scaleAdvance(f.advanceWidth(hy), @as(f64, style.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em))),
+            .nowrap = b.nowrap,
         });
         return @intCast(b.metrics.items.len - 1);
     }
@@ -1281,14 +2539,18 @@ const Builder = struct {
         var style: TextStyle = .{};
         // script of the last strong character (Common / Inherited characters take it)
         var cur_script: u8 = 0;
-        const hang = b.opts.white_space != .pre;
+        b.hang = b.opts.white_space != .pre;
+        b.base_level = @intFromBool(complex and b.opts.direction == .rtl);
         try b.glyphs.ensureUnusedCapacity(b.alloc, b.chars.len);
         for (b.chars, 0..) |c, ci| {
             if (c.run != cur_run or c.level != cur_level) {
                 try b.flush(complex, style);
                 if (c.run != cur_run) {
+                    if (b.cx) try b.enterRuns(runs, c.run, c.level);
                     cur_run = c.run;
                     style = runs[c.run].style;
+                    b.hang = (runs[c.run].white_space orelse b.opts.white_space) != .pre;
+                    b.nowrap = !wsWraps(runs[c.run].white_space orelse b.opts.white_space);
                     faces = matchStyle(b.fonts, style, &faces_buf);
                     // paragraph features first, then the run's own
                     b.n_feats = 0;
@@ -1307,6 +2569,14 @@ const Builder = struct {
                 if (c.level != 0) b.any_rtl = true;
                 b.item +|= 1;
             }
+            if (c.obj) {
+                if (!b.cx) continue;
+                try b.flush(complex, style);
+                const o = runs[c.run].object orelse continue;
+                const fl = b.takeBreak(ci);
+                try b.special(Special.atomic, o.id, 0, try b.objIndex(o), c.level, fl & ShapedGlyph.BREAK_BEFORE);
+                continue;
+            }
             if (faces.len == 0) continue; // no fonts registered: nothing to shape
             if (c.cp == hard_break_cp) {
                 try b.flush(complex, style);
@@ -1322,7 +2592,7 @@ const Builder = struct {
                 const f = b.fonts.font(pick.face);
                 const sp = scaleAdvance(f.advanceWidth(pick.gid), @as(f64, style.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em))) + style.letter_spacing + style.word_spacing;
                 const tab_w = sp * @as(f32, @floatFromInt(b.opts.tab_size));
-                var flags: u8 = ShapedGlyph.TAB | (if (hang) ShapedGlyph.SPACE else 0);
+                var flags: u8 = ShapedGlyph.TAB | (if (b.hang) ShapedGlyph.SPACE else 0);
                 flags |= b.takeBreak(ci);
                 try b.glyphs.append(b.alloc, .{ .face = pick.face, .gid = pick.gid, .cluster = c.cluster, .x_advance = @max(tab_w, 0), .metric = primary_metric, .flags = flags, .level = c.level, .item = b.item });
                 continue;
@@ -1444,6 +2714,10 @@ const Builder = struct {
             try b.buf.list.append(b.alloc, .{ .cp = c.cp, .cluster = @intCast(ci), .gid = gid });
         }
         try b.flush(complex, style);
+        if (b.cx) {
+            try b.enterRuns(runs, runs.len, b.base_level);
+            try b.moveToBox(0, b.base_level);
+        }
     }
 
     /// Shapes the pending segment and appends its glyphs: advances, kerning, spacing, flags.
@@ -1462,7 +2736,7 @@ const Builder = struct {
         defer b.buf.list.clearRetainingCapacity();
         try b.glyphs.ensureUnusedCapacity(b.alloc, gs.len);
         const scale = @as(f64, style.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em));
-        const hang = b.opts.white_space != .pre;
+        const hang = b.hang;
         const spacing: f32 = if (complex and shp.isCursiveScript(b.seg_script)) 0 else style.letter_spacing;
         for (gs, 0..) |g, j| {
             const first = j == 0 or gs[j - 1].cluster != g.cluster;

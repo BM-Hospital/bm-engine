@@ -219,10 +219,9 @@ fn clipMaskNode(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y: f32, mask: *ra
     const n = &f.nodes.items[id];
     if (depth > 64 or (n.kind != .anon_text and n.cs.display == .none)) return;
     const l = f.tree.layout(n.lid);
-    if (n.para) |para| {
+    if (n.para != null) {
         const cw = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
-        const tl = para.layout(p.a, cw) catch return error.OutOfMemory;
-        addGlyphs(p, ctx, n, &tl, x + l.border.left + l.padding.left, y + l.border.top + l.padding.top, mask, true);
+        if (try f.textLayout(id, cw)) |tl| addGlyphs(p, ctx, n, tl, x + l.border.left + l.padding.left, y + l.border.top + l.padding.top, mask, true);
     }
     var c = n.first_child;
     while (c != none) : (c = f.nodes.items[c].next) {
@@ -528,179 +527,67 @@ fn hasLine(cs: *const CS) bool {
 
 // ---- inline box decorations
 
-/// True when render.zig tells us which inline boxes (spans) enclose each run:
-///   Frame.inline_boxes: std.ArrayList(struct { cs: *const CS, parent: u32 })   (parent = index or `none`)
-///   Frame.run_box:      std.ArrayList(u32)   (per TextStyle.user: innermost inline box or `none`)
-const has_inline_boxes = @hasField(render.Frame, "inline_boxes") and @hasField(render.Frame, "run_box");
-
-fn runInBox(p: *Painter, user: u32, box: u32) bool {
-    if (comptime !has_inline_boxes) return false;
-    const f = p.f;
-    if (user >= f.run_box.items.len) return false;
-    var b = f.run_box.items[user];
-    var guard: u32 = 0;
-    while (b != none and b < f.inline_boxes.items.len and guard < 64) : (guard += 1) {
-        if (b == box) return true;
-        b = f.inline_boxes.items[b].parent;
-    }
-    return false;
-}
-
-const BoxRef = struct { cs: *const CS, id: u32 };
-
-fn inBox(p: *Painter, user: u32, b: BoxRef) bool {
-    if (comptime has_inline_boxes) return runInBox(p, user, b.id);
-    const rs = p.f.run_styles.items;
-    return user < rs.len and rs[user] == b.cs;
-}
-
-fn lineHasBox(p: *Painter, tl: *const font.TextLayout, line: *const font.Line, box: BoxRef, at_end: bool) bool {
-    if (line.glyph_end <= line.glyph_start) return false;
-    const g = tl.glyphs[if (at_end) line.glyph_end - 1 else line.glyph_start];
-    return inBox(p, g.user, box);
-}
-
-/// Fallback without `Frame.inline_boxes`: a run style is an inline box when it belongs to a real
-/// element (or pseudo-element), not to a bare text node (takumi paints no box for those).
-fn isElementStyle(p: *Painter, cs: *const CS) bool {
-    for (p.f.pseudos.items) |ps| if (ps.cs == cs) return true;
-    for (p.f.dom.els.items) |*el| if (el.cs == cs) return !el.run and el.tag.len > 0;
-    return false;
-}
-
-/// Background / border of inline spans: one fragment per span per line (outer spans first),
-/// content area = the span font's ascent + descent (not the line height), grown by the span's
-/// padding and border; inline-start / end edges only on the first / last fragment unless
-/// `box-decoration-break: clone`.
+/// Background / border of inline spans: one fragment per span per line, from the text engine
+/// (`TextLayout.boxes`: outer spans first; border-box extents with the inline edges where the
+/// fragment has them). Content area = the span font's ascent + descent (not the line height),
+/// grown by the span's padding and border.
 noinline fn paintInlineBoxes(p: *Painter, ctx: *const Ctx, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32) Error!void {
     const f = p.f;
-    var fixed: [24]BoxRef = undefined;
-    var boxes: []BoxRef = &fixed;
-    var nb: usize = 0;
-    if (comptime has_inline_boxes) {
-        // the boxes this paragraph's runs lie in (innermost box of each run and its ancestors), in
-        // tree order: a box is created before the boxes inside it, so ascending ids paint outer first
-        const ibs = f.inline_boxes.items;
-        var lo: u32 = none;
-        var hi: u32 = 0;
-        for (0..2) |pass| {
-            var seen: []bool = &.{};
-            if (pass == 1) {
-                if (lo == none) return;
-                seen = try p.a.alloc(bool, hi - lo + 1);
-                @memset(seen, false);
-            }
-            var prev: u32 = none;
-            for (tl.glyphs) |g| {
-                if (g.user == prev or g.user >= f.run_box.items.len) continue;
-                prev = g.user;
-                var b = f.run_box.items[g.user];
-                var guard: u32 = 0;
-                while (b != none and b < ibs.len and guard < 64) : (guard += 1) {
-                    if (pass == 0) {
-                        lo = @min(lo, b);
-                        hi = @max(hi, b);
-                    } else if (seen[b - lo]) break else {
-                        seen[b - lo] = true;
-                        if (isInlineBox(ibs[b].cs) and ibs[b].cs.visibility == .visible) nb += 1;
-                    }
-                    b = ibs[b].parent;
-                }
-            }
-            if (pass == 1) {
-                if (nb == 0) return;
-                if (nb > fixed.len) boxes = try p.a.alloc(BoxRef, nb);
-                nb = 0;
-                for (seen, 0..) |sn, k| {
-                    const bi: u32 = lo + @as(u32, @intCast(k));
-                    if (sn and isInlineBox(ibs[bi].cs) and ibs[bi].cs.visibility == .visible) {
-                        boxes[nb] = .{ .cs = ibs[bi].cs, .id = bi };
-                        nb += 1;
-                    }
-                }
-            }
-        }
-    } else {
-        const rs = f.run_styles.items;
-        var prev: u32 = none;
-        for (tl.glyphs) |g| {
-            if (g.user == prev or g.user >= rs.len) continue;
-            prev = g.user;
-            const cs = rs[g.user];
-            if (cs == n.cs or nb == fixed.len or cs.display != .@"inline" or cs.visibility != .visible or !isInlineBox(cs)) continue;
-            var seen = false;
-            for (boxes[0..nb]) |b| {
-                if (b.cs == cs) seen = true;
-            }
-            if (seen or !isElementStyle(p, cs)) continue;
-            boxes[nb] = .{ .cs = cs, .id = none };
-            nb += 1;
-        }
+    for (tl.boxes) |*fr| {
+        const fi = f.boxFragment(n, fr) orelse continue;
+        if (!isInlineBox(fi.cs)) continue;
+        try paintFragment(p, ctx, fi.cs, fr.face, fi.x0, fi.x1, fr.baseline, fi.left, fi.right, x, y);
     }
-    for (boxes[0..nb]) |box| {
-        const cs = box.cs;
-        for (tl.lines, 0..) |*line, li| {
-            var x0: f32 = std.math.floatMax(f32);
-            var x1: f32 = -std.math.floatMax(f32);
-            var face: font.FaceId = 0;
-            var gi = line.glyph_start;
-            while (gi < line.glyph_end) : (gi += 1) {
-                const g = &tl.glyphs[gi];
-                if (!inBox(p, g.user, box)) continue;
-                if (x0 > x1) face = g.face;
-                x0 = @min(x0, g.x);
-                x1 = @max(x1, if (gi + 1 < line.glyph_end) tl.glyphs[gi + 1].x else line.x + line.width);
-            }
-            if (!(x1 >= x0)) continue;
-            const first = cs.box_decoration_break == .clone or !(li > 0 and lineHasBox(p, tl, &tl.lines[li - 1], box, true) and inBox(p, tl.glyphs[line.glyph_start].user, box));
-            const last = cs.box_decoration_break == .clone or !(li + 1 < tl.lines.len and lineHasBox(p, tl, &tl.lines[li + 1], box, false) and inBox(p, tl.glyphs[line.glyph_end - 1].user, box));
-            const m = metricsOf(p, face, cs.font_size);
-            var bw = cs.usedBorderWidths();
-            const fs = cs.font_size;
-            var pad = [4]f32{ cs.padding[0].resolve(fs), cs.padding[1].resolve(fs), cs.padding[2].resolve(fs), cs.padding[3].resolve(fs) };
-            if (!first) {
-                bw[3] = 0;
-                pad[3] = 0;
-            }
-            if (!last) {
-                bw[1] = 0;
-                pad[1] = 0;
-            }
-            const fx = x + x0 - pad[3] - bw[3];
-            const fy = y + line.baseline - m.ascent - pad[0] - bw[0];
-            const fw = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1];
-            const fh = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2];
-            var g: pm.Geom = .{
-                .bx = if (ctx.plain()) pm.snapRect(fx, fy, fw, fh) else .{ .x = fx, .y = fy, .w = fw, .h = fh },
-                .bw = bw,
-                .pad = pad,
-                .radii = undefined,
-                .rounded = false,
-                .snapped = ctx.plain(),
-            };
-            g.radii = pm.resolveRadiiRaw(cs, g.bx.w, g.bx.h);
-            if (!first) {
-                g.radii[0] = .{ 0, 0 };
-                g.radii[3] = .{ 0, 0 };
-            }
-            if (!last) {
-                g.radii[1] = .{ 0, 0 };
-                g.radii[2] = .{ 0, 0 };
-            }
-            pm.scaleRadii(&g.radii, g.bx.w, g.bx.h);
-            g.rounded = pm.hasAnyRadius(g.radii);
-            const col = cs.resolveColor(cs.background_color);
-            if (col.a != 0) try p.fillRRect(ctx, g.bx, g.outerRadii(), &.{ .solid = rcolor(col) });
-            var i = cs.background_image.len;
-            while (i > 0) {
-                i -= 1;
-                const layer = cs.bgLayer(i);
-                if (layer.image == .none or layer.clip == .text) continue;
-                try p.paintBgLayer(ctx, cs, &g, &layer, true);
-            }
-            try pborder.paintBorder(p, ctx, cs, &g);
-        }
+}
+
+/// One fragment of an inline box: content extent [x0, x1] on `baseline` (paragraph space), with
+/// the box's left / right padding and border when `first` / `last`.
+noinline fn paintFragment(p: *Painter, ctx: *const Ctx, cs: *const CS, face: font.FaceId, x0: f32, x1: f32, baseline: f32, first: bool, last: bool, x: f32, y: f32) Error!void {
+    const m = metricsOf(p, face, cs.font_size);
+    var bw = cs.usedBorderWidths();
+    const fs = cs.font_size;
+    var pad = [4]f32{ cs.padding[0].resolve(fs), cs.padding[1].resolve(fs), cs.padding[2].resolve(fs), cs.padding[3].resolve(fs) };
+    if (!first) {
+        bw[3] = 0;
+        pad[3] = 0;
     }
+    if (!last) {
+        bw[1] = 0;
+        pad[1] = 0;
+    }
+    const fx = x + x0 - pad[3] - bw[3];
+    const fy = y + baseline - m.ascent - pad[0] - bw[0];
+    const fw = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1];
+    const fh = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2];
+    var g: pm.Geom = .{
+        .bx = if (ctx.plain()) pm.snapRect(fx, fy, fw, fh) else .{ .x = fx, .y = fy, .w = fw, .h = fh },
+        .bw = bw,
+        .pad = pad,
+        .radii = undefined,
+        .rounded = false,
+        .snapped = ctx.plain(),
+    };
+    g.radii = pm.resolveRadiiRaw(cs, g.bx.w, g.bx.h);
+    if (!first) {
+        g.radii[0] = .{ 0, 0 };
+        g.radii[3] = .{ 0, 0 };
+    }
+    if (!last) {
+        g.radii[1] = .{ 0, 0 };
+        g.radii[2] = .{ 0, 0 };
+    }
+    pm.scaleRadii(&g.radii, g.bx.w, g.bx.h);
+    g.rounded = pm.hasAnyRadius(g.radii);
+    const col = cs.resolveColor(cs.background_color);
+    if (col.a != 0) try p.fillRRect(ctx, g.bx, g.outerRadii(), &.{ .solid = rcolor(col) });
+    var i = cs.background_image.len;
+    while (i > 0) {
+        i -= 1;
+        const layer = cs.bgLayer(i);
+        if (layer.image == .none or layer.clip == .text) continue;
+        try p.paintBgLayer(ctx, cs, &g, &layer, true);
+    }
+    try pborder.paintBorder(p, ctx, cs, &g);
 }
 
 fn isInlineBox(cs: *const CS) bool {
@@ -743,11 +630,10 @@ noinline fn paintGlyphPhase(p: *Painter, ctx: *const Ctx, tl: *const font.TextLa
 }
 
 pub noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
-    const para = n.para orelse return;
-    const tl = para.layout(p.a, cw) catch return error.OutOfMemory;
     const f = p.f;
-    if (f.run_styles.items.len > 1) try paintInlineBoxes(p, ctx, n, &tl, x, y);
-    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) try paintTextShadows(p, ctx, n, &tl, x, y, cw);
+    const tl = (try f.textLayout(f.nodeId(n), cw)) orelse return;
+    if (tl.boxes.len > 0) try paintInlineBoxes(p, ctx, n, tl, x, y);
+    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) try paintTextShadows(p, ctx, n, tl, x, y, cw);
 
     // Decorating boxes: the block (or, for a text node, its parent) and the run's own span.
     var block_deco: ?*const CS = null;
@@ -758,22 +644,11 @@ pub noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, 
         if (hasLine(pcs)) block_deco = pcs;
     }
 
-    for (tl.lines) |line| {
-        var gi = line.glyph_start;
-        while (gi < line.glyph_end) {
-            const g0 = &tl.glyphs[gi];
-            var ge = gi + 1;
-            while (ge < line.glyph_end and tl.glyphs[ge].user == g0.user and tl.glyphs[ge].face == g0.face) ge += 1;
-            const rcs = runStyle(p, n, g0);
-            const run: RunSeg = .{
-                .g0 = gi,
-                .g1 = ge,
-                .x0 = g0.x,
-                .x1 = if (ge < line.glyph_end) tl.glyphs[ge].x else @max(g0.x, line.x + line.width),
-                .baseline = line.baseline,
-                .rcs = rcs,
-            };
-            gi = ge;
+    {
+        var it: render.RunIter = .{ .tl = tl };
+        while (it.next()) |r| {
+            const rcs = runStyle(p, n, &tl.glyphs[r.g0]);
+            const run: RunSeg = .{ .g0 = r.g0, .g1 = r.g1, .x0 = r.x0, .x1 = r.x1, .baseline = r.baseline, .rcs = rcs };
             if (rcs.visibility != .visible) continue;
             var decos: [2]*const CS = undefined;
             var nd: usize = 0;
@@ -785,11 +660,11 @@ pub noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, 
                 decos[nd] = rcs;
                 nd += 1;
             }
-            if (nd > 0) try paintRunDecos(p, ctx, n, &tl, x, y, &run, decos[0..nd], false);
+            if (nd > 0) try paintRunDecos(p, ctx, n, tl, x, y, &run, decos[0..nd], false);
             const stroke_first = honor_paint_order and rcs.paint_order == .stroke;
-            try paintGlyphPhase(p, ctx, &tl, x, y, &run, stroke_first);
-            try paintGlyphPhase(p, ctx, &tl, x, y, &run, !stroke_first);
-            if (nd > 0) try paintRunDecos(p, ctx, n, &tl, x, y, &run, decos[0..nd], true);
+            try paintGlyphPhase(p, ctx, tl, x, y, &run, stroke_first);
+            try paintGlyphPhase(p, ctx, tl, x, y, &run, !stroke_first);
+            if (nd > 0) try paintRunDecos(p, ctx, n, tl, x, y, &run, decos[0..nd], true);
         }
     }
 }

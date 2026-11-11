@@ -63,6 +63,17 @@ pub const FeatureSetting = text.FeatureSetting;
 pub const ShapeCache = text.ShapeCache;
 pub const Direction = text.Direction;
 pub const TextWrap = text.TextWrap;
+pub const Object = text.Object;
+pub const InlineBox = text.InlineBox;
+pub const VerticalAlign = text.VerticalAlign;
+pub const no_box = text.no_box;
+pub const ObjectMetrics = text.ObjectMetrics;
+pub const Band = text.Band;
+pub const Flow = text.Flow;
+pub const FloatPlace = text.FloatPlace;
+pub const ObjectPos = text.ObjectPos;
+pub const BoxFragment = text.BoxFragment;
+pub const Segment = text.Segment;
 
 test {
     _ = ttf;

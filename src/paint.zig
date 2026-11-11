@@ -30,6 +30,7 @@ pub const enable_color_fonts = @import("config.zig").enable_color_fonts;
 pub const enable_svg = @import("config.zig").enable_svg;
 /// clip-path, mask-image, mix-/background-blend-mode, backdrop-filter, isolation.
 pub const enable_effects = @import("config.zig").enable_effects;
+pub const enable_floats = @import("config.zig").enable_floats;
 pub const enable_tables = @import("config.zig").enable_tables;
 
 const Frame = render.Frame;
@@ -265,6 +266,13 @@ pub const Painter = struct {
     layer_depth: usize = 0,
     /// table parts by render node id (allocated when the first table is painted; paint_table.zig)
     tparts: []ptable.Part = &.{},
+    /// Floats met while painting in-flow content: they are painted after the in-flow boxes of their
+    /// stacking context (CSS 2.1 appendix E: block backgrounds, then floats), so a later block whose
+    /// box extends under a float does not cover it. `float_now`: the float being painted from the queue.
+    float_q: std.ArrayList(QueuedFloat) = .empty,
+    float_now: u32 = none,
+
+    const QueuedFloat = struct { id: u32, ox: f32, oy: f32, ctx: Ctx, depth: u32 };
 
     pub fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
@@ -1018,7 +1026,7 @@ pub const Painter = struct {
         const l = f.tree.layout(n.lid);
         if (depth > 600) return null;
         var r: Rect = .{ .x = x, .y = y, .w = l.w, .h = l.h };
-        if (n.kind == .anon_text or n.kind == .text) {
+        if (n.kind == .anon_text or n.kind == .text or n.para != null) {
             var m = cs.font_size + cs.webkit_text_stroke_width;
             for (cs.text_shadow) |sh| m = @max(m, cs.font_size + @max(@abs(sh.x), @abs(sh.y)) + @ceil(sh.blur * 1.5) + 2);
             r = .{ .x = r.x - m, .y = r.y - m, .w = r.w + 2 * m, .h = r.h + 2 * m };
@@ -1053,6 +1061,10 @@ pub const Painter = struct {
         if (n.kind != .anon_text and cs.display == .none) return;
         if (depth > 600) return;
         if (enable_tables and id < p.tparts.len and p.tparts[id].hidden) return;
+        if (enable_floats and cs.float != .none and n.kind != .anon_text and id != p.float_now and id != f.root and !stacks(cs)) {
+            try p.float_q.append(p.a, .{ .id = id, .ox = ox, .oy = oy, .ctx = ctx_in.*, .depth = depth });
+            return;
+        }
         const l = f.tree.layout(n.lid);
         var x = ox + l.x;
         var y = oy + l.y;
@@ -1336,7 +1348,8 @@ pub const Painter = struct {
             }
             if (n.kind == .image) try p.paintImage(ctx, n, &g);
         }
-        if (n.kind == .text) try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
+        // (an anonymous inline formatting context: its text, then its inline-level boxes)
+        if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
 
         if (n.first_child == none) return;
         var cctx = ctx.*;
@@ -1352,12 +1365,18 @@ pub const Painter = struct {
             const ccs = f.nodes.items[c].cs;
             if (f.nodes.items[c].kind != .anon_text and stacks(ccs)) special = true;
         }
+        // (a stacking context, and a float, paints the floats queued inside it after its in-flow content)
+        const froot = enable_floats and (id == f.root or cs.float != .none or stacks(cs));
+        const q0 = p.float_q.items.len;
         if (!special) {
             c = n.first_child;
             while (c != none) : (c = f.nodes.items[c].next) try p.paintNode(c, x, y, &cctx, depth + 1);
+            if (froot) try p.flushFloats(q0);
         } else {
-            const items = try p.sortedChildren(n);
-            for (items) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
+            const sc = try p.sortedChildren(n);
+            for (sc.items[0..sc.n_low]) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
+            if (froot) try p.flushFloats(q0);
+            for (sc.items[sc.n_low..]) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
         }
         // collapsed borders follow every box inside the table
         if (enable_tables) {
@@ -1370,12 +1389,26 @@ pub const Painter = struct {
         return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
     }
 
-    noinline fn sortedChildren(p: *Painter, n: *const Node) Error![]u32 {
+    noinline fn flushFloats(p: *Painter, q0: usize) Error!void {
+        var i = q0;
+        while (i < p.float_q.items.len) : (i += 1) {
+            const q = p.float_q.items[i];
+            const saved = p.float_now;
+            p.float_now = q.id;
+            defer p.float_now = saved;
+            try p.paintNode(q.id, q.ox, q.oy, &q.ctx, q.depth);
+        }
+        p.float_q.items.len = @min(q0, p.float_q.items.len);
+    }
+
+    /// Children in paint order; the first `n_low` are painted before the positioned ones.
+    noinline fn sortedChildren(p: *Painter, n: *const Node) Error!struct { items: []u32, n_low: usize } {
         const f = p.f;
         const Item = struct { id: u32, key: i64 };
         var items: std.ArrayList(Item) = .empty;
         var c = n.first_child;
         var seq: i64 = 0;
+        var n_low: usize = 0;
         while (c != none) : (c = f.nodes.items[c].next) {
             const cn = &f.nodes.items[c];
             var layer: i64 = 0;
@@ -1389,6 +1422,7 @@ pub const Painter = struct {
                 } else if (stacks(cn.cs)) layer = 1;
             }
             const zc = std.math.clamp(z, -1000000, 1000000);
+            if (layer <= 0) n_low += 1;
             try items.append(p.a, .{ .id = c, .key = (layer * 4000000 + zc) * 1000000 + seq });
             seq += 1;
         }
@@ -1401,7 +1435,7 @@ pub const Painter = struct {
         }
         const out = try p.a.alloc(u32, items.items.len);
         for (out, items.items) |*o, it| o.* = it.id;
-        return out;
+        return .{ .items = out, .n_low = n_low };
     }
 };
 

@@ -1,10 +1,10 @@
 //! Block layout: vertical stacking of block-level children with margin collapsing (CSS 2.1 §8.3.1, §10) and,
 //! with `Config.floats`, floats (§9.5): placement in the exclusion space of the block formatting context,
 //! `clear`, formatting-context roots and measured leaves avoiding floats, BFC roots growing to contain them.
-//! There is no inline formatting: text is a measured leaf. Next to floats such a leaf (and any formatting
-//! context root: flex/grid/table boxes, `overflow` != visible, `flow_root`) is fitted into the band that is
-//! free at its top edge and keeps that width for its whole height; real line boxes would widen again below a
-//! float (documented approximation, see `Style.is_inline_content`).
+//! Next to floats a formatting context root (flex/grid/table boxes, `overflow` != visible, `flow_root`) and a
+//! measured leaf are fitted into the band that is free at their top edge and keep that width for their whole
+//! height. Inline content (`Style.is_inline_content`, with `Config.inline_fn`) keeps its full width instead and
+//! has every line shortened by the floats beside it (flow.zig).
 const std = @import("std");
 const st = @import("style.zig");
 const tr = @import("tree.zig");
@@ -48,7 +48,26 @@ const S = struct {
     prev_bfc: ?*fl.Bfc,
     /// result of `avoidFloats`: x shift, band width, y push
     av: [3]f32,
+    frq: FloatReq,
 };
+
+/// Where a float is placed from: its containing block and the position it occurs at.
+pub const FloatReq = struct {
+    /// content-box size of the containing block (percentage basis)
+    parent: [2]f32,
+    /// border-box origin of the box the float is positioned in, in formatting context coordinates
+    org: [2]f32,
+    /// distance from that origin to the left content edge of the containing block
+    inset_left: f32,
+    /// local y (from `org`) the float may not be placed above
+    y_top: f32,
+    do_layout: bool,
+    /// The float occurs on a line: [width of the content before it, width of the line's free range]. It is
+    /// then only placed when it fits beside that content at `y_top` (Blink's ShouldPushFloatAfterLine).
+    fit: ?[2]f32 = null,
+};
+
+const FloatS = struct { cb: Box, ci: In, co: Out };
 
 /// Does a block container establish a new block formatting context?
 pub fn isRoot(s: *const st.Style, in: *const In) bool {
@@ -100,12 +119,16 @@ fn topSetEst(t: anytype, ch: u32, own: f32) MarginSet {
     return set;
 }
 
-/// Places float `ch` (CSS 2.1 §9.5.1): shrink-to-fit size, then as high as possible at or below `y_top`
-/// (local y of the current position) and as far to its side as the earlier floats allow.
-noinline fn floatChild(t: anytype, c: *S, ch: u32, y_top: f32, do_layout: bool) Error!void {
+/// Places float `ch` (CSS 2.1 §9.5.1): shrink-to-fit size, then as high as possible at or below `rq.y_top`
+/// and as far to its side as the earlier floats allow. Returns false (nothing placed) when `rq.fit` is set
+/// and the float does not fit on its line. `content` grows by the laid out float.
+pub noinline fn placeFloat(t: anytype, ch: u32, rq: *const FloatReq, content: *[2]f32) Error!bool {
+    const mark = t.scratch.mark();
+    defer t.scratch.release(mark);
+    const c = try t.scratch.create(t.alloc, FloatS);
     const cs = &t.nodes.items[ch].style;
-    const inner_w = c.parent[0];
-    t.rbox(&c.cb, cs, c.parent);
+    const inner_w = rq.parent[0];
+    t.rbox(&c.cb, cs, rq.parent);
     const cb = &c.cb;
     // (takumi parity: percentage margins of a float compute to 0 there, unlike in Blink)
     inline for (.{ "left", "top", "right", "bottom" }, 0..) |f, i| {
@@ -116,36 +139,41 @@ noinline fn floatChild(t: anytype, c: *S, ch: u32, y_top: f32, do_layout: bool) 
     var w = clampO(cb.size[0], cb.min[0], cb.max[0]);
     if (!has(w) and !cs.size[0].isKeyword() and !has(t.ratio(cs, cb, 0, kh))) {
         // shrink-to-fit: min(max-content, max(min-content, available))
-        c.ci = .{ .known = .{ NONE, kh }, .parent = c.parent, .avail = .{ MAXC, MAXC } };
+        c.ci = .{ .known = .{ NONE, kh }, .parent = rq.parent, .avail = .{ MAXC, MAXC } };
         w = try t.measureChild(ch, &c.ci, 0);
         if (w + ms > inner_w) {
-            c.ci = .{ .known = .{ NONE, kh }, .parent = c.parent, .avail = .{ tr.MINC, MAXC } };
+            c.ci = .{ .known = .{ NONE, kh }, .parent = rq.parent, .avail = .{ tr.MINC, MAXC } };
             const mn = try t.measureChild(ch, &c.ci, 0);
             w = @max(mn, inner_w - ms);
         }
         w = clampO(w, cb.min[0], cb.max[0]);
     }
-    c.ci = .{ .known = .{ maxO(w, cb.pb[0]), kh }, .parent = c.parent, .avail = .{ inner_w, MAXC }, .layout = true };
+    c.ci = .{ .known = .{ maxO(w, cb.pb[0]), kh }, .parent = rq.parent, .avail = .{ inner_w, MAXC }, .layout = true };
     try t.computeNode(ch, &c.ci, &c.co);
 
-    const bf = t.bfc orelse return;
+    const bf = t.bfc orelse return true;
     const rects = t.float_rects.items[@min(bf.start, t.float_rects.items.len)..];
     const mw = @max(c.co.size[0] + ms, 0);
     const mh = @max(c.co.size[1] + cb.margin[1] + cb.margin[3], 0);
-    const lo = c.org[0] + c.inset[0];
-    var top = @max(c.org[1] + y_top, bf.last_top);
+    const lo = rq.org[0] + rq.inset_left;
+    if (rq.fit) |f| {
+        const line_top = rq.org[1] + rq.y_top;
+        if (f[0] + mw > f[1] + 1.0 / 128.0 or bf.last_top > line_top + 1.0 / 128.0 or fl.clearY(rects, cs.clear) > line_top + 1.0 / 128.0) return false;
+    }
+    var top = @max(rq.org[1] + rq.y_top, bf.last_top);
     top = @max(top, fl.clearY(rects, cs.clear));
     const p = fl.place(rects, cs.float == .left, mw, mh, top, lo, lo + inner_w);
     bf.last_top = p[1];
     try t.float_rects.append(t.alloc, .{ .x0 = p[0], .y0 = p[1], .x1 = p[0] + mw, .y1 = p[1] + mh, .left = cs.float == .left });
-    if (do_layout) {
+    if (rq.do_layout) {
         const rel: [2]f32 = if (cs.position == .relative) .{
             orElse(t.dim(cs.inset.left, inner_w), -orElse(t.dim(cs.inset.right, inner_w), 0)),
-            orElse(t.dim(cs.inset.top, c.parent[1]), -orElse(t.dim(cs.inset.bottom, c.parent[1]), 0)),
+            orElse(t.dim(cs.inset.top, rq.parent[1]), -orElse(t.dim(cs.inset.bottom, rq.parent[1]), 0)),
         } else .{ 0, 0 };
-        t.setLayout(ch, .{ p[0] - c.org[0] + cb.margin[0] + rel[0], p[1] - c.org[1] + cb.margin[1] + rel[1] }, &c.co, cb);
-        t.accumContent(&c.content, ch);
+        t.setLayout(ch, .{ p[0] - rq.org[0] + cb.margin[0] + rel[0], p[1] - rq.org[1] + cb.margin[1] + rel[1] }, &c.co, cb);
+        t.accumContent(content, ch);
     }
+    return true;
 }
 
 /// Fits the border box of in-flow child `ch` (a formatting context root or a measured leaf, box already in
@@ -318,6 +346,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     var with_first = true;
     var all_through = true;
     var first_bl: f32 = NONE;
+    var last_bl: f32 = NONE;
 
     var ch = n.first_child;
     while (ch != no_node) : (ch = t.nextSibling(ch)) {
@@ -334,7 +363,8 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             continue;
         }
         if (fl_on and cs.float != .none) {
-            try floatChild(t, c, ch, y + (if (with_first and collapse_top) 0 else c.active.resolve()), in.layout);
+            c.frq = .{ .parent = c.parent, .org = c.org, .inset_left = inset[0], .y_top = y + (if (with_first and collapse_top) 0 else c.active.resolve()), .do_layout = in.layout };
+            _ = try placeFloat(t, ch, &c.frq, &c.content);
             continue;
         }
         t.rbox(&c.cb, cs, c.parent);
@@ -351,7 +381,10 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
                 const cy = fl.clearY(t.float_rects.items[@min(t.bfc.?.start, t.float_rects.items.len)..], cs.clear) - c.org[1];
                 if (cy > y + est) y = cy - est;
             }
-            if (cn.measured or cs.display != .block or isRoot(cs, &.{ .collapse = true })) {
+            // (inline content keeps its box and has its lines shortened instead: flow.zig)
+            const lines = (comptime @TypeOf(t.*).config.inline_fn) and t.inline_fn != null and cs.is_inline_content and
+                (cn.measured or cs.display == .inline_row) and !isRoot(cs, &.{ .collapse = true });
+            if (!lines and (cn.measured or cs.display != .block or isRoot(cs, &.{ .collapse = true }))) {
                 try avoidFloats(t, c, ch, y + est);
                 fx = c.av[0];
                 band_w = c.av[1];
@@ -402,6 +435,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             t.setLayout(ch, .{ inset[0] + fx + cb.margin[0] + rel[0], y + y_margin + rel[1] }, o, cb);
             t.accumContent(&c.content, ch);
             if (!has(first_bl) and has(o.baseline)) first_bl = y + y_margin + o.baseline;
+            if (has(o.last_baseline) or has(o.baseline)) last_bl = y + y_margin + orElse(o.last_baseline, o.baseline);
         }
 
         if (with_first) {
@@ -449,6 +483,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     }
     out.content = c.content;
     out.baseline = first_bl;
+    out.last_baseline = last_bl;
     if (collapse_top) out.top_margin = c.first_set;
     if (collapse_bottom) out.bottom_margin = c.active;
     out.collapse_through = !prevents_collapse_through and all_through and outer_h == 0;
