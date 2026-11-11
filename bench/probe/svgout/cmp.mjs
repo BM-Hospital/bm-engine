@@ -1,5 +1,5 @@
 // SVG output probe: for every benchmark fixture, gets takumi's renderSvg() string (oracle,
-// @takumi-rs/wasm 2.20) and ours (bm_render_svg of the svg_out test wasm), RASTERISES BOTH WITH
+// @takumi-rs/wasm 2.20) and ours (bm_render_svg of the engine wasm), RASTERISES BOTH WITH
 // TAKUMI ({type:"image", src: svg} at the fixture size, format raw) and compares the bitmaps
 // (SSIM, % differing pixels). Sanity: each rasterised SVG is also compared with our own raster
 // render of the fixture.
@@ -20,7 +20,7 @@ const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); if (i < 0) return def; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = (name) => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true; };
 const SCRATCH = "C:/Users/admini/AppData/Local/Temp/claude/46c8b6142d3c6b7e/eb762129-eac5-46a2-aaef-1b224d61f7d8/scratchpad/svgout";
-const wasmPath = opt("--wasm", process.env.SVGOUT_WASM || path.join(SCRATCH, "svgtest.wasm"));
+const wasmPath = opt("--wasm", process.env.BM_WASM || process.env.SVGOUT_WASM || path.resolve(here, "..", "..", "..", "zig-out", "bin", "bm_engine.wasm"));
 const outDir = opt("--out", path.join(SCRATCH, "out"));
 const save = flag("--save");
 const json = flag("--json");
@@ -55,7 +55,7 @@ function bmSvg(k) {
   const t0 = performance.now();
   const st = W.bm_render_svg(R, kind, sp, sn, op, on);
   const ms = performance.now() - t0;
-  if (st) { const p = W.bm_svg_err_ptr(R), n = W.bm_svg_err_len(R); throw new Error("bm svg: " + dec.decode(mem().slice(p, p + n))); }
+  if (st) { const p = W.bm_last_error_ptr(), n = W.bm_last_error_len(); throw new Error("bm svg: " + dec.decode(mem().slice(p, p + n))); }
   return { svg: dec.decode(result()), ms };
 }
 function bmRaster(k) {

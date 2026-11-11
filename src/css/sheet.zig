@@ -316,6 +316,8 @@ fn atRule(sp: *SP, t: *Tokenizer, tok: Token, ctx: Ctx, parent: ?[]const sel.Com
         return;
     }
     if (eq(name, "keyframes")) {
+        // (dropped when the engine is built without animation support)
+        if (comptime !keyframes_enabled) return;
         const b = block orelse return;
         var nt = Tokenizer.range(sp.src, ps, pe);
         var kname: ?[]const u8 = null;
@@ -702,3 +704,10 @@ pub const preflight_css =
     \\img{max-width:100%;height:auto}
     \\[hidden]:where(:not([hidden='until-found'])){display:none !important}}
 ;
+
+/// Build switch: `@keyframes` rules are only kept when the engine has animation support
+/// (`@import("root").bm_config.enable_animation`; on in standalone tests).
+const keyframes_enabled = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_animation else true;
+};

@@ -331,9 +331,16 @@ pub const Paragraph = struct {
     /// shapers, normalisation, full UAX #14). `alloc` owns the cached glyphs until `deinit`
     /// (a per-render arena is fine). `fonts` is only used during `init`; the texts are not
     /// referenced afterwards.
+    /// (In an engine build the complex machinery follows the `complex_text` build switch, read
+    /// through `@import("root").bm_config`, so helper callers such as SVG text do not link it.)
     pub fn init(alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
-        return initWith(.{}, alloc, fonts, runs, opts);
+        return initWith(.{ .complex = build_complex }, alloc, fonts, runs, opts);
     }
+
+    const build_complex = blk: {
+        const root = @import("root");
+        break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_complex_text else true;
+    };
 
     /// `init` with complex text selectable at compile time (no colour-emoji font preference).
     pub fn initEx(comptime complex: bool, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
@@ -547,6 +554,12 @@ pub const Paragraph = struct {
         return d;
     }
 
+    /// Build switch `text_wrap_balance` (src/config.zig via the root module; on in standalone
+    /// tests): without it `balance` / `pretty` wrap greedily like `wrap`.
+    const wrap_balance = blk: {
+        const root = @import("root");
+        break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_text_wrap_balance else true;
+    };
     const max_balance_lines = 6;
     const max_pretty_lines = 4;
     const max_candidates = 192;
@@ -748,7 +761,7 @@ pub const Paragraph = struct {
                 if (p.opts.max_lines) |ml| if (it.index >= ml) return null;
             }
             var stop: u32 = no_stop;
-            if (it.mode.strategy != .wrap) {
+            if ((comptime wrap_balance) and it.mode.strategy != .wrap) {
                 if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) it.prepare();
                 if (it.forced_i < it.n_forced) {
                     stop = it.forced[it.forced_i];
@@ -1122,7 +1135,7 @@ fn markBreaksFull(alloc: std.mem.Allocator, chars: []Char, opts: ParagraphOption
     defer alloc.free(cls);
     if (need_uax) {
         for (chars, cls) |c, *k| {
-            k.* = if (c.cp == hard_break_cp) @intFromEnum(uni.Lb.bk) else if (c.cp == '\t') @intFromEnum(uni.Lb.sp) else uni.lbByte(c.cp);
+            k.* = if (c.cp == hard_break_cp) @backingInt(uni.Lb.bk) else if (c.cp == '\t') @backingInt(uni.Lb.sp) else uni.lbByte(c.cp);
         }
         uni.lineBreaksPrepare(cls, opts.word_break);
     }

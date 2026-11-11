@@ -28,7 +28,7 @@
 //                                  (array or `{ sources }`, lazy `data()` allowed); `signal` checked before
 //                                  rendering. Remote image URLs are NOT fetched (as in takumi without prepare)
 //   renderAsDataUrl                works (raw rejected)
-//   renderSvg                      throws "not supported in bm-engine"
+//   renderSvg                      works (builds with `render_svg`: the full profile); renderSvgSync twin
 //   measure                        works
 //   prepare(source, options)       returns a prepared handle; `render`/`renderAsDataUrl`/`measure` accept it and
 //                                  merge its options. NOTE: unlike takumi it fetches nothing (no `needs` pass):
@@ -38,11 +38,53 @@
 //   read / readAnimation           private in takumi: not provided
 //   free / [Symbol.dispose]        works
 //   setGlyphCacheMaxBytes(bytes)   module function accepted and ignored (fixed 8 MiB glyph budget)
+//
+// Build profiles (scripts/build.mjs): bm_engine.core.wasm (JSON nodes + inline styles, flex/grid/block,
+// static TTF, PNG/JPEG in), bm_engine.standard.wasm (+ css, tw, html, svg images, woff2, variable fonts,
+// cff, effects, modern colours, tables, floats, webp/gif in, text-wrap balance) and bm_engine.wasm = full
+// (+ complex text, colour emoji, animation, extra codecs, renderSvg). `features` (filled by init) tells
+// which optional features the loaded binary has; using a missing one throws a clear error.
 
 /** @type {WebAssembly.Exports & Record<string, any>} */
 let wasm = null;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+
+/** Optional features in `bm_features()` bit order (src/config.zig `feature_bits`). */
+const FEATURE_NAMES = ["css", "tw", "html", "svg", "woff", "variableFonts", "cff", "effects", "modernColor", "tables",
+  "floats", "webpGifDecode", "textWrapBalance", "colorFonts", "complexText", "animation", "extraCodecs", "renderSvg"];
+const FEATURE_LABELS = { css: "stylesheet (`css` option)", html: "HTML input", woff: "WOFF/WOFF2 font", renderSvg: "renderSvg",
+  animation: "animation", extraCodecs: "ICO output" };
+
+/**
+ * Optional features of the loaded wasm binary (all false before init). Binaries older than the
+ * `bm_features` export report every feature as available.
+ * @type {Record<string, boolean>}
+ */
+export const features = Object.fromEntries(FEATURE_NAMES.map((n) => [n, false]));
+
+function setFeatures() {
+  const m = typeof wasm.bm_features === "function" ? wasm.bm_features() >>> 0 : 0xffffffff;
+  FEATURE_NAMES.forEach((n, i) => { features[n] = ((m >>> i) & 1) === 1; });
+}
+
+function requireFeature(name) {
+  if (!features[name]) {
+    throw new Error(`bm-engine: this build has no ${FEATURE_LABELS[name] || name} support (use the standard / full build${name === "woff" ? ", or load the WOFF add-on: js/addons.mjs loadWoff()" : ""})`);
+  }
+}
+
+/** sfnt converter installed by js/addons.mjs (`loadWoff`) for builds without WOFF support. */
+let woffDecoder = null;
+
+/** @internal used by js/addons.mjs */
+export function setWoffDecoder(fn) {
+  woffDecoder = fn;
+}
+
+function isWoff(b) {
+  return b.length >= 4 && b[0] === 0x77 && b[1] === 0x4f && b[2] === 0x46 && (b[3] === 0x46 || b[3] === 0x32); // wOFF / wOF2
+}
 
 function u8() {
   return new Uint8Array(wasm.memory.buffer);
@@ -93,6 +135,15 @@ export function initSync(input) {
   if (input && typeof input === "object" && "module" in input && !(input instanceof WebAssembly.Module)) input = input.module;
   const mod = input instanceof WebAssembly.Module ? input : new WebAssembly.Module(input);
   wasm = new WebAssembly.Instance(mod, {}).exports;
+  setFeatures();
+  return wasm;
+}
+
+function adopt(instance) {
+  if (!wasm) {
+    wasm = instance.exports;
+    setFeatures();
+  }
   return wasm;
 }
 
@@ -108,19 +159,13 @@ export async function init(input) {
   if (typeof Response !== "undefined" && input instanceof Response) {
     if (WebAssembly.instantiateStreaming && (input.headers.get("content-type") || "").startsWith("application/wasm")) {
       const { instance } = await WebAssembly.instantiateStreaming(input, {});
-      if (!wasm) wasm = instance.exports;
-      return wasm;
+      return adopt(instance);
     }
     input = await input.arrayBuffer();
   }
-  if (input instanceof WebAssembly.Module) {
-    const instance = await WebAssembly.instantiate(input, {});
-    if (!wasm) wasm = instance.exports;
-    return wasm;
-  }
+  if (input instanceof WebAssembly.Module) return adopt(await WebAssembly.instantiate(input, {}));
   const { instance } = await WebAssembly.instantiate(input, {});
-  if (!wasm) wasm = instance.exports;
-  return wasm;
+  return adopt(instance);
 }
 
 export default init;
@@ -202,7 +247,12 @@ export class Renderer {
         .then((data) => this.registerFont({ ...details, data }));
     }
     const h = this.#handle();
-    const [ptr, len] = copyIn(toBytes(details.data));
+    let bytes = toBytes(details.data);
+    if (!features.woff && isWoff(bytes)) {
+      if (!woffDecoder) requireFeature("woff");
+      bytes = woffDecoder(bytes);
+    }
+    const [ptr, len] = copyIn(bytes);
     const [nptr, nlen, ncap] = copyInString(details.name || "");
     const italic = details.style == null ? -1 : /italic|oblique/.test(String(details.style)) ? 1 : 0;
     // Ownership of the font bytes moves to the renderer (zero-copy parsing inside wasm).
@@ -295,7 +345,7 @@ export class Renderer {
     let kind = 0;
     let own = false; // true when we produced the JSON ourselves (so escaping is predictable)
     // takumi semantics: every JS string is HTML; a JSON tree as text is passed as { json }.
-    if (typeof node === "string") { json = node; kind = 1; }
+    if (typeof node === "string") { requireFeature("html"); json = node; kind = 1; }
     else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
     else { own = true; json = this.#stringify(node); }
     // Only images the tree actually references are copied into wasm memory.
@@ -306,12 +356,15 @@ export class Renderer {
   #call(which, node, options) {
     [node, options] = unwrap(node, options, "render");
     throwIfAborted(options.signal);
+    if ((options.css != null && options.css.length !== 0) || (options.stylesheets != null && options.stylesheets.length !== 0)) requireFeature("css");
+    if (options.format === "ico") requireFeature("extraCodecs");
+    if (which === "svg") requireFeature("renderSvg");
     const [json, kind] = this.#prepareSource(node, options);
     // `images` were copied in above; `fonts`/`signal` are JS-side takumi options.
     const { images: _i, fonts: _f, signal: _s, ...rest } = options;
     const [jptr, jlen, jcap] = copyInString(json);
     const [optr, olen, ocap] = copyInString(JSON.stringify(rest));
-    const fn = which === "render" ? wasm.bm_render_src : wasm.bm_measure_src;
+    const fn = which === "render" ? wasm.bm_render_src : which === "svg" ? wasm.bm_render_svg : wasm.bm_measure_src;
     // (older binaries without the *_src exports accept JSON only)
     const status = fn ? fn(this.#h, kind, jptr, jlen, optr, olen)
       : kind === 0 ? (which === "render" ? wasm.bm_render : wasm.bm_measure)(this.#h, jptr, jlen, optr, olen)
@@ -376,9 +429,21 @@ export class Renderer {
     return this.renderAsDataUrlSync(node, await this.#extras(options));
   }
 
-  /** takumi `renderSvg` (SVG output): not implemented yet. */
-  async renderSvg() {
-    throw unsupported("renderSvg");
+  /**
+   * takumi `renderSvg`: the source as an SVG document string (vector boxes, gradients, borders,
+   * shadows as filters, images embedded as data URLs, text as glyph outlines). Needs a build with
+   * `render_svg` (the full profile); `format` / `quality` are ignored.
+   */
+  renderSvgSync(node, options = {}) {
+    this.#call("svg", node, options);
+    const out = this.#takeString();
+    wasm.bm_release_result(this.#h);
+    return out;
+  }
+
+  async renderSvg(node, options = {}) {
+    [node, options] = unwrap(node, options, "render");
+    return this.renderSvgSync(node, await this.#extras(options));
   }
 
   /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */
@@ -426,6 +491,7 @@ export class Renderer {
     }
     throwIfAborted(options.signal);
     if (!wasm.bm_render_animation) throw unsupported("renderAnimation (this wasm build)");
+    requireFeature("animation");
     const h = this.#handle();
     wasm.bm_clear_images(h);
     const { images, fonts: _f, signal: _s, scenes: _sc, ...rest } = options;

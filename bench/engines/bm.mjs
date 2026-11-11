@@ -1,11 +1,14 @@
-// Adapter: bm-engine (Zig -> WASM port). Entry: js/node.mjs, wasm: zig-out/bin/bm_engine.wasm.
+// Adapter: bm-engine (Zig -> WASM port). Entry: js/node.mjs, wasm: zig-out/bin/bm_engine.wasm, or the
+// file named by $BM_WASM (e.g. another build profile: BM_WASM=../js/bm_engine.core.wasm); js/node.mjs
+// reads the same variable, so the harness and the sizes table use the same binary.
 // The harness runs fine when either is missing: the engine is then "unavailable".
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT_DIR } from "../lib/assets.mjs";
 const entry = path.join(ROOT_DIR, "js", "node.mjs");
-const wasmPath = path.join(ROOT_DIR, "zig-out", "bin", "bm_engine.wasm");
+const wasmPath = process.env.BM_WASM ? path.resolve(process.env.BM_WASM) : path.join(ROOT_DIR, "zig-out", "bin", "bm_engine.wasm");
+if (process.env.BM_WASM) process.env.BM_WASM = wasmPath; // absolute for js/node.mjs (child processes inherit it)
 
 export default {
   name: "bm",

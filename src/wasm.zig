@@ -119,3 +119,20 @@ export fn bm_render_animation(r: *Renderer, json: [*]const u8, len: usize) u32 {
     _ = r.renderAnimation(json[0..len]) catch |e| return fail(r, e);
     return 0;
 }
+
+/// takumi `renderSvg`: like bm_render_src (kind 0 = JSON node tree, 1 = HTML), but the result
+/// (bm_result_*) is an SVG document (UTF-8). Fails ("renderSvg is not supported by this build")
+/// when compiled without `-Drender_svg`.
+export fn bm_render_svg(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    const k: render.SourceKind = if (kind == 1) .html else .json;
+    _ = r.renderSvg(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+
+/// Optional features compiled into this binary (bit mask, see src/config.zig `feature_bits`):
+/// bit 0 css, 1 tw, 2 html, 3 svg, 4 woff, 5 variable_fonts, 6 cff, 7 effects, 8 modern_color,
+/// 9 tables, 10 floats, 11 webp_gif_decode, 12 text_wrap_balance, 13 color_fonts, 14 complex_text,
+/// 15 animation, 16 extra_codecs, 17 render_svg.
+export fn bm_features() u32 {
+    return bm_config.feature_bits;
+}

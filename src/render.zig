@@ -68,6 +68,8 @@ pub const Node = struct {
     img_h: f32 = 0,
     /// natural aspect ratio when there is no natural size (SVG with only a viewBox); 0 = none
     img_ratio: f32 = 0,
+    /// image nodes: the `src` the image was resolved from (svg_out embeds the original bytes)
+    src: ?[]const u8 = null,
 };
 
 const ImageEntry = struct {
@@ -88,6 +90,13 @@ const CachedImage = struct {
 };
 
 pub const GlyphMask = struct { x: i32, y: i32, w: u32, h: u32, data: []u8 };
+
+/// Persistent colour-glyph raster (COLR / bitmap glyph rendered once per key; `pix` owned by
+/// `Renderer.gpa`). The key is chosen by the painter (face, gid, size, foreground).
+pub const ColorGlyphEntry = struct { pix: raster.Pixmap, ox: i32, oy: i32 };
+
+/// An inline box (tagged inline element or generated box) enclosing text runs of a paragraph.
+pub const InlineBox = struct { cs: *const CS, parent: u32 };
 
 pub const Format = enum { png, jpeg, webp, ico, raw };
 
@@ -129,8 +138,13 @@ pub const Renderer = struct {
     img_cache: std.ArrayList(CachedImage) = .empty,
     img_cache_bytes: usize = 0,
     rast: raster.Rasterizer,
-    glyphs: std.AutoHashMapUnmanaged(u64, GlyphMask) = .empty,
+    /// Glyph-mask cache. The key is 128 bits wide so a full 16-bit face id (variable-font
+    /// instances are >= 0x8000) fits next to gid / size / subpixel phase / synthesis bits.
+    glyphs: std.AutoHashMapUnmanaged(u128, GlyphMask) = .empty,
     glyph_bytes: usize = 0,
+    /// Colour-glyph cache (cleared with `glyphs`; `color_glyph_bytes` counts against `glyph_budget`).
+    color_glyphs: std.AutoHashMapUnmanaged(u64, ColorGlyphEntry) = .empty,
+    color_glyph_bytes: usize = 0,
     /// `fonts.instanceEvictions()` at the last frame (glyph cache flushed when it changes).
     font_evictions: u32 = 0,
     /// Canvas pixels, kept between renders (so the per-render arena can be recycled before encoding).
@@ -163,6 +177,7 @@ pub const Renderer = struct {
         self.images.deinit(self.gpa);
         self.img_cache.deinit(self.gpa);
         self.glyphs.deinit(self.gpa);
+        self.color_glyphs.deinit(self.gpa);
         self.shape_cache.deinit();
         self.rast.deinit();
         self.gpa.free(self.canvas);
@@ -188,6 +203,12 @@ pub const Renderer = struct {
         while (it.next()) |g| self.gpa.free(g.data);
         self.glyphs.clearRetainingCapacity();
         self.glyph_bytes = 0;
+        if (comptime config.enable_color_fonts) {
+            var ci = self.color_glyphs.valueIterator();
+            while (ci.next()) |g| g.pix.deinit(self.gpa);
+            self.color_glyphs.clearRetainingCapacity();
+            self.color_glyph_bytes = 0;
+        }
     }
 
     fn clearImageCache(self: *Renderer) void {
@@ -333,7 +354,7 @@ pub const Renderer = struct {
             self.font_evictions = ev;
             self.clearGlyphs();
         }
-        if (self.glyph_bytes > glyph_budget) self.clearGlyphs();
+        if (self.glyph_bytes + self.color_glyph_bytes > glyph_budget) self.clearGlyphs();
         if (self.img_cache_bytes > image_budget) self.clearImageCache();
     }
 
@@ -560,6 +581,30 @@ pub const Renderer = struct {
         return self.result;
     }
 
+    /// takumi `renderSvg`: the frame as a vector SVG document (UTF-8, in the arena; see svg_out.zig).
+    /// `format` / `quality` options are ignored. Fails with a clear error when compiled out.
+    pub fn renderSvg(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        if (comptime !config.enable_render_svg) {
+            self.beginCall();
+            self.setErr("renderSvg is not supported by this build", "");
+            return error.Invalid;
+        }
+        return self.renderSvgImpl(kind, source, opts_json);
+    }
+
+    noinline fn renderSvgImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        self.beginCall();
+        const a = self.arena.allocator();
+        const opts = try self.parseOptions(opts_json);
+        self.time_ms = opts.time_ms;
+        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
+        try f.prepare(kind, source);
+        var out: std.ArrayList(u8) = .empty;
+        try @import("svg_out.zig").write(&f, &out);
+        self.result = out.items;
+        return self.result;
+    }
+
     fn parseOptions(self: *Renderer, text: []const u8) Error!Options {
         if (text.len == 0) return .{};
         const v = json.parse(self.arena.allocator(), text) catch |e| switch (e) {
@@ -696,7 +741,7 @@ pub const Renderer = struct {
             if (!e.premultiplied) premultiply(pm.data);
         } else {
             if (codec.sniff(bytes) == .unknown) return null; // SVG, text, unsupported formats
-            const img = codec.decodeEx(self.gpa, bytes, .{ .max_pixels = max_image_pixels }, .{ .webp_lossy = config.enable_extra_codecs }) catch return null;
+            const img = codec.decodeEx(self.gpa, bytes, .{ .max_pixels = max_image_pixels }, codec.build_decoders) catch return null;
             premultiply(img.data);
             pm = .{ .width = img.width, .height = img.height, .data = img.data };
         }
@@ -1074,6 +1119,13 @@ pub const Frame = struct {
     pre: ?json.Value = null,
     /// `lang` of the element being built (nearest ancestor's, else the `lang` option).
     cur_lang: []const u8 = "",
+    /// Inline boxes (tagged inline elements and generated boxes whose runs join a paragraph),
+    /// parents before children; `parent` = enclosing inline box index or `none`.
+    inline_boxes: std.ArrayList(InlineBox) = .empty,
+    /// Per run (`TextStyle.user`, parallel to `run_styles`): innermost inline box or `none`.
+    run_box: std.ArrayList(u32) = .empty,
+    /// Innermost inline box while collecting runs (`none` outside of one).
+    cur_box: u32 = none,
 
     pub const Pseudo = struct { cs: *const CS, text: []const u8 };
 
@@ -1216,7 +1268,7 @@ pub const Frame = struct {
         for (f.dom.styles) |s| try buf.appendSlice(a, s);
         var sheet: css.Stylesheet = .{};
         if (buf.items.len > 0) try css.parse(a, buf.items, &sheet);
-        if (o.keyframes) |k| css.addKeyframesJson(a, &sheet, k) catch |err| switch (err) {
+        if (comptime config.enable_animation) if (o.keyframes) |k| css.addKeyframesJson(a, &sheet, k) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidRule => return f.fail("invalid keyframes option", ""),
         };
@@ -1354,6 +1406,7 @@ pub const Frame = struct {
         const a = f.a;
         const el = f.dom.at(i);
         var diag: style.Diagnostics = .{};
+        if (comptime !config.enable_tw) if (el.tw.len > 0) return f.fail("Tailwind (`tw`) is not supported by this build", "");
         const cs = try a.create(CS);
         const has_tw = config.enable_tw and el.tw.len > 0;
         const from_html = config.enable_html and (el.preset == .text or el.style == .text or el.pres.len > 0);
@@ -1716,7 +1769,7 @@ pub const Frame = struct {
                 if (ha != null and m.height == .auto) m.height = .{ .lp = .{ .px = ha.? * f.opts.dpr } };
                 cs = m;
             }
-            var n: Node = .{ .kind = .image, .cs = cs, .el = i, .parent = parent, .img = img };
+            var n: Node = .{ .kind = .image, .cs = cs, .el = i, .parent = parent, .img = img, .src = el.src };
             if (img) |pm| {
                 n.img_w = @as(f32, @floatFromInt(pm.width)) * f.opts.dpr;
                 n.img_h = @as(f32, @floatFromInt(pm.height)) * f.opts.dpr;
@@ -1759,11 +1812,18 @@ pub const Frame = struct {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
                 if (ps.cs.display == .none) return;
+                const saved = f.cur_box;
+                defer f.cur_box = saved;
+                try f.openInlineBox(ps.cs);
                 try f.appendRun(out, ps.text, ps.cs, false);
             },
             .el => |i| {
                 const el = f.dom.at(i);
                 if (el.cs.display == .none) return;
+                const saved = f.cur_box;
+                defer f.cur_box = saved;
+                // a real (tagged) element is an inline box; bare text nodes are not
+                if (!el.run and el.tag.len > 0) try f.openInlineBox(el.cs);
                 if (el.kind == .text and !hasGenerated(el)) {
                     return f.appendRun(out, el.text, el.cs, el.tag.len == 2 and std.ascii.eqlIgnoreCase(el.tag, "br"));
                 }
@@ -1771,6 +1831,12 @@ pub const Frame = struct {
                 while (it.next()) |c| try f.collectRuns(c, out, depth + 1);
             },
         }
+    }
+
+    /// Pushes an inline box nested in the current one and makes it current.
+    noinline fn openInlineBox(f: *Frame, cs: *const CS) Error!void {
+        try f.inline_boxes.append(f.a, .{ .cs = cs, .parent = f.cur_box });
+        f.cur_box = @intCast(f.inline_boxes.items.len - 1);
     }
 
     /// Appends the run of a text element (HTML `<br>`: an empty run ending in a forced break, in
@@ -1786,6 +1852,7 @@ pub const Frame = struct {
 
     noinline fn makeRun(f: *Frame, text: []const u8, cs: *const CS) Error!font.Run {
         try f.run_styles.append(f.a, cs);
+        try f.run_box.append(f.a, f.cur_box);
         var st = textStyle(cs, @intCast(f.run_styles.items.len - 1));
         // font-variant-* / font-kerning / font-feature-settings as OpenType features
         const feats = try cs.fontFeatures(f.a);

@@ -125,6 +125,15 @@ export default init;
 /** accepted and ignored (fixed 8 MiB glyph budget) */
 export declare function setGlyphCacheMaxBytes(bytes: number): void;
 
+/** Optional features of the loaded binary (filled by init / initSync; all false before). */
+export type Features = {
+  css: boolean; tw: boolean; html: boolean; svg: boolean; woff: boolean; variableFonts: boolean; cff: boolean;
+  effects: boolean; modernColor: boolean; tables: boolean; floats: boolean; webpGifDecode: boolean;
+  textWrapBalance: boolean; colorFonts: boolean; complexText: boolean; animation: boolean; extraCodecs: boolean;
+  renderSvg: boolean;
+};
+export declare const features: Readonly<Features>;
+
 export declare class Renderer {
   constructor(options?: { cacheMaxBytes?: number; fontCacheMaxBytes?: number });
   registerFont(font: ByteBuf | (FontDetails & { data: ByteBuf })): RegisteredFamily[];
@@ -137,7 +146,8 @@ export declare class Renderer {
   render(source: Source | Prepared, options?: RenderOptions): Promise<Uint8Array>;
   renderAsDataUrlSync(source: Source | Prepared, options?: RenderOptions): string;
   renderAsDataUrl(source: Source | Prepared, options?: RenderOptions): Promise<string>;
-  /** always rejects: not supported in bm-engine */
+  /** SVG document output (builds with `render_svg`, i.e. the full profile; otherwise throws) */
+  renderSvgSync(source: Source | Prepared, options?: RenderOptions): string;
   renderSvg(source: Source | Prepared, options?: RenderOptions): Promise<string>;
   measureSync(source: Source | Prepared, options?: RenderOptions): MeasuredNode;
   measure(source: Source | Prepared, options?: RenderOptions): Promise<MeasuredNode>;

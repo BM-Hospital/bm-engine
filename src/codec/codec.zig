@@ -68,13 +68,25 @@ pub fn dimensions(bytes: []const u8) ?Dimensions {
 /// arena or a general-purpose allocator both work.
 /// Animated GIF / WebP / APNG decode to their first frame (APNG: the default image).
 pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: Limits) Error!Image {
-    return decodeEx(alloc, bytes, limits, .{});
+    return decodeEx(alloc, bytes, limits, build_decoders);
 }
 
 /// Compile-time decoder feature switches (for size-constrained builds).
 pub const DecodeFeatures = struct {
     /// Lossy WebP (VP8 + ALPH). When false such files return error.UnsupportedFormat.
     webp_lossy: bool = true,
+    /// WebP (any) and GIF decoding. When false such files return error.UnsupportedFormat.
+    webp: bool = true,
+    gif: bool = true,
+};
+
+/// Decoders selected by the engine build (`@import("root").bm_config`: `webp_gif_decode`,
+/// `extra_codecs` for lossy WebP); everything when built without it (standalone tests).
+pub const build_decoders: DecodeFeatures = blk: {
+    const root = @import("root");
+    if (!@hasDecl(root, "bm_config")) break :blk .{};
+    const c = root.bm_config;
+    break :blk .{ .webp_lossy = c.enable_extra_codecs, .webp = c.enable_webp_gif_decode, .gif = c.enable_webp_gif_decode };
 };
 
 /// `decode` with compile-time feature selection.
@@ -82,8 +94,8 @@ pub fn decodeEx(alloc: std.mem.Allocator, bytes: []const u8, limits: Limits, com
     return switch (sniff(bytes)) {
         .png => png.decode(alloc, bytes, limits),
         .jpeg => jpeg_dec.decode(alloc, bytes, limits),
-        .webp => webp_dec.decodeEx(alloc, bytes, limits, .{ .lossy = f.webp_lossy }),
-        .gif => gif.decode(alloc, bytes, limits),
+        .webp => if (f.webp) webp_dec.decodeEx(alloc, bytes, limits, .{ .lossy = f.webp_lossy }) else error.UnsupportedFormat,
+        .gif => if (f.gif) gif.decode(alloc, bytes, limits) else error.UnsupportedFormat,
         else => error.UnsupportedFormat,
     };
 }
