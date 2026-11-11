@@ -30,7 +30,7 @@ export function collectSizes(ALL) {
     "takumi-native": { binary: native && existsSync(native) ? { ...fileSize(native) } : null, binaryFile: ".node addon", glue: fileSize(path.join(tc, "dist/export.mjs")), glueFile: "dist/export.mjs" },
     bm: {
       binary: fileSize(ALL.bm.wasmPath), binaryFile: path.relative(ROOT_DIR, ALL.bm.wasmPath).split(path.sep).join("/"),
-      glue: filesJs(js, ["index.mjs", "node.mjs"]), glueFile: "js/index.mjs + js/node.mjs",
+      glue: filesJs(js, ["engine.mjs", "index.mjs", "node.mjs"]), glueFile: "js/engine.mjs + js/index.mjs + js/node.mjs",
       profiles: {
         core: fileSize(path.join(js, "bm_engine.core.wasm")),
         standard: fileSize(path.join(js, "bm_engine.standard.wasm")),
