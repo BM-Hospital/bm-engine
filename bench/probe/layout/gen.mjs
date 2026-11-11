@@ -183,7 +183,7 @@ add("root/wrap-col-auto", F({ flexDirection: "column", flexWrap: "wrap" }, box(5
 
 // ---------------------------------------------------------------- seeded random flex/block trees
 let seed = +(process.env.SEED || 12345);
-const NF = +(process.env.NF || 80), NB = +(process.env.NB || 40), NM = +(process.env.NM || 60);
+const NF = +(process.env.NF || 120), NB = +(process.env.NB || 60), NM = +(process.env.NM || 200);
 const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const pick = (...xs) => xs[Math.floor(rnd() * xs.length)];
 const maybe = (p, v) => (rnd() < p ? v : {});
@@ -284,9 +284,9 @@ function randMix(depth, isRoot, parentKind) {
 }
 for (let i = 0; i < NM; i++) add(`rand/mix-${i}`, randMix(3, true, "flex"));
 
-export { cases, c, F, B, G, box, add, words, rnd, pick, maybe };
-const { addGrid } = await import("./gen_grid.mjs").catch(() => ({ addGrid: null }));
-if (addGrid) addGrid();
+
+const { addGrid } = await import("./gen_grid.mjs");
+addGrid({ add, F, B, G, box, words, rnd, pick, maybe, c });
 
 // ---------------------------------------------------------------- run the oracle
 const toTakumi = (n) => ({ type: "container", style: n.style, children: n.children.map(toTakumi) });

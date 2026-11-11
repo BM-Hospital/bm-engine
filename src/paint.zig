@@ -112,6 +112,7 @@ const Geom = struct {
     pad: [4]f32,
     radii: Radii,
     rounded: bool,
+    snapped: bool = true,
 
     fn padRect(g: *const Geom) Rect {
         return insetRect(g.bx, g.bw[0], g.bw[1], g.bw[2], g.bw[3]);
@@ -123,6 +124,7 @@ const Geom = struct {
     }
     fn contentRect(g: *const Geom) Rect {
         const p = g.padRect();
+        if (!g.snapped) return insetRect(p, g.pad[0], g.pad[1], g.pad[2], g.pad[3]);
         const x0 = roundHalfUp(p.x + g.pad[3]);
         const y0 = roundHalfUp(p.y + g.pad[0]);
         const x1 = roundHalfUp(p.x + p.w - g.pad[1]);
@@ -143,6 +145,7 @@ const Painter = struct {
     f: *Frame,
     a: std.mem.Allocator,
     path: raster.Path = .empty,
+    path2: raster.Path = .empty,
 
     fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
@@ -610,10 +613,21 @@ const Painter = struct {
             .{ .{ x1, y1 }, .{ x0, y1 }, .{ ix0, iy1 }, .{ ix0 + m, iy1 - m }, .{ ix1 - m, iy1 - m }, .{ ix1, iy1 } },
             .{ .{ x0, y1 }, .{ x0, y0 }, .{ ix0, iy0 }, .{ ix0 + m, iy0 + m }, .{ ix0 + m, iy1 - m }, .{ ix0, iy1 } },
         };
+        const cxm = (x0 + x1) * 0.5;
+        const cym = (y0 + y1) * 0.5;
         for (0..4) |i| {
             if (bw[i] <= 0 or cols[i].a == 0) continue;
             p.path.reset();
-            const wd = wedges[i];
+            var wd = wedges[i];
+            // A zero-width neighbour gives its whole corner to this side.
+            const far: [4][2][2]f32 = .{
+                .{ .{ x1, cym }, .{ x0, cym } },
+                .{ .{ cxm, y1 }, .{ cxm, y0 } },
+                .{ .{ x0, cym }, .{ x1, cym } },
+                .{ .{ cxm, y0 }, .{ cxm, y1 } },
+            };
+            if (bw[(i + 1) % 4] <= 0) wd[3] = far[i][0];
+            if (bw[(i + 3) % 4] <= 0) wd[4] = far[i][1];
             p.path.moveTo(p.a, wd[0][0], wd[0][1]) catch return error.OutOfMemory;
             for (wd[1..]) |pt| p.path.lineTo(p.a, pt[0], pt[1]) catch return error.OutOfMemory;
             p.path.close(p.a) catch return error.OutOfMemory;
@@ -638,16 +652,62 @@ const Painter = struct {
 
     // ---- text
 
-    fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2) ?render.GlyphMask {
-        const r = p.f.r;
-        const key: u64 = (@as(u64, face & 0xFFF) << 50) | (@as(u64, gid) << 34) | (@as(u64, sub) << 32) | @as(u32, @bitCast(size));
-        if (r.glyphs.get(key)) |gm| return gm;
+    /// Builds the device-space outline of a glyph into `p.path` (synth bit0 = fake italic, skew -14.04deg).
+    fn buildGlyph(p: *Painter, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine) bool {
+        const fnt = p.f.r.fonts.font(face);
+        var local = Affine.translate(ox, oy);
+        if (synth & 1 != 0) local = local.mul(.{ .c = -0.25 });
         p.path.reset();
-        var sink: raster.PathSink = .{ .path = &p.path, .alloc = p.a };
-        _ = font.emitGlyph(r.fonts.font(face), gid, size, @as(f32, @floatFromInt(sub)) * 0.25, 0, &sink);
-        if (sink.err) return null;
+        var sink: raster.PathSink = .{ .path = &p.path, .alloc = p.a, .transform = tf.mul(local) };
+        _ = font.emitGlyph(fnt, gid, size, 0, 0, &sink);
+        return !sink.err;
+    }
+
+    /// Coverage mask of a glyph. synth bit1 = fake bold: the outline grown by half of Skia's
+    /// fake-bold stroke width, approximated as the per-pixel max over 9 offset copies.
+    fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
+        const r = p.f.r;
+        if (!p.buildGlyph(face, gid, size, ox, oy, synth, tf)) return null;
+        if (synth & 2 == 0) return r.rast.rasterize(out, &p.path, Affine.identity, .nonzero, window) catch null;
+        const base = r.rast.rasterize(p.a, &p.path, Affine.identity, .nonzero, window) catch return null;
+        if (base.bounds.isEmpty()) return raster.Mask.empty;
+        const t = std.math.clamp((size - 9) / 27, 0, 1);
+        const rad = size * (1.0 / 24.0 + t * (1.0 / 32.0 - 1.0 / 24.0)) * 0.5;
+        const grow: u32 = @intFromFloat(@ceil(rad * @max(1, Painter.tfScale(tf))) + 1);
+        const win = base.bounds.expand(grow).intersect(window);
+        var acc = raster.Mask.init(out, win) catch return null;
+        const d = rad * 0.70710678;
+        const offs = [8][2]f32{ .{ rad, 0 }, .{ -rad, 0 }, .{ 0, rad }, .{ 0, -rad }, .{ d, d }, .{ -d, d }, .{ d, -d }, .{ -d, -d } };
+        mergeMax(&acc, &base);
+        for (offs) |o| {
+            if (!p.buildGlyph(face, gid, size, ox + o[0], oy + o[1], synth, tf)) continue;
+            const m = r.rast.rasterize(p.a, &p.path, Affine.identity, .nonzero, win) catch continue;
+            mergeMax(&acc, &m);
+        }
+        return acc;
+    }
+
+    fn mergeMax(acc: *raster.Mask, m: *const raster.Mask) void {
+        const b = m.bounds.intersect(acc.bounds);
+        if (b.isEmpty()) return;
+        var yy: u32 = 0;
+        while (yy < b.h) : (yy += 1) {
+            const ar: usize = @intCast(@as(i64, b.y) + yy - acc.bounds.y);
+            const ac: usize = @intCast(@as(i64, b.x) - acc.bounds.x);
+            const mr: usize = @intCast(@as(i64, b.y) + yy - m.bounds.y);
+            const mc: usize = @intCast(@as(i64, b.x) - m.bounds.x);
+            const drow = acc.data[ar * acc.bounds.w + ac ..][0..b.w];
+            const srow = m.data[mr * m.bounds.w + mc ..][0..b.w];
+            for (drow, srow) |*dv, sv| dv.* = @max(dv.*, sv);
+        }
+    }
+
+    fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2, synth: u2) ?render.GlyphMask {
+        const r = p.f.r;
+        const key: u64 = (@as(u64, synth) << 62) | (@as(u64, face & 0xFFF) << 50) | (@as(u64, gid) << 34) | (@as(u64, sub) << 32) | @as(u32, @bitCast(size));
+        if (r.glyphs.get(key)) |gm| return gm;
         const big: IRect = .{ .x = -8192, .y = -8192, .w = 16384, .h = 16384 };
-        const m = r.rast.rasterize(r.gpa, &p.path, Affine.identity, .nonzero, big) catch return null;
+        const m = p.glyphCoverage(r.gpa, face, gid, size, @as(f32, @floatFromInt(sub)) * 0.25, 0, synth, Affine.identity, big) orelse return null;
         const gm: render.GlyphMask = .{ .x = m.bounds.x, .y = m.bounds.y, .w = m.bounds.w, .h = m.bounds.h, .data = m.data };
         r.glyphs.put(r.gpa, key, gm) catch {
             if (m.data.len > 0) r.gpa.free(m.data);
@@ -668,13 +728,17 @@ const Painter = struct {
             const pt: Paint = .{ .solid = rcolor(rcs.color) };
             const gx = x + g.x;
             const gy = y + g.y;
+            const fc = f.r.fonts.face(g.face);
+            var synth: u2 = 0;
+            if (rcs.font_style != .normal and !fc.italic) synth |= 1;
+            if (rcs.font_weight >= 600 and fc.weight < 600) synth |= 2;
             if (plain and g.size <= 400) {
                 const qx = roundHalfUp(gx * 4) * 0.25;
                 const ix = @floor(qx);
                 const sub: u2 = @intFromFloat(std.math.clamp((qx - ix) * 4, 0, 3));
                 const iy = roundHalfUp(gy);
                 if (@abs(ix) > 1.0e6 or @abs(iy) > 1.0e6) continue;
-                const gm = p.glyphMask(g.face, g.gid, g.size, sub) orelse continue;
+                const gm = p.glyphMask(g.face, g.gid, g.size, sub, synth) orelse continue;
                 if (gm.w == 0 or gm.h == 0) continue;
                 const mask: raster.Mask = .{
                     .bounds = .{ .x = gm.x + @as(i32, @intFromFloat(ix)), .y = gm.y + @as(i32, @intFromFloat(iy)), .w = gm.w, .h = gm.h },
@@ -682,11 +746,8 @@ const Painter = struct {
                 };
                 raster.fillMask(ctx.dst, &mask, &pt, ctx.clip);
             } else {
-                p.path.reset();
-                var sink: raster.PathSink = .{ .path = &p.path, .alloc = p.a };
-                _ = font.emitGlyph(f.r.fonts.font(g.face), g.gid, g.size, gx, gy, &sink);
-                if (sink.err) return error.OutOfMemory;
-                p.rast().fillPath(ctx.dst, &p.path, ctx.tf, .nonzero, &pt, ctx.clip) catch return error.OutOfMemory;
+                const m = p.glyphCoverage(p.a, g.face, g.gid, g.size, gx, gy, synth, ctx.tf, region(ctx)) orelse return error.OutOfMemory;
+                raster.fillMask(ctx.dst, &m, &pt, ctx.clip);
             }
         }
         // Decorations (underline / overline / line-through) of the block's own style.
@@ -804,11 +865,12 @@ const Painter = struct {
         }
 
         var g: Geom = .{
-            .bx = snapRect(x, y, l.w, l.h),
+            .bx = if (ctx.plain()) snapRect(x, y, l.w, l.h) else .{ .x = x, .y = y, .w = l.w, .h = l.h },
             .bw = .{ l.border.top, l.border.right, l.border.bottom, l.border.left },
             .pad = .{ l.padding.top, l.padding.right, l.padding.bottom, l.padding.left },
             .radii = undefined,
             .rounded = false,
+            .snapped = ctx.plain(),
         };
         g.radii = resolveRadii(cs, g.bx.w, g.bx.h);
         g.rounded = hasRadii(g.radii);
