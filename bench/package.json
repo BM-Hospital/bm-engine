@@ -8,7 +8,9 @@
     "bench": "node run.mjs",
     "bench:quick": "node run.mjs --quick",
     "report": "node report.mjs",
-    "selftest": "node selftest.mjs"
+    "selftest": "node selftest.mjs",
+    "browser": "node browser/run.mjs",
+    "browser:quick": "node browser/run.mjs --quick"
   },
   "dependencies": {
     "@jsquash/webp": "^1.5.0",
@@ -17,6 +19,8 @@
     "@takumi-rs/wasm": "^2.20.0",
     "binaryen": "^132.0.0",
     "pixelmatch": "^8.0.0",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "puppeteer-core": "^25.17.0",
+    "wawoff2": "^2.0.1"
   }
 }

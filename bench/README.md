@@ -76,3 +76,16 @@ Reported: median, p95, min, n, encoded bytes. Note takumi-wasm webp is always lo
 first `card-og` PNG render, total. `lib/cold.mjs <engine> --mem`: registers all fonts, 50 og-card PNG renders, reports `process.resourceUsage().maxRSS`
 and wasm linear memory before/after. `lib/sizes.mjs`: raw / gzip -9 / brotli (q11) of each `.wasm` (native: `.node`) and JS glue
 (takumi `dist/export.mjs` vs bm `js/*.mjs`).
+
+## Browser test
+
+Runs the engine in a real Chromium-based browser (Edge or Chrome, found automatically; no download) driven by `puppeteer-core`, and compares it with Node.
+
+```powershell
+cd D:\project\bm-engine\bench
+npm run browser:quick                 # 12 representative cases
+npm run browser                       # every case except "known-gaps"
+node browser/run.mjs --filter=text --iters=30 --no-takumi --browser="C:\path\to\chrome.exe"
+```
+
+What it does: serves the repo root on `127.0.0.1` (`browser/server.mjs`), loads `browser/page.html` (+ `page.mjs`, which streams `js/bm_engine.wasm`, registers the 9 fixture fonts and exposes `bmRender`/`bmBench`), sends each fixture over as JSON + base64 images, and checks (a) raw output is byte-identical to the Node render of the same wasm, (b) png/webp/jpeg decode in the browser (`createImageBitmap`) and match the raw render (opaque pixels +-1, jpeg mean abs diff < 3), (c) in-page timings vs Node, (d) `examples/browser.html` shows an image, and that no console errors/exceptions occur. It also tries `@takumi-rs/wasm` in the same browser through an import map for a browser-side comparison. Output: `out/browser-results.json`, `out/BROWSER.md`; exit code is non-zero on any failed assertion.
