@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) void {
     const profile = b.option([]const u8, "profile", "feature preset: full (default) | core") orelse "full";
     const full = !std.mem.eql(u8, profile, "core");
     const flags = b.addOptions();
-    inline for (.{ "tw", "css", "html", "svg", "woff", "variable_fonts", "cff", "color_fonts", "complex_text", "animation", "extra_codecs", "tables", "floats" }) |name| {
+    inline for (.{ "tw", "css", "html", "svg", "woff", "variable_fonts", "cff", "color_fonts", "complex_text", "animation", "extra_codecs", "tables", "floats", "render_svg" }) |name| {
         flags.addOption(bool, name, b.option(bool, name, "enable optional feature " ++ name) orelse full);
     }
     wasm_mod.addOptions("build_options", flags);
