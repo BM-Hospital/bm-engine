@@ -85,6 +85,7 @@ pub const Renderer = struct {
     pub fn create(gpa: Allocator) ?*Renderer {
         const self = gpa.create(Renderer) catch return null;
         self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa) };
+        self.rast.levels16 = true;
         return self;
     }
 

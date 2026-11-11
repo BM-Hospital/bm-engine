@@ -36,6 +36,9 @@ inline fn sanitize(v: f32) f32 {
 pub const Rasterizer = struct {
     /// Allocator for the scratch buffers (long-lived).
     gpa: Allocator,
+    /// Quantise coverage to 17 levels (multiples of 16), matching 4x4-supersampling rasterizers
+    /// such as tiny-skia. Fewer distinct edge values also compress much better in PNG.
+    levels16: bool = false,
     segs: std.ArrayList(Seg) = .empty,
     /// Invariant: all zero between calls.
     accum: []f32 = &.{},
@@ -381,7 +384,7 @@ pub const Rasterizer = struct {
         }
     }
 
-    inline fn cov(acc: f32, evenodd: bool) u8 {
+    inline fn cov(acc: f32, evenodd: bool, q16: bool) u8 {
         var v = @abs(acc);
         if (evenodd) {
             v = v - 2 * @floor(v * 0.5);
@@ -390,6 +393,11 @@ pub const Rasterizer = struct {
         // NaN-safe clamp to [0, 1]
         v = if (v < 1) v else 1;
         v = if (v > 0) v else 0;
+        if (q16) {
+            // 17 coverage levels (0, 16, .., 240, 255) like 4x4 supersampling (tiny-skia / Skia AAA off).
+            const q: u32 = @intFromFloat(v * 16 + 0.5);
+            return @intCast(@min(255, q * 16));
+        }
         return @intFromFloat(v * 255 + 0.5);
     }
 
@@ -399,6 +407,7 @@ pub const Rasterizer = struct {
         const w = self.w;
         const stride = self.stride;
         const words = self.words;
+        const q16 = self.levels16;
         var y: usize = 0;
         while (y < self.h) : (y += 1) {
             const row = self.accum.ptr + y * stride;
@@ -423,12 +432,12 @@ pub const Rasterizer = struct {
                     while (c < ce) : (c += 1) {
                         acc += row[c];
                         row[c] = 0;
-                        orow[c] = cov(acc, evenodd);
+                        orow[c] = cov(acc, evenodd, q16);
                     }
                     // slack cells past the right edge only need clearing
                     c = @max(c0, ce);
                     while (c < c1) : (c += 1) row[c] = 0;
-                    cur = cov(acc, evenodd);
+                    cur = cov(acc, evenodd, q16);
                     done = c1;
                 }
             }

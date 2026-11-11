@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/wasm.zig"),
         .target = wasm_target,
         .optimize = optimize,
-        .strip = true,
+        .strip = b.option(bool, "strip", "strip wasm debug info (default true)") orelse true,
         .unwind_tables = .none,
         .single_threaded = true,
     });

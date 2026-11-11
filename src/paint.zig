@@ -146,6 +146,9 @@ const Painter = struct {
     a: std.mem.Allocator,
     path: raster.Path = .empty,
     path2: raster.Path = .empty,
+    /// reusable full-canvas offscreen layers, one per opacity nesting level
+    layers: std.ArrayList(Pixmap) = .empty,
+    layer_depth: usize = 0,
 
     fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
@@ -165,6 +168,35 @@ const Painter = struct {
             return;
         }
         try p.setRRect(r, radii);
+        if (radii != null and ctx.plain() and r.w * r.h >= 4096 and @floor(r.x) == r.x and @floor(r.y) == r.y and @floor(r.w) == r.w and @floor(r.h) == r.h) {
+            // Large rounded rect: only the four corner cells go through the path rasterizer.
+            const rr = radii.?;
+            const a = @ceil(rr[0][0]);
+            const b = @ceil(rr[1][0]);
+            const d = @ceil(rr[2][0]);
+            const c = @ceil(rr[3][0]);
+            const top = @max(@ceil(rr[0][1]), @ceil(rr[1][1]));
+            const bot = @max(@ceil(rr[2][1]), @ceil(rr[3][1]));
+            if (top + bot <= r.h and a + b <= r.w and c + d <= r.w) {
+                raster.fillRect(ctx.dst, .{ .x = r.x, .y = r.y + top, .w = r.w, .h = r.h - top - bot }, pt, ctx.clip);
+                raster.fillRect(ctx.dst, .{ .x = r.x + a, .y = r.y, .w = r.w - a - b, .h = top }, pt, ctx.clip);
+                raster.fillRect(ctx.dst, .{ .x = r.x + c, .y = r.y + r.h - bot, .w = r.w - c - d, .h = bot }, pt, ctx.clip);
+                const cells = [4]Rect{
+                    .{ .x = r.x, .y = r.y, .w = a, .h = top },
+                    .{ .x = r.x + r.w - b, .y = r.y, .w = b, .h = top },
+                    .{ .x = r.x + r.w - d, .y = r.y + r.h - bot, .w = d, .h = bot },
+                    .{ .x = r.x, .y = r.y + r.h - bot, .w = c, .h = bot },
+                };
+                for (cells) |cell| {
+                    if (!(cell.w > 0) or !(cell.h > 0)) continue;
+                    var cc = ClipMask.fromRect(toIRect(cell));
+                    if (ctx.clip) |outer| cc = raster.clipIntersect(p.a, outer.*, cc) catch return error.OutOfMemory;
+                    if (cc.bounds.isEmpty()) continue;
+                    p.rast().fillPath(ctx.dst, &p.path, ctx.tf, .nonzero, pt, &cc) catch return error.OutOfMemory;
+                }
+                return;
+            }
+        }
         p.rast().fillPath(ctx.dst, &p.path, ctx.tf, .nonzero, pt, ctx.clip) catch return error.OutOfMemory;
     }
 
@@ -666,10 +698,9 @@ const Painter = struct {
     /// Coverage mask of a glyph. synth bit1 = fake bold: the outline grown by half of Skia's
     /// fake-bold stroke width, approximated as the per-pixel max over 9 offset copies.
     fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
-        const r = p.f.r;
         if (!p.buildGlyph(face, gid, size, ox, oy, synth, tf)) return null;
-        if (synth & 2 == 0) return r.rast.rasterize(out, &p.path, Affine.identity, .nonzero, window) catch null;
-        const base = r.rast.rasterize(p.a, &p.path, Affine.identity, .nonzero, window) catch return null;
+        if (synth & 2 == 0) return p.sampled(out, window);
+        const base = p.sampled(p.a, window) orelse return null;
         if (base.bounds.isEmpty()) return raster.Mask.empty;
         const t = std.math.clamp((size - 9) / 27, 0, 1);
         const rad = size * (1.0 / 24.0 + t * (1.0 / 32.0 - 1.0 / 24.0)) * 0.5;
@@ -681,10 +712,42 @@ const Painter = struct {
         mergeMax(&acc, &base);
         for (offs) |o| {
             if (!p.buildGlyph(face, gid, size, ox + o[0], oy + o[1], synth, tf)) continue;
-            const m = r.rast.rasterize(p.a, &p.path, Affine.identity, .nonzero, win) catch continue;
+            const m = p.sampled(p.a, win) orelse continue;
             mergeMax(&acc, &m);
         }
         return acc;
+    }
+
+    /// Rasterizes `p.path` like a 4x4 supersampling scan converter (what tiny-skia / takumi do):
+    /// the path is scan-converted at 4x scale, each sub-cell thresholded at half coverage, and
+    /// a pixel's coverage is 16 * (number of covered sub-cells), capped at 255.
+    fn sampled(p: *Painter, out: std.mem.Allocator, window: IRect) ?raster.Mask {
+        const r = p.f.r;
+        const lim = 1 << 26;
+        if (window.w > lim or window.h > lim or @abs(window.x) > lim or @abs(window.y) > lim) return null;
+        const w4: IRect = .{ .x = window.x * 4, .y = window.y * 4, .w = window.w * 4, .h = window.h * 4 };
+        const saved = r.rast.levels16;
+        r.rast.levels16 = false;
+        defer r.rast.levels16 = saved;
+        var hi = r.rast.rasterize(p.a, &p.path, Affine.scale(4, 4), .nonzero, w4) catch return null;
+        defer hi.deinit(p.a);
+        if (hi.bounds.isEmpty()) return raster.Mask.empty;
+        const x0 = @divFloor(hi.bounds.x, 4);
+        const y0 = @divFloor(hi.bounds.y, 4);
+        const x1 = @divFloor(hi.bounds.x + @as(i32, @intCast(hi.bounds.w)) + 3, 4);
+        const y1 = @divFloor(hi.bounds.y + @as(i32, @intCast(hi.bounds.h)) + 3, 4);
+        var m = raster.Mask.init(out, .{ .x = x0, .y = y0, .w = @intCast(x1 - x0), .h = @intCast(y1 - y0) }) catch return null;
+        const hw: usize = hi.bounds.w;
+        var sy: usize = 0;
+        while (sy < hi.bounds.h) : (sy += 1) {
+            const oy: usize = @intCast(@divFloor(hi.bounds.y + @as(i32, @intCast(sy)), 4) - y0);
+            const srow = hi.data[sy * hw ..][0..hw];
+            const drow = m.data[oy * m.bounds.w ..][0..m.bounds.w];
+            const xoff: usize = @intCast(hi.bounds.x - x0 * 4);
+            for (srow, 0..) |v, sx| drow[(sx + xoff) >> 2] += v >> 7;
+        }
+        for (m.data) |*v| v.* = @intCast(@min(255, @as(u32, v.*) * 16));
+        return m;
     }
 
     fn mergeMax(acc: *raster.Mask, m: *const raster.Mask) void {
@@ -811,6 +874,48 @@ const Painter = struct {
         return m;
     }
 
+    fn unionRect(a: Rect, b: Rect) Rect {
+        if (!(a.w > 0) or !(a.h > 0)) return b;
+        if (!(b.w > 0) or !(b.h > 0)) return a;
+        const x0 = @min(a.x, b.x);
+        const y0 = @min(a.y, b.y);
+        const x1 = @max(a.x + a.w, b.x + b.w);
+        const y1 = @max(a.y + a.h, b.y + b.h);
+        return .{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
+    }
+
+    /// Conservative visual bounds of a subtree whose border box origin is (x, y); null = unknown
+    /// (a descendant is transformed).
+    fn subtreeBounds(p: *Painter, id: u32, x: f32, y: f32, depth: u32) ?Rect {
+        const f = p.f;
+        const n = &f.nodes.items[id];
+        const cs = n.cs;
+        const l = f.tree.layout(n.lid);
+        if (depth > 256) return null;
+        var r: Rect = .{ .x = x, .y = y, .w = l.w, .h = l.h };
+        if (n.kind == .anon_text or n.kind == .text) {
+            const m = cs.font_size;
+            r = .{ .x = r.x - m, .y = r.y - m, .w = r.w + 2 * m, .h = r.h + 2 * m };
+        }
+        if (n.kind == .anon_text) return r;
+        if (cs.display == .none) return .{ .x = x, .y = y, .w = 0, .h = 0 };
+        for (cs.box_shadow) |sh| {
+            if (sh.inset) continue;
+            const e = @max(0, sh.spread) + @ceil(sh.blur * 1.5) + 2;
+            r = unionRect(r, .{ .x = x + sh.x - e, .y = y + sh.y - e, .w = l.w + 2 * e, .h = l.h + 2 * e });
+        }
+        if (cs.overflow_x != .visible and cs.overflow_y != .visible) return r;
+        var c = n.first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            const cn = &f.nodes.items[c];
+            const cl = f.tree.layout(cn.lid);
+            if (cn.kind != .anon_text and localTransform(cn.cs, 0, 0, cl.w, cl.h) != null) return null;
+            const cb = p.subtreeBounds(c, x + cl.x, y + cl.y, depth + 1) orelse return null;
+            r = unionRect(r, cb);
+        }
+        return r;
+    }
+
     fn paintNode(p: *Painter, id: u32, ox: f32, oy: f32, ctx_in: *const Ctx, depth: u32) Error!void {
         const f = p.f;
         const n = &f.nodes.items[id];
@@ -835,15 +940,32 @@ const Painter = struct {
             const op = cs.opacity;
             if (!(op > 0)) return;
             if (op < 1) {
-                var layer = Pixmap.init(p.a, ctx.dst.width, ctx.dst.height) catch return error.OutOfMemory;
-                var lctx: Ctx = .{ .dst = &layer, .tf = ctx.tf };
-                var bounds_clip: ClipMask = undefined;
-                if (ctx.clip) |c| {
-                    bounds_clip = ClipMask.fromRect(c.bounds);
-                    lctx.clip = &bounds_clip;
+                // Offscreen group, limited to the subtree's visual bounds when they are known.
+                var reg = region(&ctx);
+                if (ctx.plain()) {
+                    if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2));
                 }
+                if (reg.isEmpty()) return;
+                if (p.layer_depth >= p.layers.items.len) {
+                    const data = p.a.alloc(u8, ctx.dst.data.len) catch return error.OutOfMemory;
+                    try p.layers.append(p.a, .{ .width = ctx.dst.width, .height = ctx.dst.height, .data = data });
+                }
+                const layer = &p.layers.items[p.layer_depth];
+                const stride = @as(usize, layer.width) * 4;
+                var row: usize = @intCast(reg.y);
+                const row_end = row + reg.h;
+                while (row < row_end) : (row += 1) {
+                    const off = row * stride + @as(usize, @intCast(reg.x)) * 4;
+                    @memset(layer.data[off..][0 .. @as(usize, reg.w) * 4], 0);
+                }
+                const reg_clip = ClipMask.fromRect(reg);
+                const lctx: Ctx = .{ .dst = layer, .tf = ctx.tf, .clip = &reg_clip };
+                p.layer_depth += 1;
+                defer p.layer_depth -= 1;
                 try p.paintBox(id, x, y, &lctx, depth);
-                raster.drawPixmap(ctx.dst, &layer, Affine.identity, op, .nearest, ctx.clip);
+                var comp = reg_clip;
+                if (ctx.clip) |c| comp = raster.clipIntersect(p.a, c.*, comp) catch return error.OutOfMemory;
+                raster.drawPixmap(ctx.dst, &p.layers.items[p.layer_depth - 1], Affine.identity, op, .nearest, &comp);
                 return;
             }
         }
