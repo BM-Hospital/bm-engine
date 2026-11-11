@@ -4,6 +4,7 @@ import { c, col, t, root, rootCol, pal } from "./_h.mjs";
 const W = 600, H = 200;
 const white = { backgroundColor: "#fff", alignItems: "center", justifyContent: "space-around" };
 const grad = "linear-gradient(90deg,#f97316,#7c3aed)";
+const svgBg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='#0ea5e9'/><circle cx='50' cy='50' r='30' fill='#fde047' stroke='#111' stroke-width='4'/><path d='M35 52 L47 64 L68 38' stroke='#111' stroke-width='7' fill='none' stroke-linecap='round'/></svg>";
 const fx = [
   { id: "pfx-aa-shapes", feature: "aa-exact", title: "AA of circles, ellipses, thin rounded borders, fractional boxes", width: W, height: H,
     node: root({ ...white }, [
@@ -94,7 +95,7 @@ const fx = [
   { id: "pfx-text-stroke", feature: "text-stroke", title: "-webkit-text-stroke, paint-order, text-fill-color", width: W, height: H,
     node: rootCol({ backgroundColor: "#fff", alignItems: "center", justifyContent: "center", gap: 4 }, [
       t("Stroked text", { fontSize: 48, fontWeight: 700, color: "#fde047", WebkitTextStroke: "2px #111" }),
-      t("Stroke under fill", { fontSize: 48, fontWeight: 700, color: "#2563eb", WebkitTextStroke: "6px #bfdbfe", paintOrder: "stroke" }),
+      t("Stroke under fill", { fontSize: 48, fontWeight: 700, color: "#2563eb", WebkitTextStroke: "6px #bfdbfe", paintOrder: "stroke fill" }),
       t("Fill colour", { fontSize: 30, color: "#111", WebkitTextFillColor: "#16a34a" }),
     ]) },
   { id: "pfx-text-decoration", feature: "text-decoration", title: "underline / overline / line-through; styles; thickness; offset; skip-ink", width: W, height: 260,
@@ -115,5 +116,10 @@ const fx = [
   { id: "pfx-opacity-layers", feature: "opacity", title: "opacity groups over gradients (float source-over)", width: W, height: H,
     node: root({ backgroundImage: "linear-gradient(90deg,#fff,#0f172a)", alignItems: "center", justifyContent: "space-around" },
       [0.15, 0.4, 0.5, 0.75, 0.9].map((o) => c({ width: 90, height: 110, borderRadius: 16, backgroundImage: grad, border: "3px solid #111", opacity: o }, [t("Aa", { fontSize: 40, color: "#fff" })]))) },
+  { id: "pfx-svg-background", feature: "svg-image", title: "SVG as background-image (data URI), sized / repeated", width: W, height: H,
+    node: root({ ...white }, [
+      c({ width: 150, height: 150, backgroundImage: "url(\"data:image/svg+xml;base64," + Buffer.from(svgBg).toString("base64") + "\")", backgroundSize: "contain", backgroundRepeat: "no-repeat" }),
+      c({ width: 240, height: 150, backgroundColor: "#f1f5f9", backgroundImage: "url(\"data:image/svg+xml;base64," + Buffer.from(svgBg).toString("base64") + "\")", backgroundSize: "60px 60px" }),
+    ]) },
 ];
 export default fx;

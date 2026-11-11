@@ -1,11 +1,32 @@
-//! Painter: walks the laid-out node tree and draws boxes, text and images (takumi/Blink paint order:
-//! outer shadows -> background -> inset shadows -> border -> content -> children).
+//! Painter: walks the laid-out node tree and draws boxes, text and images in takumi / Blink paint
+//! order: outer shadows -> background -> inset shadows -> border -> content -> children, outlines
+//! at the end of their stacking context.
+//!
+//! * Anti-aliasing is takumi's (tiny-skia supersampling, `Rasterizer.mode = .skia_ss`) for every
+//!   shape, clip and glyph; untransformed boxes are pixel-snapped, transformed plain boxes are
+//!   filled without AA (as takumi does).
+//! * Elements with opacity / filter / backdrop-filter / mix-blend-mode / isolation / clip-path /
+//!   mask-image paint into a canvas-sized offscreen layer (one per nesting level, only the affected
+//!   region is cleared and composited): see `paintGroup`.
+//! * Companion files: paint_border.zig (border styles, outline), paint_text.zig (glyphs,
+//!   decorations, text stroke, colour glyphs, inline boxes), paint_fx.zig (clip-path, masks,
+//!   drop-shadow, backdrop), paint_svg.zig (SVG images).
+//! * Everything is allocated from the per-render arena (`Frame.a`); the only long-lived state
+//!   touched is the renderer's glyph cache, image cache and rasterizer scratch.
 const std = @import("std");
 const render = @import("render.zig");
 const style = @import("style/style.zig");
 const font = @import("font/font.zig");
 const raster = @import("raster/raster.zig");
 const rtypes = @import("raster/types.zig");
+const ptext = @import("paint_text.zig");
+const pborder = @import("paint_border.zig");
+const pfx = @import("paint_fx.zig");
+const psvg = @import("paint_svg.zig");
+
+/// Optional features (the integrator points these at `config.zig`).
+pub const enable_color_fonts = @import("config.zig").enable_color_fonts;
+pub const enable_svg = @import("config.zig").enable_svg;
 
 const Frame = render.Frame;
 const Node = render.Node;
@@ -18,23 +39,24 @@ const Pixmap = raster.Pixmap;
 const ClipMask = raster.ClipMask;
 const Paint = raster.Paint;
 const Error = render.Error;
-const Radii = [4][2]f32;
+pub const Radii = [4][2]f32;
+pub const zero_radii: Radii = .{ .{ 0, 0 }, .{ 0, 0 }, .{ 0, 0 }, .{ 0, 0 } };
 
-const Ctx = struct {
+pub const Ctx = struct {
     dst: *Pixmap,
     clip: ?*const ClipMask = null,
     tf: Affine = Affine.identity,
 
-    fn plain(c: *const Ctx) bool {
+    pub fn plain(c: *const Ctx) bool {
         return c.tf.isIdentity();
     }
 };
 
-fn rcolor(c: style.Color) raster.Color {
+pub fn rcolor(c: style.Color) raster.Color {
     return .{ .r = c.r, .g = c.g, .b = c.b, .a = c.a };
 }
 
-inline fn roundHalfUp(v: f32) f32 {
+pub inline fn roundHalfUp(v: f32) f32 {
     return @floor(v + 0.5);
 }
 
@@ -46,12 +68,16 @@ fn snapSize(pos: f32, size: f32) f32 {
     return s;
 }
 
-fn snapRect(x: f32, y: f32, w: f32, h: f32) Rect {
+pub fn snapRect(x: f32, y: f32, w: f32, h: f32) Rect {
     return .{ .x = roundHalfUp(x), .y = roundHalfUp(y), .w = @max(0, snapSize(x, w)), .h = @max(0, snapSize(y, h)) };
 }
 
 fn insetRect(r: Rect, t: f32, rg: f32, b: f32, l: f32) Rect {
     return .{ .x = r.x + l, .y = r.y + t, .w = @max(0, r.w - l - rg), .h = @max(0, r.h - t - b) };
+}
+
+pub fn hasAnyRadius(r: Radii) bool {
+    return hasRadii(r);
 }
 
 fn hasRadii(r: Radii) bool {
@@ -79,31 +105,113 @@ fn spreadRadii(r: Radii, spread: f32) Radii {
     return out;
 }
 
-fn resolveRadii(cs: *const CS, w: f32, h: f32) Radii {
+pub fn resolveRadiiRaw(cs: *const CS, w: f32, h: f32) Radii {
     var r: Radii = undefined;
     for (0..4) |i| {
         r[i] = .{ @max(0, cs.border_radius[i][0].resolve(w)), @max(0, cs.border_radius[i][1].resolve(h)) };
         if (r[i][0] <= 0 or r[i][1] <= 0) r[i] = .{ 0, 0 };
     }
-    // CSS corner overlap: scale all radii by the smallest ratio.
-    var f: f32 = 1;
-    const sums = [4]struct { s: f32, lim: f32 }{
-        .{ .s = r[0][0] + r[1][0], .lim = w },
-        .{ .s = r[3][0] + r[2][0], .lim = w },
-        .{ .s = r[0][1] + r[3][1], .lim = h },
-        .{ .s = r[1][1] + r[2][1], .lim = h },
-    };
-    for (sums) |e| if (e.s > e.lim and e.s > 0) {
-        f = @min(f, e.lim / e.s);
-    };
-    if (f < 1) for (&r) |*c| {
-        c[0] *= f;
-        c[1] *= f;
-    };
     return r;
 }
 
-const Geom = struct {
+/// CSS corner overlap: scale all radii by the smallest ratio.
+pub fn scaleRadii(r: *Radii, w: f32, h: f32) void {
+    var f: f32 = 1;
+    const sums = [4][2]f32{ .{ r[0][0] + r[1][0], w }, .{ r[3][0] + r[2][0], w }, .{ r[0][1] + r[3][1], h }, .{ r[1][1] + r[2][1], h } };
+    for (sums) |e| if (e[0] > e[1] and e[0] > 0) {
+        f = @min(f, e[1] / e[0]);
+    };
+    if (f < 1) for (r) |*c| {
+        c[0] *= f;
+        c[1] *= f;
+    };
+}
+
+fn resolveRadii(cs: *const CS, w: f32, h: f32) Radii {
+    var r = resolveRadiiRaw(cs, w, h);
+    scaleRadii(&r, w, h);
+    return r;
+}
+
+/// Composites the `reg` part of a canvas-sized premultiplied layer onto `dst` exactly like
+/// takumi's `end_layer`: the layer is first scaled by the clip coverage (`mul_div_255`), then
+/// blended source-over; with `opacity` < 1 in f32 (`source_over_at_opacity`: per channel
+/// `(d/255) * (1 - sa/255 * opacity) + s/255 * opacity`, scaled by 255, rounded ties-to-even).
+pub noinline fn compositeLayer(dst: *Pixmap, src: *const Pixmap, reg: IRect, opacity: f32, clip: ?*const ClipMask) void {
+    var r = reg.intersect(dst.bounds()).intersect(src.bounds());
+    if (clip) |c| r = r.intersect(c.bounds);
+    if (r.isEmpty() or src.width != dst.width) return;
+    const stride = @as(usize, dst.width) * 4;
+    const unit: f32 = 1.0 / 255.0;
+    const shift: f32 = 8_388_608.0;
+    const translucent = opacity < 1;
+    // k/255 and k/255 * opacity, exactly as the reference computes them
+    var du: [256]f32 = undefined;
+    var sv: [256]f32 = undefined;
+    if (translucent) {
+        for (0..256) |k| {
+            du[k] = @as(f32, @floatFromInt(k)) * unit;
+            sv[k] = du[k] * opacity;
+        }
+    }
+    const P = *align(1) u32;
+    var last_s: u32 = 0;
+    var last_d: u32 = 0;
+    var last_o: u32 = 0;
+    var yy: u32 = 0;
+    while (yy < r.h) : (yy += 1) {
+        const off = (@as(usize, @intCast(r.y)) + yy) * stride + @as(usize, @intCast(r.x)) * 4;
+        const drow = dst.data[off..][0 .. @as(usize, r.w) * 4];
+        const srow = src.data[off..][0 .. @as(usize, r.w) * 4];
+        var crow: ?[]const u8 = null;
+        if (clip) |c| if (c.data) |cd| {
+            const co = (@as(usize, @intCast(@as(i64, r.y) - c.bounds.y)) + yy) * c.bounds.w + @as(usize, @intCast(@as(i64, r.x) - c.bounds.x));
+            crow = cd[co..][0..r.w];
+        };
+        var x: usize = 0;
+        while (x < r.w) : (x += 1) {
+            var s32: u32 = @as(P, @ptrCast(srow.ptr + x * 4)).*;
+            if (s32 == 0) continue;
+            if (crow) |cr| {
+                const cv: u32 = cr[x];
+                if (cv == 0) continue;
+                if (cv != 255) {
+                    var sp: [4]u8 = @bitCast(s32);
+                    inline for (0..4) |k| sp[k] = @intCast(raster.div255(@as(u32, sp[k]) * cv));
+                    s32 = @bitCast(sp);
+                    if (s32 == 0) continue;
+                }
+            }
+            const dp: P = @ptrCast(drow.ptr + x * 4);
+            const d32 = dp.*;
+            if (s32 == last_s and d32 == last_d) {
+                dp.* = last_o;
+                continue;
+            }
+            const sp: [4]u8 = @bitCast(s32);
+            const d: [4]u8 = @bitCast(d32);
+            var o: [4]u8 = undefined;
+            if (translucent) {
+                const behind = 1.0 - sv[sp[3]];
+                inline for (0..4) |k| {
+                    const bl = du[d[k]] * behind + sv[sp[k]];
+                    o[k] = @intFromFloat((@min(bl, 1.0) * 255.0 + shift) - shift);
+                }
+            } else if (sp[3] == 255 or d[3] == 0) {
+                o = sp;
+            } else {
+                const inv: u32 = 255 - @as(u32, sp[3]);
+                inline for (0..4) |k| o[k] = @intCast(@min(255, @as(u32, sp[k]) + raster.div255(@as(u32, d[k]) * inv)));
+            }
+            last_s = s32;
+            last_d = d32;
+            last_o = @bitCast(o);
+            dp.* = last_o;
+        }
+    }
+}
+
+pub const Geom = struct {
     /// pixel-snapped border box
     bx: Rect,
     /// border widths top, right, bottom, left
@@ -114,15 +222,15 @@ const Geom = struct {
     rounded: bool,
     snapped: bool = true,
 
-    fn padRect(g: *const Geom) Rect {
+    pub fn padRect(g: *const Geom) Rect {
         return insetRect(g.bx, g.bw[0], g.bw[1], g.bw[2], g.bw[3]);
     }
-    fn padRadii(g: *const Geom) ?Radii {
+    pub fn padRadii(g: *const Geom) ?Radii {
         if (!g.rounded) return null;
         const r = insetRadii(g.radii, g.bw[0], g.bw[1], g.bw[2], g.bw[3]);
         return if (hasRadii(r)) r else null;
     }
-    fn contentRect(g: *const Geom) Rect {
+    pub fn contentRect(g: *const Geom) Rect {
         const p = g.padRect();
         if (!g.snapped) return insetRect(p, g.pad[0], g.pad[1], g.pad[2], g.pad[3]);
         const x0 = roundHalfUp(p.x + g.pad[3]);
@@ -131,42 +239,47 @@ const Geom = struct {
         const y1 = roundHalfUp(p.y + p.h - g.pad[2]);
         return .{ .x = x0, .y = y0, .w = @max(0, x1 - x0), .h = @max(0, y1 - y0) };
     }
-    fn contentRadii(g: *const Geom) ?Radii {
+    pub fn contentRadii(g: *const Geom) ?Radii {
         if (!g.rounded) return null;
         const r = insetRadii(g.radii, g.bw[0] + g.pad[0], g.bw[1] + g.pad[1], g.bw[2] + g.pad[2], g.bw[3] + g.pad[3]);
         return if (hasRadii(r)) r else null;
     }
-    fn outerRadii(g: *const Geom) ?Radii {
+    pub fn outerRadii(g: *const Geom) ?Radii {
         return if (g.rounded) g.radii else null;
     }
 };
 
-const Painter = struct {
+pub const Painter = struct {
     f: *Frame,
     a: std.mem.Allocator,
     path: raster.Path = .empty,
     path2: raster.Path = .empty,
     /// reusable full-canvas offscreen layers, one per opacity nesting level
-    layers: std.ArrayList(Pixmap) = .empty,
+    layers: std.ArrayList(*Pixmap) = .empty,
+    /// outlines waiting for the end of their stacking context
+    outlines: std.ArrayList(Deferred) = .empty,
+    /// colour glyph offscreens of this render
+    color_glyphs: std.ArrayList(ptext.ColorGlyph) = .empty,
     layer_depth: usize = 0,
 
-    fn rast(p: *Painter) *raster.Rasterizer {
+    pub fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
     }
 
-    fn setRRect(p: *Painter, r: Rect, radii: ?Radii) Error!void {
+    pub fn setRRect(p: *Painter, r: Rect, radii: ?Radii) Error!void {
         p.path.reset();
         if (radii) |rr| {
             p.path.addRoundRect(p.a, r, rr) catch return error.OutOfMemory;
         } else p.path.addRect(p.a, r) catch return error.OutOfMemory;
     }
 
-    noinline fn fillRRect(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, pt: *const Paint) Error!void {
+    pub noinline fn fillRRect(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, pt: *const Paint) Error!void {
         if (!(r.w > 0) or !(r.h > 0)) return;
         if (radii == null and ctx.plain()) {
             raster.fillRect(ctx.dst, r, pt, ctx.clip);
             return;
         }
+        if (radii == null) return p.fillRectAliased(ctx, r, pt);
         try p.setRRect(r, radii);
         if (radii != null and ctx.plain() and r.w * r.h >= 4096 and @floor(r.x) == r.x and @floor(r.y) == r.y and @floor(r.w) == r.w and @floor(r.h) == r.h) {
             // Large rounded rect: only the four corner cells go through the path rasterizer.
@@ -200,13 +313,36 @@ const Painter = struct {
         p.rast().fillPath(ctx.dst, &p.path, ctx.tf, .nonzero, pt, ctx.clip) catch return error.OutOfMemory;
     }
 
-    fn region(ctx: *const Ctx) IRect {
+    /// takumi fills a transformed, non-rounded box without anti-aliasing: a pixel is painted when
+    /// its centre lies inside the transformed rectangle.
+    noinline fn fillRectAliased(p: *Painter, ctx: *const Ctx, r: Rect, pt: *const Paint) Error!void {
+        const inv = ctx.tf.invert() orelse return;
+        const b = devBounds(ctx.tf, r).intersect(region(ctx));
+        if (b.isEmpty()) return;
+        var m = raster.Mask.init(p.a, b) catch return error.OutOfMemory;
+        const x1 = r.x + r.w;
+        const y1 = r.y + r.h;
+        var yy: u32 = 0;
+        while (yy < b.h) : (yy += 1) {
+            const cy = @as(f32, @floatFromInt(@as(i64, b.y) + yy)) + 0.5;
+            const row = m.data[@as(usize, yy) * b.w ..][0..b.w];
+            for (row, 0..) |*v, xx| {
+                const cx = @as(f32, @floatFromInt(@as(i64, b.x) + @as(i64, @intCast(xx)))) + 0.5;
+                const lx = inv.a * cx + inv.c * cy + inv.e;
+                const ly = inv.b * cx + inv.d * cy + inv.f;
+                v.* = if (lx >= r.x and lx < x1 and ly >= r.y and ly < y1) 255 else 0;
+            }
+        }
+        raster.fillMask(ctx.dst, &m, pt, ctx.clip);
+    }
+
+    pub fn region(ctx: *const Ctx) IRect {
         var reg = ctx.dst.bounds();
         if (ctx.clip) |c| reg = reg.intersect(c.bounds);
         return reg;
     }
 
-    fn toIRect(r: Rect) IRect {
+    pub fn toIRect(r: Rect) IRect {
         const lim: f32 = 1.0e6;
         const x0 = std.math.clamp(r.x, -lim, lim);
         const y0 = std.math.clamp(r.y, -lim, lim);
@@ -223,7 +359,7 @@ const Painter = struct {
     /// Coverage mask of a (rounded) rect clipped to `window`. Large pixel-aligned shapes are
     /// assembled from solid spans plus four small corner rasterizations, so neither time nor the
     /// rasterizer's scratch memory scale with the box area.
-    noinline fn rrectMask(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, window: IRect) Error!raster.Mask {
+    pub noinline fn rrectMask(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, window: IRect) Error!raster.Mask {
         fast: {
             if (!ctx.plain() or !(r.w * r.h >= 4096)) break :fast;
             if (@floor(r.x) != r.x or @floor(r.y) != r.y or @floor(r.w) != r.w or @floor(r.h) != r.h) break :fast;
@@ -287,7 +423,7 @@ const Painter = struct {
     }
 
     /// New clip = current clip ∩ (rounded) rect, allocated in the arena.
-    noinline fn makeClip(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii) Error!*const ClipMask {
+    pub noinline fn makeClip(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii) Error!*const ClipMask {
         var c: ClipMask = undefined;
         if (radii == null and ctx.plain()) {
             c = ClipMask.fromRect(toIRect(r).intersect(ctx.dst.bounds()));
@@ -304,14 +440,14 @@ const Painter = struct {
     // ---- gradients
 
     fn convertStops(p: *Painter, g: *const style.Gradient, len: f32, cur: style.Color) Error![]raster.GradientStop {
-        const rs = style.resolveStops(p.a, g.stops, len, cur) catch return error.OutOfMemory;
+        const rs = style.gradient.resolveGradientStops(p.a, g, len, cur) catch return error.OutOfMemory;
         const out = try p.a.alloc(raster.GradientStop, rs.len);
         const inv: f32 = if (len > 0) 1.0 / len else 0;
         for (rs, 0..) |s, i| out[i] = .{ .offset = s.offset_px * inv, .color = rcolor(s.color) };
         return out;
     }
 
-    noinline fn gradientPaint(p: *Painter, g: *const style.Gradient, tile: Rect, cur: style.Color, tf: Affine) Error!?Paint {
+    pub noinline fn gradientPaint(p: *Painter, g: *const style.Gradient, tile: Rect, cur: style.Color, tf: Affine) Error!?Paint {
         const w = tile.w;
         const h = tile.h;
         if (!(w > 0) or !(h > 0) or g.stops.len == 0) return null;
@@ -440,7 +576,7 @@ const Painter = struct {
 
     // ---- images
 
-    noinline fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect) void {
+    pub noinline fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect) void {
         if (!(dest.w > 0) or !(dest.h > 0) or pm.width == 0 or pm.height == 0) return;
         const tw: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.w))));
         const th: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.h))));
@@ -463,108 +599,208 @@ const Painter = struct {
         };
     }
 
-    noinline fn paintBackground(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
+    noinline fn paintBackground(p: *Painter, ctx_in: *const Ctx, id: u32, g: *const Geom, x: f32, y: f32) Error!void {
+        const cs = p.f.nodes.items[id].cs;
         const col = cs.resolveColor(cs.background_color);
+        if (col.a == 0 and cs.background_image.len == 0) return;
+        var ctx = ctx_in.*;
+        var text_clip = cs.bgColorClip() == .text;
+        for (cs.background_clip) |bc| {
+            if (bc == .text) text_clip = true;
+        }
+        if (text_clip) {
+            // background-clip: text — the whole background goes through the text coverage.
+            const reg = devBounds(ctx.tf, g.bx).intersect(region(&ctx));
+            if (reg.isEmpty()) return;
+            const m = try ptext.textClipMask(p, &ctx, id, x, y, reg);
+            var cm: ClipMask = m.asClip();
+            if (ctx.clip) |c| cm = raster.clipIntersect(p.a, c.*, cm) catch return error.OutOfMemory;
+            const cp = try p.a.create(ClipMask);
+            cp.* = cm;
+            ctx.clip = cp;
+            if (cm.bounds.isEmpty()) return;
+        }
+        var blended = false;
+        for (cs.background_blend_mode) |bm| {
+            if (bm != .normal) blended = true;
+        }
+        if (blended and cs.background_image.len > 0) return p.paintBackgroundBlended(&ctx, cs, g, col);
         if (col.a != 0) {
             const ar = area(g, cs.bgColorClip());
-            try p.fillRRect(ctx, ar.rect, ar.radii, &.{ .solid = rcolor(col) });
+            try p.fillRRect(&ctx, ar.rect, ar.radii, &.{ .solid = rcolor(col) });
         }
         var i = cs.background_image.len;
         while (i > 0) {
             i -= 1;
             const layer = cs.bgLayer(i);
             if (layer.image == .none) continue;
-            const o = area(g, layer.origin).rect;
-            const pa = area(g, layer.clip);
-            if (!(o.w > 0) or !(o.h > 0)) continue;
+            try p.paintBgLayer(&ctx, cs, g, &layer, true);
+        }
+    }
 
-            var iw: f32 = 0;
-            var ih: f32 = 0;
-            var pm: ?*const Pixmap = null;
-            if (layer.image == .url) {
-                pm = p.f.r.resolveImage(layer.image.url) orelse continue;
-                iw = @as(f32, @floatFromInt(pm.?.width)) * p.f.opts.dpr;
-                ih = @as(f32, @floatFromInt(pm.?.height)) * p.f.opts.dpr;
-                if (!(iw > 0) or !(ih > 0)) continue;
-            }
-            var tw: f32 = o.w;
-            var th: f32 = o.h;
-            switch (layer.size) {
-                .cover, .contain => if (pm != null) {
-                    const sx = o.w / iw;
-                    const sy = o.h / ih;
-                    const s = if (layer.size == .cover) @max(sx, sy) else @min(sx, sy);
-                    tw = iw * s;
-                    th = ih * s;
-                },
-                .size => |sz| {
-                    const a0: ?f32 = if (sz[0] == .lp) sz[0].lp.resolve(o.w) else null;
-                    const a1: ?f32 = if (sz[1] == .lp) sz[1].lp.resolve(o.h) else null;
-                    if (a0 == null and a1 == null) {
-                        if (pm != null) {
-                            tw = iw;
-                            th = ih;
-                        }
-                    } else if (a0 != null and a1 != null) {
-                        tw = a0.?;
-                        th = a1.?;
-                    } else if (a0) |v| {
-                        tw = v;
-                        th = if (pm != null) v * ih / iw else o.h;
-                    } else {
-                        th = a1.?;
-                        tw = if (pm != null) th * iw / ih else o.w;
-                    }
-                },
-            }
-            if (!(tw > 0) or !(th > 0)) continue;
-            const tx = o.x + layer.position[0].px + layer.position[0].pct * (o.w - tw);
-            const ty = o.y + layer.position[1].px + layer.position[1].pct * (o.h - th);
-            const rep_x = layer.repeat[0] != .no_repeat;
-            const rep_y = layer.repeat[1] != .no_repeat;
-
-            if (layer.image == .gradient and tw == o.w and th == o.h and tx == o.x and ty == o.y) {
-                // Single tile covering the positioning area (the overwhelmingly common case).
-                const pt = (try p.gradientPaint(layer.image.gradient, o, cs.color, ctx.tf)) orelse continue;
-                if (rep_x and rep_y) {
-                    try p.fillRRect(ctx, pa.rect, pa.radii, &pt);
-                } else {
-                    var c2 = ctx.*;
-                    c2.clip = try p.makeClip(ctx, pa.rect, pa.radii);
-                    try p.fillRRect(&c2, o, null, &pt);
-                }
+    /// background-blend-mode (takumi's "isolated" background): colour and layers are blended with
+    /// each other in an offscreen, bottom first, then drawn source-over.
+    noinline fn paintBackgroundBlended(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom, col: style.Color) Error!void {
+        const reg = devBounds(ctx.tf, g.bx).intersect(region(ctx));
+        if (reg.isEmpty()) return;
+        const base = try p.beginLayer(ctx, reg);
+        defer p.endLayer();
+        const rc = ClipMask.fromRect(reg);
+        var lctx: Ctx = .{ .dst = base, .tf = ctx.tf, .clip = &rc };
+        if (col.a != 0) {
+            const ar = area(g, cs.bgColorClip());
+            try p.fillRRect(&lctx, ar.rect, ar.radii, &.{ .solid = rcolor(col) });
+        }
+        var i = cs.background_image.len;
+        while (i > 0) {
+            i -= 1;
+            const layer = cs.bgLayer(i);
+            if (layer.image == .none) continue;
+            const mode = pfx.blendMode(cs.background_blend_mode[i % cs.background_blend_mode.len]);
+            if (mode == .normal) {
+                lctx.dst = base;
+                try p.paintBgLayer(&lctx, cs, g, &layer, true);
                 continue;
             }
+            const top = try p.beginLayer(ctx, reg);
+            defer p.endLayer();
+            lctx.dst = top;
+            try p.paintBgLayer(&lctx, cs, g, &layer, true);
+            raster.drawPixmapBlend(base, top, 0, 0, 1, mode, &rc);
+        }
+        compositeLayer(ctx.dst, base, reg, 1, ctx.clip);
+    }
 
-            var c2 = ctx.*;
-            c2.clip = try p.makeClip(ctx, pa.rect, pa.radii);
-            const px0 = pa.rect.x;
-            const py0 = pa.rect.y;
-            const px1 = pa.rect.x + pa.rect.w;
-            const py1 = pa.rect.y + pa.rect.h;
-            var y = if (rep_y) ty - @ceil((ty - py0) / th) * th else ty;
-            var count: u32 = 0;
-            while (y < py1 and count < 20000) : (y += th) {
-                var x = if (rep_x) tx - @ceil((tx - px0) / tw) * tw else tx;
-                while (x < px1 and count < 20000) : (x += tw) {
-                    count += 1;
-                    const tile: Rect = .{ .x = x, .y = y, .w = tw, .h = th };
-                    if (pm) |im| {
-                        p.drawImage(&c2, im, tile);
-                    } else {
-                        const pt = (try p.gradientPaint(layer.image.gradient, tile, cs.color, ctx.tf)) orelse break;
-                        try p.fillRRect(&c2, tile, null, &pt);
-                    }
-                    if (!rep_x) break;
-                }
-                if (!rep_y) break;
+    /// One background / mask image layer (gradient or image tiles) positioned in its origin box
+    /// and clipped to its clip box.
+    pub noinline fn paintBgLayer(p: *Painter, ctx_in: *const Ctx, cs: *const CS, g: *const Geom, layer: *const style.BgLayer, obscure: bool) Error!void {
+        const o = area(g, layer.origin).rect;
+        var pa = area(g, layer.clip);
+        var ctx_buf = ctx_in.*;
+        const ctx = &ctx_buf;
+        if (obscure and layer.clip == .border_box) {
+            // Blink `ObscuredBorderOutsets`: an opaque, gap-free border side hides the background, so
+            // image layers are not painted under it (no colour bleeding at the outer edge).
+            var ins: [4]f32 = .{ 0, 0, 0, 0 };
+            var any = false;
+            for (0..4) |i| {
+                const st = cs.border_style[i];
+                const w = g.bw[i];
+                if (!(w > 0) or cs.resolveColor(cs.border_color[i]).a != 255) continue;
+                const eff: style.computed.BorderStyle = if (st == .double and w < 3) .solid else st;
+                if (eff == .hidden or eff == .none or eff == .dotted or eff == .dashed or eff == .double) continue;
+                ins[i] = w;
+                any = true;
             }
+            if (any) {
+                const inner = insetRect(pa.rect, ins[0], ins[1], ins[2], ins[3]);
+                if (!(inner.w > 0) or !(inner.h > 0)) return;
+                if (pa.radii != null) ctx_buf.clip = try p.makeClip(ctx_in, pa.rect, pa.radii);
+                pa = .{ .rect = inner, .radii = null };
+            }
+        }
+        if (!(o.w > 0) or !(o.h > 0)) return;
+
+        var iw: f32 = 0;
+        var ih: f32 = 0;
+        var pm: ?*const Pixmap = null;
+        var svg_src: ?[]const u8 = null;
+        if (layer.image == .url) {
+            if (p.f.r.resolveImage(layer.image.url)) |im| {
+                pm = im;
+                iw = @as(f32, @floatFromInt(im.width)) * p.f.opts.dpr;
+                ih = @as(f32, @floatFromInt(im.height)) * p.f.opts.dpr;
+            } else if (psvg.urlSvgSource(p, layer.image.url)) |src| {
+                svg_src = src;
+                const sz = psvg.intrinsic(p, src, o.w, o.h);
+                iw = sz[0];
+                ih = sz[1];
+            } else return;
+            if (!(iw > 0) or !(ih > 0)) return;
+        }
+        const has_img = pm != null or svg_src != null;
+        var tw: f32 = o.w;
+        var th: f32 = o.h;
+        switch (layer.size) {
+            .cover, .contain => if (has_img) {
+                const sx = o.w / iw;
+                const sy = o.h / ih;
+                const s = if (layer.size == .cover) @max(sx, sy) else @min(sx, sy);
+                tw = iw * s;
+                th = ih * s;
+            },
+            .size => |sz| {
+                const a0: ?f32 = if (sz[0] == .lp) sz[0].lp.resolve(o.w) else null;
+                const a1: ?f32 = if (sz[1] == .lp) sz[1].lp.resolve(o.h) else null;
+                if (a0 == null and a1 == null) {
+                    if (has_img) {
+                        tw = iw;
+                        th = ih;
+                    }
+                } else if (a0 != null and a1 != null) {
+                    tw = a0.?;
+                    th = a1.?;
+                } else if (a0) |v| {
+                    tw = v;
+                    th = if (has_img) v * ih / iw else o.h;
+                } else {
+                    th = a1.?;
+                    tw = if (has_img) th * iw / ih else o.w;
+                }
+            },
+        }
+        if (!(tw > 0) or !(th > 0)) return;
+        const tx = o.x + layer.position[0].resolve(o.w - tw);
+        const ty = o.y + layer.position[1].resolve(o.h - th);
+        const rep_x = layer.repeat[0] != .no_repeat;
+        const rep_y = layer.repeat[1] != .no_repeat;
+
+        // The clip box sticks out of the positioning area (e.g. border-box clip, padding-box origin):
+        // the tile repeats into the border area.
+        const inside = pa.rect.x >= o.x and pa.rect.y >= o.y and pa.rect.x + pa.rect.w <= o.x + o.w and pa.rect.y + pa.rect.h <= o.y + o.h;
+        if (layer.image == .gradient and tw == o.w and th == o.h and tx == o.x and ty == o.y and (inside or (!rep_x and !rep_y))) {
+            // Single tile covering the positioning area (the overwhelmingly common case).
+            const pt = (try p.gradientPaint(layer.image.gradient, o, cs.color, ctx.tf)) orelse return;
+            if (rep_x and rep_y) {
+                try p.fillRRect(ctx, pa.rect, pa.radii, &pt);
+            } else {
+                var c2 = ctx.*;
+                c2.clip = try p.makeClip(ctx, pa.rect, pa.radii);
+                try p.fillRRect(&c2, o, null, &pt);
+            }
+            return;
+        }
+
+        var c2 = ctx.*;
+        c2.clip = try p.makeClip(ctx, pa.rect, pa.radii);
+        const px0 = pa.rect.x;
+        const py0 = pa.rect.y;
+        const px1 = pa.rect.x + pa.rect.w;
+        const py1 = pa.rect.y + pa.rect.h;
+        var yy = if (rep_y) ty - @ceil((ty - py0) / th) * th else ty;
+        var count: u32 = 0;
+        while (yy < py1 and count < 20000) : (yy += th) {
+            var xx = if (rep_x) tx - @ceil((tx - px0) / tw) * tw else tx;
+            while (xx < px1 and count < 20000) : (xx += tw) {
+                count += 1;
+                const tile: Rect = .{ .x = xx, .y = yy, .w = tw, .h = th };
+                if (pm) |im| {
+                    p.drawImage(&c2, im, tile);
+                } else if (svg_src) |src| {
+                    try psvg.paintSvg(p, &c2, src, tile, cs.color);
+                } else {
+                    const pt = (try p.gradientPaint(layer.image.gradient, tile, cs.color, ctx.tf)) orelse break;
+                    try p.fillRRect(&c2, tile, null, &pt);
+                }
+                if (!rep_x) break;
+            }
+            if (!rep_y) break;
         }
     }
 
     // ---- shadows
 
-    fn tfScale(tf: Affine) f32 {
+    pub fn tfScale(tf: Affine) f32 {
         const det = @abs(tf.a * tf.d - tf.b * tf.c);
         return if (det > 0) @sqrt(det) else 1;
     }
@@ -655,333 +891,59 @@ const Painter = struct {
         }
     }
 
-    // ---- border
+    // ---- layers
 
-    noinline fn paintBorder(p: *Painter, ctx: *const Ctx, cs: *const CS, g: *const Geom) Error!void {
-        const bw = g.bw;
-        if (bw[0] <= 0 and bw[1] <= 0 and bw[2] <= 0 and bw[3] <= 0) return;
-        var cols: [4]style.Color = undefined;
-        var uniform = true;
-        var first: ?style.Color = null;
-        for (0..4) |i| {
-            cols[i] = cs.resolveColor(cs.border_color[i]);
-            if (bw[i] > 0) {
-                if (first) |fc| {
-                    if (!fc.eql(cols[i])) uniform = false;
-                } else first = cols[i];
+    /// Device-space integer bounds of `r` under `tf`.
+    pub fn devBounds(tf: Affine, r: Rect) IRect {
+        if (tf.isIdentity()) return toIRect(r);
+        var x0: f32 = std.math.floatMax(f32);
+        var y0: f32 = x0;
+        var x1: f32 = -x0;
+        var y1: f32 = -x0;
+        const cs = [4]raster.Point{ .{ .x = r.x, .y = r.y }, .{ .x = r.x + r.w, .y = r.y }, .{ .x = r.x + r.w, .y = r.y + r.h }, .{ .x = r.x, .y = r.y + r.h } };
+        for (cs) |c| {
+            const q = tf.apply(c);
+            x0 = @min(x0, q.x);
+            y0 = @min(y0, q.y);
+            x1 = @max(x1, q.x);
+            y1 = @max(y1, q.y);
+        }
+        if (!(x1 >= x0) or !(y1 >= y0)) return IRect.empty;
+        return toIRect(.{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 });
+    }
+
+    /// Hands out the canvas-sized offscreen layer of the current nesting level with `reg` cleared
+    /// to transparent. `reg` must lie inside the canvas. Pair with `endLayer`.
+    pub noinline fn beginLayer(p: *Painter, ctx: *const Ctx, reg_in: IRect) Error!*Pixmap {
+        const reg = reg_in.intersect(ctx.dst.bounds());
+        if (p.layer_depth >= p.layers.items.len) {
+            const lp = try p.a.create(Pixmap);
+            const data = p.a.alloc(u8, ctx.dst.data.len) catch return error.OutOfMemory;
+            lp.* = .{ .width = ctx.dst.width, .height = ctx.dst.height, .data = data };
+            try p.layers.append(p.a, lp);
+        }
+        const layer = p.layers.items[p.layer_depth];
+        p.layer_depth += 1;
+        const stride = @as(usize, layer.width) * 4;
+        if (!reg.isEmpty()) {
+            var row: usize = @intCast(reg.y);
+            const row_end = row + reg.h;
+            while (row < row_end) : (row += 1) {
+                const off = row * stride + @as(usize, @intCast(reg.x)) * 4;
+                @memset(layer.data[off..][0 .. @as(usize, reg.w) * 4], 0);
             }
         }
-        const b = g.bx;
-        const in = g.padRect();
-        if (uniform) {
-            const c = first.?;
-            if (c.a == 0) return;
-            const pt: Paint = .{ .solid = rcolor(c) };
-            if (!g.rounded and ctx.plain()) {
-                raster.fillRect(ctx.dst, .{ .x = b.x, .y = b.y, .w = b.w, .h = bw[0] }, &pt, ctx.clip);
-                raster.fillRect(ctx.dst, .{ .x = b.x, .y = in.y + in.h, .w = b.w, .h = bw[2] }, &pt, ctx.clip);
-                raster.fillRect(ctx.dst, .{ .x = b.x, .y = in.y, .w = bw[3], .h = in.h }, &pt, ctx.clip);
-                raster.fillRect(ctx.dst, .{ .x = in.x + in.w, .y = in.y, .w = bw[1], .h = in.h }, &pt, ctx.clip);
-                return;
-            }
-            try p.ringPath(g);
-            p.rast().fillPath(ctx.dst, &p.path, ctx.tf, .evenodd, &pt, ctx.clip) catch return error.OutOfMemory;
-            return;
-        }
-        // Per-side colours: intersect the ring with one wedge per side.
-        try p.ringPath(g);
-        const ring = p.rast().rasterize(p.a, &p.path, ctx.tf, .evenodd, region(ctx)) catch return error.OutOfMemory;
-        if (ring.bounds.isEmpty()) return;
-        const m = @min(in.w, in.h) * 0.5;
-        const x0 = b.x;
-        const y0 = b.y;
-        const x1 = b.x + b.w;
-        const y1 = b.y + b.h;
-        const ix0 = in.x;
-        const iy0 = in.y;
-        const ix1 = in.x + in.w;
-        const iy1 = in.y + in.h;
-        const wedges = [4][6][2]f32{
-            .{ .{ x0, y0 }, .{ x1, y0 }, .{ ix1, iy0 }, .{ ix1 - m, iy0 + m }, .{ ix0 + m, iy0 + m }, .{ ix0, iy0 } },
-            .{ .{ x1, y0 }, .{ x1, y1 }, .{ ix1, iy1 }, .{ ix1 - m, iy1 - m }, .{ ix1 - m, iy0 + m }, .{ ix1, iy0 } },
-            .{ .{ x1, y1 }, .{ x0, y1 }, .{ ix0, iy1 }, .{ ix0 + m, iy1 - m }, .{ ix1 - m, iy1 - m }, .{ ix1, iy1 } },
-            .{ .{ x0, y1 }, .{ x0, y0 }, .{ ix0, iy0 }, .{ ix0 + m, iy0 + m }, .{ ix0 + m, iy1 - m }, .{ ix0, iy1 } },
-        };
-        const cxm = (x0 + x1) * 0.5;
-        const cym = (y0 + y1) * 0.5;
-        for (0..4) |i| {
-            if (bw[i] <= 0 or cols[i].a == 0) continue;
-            p.path.reset();
-            var wd = wedges[i];
-            // A zero-width neighbour gives its whole corner to this side.
-            const far: [4][2][2]f32 = .{
-                .{ .{ x1, cym }, .{ x0, cym } },
-                .{ .{ cxm, y1 }, .{ cxm, y0 } },
-                .{ .{ x0, cym }, .{ x1, cym } },
-                .{ .{ cxm, y0 }, .{ cxm, y1 } },
-            };
-            if (bw[(i + 1) % 4] <= 0) wd[3] = far[i][0];
-            if (bw[(i + 3) % 4] <= 0) wd[4] = far[i][1];
-            p.path.moveTo(p.a, wd[0][0], wd[0][1]) catch return error.OutOfMemory;
-            for (wd[1..]) |pt| p.path.lineTo(p.a, pt[0], pt[1]) catch return error.OutOfMemory;
-            p.path.close(p.a) catch return error.OutOfMemory;
-            const wm = p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, ring.bounds) catch return error.OutOfMemory;
-            const side = raster.maskIntersect(p.a, &ring, &wm) catch return error.OutOfMemory;
-            raster.fillMask(ctx.dst, &side, &.{ .solid = rcolor(cols[i]) }, ctx.clip);
-        }
+        return layer;
     }
 
-    fn ringPath(p: *Painter, g: *const Geom) Error!void {
-        p.path.reset();
-        if (g.rounded) {
-            p.path.addRoundRect(p.a, g.bx, g.radii) catch return error.OutOfMemory;
-        } else p.path.addRect(p.a, g.bx) catch return error.OutOfMemory;
-        const in = g.padRect();
-        if (in.w > 0 and in.h > 0) {
-            if (g.padRadii()) |rr| {
-                p.path.addRoundRect(p.a, in, rr) catch return error.OutOfMemory;
-            } else p.path.addRect(p.a, in) catch return error.OutOfMemory;
-        }
-    }
-
-    // ---- text
-
-    /// Builds the device-space outline of a glyph into `p.path` (synth bit0 = fake italic, skew -14.04deg).
-    fn buildGlyph(p: *Painter, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine) bool {
-        const fnt = p.f.r.fonts.font(face);
-        var local = Affine.translate(ox, oy);
-        if (synth & 1 != 0) local = local.mul(.{ .c = -0.25 });
-        p.path.reset();
-        var sink: raster.PathSink = .{ .path = &p.path, .alloc = p.a, .transform = tf.mul(local) };
-        _ = font.emitGlyph(fnt, gid, size, 0, 0, &sink);
-        return !sink.err;
-    }
-
-    /// Coverage mask of a glyph. synth bit1 = fake bold: the outline grown by half of Skia's
-    /// fake-bold stroke width, approximated as the per-pixel max over 9 offset copies.
-    noinline fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
-        if (!p.buildGlyph(face, gid, size, ox, oy, synth, tf)) return null;
-        if (synth & 2 == 0) return p.sampled(out, window, 0);
-        const t = std.math.clamp((size - 9) / 27, 0, 1);
-        const rad = size * (1.0 / 24.0 + t * (1.0 / 32.0 - 1.0 / 24.0)) * 0.5;
-        return p.sampled(out, window, rad * Painter.tfScale(tf));
-    }
-
-    /// Rasterizes `p.path` like a 4x4 supersampling scan converter (what tiny-skia / takumi do):
-    /// the path is scan-converted at 4x scale, each sub-cell thresholded at half coverage, and
-    /// a pixel's coverage is 16 * (number of covered sub-cells), capped at 255.
-    /// `grow` > 0 (fake bold) dilates the shape by that many px with a disc, in sub-cell space.
-    fn sampled(p: *Painter, out: std.mem.Allocator, window: IRect, grow: f32) ?raster.Mask {
-        const r = p.f.r;
-        const lim = 1 << 26;
-        if (window.w > lim or window.h > lim or @abs(window.x) > lim or @abs(window.y) > lim) return null;
-        const w4: IRect = .{ .x = window.x * 4, .y = window.y * 4, .w = window.w * 4, .h = window.h * 4 };
-        const saved = r.rast.levels16;
-        r.rast.levels16 = false;
-        defer r.rast.levels16 = saved;
-        const sa = r.scratch.allocator();
-        defer r.scratch.reset();
-        var hi = r.rast.rasterize(sa, &p.path, Affine.scale(4, 4), .nonzero, w4) catch return null;
-        if (hi.bounds.isEmpty()) return raster.Mask.empty;
-        if (grow > 0) hi = dilate(sa, &hi, @min(grow * 4, 64)) orelse return null;
-        const x0 = @divFloor(hi.bounds.x, 4);
-        const y0 = @divFloor(hi.bounds.y, 4);
-        const x1 = @divFloor(hi.bounds.x + @as(i32, @intCast(hi.bounds.w)) + 3, 4);
-        const y1 = @divFloor(hi.bounds.y + @as(i32, @intCast(hi.bounds.h)) + 3, 4);
-        var m = raster.Mask.init(out, .{ .x = x0, .y = y0, .w = @intCast(x1 - x0), .h = @intCast(y1 - y0) }) catch return null;
-        const hw: usize = hi.bounds.w;
-        var sy: usize = 0;
-        while (sy < hi.bounds.h) : (sy += 1) {
-            const oy: usize = @intCast(@divFloor(hi.bounds.y + @as(i32, @intCast(sy)), 4) - y0);
-            const srow = hi.data[sy * hw ..][0..hw];
-            const drow = m.data[oy * m.bounds.w ..][0..m.bounds.w];
-            const xoff: usize = @intCast(hi.bounds.x - x0 * 4);
-            for (srow, 0..) |v, sx| drow[(sx + xoff) >> 2] += v >> 7;
-        }
-        for (m.data) |*v| v.* = @intCast(@min(255, @as(u32, v.*) * 16));
-        return m;
-    }
-
-    /// Binary dilation (threshold 128) of an A8 mask with a disc of radius `radius` cells.
-    /// Returns a 0 / 255 mask whose bounds are grown by ceil(radius).
-    fn dilate(a: std.mem.Allocator, src: *const raster.Mask, radius: f32) ?raster.Mask {
-        const rc: u32 = @intFromFloat(@ceil(radius));
-        const sw: usize = src.bounds.w;
-        const sh: usize = src.bounds.h;
-        var dst = raster.Mask.init(a, src.bounds.expand(rc)) catch return null;
-        const dw: usize = dst.bounds.w;
-        const cnt = a.alloc(u32, sw + 1) catch return null;
-        const r2 = radius * radius;
-        var sy: usize = 0;
-        while (sy < sh) : (sy += 1) {
-            const srow = src.data[sy * sw ..][0..sw];
-            cnt[0] = 0;
-            for (srow, 0..) |v, x| cnt[x + 1] = cnt[x] + (v >> 7);
-            if (cnt[sw] == 0) continue;
-            var dyi: i32 = -@as(i32, @intCast(rc));
-            while (dyi <= @as(i32, @intCast(rc))) : (dyi += 1) {
-                const dyf: f32 = @floatFromInt(dyi);
-                const rem = r2 - dyf * dyf;
-                if (rem < 0) continue;
-                const hwid: usize = @intFromFloat(@floor(@sqrt(rem)));
-                const orow_i: usize = @intCast(@as(i64, @intCast(sy)) + dyi + rc);
-                const orow = dst.data[orow_i * dw ..][0..dw];
-                // destination x (in dst coords) is covered if any source cell in [x - rc - hwid, x - rc + hwid] is set
-                var x: usize = 0;
-                while (x < dw) : (x += 1) {
-                    const lo_i: i64 = @as(i64, @intCast(x)) - rc - @as(i64, @intCast(hwid));
-                    const hi_i: i64 = @as(i64, @intCast(x)) - rc + @as(i64, @intCast(hwid)) + 1;
-                    const lo: usize = @intCast(std.math.clamp(lo_i, 0, @as(i64, @intCast(sw))));
-                    const hi: usize = @intCast(std.math.clamp(hi_i, 0, @as(i64, @intCast(sw))));
-                    if (hi > lo and cnt[hi] != cnt[lo]) orow[x] = 255;
-                }
-            }
-        }
-        return dst;
-    }
-
-    fn mergeMax(acc: *raster.Mask, m: *const raster.Mask) void {
-        const b = m.bounds.intersect(acc.bounds);
-        if (b.isEmpty()) return;
-        var yy: u32 = 0;
-        while (yy < b.h) : (yy += 1) {
-            const ar: usize = @intCast(@as(i64, b.y) + yy - acc.bounds.y);
-            const ac: usize = @intCast(@as(i64, b.x) - acc.bounds.x);
-            const mr: usize = @intCast(@as(i64, b.y) + yy - m.bounds.y);
-            const mc: usize = @intCast(@as(i64, b.x) - m.bounds.x);
-            const drow = acc.data[ar * acc.bounds.w + ac ..][0..b.w];
-            const srow = m.data[mr * m.bounds.w + mc ..][0..b.w];
-            for (drow, srow) |*dv, sv| dv.* = @max(dv.*, sv);
-        }
-    }
-
-    noinline fn glyphMask(p: *Painter, face: font.FaceId, gid: u16, size: f32, sub: u2, synth: u2) ?render.GlyphMask {
-        const r = p.f.r;
-        const key: u64 = (@as(u64, synth) << 62) | (@as(u64, face & 0xFFF) << 50) | (@as(u64, gid) << 34) | (@as(u64, sub) << 32) | @as(u32, @bitCast(size));
-        if (r.glyphs.get(key)) |gm| return gm;
-        const big: IRect = .{ .x = -8192, .y = -8192, .w = 16384, .h = 16384 };
-        const m = p.glyphCoverage(r.gpa, face, gid, size, @as(f32, @floatFromInt(sub)) * 0.25, 0, synth, Affine.identity, big) orelse return null;
-        const gm: render.GlyphMask = .{ .x = m.bounds.x, .y = m.bounds.y, .w = m.bounds.w, .h = m.bounds.h, .data = m.data };
-        r.glyphs.put(r.gpa, key, gm) catch {
-            if (m.data.len > 0) r.gpa.free(m.data);
-            return null;
-        };
-        r.glyph_bytes += m.data.len + 48;
-        return gm;
-    }
-
-    /// text-shadow: the glyph masks of the paragraph merged into one A8 mask, blurred and filled.
-    noinline fn paintTextShadows(p: *Painter, ctx: *const Ctx, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, cw: f32) Error!void {
-        const cs = n.cs;
-        const vis = region(ctx);
-        if (vis.isEmpty()) return;
-        var i = cs.text_shadow.len;
-        while (i > 0) {
-            i -= 1;
-            const sh = cs.text_shadow[i];
-            const col = cs.resolveColor(sh.color);
-            if (col.a == 0) continue;
-            const sigma = sh.blur * 0.5;
-            const reach = raster.blurReach(sigma);
-            const pad = cs.font_size + 2;
-            const sarea: Rect = .{ .x = x + sh.x - pad, .y = y + sh.y - pad, .w = @max(cw, tl.width) + 2 * pad, .h = tl.height + 2 * pad };
-            const b = toIRect(sarea).intersect(vis.expand(reach));
-            if (b.isEmpty()) continue;
-            var mask = raster.Mask.init(p.a, b) catch return error.OutOfMemory;
-            for (tl.glyphs) |g| {
-                if (g.size > 400) continue;
-                const fc = p.f.r.fonts.face(g.face);
-                const rcs = if (g.user < p.f.run_styles.items.len) p.f.run_styles.items[g.user] else cs;
-                var synth: u2 = 0;
-                if (rcs.font_style != .normal and !fc.italic) synth |= 1;
-                if (rcs.font_weight >= 600 and fc.weight < 600) synth |= 2;
-                const qx = roundHalfUp((x + g.x + sh.x) * 4) * 0.25;
-                const ix = @floor(qx);
-                const sub: u2 = @intFromFloat(std.math.clamp((qx - ix) * 4, 0, 3));
-                const iy = roundHalfUp(y + g.y + sh.y);
-                if (@abs(ix) > 1.0e6 or @abs(iy) > 1.0e6) continue;
-                const gm = p.glyphMask(g.face, g.gid, g.size, sub, synth) orelse continue;
-                if (gm.w == 0 or gm.h == 0) continue;
-                const one: raster.Mask = .{ .bounds = .{ .x = gm.x + @as(i32, @intFromFloat(ix)), .y = gm.y + @as(i32, @intFromFloat(iy)), .w = gm.w, .h = gm.h }, .data = gm.data };
-                mergeMax(&mask, &one);
-            }
-            raster.blurMaskClipped(p.a, &mask, sigma, vis) catch return error.OutOfMemory;
-            raster.fillMask(ctx.dst, &mask, &.{ .solid = rcolor(col) }, ctx.clip);
-        }
-    }
-
-    noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
-        const para = n.para orelse return;
-        const tl = para.layout(p.a, cw) catch return error.OutOfMemory;
-        const f = p.f;
-        const plain = ctx.plain();
-        if (plain and n.cs.text_shadow.len > 0) try p.paintTextShadows(ctx, n, &tl, x, y, cw);
-        for (tl.glyphs) |g| {
-            const rcs = if (g.user < f.run_styles.items.len) f.run_styles.items[g.user] else n.cs;
-            if (rcs.color.a == 0 or rcs.visibility != .visible) continue;
-            const pt: Paint = .{ .solid = rcolor(rcs.color) };
-            const gx = x + g.x;
-            const gy = y + g.y;
-            const fc = f.r.fonts.face(g.face);
-            var synth: u2 = 0;
-            if (rcs.font_style != .normal and !fc.italic) synth |= 1;
-            if (rcs.font_weight >= 600 and fc.weight < 600) synth |= 2;
-            if (plain and g.size <= 400) {
-                const qx = roundHalfUp(gx * 4) * 0.25;
-                const ix = @floor(qx);
-                const sub: u2 = @intFromFloat(std.math.clamp((qx - ix) * 4, 0, 3));
-                const iy = roundHalfUp(gy);
-                if (@abs(ix) > 1.0e6 or @abs(iy) > 1.0e6) continue;
-                const gm = p.glyphMask(g.face, g.gid, g.size, sub, synth) orelse continue;
-                if (gm.w == 0 or gm.h == 0) continue;
-                const mask: raster.Mask = .{
-                    .bounds = .{ .x = gm.x + @as(i32, @intFromFloat(ix)), .y = gm.y + @as(i32, @intFromFloat(iy)), .w = gm.w, .h = gm.h },
-                    .data = gm.data,
-                };
-                raster.fillMask(ctx.dst, &mask, &pt, ctx.clip);
-            } else {
-                const m = p.glyphCoverage(p.a, g.face, g.gid, g.size, gx, gy, synth, ctx.tf, region(ctx)) orelse return error.OutOfMemory;
-                raster.fillMask(ctx.dst, &m, &pt, ctx.clip);
-            }
-        }
-        // Decorations (underline / overline / line-through) of the block's own style.
-        var deco = n.cs.text_decoration_line;
-        var dcs = n.cs;
-        if (!(deco.underline or deco.overline or deco.line_through) and n.parent != none and n.kind == .text) {
-            dcs = f.nodes.items[n.parent].cs;
-            deco = dcs.text_decoration_line;
-        }
-        if (!(deco.underline or deco.overline or deco.line_through)) return;
-        const dcol = dcs.resolveColor(dcs.text_decoration_color);
-        const dpt: Paint = .{ .solid = rcolor(if (dcs.text_decoration_color == .current) n.cs.color else dcol) };
-        for (tl.lines) |line| {
-            if (line.glyph_end <= line.glyph_start or !(line.width > 0)) continue;
-            const g0 = tl.glyphs[line.glyph_start];
-            const fnt = f.r.fonts.font(g0.face);
-            const s = g0.size / @as(f32, @floatFromInt(@max(1, fnt.unitsPerEm())));
-            var thick = dcs.text_decoration_thickness orelse @as(f32, @floatFromInt(fnt.underlineThickness())) * s;
-            thick = @max(1, roundHalfUp(thick));
-            const lx = x + line.x;
-            const base = y + line.baseline;
-            if (deco.underline) {
-                const off = -@as(f32, @floatFromInt(fnt.underlinePosition())) * s;
-                try p.fillRRect(ctx, .{ .x = lx, .y = roundHalfUp(base + off - thick * 0.5), .w = line.width, .h = thick }, null, &dpt);
-            }
-            if (deco.overline) {
-                try p.fillRRect(ctx, .{ .x = lx, .y = roundHalfUp(base - line.ascent), .w = line.width, .h = thick }, null, &dpt);
-            }
-            if (deco.line_through) {
-                var off = @as(f32, @floatFromInt(fnt.strikeoutPosition())) * s;
-                if (off == 0) off = @as(f32, @floatFromInt(fnt.xHeight())) * s * 0.5;
-                try p.fillRRect(ctx, .{ .x = lx, .y = roundHalfUp(base - off - thick * 0.5), .w = line.width, .h = thick }, null, &dpt);
-            }
-        }
+    pub fn endLayer(p: *Painter) void {
+        p.layer_depth -= 1;
     }
 
     // ---- nodes
 
     fn localTransform(cs: *const CS, x: f32, y: f32, w: f32, h: f32) ?Affine {
-        const has = cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1 or cs.translate[0].px != 0 or cs.translate[0].pct != 0 or cs.translate[1].px != 0 or cs.translate[1].pct != 0;
+        const has = cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1 or cs.translate[0].px != 0 or cs.translate[0].pct != 0 or cs.translate[1].px != 0 or cs.translate[1].pct != 0 or cs.translate[0].calc != null or cs.translate[1].calc != null;
         if (!has) return null;
         const d2r: f32 = std.math.pi / 180.0;
         const ox = x + cs.transform_origin[0].resolve(w);
@@ -1022,10 +984,11 @@ const Painter = struct {
         const n = &f.nodes.items[id];
         const cs = n.cs;
         const l = f.tree.layout(n.lid);
-        if (depth > 256) return null;
+        if (depth > 600) return null;
         var r: Rect = .{ .x = x, .y = y, .w = l.w, .h = l.h };
         if (n.kind == .anon_text or n.kind == .text) {
-            const m = cs.font_size;
+            var m = cs.font_size + cs.webkit_text_stroke_width;
+            for (cs.text_shadow) |sh| m = @max(m, cs.font_size + @max(@abs(sh.x), @abs(sh.y)) + @ceil(sh.blur * 1.5) + 2);
             r = .{ .x = r.x - m, .y = r.y - m, .w = r.w + 2 * m, .h = r.h + 2 * m };
         }
         if (n.kind == .anon_text) return r;
@@ -1034,6 +997,10 @@ const Painter = struct {
             if (sh.inset) continue;
             const e = @max(0, sh.spread) + @ceil(sh.blur * 1.5) + 2;
             r = unionRect(r, .{ .x = x + sh.x - e, .y = y + sh.y - e, .w = l.w + 2 * e, .h = l.h + 2 * e });
+        }
+        if (cs.outline_style != .none and cs.outline_style != .hidden) {
+            const e = @max(0, @abs(cs.outline_offset) + cs.outline_width) + 1;
+            r = unionRect(r, .{ .x = x - e, .y = y - e, .w = l.w + 2 * e, .h = l.h + 2 * e });
         }
         if (cs.overflow_x != .visible and cs.overflow_y != .visible) return r;
         var c = n.first_child;
@@ -1052,78 +1019,117 @@ const Painter = struct {
         const n = &f.nodes.items[id];
         const cs = n.cs;
         if (n.kind != .anon_text and cs.display == .none) return;
-        if (depth > 256) return;
+        if (depth > 600) return;
         const l = f.tree.layout(n.lid);
         var x = ox + l.x;
         var y = oy + l.y;
+        if (n.kind == .anon_text) return p.paintBox(id, x, y, ctx_in, depth);
         var ctx = ctx_in.*;
-
-        if (n.kind != .anon_text) {
-            if (localTransform(cs, x, y, l.w, l.h)) |m| {
-                if (m.isTranslateOnly() and ctx.plain()) {
-                    x += m.e;
-                    y += m.f;
-                } else {
-                    ctx.tf = ctx.tf.mul(m);
-                    if (ctx.tf.invert() == null) return;
-                }
-            }
-            const op = cs.opacity;
-            if (!(op > 0)) return;
-            if (op < 1 or cs.filter.len > 0) {
-                // Offscreen group, limited to the subtree's visual bounds when they are known.
-                var reg = region(&ctx);
-                var blur_reach: u32 = 0;
-                for (cs.filter) |fl| switch (fl) {
-                    .blur => |r| blur_reach += raster.blurReach(r * tfScale(ctx.tf)),
-                    else => {},
-                };
-                if (ctx.plain()) {
-                    if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2 + blur_reach));
-                }
-                if (reg.isEmpty()) return;
-                if (p.layer_depth >= p.layers.items.len) {
-                    const data = p.a.alloc(u8, ctx.dst.data.len) catch return error.OutOfMemory;
-                    try p.layers.append(p.a, .{ .width = ctx.dst.width, .height = ctx.dst.height, .data = data });
-                }
-                const layer = &p.layers.items[p.layer_depth];
-                const stride = @as(usize, layer.width) * 4;
-                var row: usize = @intCast(reg.y);
-                const row_end = row + reg.h;
-                while (row < row_end) : (row += 1) {
-                    const off = row * stride + @as(usize, @intCast(reg.x)) * 4;
-                    @memset(layer.data[off..][0 .. @as(usize, reg.w) * 4], 0);
-                }
-                const reg_clip = ClipMask.fromRect(reg);
-                const lctx: Ctx = .{ .dst = layer, .tf = ctx.tf, .clip = &reg_clip };
-                p.layer_depth += 1;
-                defer p.layer_depth -= 1;
-                try p.paintBox(id, x, y, &lctx, depth);
-                var comp = reg_clip;
-                if (ctx.clip) |c| comp = raster.clipIntersect(p.a, c.*, comp) catch return error.OutOfMemory;
-                if (cs.filter.len > 0) {
-                    // Filters run on a copy of the group region.
-                    var sub = Pixmap.init(p.a, reg.w, reg.h) catch return error.OutOfMemory;
-                    const lsrc = &p.layers.items[p.layer_depth - 1];
-                    var ry: usize = 0;
-                    while (ry < reg.h) : (ry += 1) {
-                        const off = (@as(usize, @intCast(reg.y)) + ry) * stride + @as(usize, @intCast(reg.x)) * 4;
-                        @memcpy(sub.data[ry * reg.w * 4 ..][0 .. @as(usize, reg.w) * 4], lsrc.data[off..][0 .. @as(usize, reg.w) * 4]);
-                    }
-                    try p.applyFilters(&sub, cs, tfScale(ctx.tf));
-                    raster.drawPixmap(ctx.dst, &sub, Affine.translate(@floatFromInt(reg.x), @floatFromInt(reg.y)), op, .nearest, &comp);
-                    return;
-                }
-                raster.drawPixmap(ctx.dst, &p.layers.items[p.layer_depth - 1], Affine.identity, op, .nearest, &comp);
-                return;
+        if (localTransform(cs, x, y, l.w, l.h)) |m| {
+            if (m.isTranslateOnly() and ctx.plain()) {
+                x += m.e;
+                y += m.f;
+            } else {
+                ctx.tf = ctx.tf.mul(m);
+                if (ctx.tf.invert() == null) return;
             }
         }
+        if (!(cs.opacity > 0)) return;
+        if (pfx.needsGroup(cs)) return p.paintGroup(id, x, y, &ctx, depth);
         try p.paintBox(id, x, y, &ctx, depth);
     }
 
-    /// CSS filter functions on a premultiplied pixmap (drop-shadow is not implemented).
-    noinline fn applyFilters(p: *Painter, pm: *Pixmap, cs: *const CS, scale: f32) Error!void {
-        for (cs.filter) |fl| {
+    /// The element as an offscreen group (takumi `EffectKind::Group` + `Filter`): content ->
+    /// filter -> combined coverage (ancestor clips ∩ clip-path ∩ mask-image) -> opacity + blend.
+    noinline fn paintGroup(p: *Painter, id: u32, x: f32, y: f32, ctx: *const Ctx, depth: u32) Error!void {
+        const f = p.f;
+        const n = &f.nodes.items[id];
+        const cs = n.cs;
+        const l = f.tree.layout(n.lid);
+        const scale = tfScale(ctx.tf);
+        var reg = region(ctx);
+        var reach: f32 = 0;
+        for (cs.filter) |fl| switch (fl) {
+            .blur => |r| reach += @floatFromInt(raster.blurReach(r * scale)),
+            .drop_shadow => |sh| reach += (@ceil(3 * sh.blur) + @max(@abs(sh.x), @abs(sh.y)) + 1) * scale,
+            else => {},
+        };
+        if (ctx.plain()) {
+            if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2 + @as(u32, @intFromFloat(std.math.clamp(reach, 0, 65536)))));
+        }
+        if (reg.isEmpty()) return;
+        const g = geomOf(cs, l, x, y, ctx);
+        var comp = ClipMask.fromRect(reg);
+        if (ctx.clip) |c| comp = raster.clipIntersect(p.a, c.*, comp) catch return error.OutOfMemory;
+        if (cs.clip_path) |cp| {
+            if (try pfx.clipPathMask(p, ctx, cp, cs, .{ .x = x, .y = y, .w = l.w, .h = l.h }, &g, reg)) |m| comp = try pfx.clipAnd(p, comp, &m);
+        }
+        if (pfx.hasMask(cs)) {
+            const m = try pfx.maskImageMask(p, ctx, cs, &g, reg);
+            comp = try pfx.clipAnd(p, comp, &m);
+            if (g.rounded) {
+                const rm = try p.rrectMask(ctx, g.bx, g.radii, reg);
+                comp = try pfx.clipAnd(p, comp, &rm);
+            }
+        }
+        if (comp.bounds.isEmpty()) return;
+        const mark = p.outlines.items.len;
+        const layer = try p.beginLayer(ctx, reg);
+        defer p.endLayer();
+        const reg_clip = ClipMask.fromRect(reg);
+        var lctx: Ctx = .{ .dst = layer, .tf = ctx.tf, .clip = &reg_clip };
+        if (cs.backdrop_filter.len > 0) {
+            try pfx.backdrop(p, ctx, cs, &g, layer, reg);
+            const content = try p.beginLayer(ctx, reg);
+            defer p.endLayer();
+            lctx.dst = content;
+            try p.paintBox(id, x, y, &lctx, depth);
+            try p.flushOutlines(mark, content);
+            compositeLayer(layer, content, reg, 1, null);
+        } else {
+            try p.paintBox(id, x, y, &lctx, depth);
+            try p.flushOutlines(mark, layer);
+        }
+        if (cs.filter.len > 0) {
+            // Filters run on a copy of the group region.
+            var sub = Pixmap.init(p.a, reg.w, reg.h) catch return error.OutOfMemory;
+            const stride = @as(usize, layer.width) * 4;
+            const rb = @as(usize, reg.w) * 4;
+            var ry: usize = 0;
+            while (ry < reg.h) : (ry += 1) {
+                const off = (@as(usize, @intCast(reg.y)) + ry) * stride + @as(usize, @intCast(reg.x)) * 4;
+                @memcpy(sub.data[ry * rb ..][0..rb], layer.data[off..][0..rb]);
+            }
+            try p.applyFilters(&sub, cs.filter, cs, scale, false);
+            ry = 0;
+            while (ry < reg.h) : (ry += 1) {
+                const off = (@as(usize, @intCast(reg.y)) + ry) * stride + @as(usize, @intCast(reg.x)) * 4;
+                @memcpy(layer.data[off..][0..rb], sub.data[ry * rb ..][0..rb]);
+            }
+        }
+        const mode = pfx.blendMode(cs.mix_blend_mode);
+        const op = @min(cs.opacity, 1);
+        if (mode == .normal) {
+            compositeLayer(ctx.dst, layer, reg, op, &comp);
+        } else raster.drawPixmapBlend(ctx.dst, layer, 0, 0, op, mode, &comp);
+    }
+
+    const Deferred = struct { cs: *const CS, g: Geom, tf: Affine, clip: ?*const ClipMask };
+
+    /// Paints the outlines deferred since `mark` (takumi paints a stacking context's outlines
+    /// after all of its other phases).
+    pub noinline fn flushOutlines(p: *Painter, mark: usize, dst: *Pixmap) Error!void {
+        var i = mark;
+        while (i < p.outlines.items.len) : (i += 1) {
+            const d = p.outlines.items[i];
+            try pborder.paintOutline(p, &.{ .dst = dst, .tf = d.tf, .clip = d.clip }, d.cs, &d.g);
+        }
+        p.outlines.shrinkRetainingCapacity(mark);
+    }
+
+    /// CSS filter functions on a premultiplied pixmap.
+    pub noinline fn applyFilters(p: *Painter, pm: *Pixmap, filters: []const style.Filter, cs: *const CS, scale: f32, is_backdrop: bool) Error!void {
+        for (filters) |fl| {
             // colour matrix rows (r, g, b) + offset, applied to straight colour; alpha factor
             var m: [3][4]f32 = .{ .{ 1, 0, 0, 0 }, .{ 0, 1, 0, 0 }, .{ 0, 0, 1, 0 } };
             var alpha: f32 = 1;
@@ -1132,7 +1138,10 @@ const Painter = struct {
                     raster.blurPixmap(p.a, pm, r * scale) catch return error.OutOfMemory;
                     continue;
                 },
-                .drop_shadow => continue,
+                .drop_shadow => |sh| {
+                    if (!is_backdrop) try pfx.dropShadow(p, pm, sh, cs.resolveColor(sh.color), scale);
+                    continue;
+                },
                 .opacity => |a| alpha = std.math.clamp(a, 0, 1),
                 .brightness => |b| m = .{ .{ b, 0, 0, 0 }, .{ 0, b, 0, 0 }, .{ 0, 0, b, 0 } },
                 .contrast => |c| {
@@ -1196,20 +1205,7 @@ const Painter = struct {
         }
     }
 
-    fn paintBox(p: *Painter, id: u32, x: f32, y: f32, ctx: *const Ctx, depth: u32) Error!void {
-        const f = p.f;
-        const n = &f.nodes.items[id];
-        const cs = n.cs;
-        const l = f.tree.layout(n.lid);
-        const content_x = x + l.border.left + l.padding.left;
-        const content_y = y + l.border.top + l.padding.top;
-        const content_w = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
-
-        if (n.kind == .anon_text) {
-            if (cs.visibility == .visible) try p.paintText(ctx, n, content_x, content_y, content_w);
-            return;
-        }
-
+    pub fn geomOf(cs: *const CS, l: anytype, x: f32, y: f32, ctx: *const Ctx) Geom {
         var g: Geom = .{
             .bx = if (ctx.plain()) snapRect(x, y, l.w, l.h) else .{ .x = x, .y = y, .w = l.w, .h = l.h },
             .bw = .{ l.border.top, l.border.right, l.border.bottom, l.border.left },
@@ -1220,60 +1216,85 @@ const Painter = struct {
         };
         g.radii = resolveRadii(cs, g.bx.w, g.bx.h);
         g.rounded = hasRadii(g.radii);
+        return g;
+    }
+
+    noinline fn paintImage(p: *Painter, ctx: *const Ctx, n: *const Node, g: *const Geom) Error!void {
+        const cs = n.cs;
+        const cr = g.contentRect();
+        if (!(cr.w > 0) or !(cr.h > 0)) return;
+        const svg_src = psvg.nodeSvgSource(n);
+        const pmx = n.img;
+        if (pmx == null and svg_src == null) return;
+        const iw = n.img_w;
+        const ih = n.img_h;
+        var dw = cr.w;
+        var dh = cr.h;
+        if (iw > 0 and ih > 0) {
+            const sx = cr.w / iw;
+            const sy = cr.h / ih;
+            switch (cs.object_fit) {
+                .fill => {},
+                .contain => {
+                    const s = @min(sx, sy);
+                    dw = iw * s;
+                    dh = ih * s;
+                },
+                .cover => {
+                    const s = @max(sx, sy);
+                    dw = iw * s;
+                    dh = ih * s;
+                },
+                .none => {
+                    dw = iw;
+                    dh = ih;
+                },
+                .scale_down => {
+                    const s = @min(1, @min(sx, sy));
+                    dw = iw * s;
+                    dh = ih * s;
+                },
+            }
+        }
+        const dx = cr.x + cs.object_position[0].resolve(cr.w - dw);
+        const dy = cr.y + cs.object_position[1].resolve(cr.h - dh);
+        const crad = g.contentRadii();
+        const overflow = dx < cr.x or dy < cr.y or dx + dw > cr.x + cr.w or dy + dh > cr.y + cr.h;
+        var c2 = ctx.*;
+        if (crad != null or overflow or svg_src != null) c2.clip = try p.makeClip(ctx, cr, crad);
+        const dest: Rect = .{ .x = dx, .y = dy, .w = dw, .h = dh };
+        if (svg_src) |src| {
+            try psvg.paintSvg(p, &c2, src, dest, cs.color);
+        } else p.drawImage(&c2, pmx.?, dest);
+    }
+
+    fn paintBox(p: *Painter, id: u32, x: f32, y: f32, ctx: *const Ctx, depth: u32) Error!void {
+        const f = p.f;
+        const n = &f.nodes.items[id];
+        const cs = n.cs;
+        const l = f.tree.layout(n.lid);
+        const content_x = x + l.border.left + l.padding.left;
+        const content_y = y + l.border.top + l.padding.top;
+        const content_w = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
+
+        if (n.kind == .anon_text) {
+            try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
+            return;
+        }
+
+        const g = geomOf(cs, l, x, y, ctx);
 
         if (cs.visibility == .visible) {
             if (cs.box_shadow.len > 0) try p.paintOuterShadows(ctx, cs, &g);
-            try p.paintBackground(ctx, cs, &g);
+            try p.paintBackground(ctx, id, &g, x, y);
             if (cs.box_shadow.len > 0) try p.paintInsetShadows(ctx, cs, &g);
-            try p.paintBorder(ctx, cs, &g);
-
-            switch (n.kind) {
-                .text => try p.paintText(ctx, n, content_x, content_y, content_w),
-                .image => if (n.img) |pm| {
-                    const cr = g.contentRect();
-                    if (cr.w > 0 and cr.h > 0) {
-                        const iw = n.img_w;
-                        const ih = n.img_h;
-                        var dw = cr.w;
-                        var dh = cr.h;
-                        const sx = cr.w / iw;
-                        const sy = cr.h / ih;
-                        switch (cs.object_fit) {
-                            .fill => {},
-                            .contain => {
-                                const s = @min(sx, sy);
-                                dw = iw * s;
-                                dh = ih * s;
-                            },
-                            .cover => {
-                                const s = @max(sx, sy);
-                                dw = iw * s;
-                                dh = ih * s;
-                            },
-                            .none => {
-                                dw = iw;
-                                dh = ih;
-                            },
-                            .scale_down => {
-                                const s = @min(1, @min(sx, sy));
-                                dw = iw * s;
-                                dh = ih * s;
-                            },
-                        }
-                        const dx = cr.x + cs.object_position[0].px + cs.object_position[0].pct * (cr.w - dw);
-                        const dy = cr.y + cs.object_position[1].px + cs.object_position[1].pct * (cr.h - dh);
-                        const crad = g.contentRadii();
-                        const overflow = dx < cr.x or dy < cr.y or dx + dw > cr.x + cr.w or dy + dh > cr.y + cr.h;
-                        if (crad != null or overflow) {
-                            var c2 = ctx.*;
-                            c2.clip = try p.makeClip(ctx, cr, crad);
-                            p.drawImage(&c2, pm, .{ .x = dx, .y = dy, .w = dw, .h = dh });
-                        } else p.drawImage(ctx, pm, .{ .x = dx, .y = dy, .w = dw, .h = dh });
-                    }
-                },
-                else => {},
+            try pborder.paintBorder(p, ctx, cs, &g);
+            if (cs.outline_style != .none and cs.outline_style != .hidden) {
+                try p.outlines.append(p.a, .{ .cs = cs, .g = g, .tf = ctx.tf, .clip = ctx.clip });
             }
+            if (n.kind == .image) try p.paintImage(ctx, n, &g);
         }
+        if (n.kind == .text) try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
 
         if (n.first_child == none) return;
         var cctx = ctx.*;
@@ -1287,16 +1308,27 @@ const Painter = struct {
         var c = n.first_child;
         while (c != none) : (c = f.nodes.items[c].next) {
             const ccs = f.nodes.items[c].cs;
-            if (f.nodes.items[c].kind != .anon_text and (ccs.z_index != null or ccs.position != .static)) special = true;
+            if (f.nodes.items[c].kind != .anon_text and stacks(ccs)) special = true;
         }
         if (!special) {
             c = n.first_child;
             while (c != none) : (c = f.nodes.items[c].next) try p.paintNode(c, x, y, &cctx, depth + 1);
             return;
         }
+        const items = try p.sortedChildren(n);
+        for (items) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
+    }
+
+    /// Painted in the positioned / stacking-context phase.
+    fn stacks(cs: *const CS) bool {
+        return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
+    }
+
+    noinline fn sortedChildren(p: *Painter, n: *const Node) Error![]u32 {
+        const f = p.f;
         const Item = struct { id: u32, key: i64 };
         var items: std.ArrayList(Item) = .empty;
-        c = n.first_child;
+        var c = n.first_child;
         var seq: i64 = 0;
         while (c != none) : (c = f.nodes.items[c].next) {
             const cn = &f.nodes.items[c];
@@ -1308,7 +1340,7 @@ const Painter = struct {
                     layer = -1;
                 } else if (z > 0) {
                     layer = 2;
-                } else if (cn.cs.position != .static or cn.cs.z_index != null) layer = 1;
+                } else if (stacks(cn.cs)) layer = 1;
             }
             const zc = std.math.clamp(z, -1000000, 1000000);
             try items.append(p.a, .{ .id = c, .key = (layer * 4000000 + zc) * 1000000 + seq });
@@ -1321,12 +1353,17 @@ const Painter = struct {
             while (j > 0 and items.items[j - 1].key > it.key) : (j -= 1) items.items[j] = items.items[j - 1];
             items.items[j] = it;
         }
-        for (items.items) |it| try p.paintNode(it.id, x, y, &cctx, depth + 1);
+        const out = try p.a.alloc(u32, items.items.len);
+        for (out, items.items) |*o, it| o.* = it.id;
+        return out;
     }
 };
 
 pub fn paintFrame(f: *Frame, pm: *Pixmap) Error!void {
     var p: Painter = .{ .f = f, .a = f.a };
+    // takumi's anti-aliasing (tiny-skia supersampling) for every shape, clip and glyph.
+    f.r.rast.mode = .skia_ss;
     const ctx: Ctx = .{ .dst = pm };
     try p.paintNode(f.root, 0, 0, &ctx, 0);
+    try p.flushOutlines(0, pm);
 }
