@@ -234,7 +234,7 @@ export type MeasuredTextRun = { text?: string; x: number; y: number; width: numb
 export type MeasuredNode = {
   width: number;
   height: number;
-  /** 2D affine matrix [a, b, c, d, e, f] relative to the parent */
+  /** 2D affine matrix [a, b, c, d, e, f] in canvas coordinates (e, f = absolute position), like takumi */
   transform: [number, number, number, number, number, number];
   children: MeasuredNode[];
   runs: MeasuredTextRun[];

@@ -109,9 +109,10 @@ export function createBinding(defaultWasm) {
     FEATURE_NAMES.forEach((n, i) => { features[n] = ((m >>> i) & 1) === 1; });
   }
 
+  const FULL_ONLY = new Set(["renderSvg", "animation", "extraCodecs", "colorFonts", "complexText"]);
   function requireFeature(name) {
     if (!features[name]) {
-      throw new Error(`bm-engine: this build has no ${FEATURE_LABELS[name] || name} support (use the standard / full build${name === "woff" ? ", or load the WOFF add-on: import { loadWoff } from \"bm-engine/woff\"; await loadWoff()" : ""})`);
+      throw new Error(`bm-engine: this build has no ${FEATURE_LABELS[name] || name} support (use the ${FULL_ONLY.has(name) ? "full" : "standard / full"} build${name === "woff" ? ", or load the WOFF add-on: import { loadWoff } from \"bm-engine/woff\"; await loadWoff()" : ""})`);
     }
   }
 
@@ -313,11 +314,14 @@ export function createBinding(defaultWasm) {
 
     /** JSON.stringify where binary / RGBA image `src` values are moved into wasm and replaced by ids. */
     #stringify(value) {
-      return JSON.stringify(value, (key, v) => {
+      const self = this;
+      return JSON.stringify(value, function (key, v) {
+        // `this[key]` is the raw value: a Node Buffer reaches the replacer already converted by Buffer#toJSON.
+        if (key === "src" && this && this[key] && typeof this[key] === "object") v = this[key];
         if (key === "src" && v && typeof v === "object") {
-          const id = "bm-res:" + this.#resSeq++;
-          if (isBinary(v)) this.#putImage(id, v);
-          else if (v.data && v.width) this.#putRgba(id, v);
+          const id = "bm-res:" + self.#resSeq++;
+          if (isBinary(v)) self.#putImage(id, v);
+          else if (v.data && v.width) self.#putRgba(id, v);
           else return v;
           return id;
         }
@@ -415,7 +419,7 @@ export function createBinding(defaultWasm) {
 
     renderAsDataUrlSync(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      const mime = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" }[options.format || "png"];
+      const mime = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" }[options.format || "png"];
       if (!mime) throw new Error("bm-engine: renderAsDataUrl needs an encoded format");
       const bytes = this.renderSync(node, options);
       let bin = "";
