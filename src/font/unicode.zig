@@ -301,19 +301,21 @@ pub fn isContinuationSimple(prev: u21, cp: u21) bool {
     return isCombining(cp) or prev == 0x200d or cp == 0x200d or (cp >= 0xfe00 and cp <= 0xfe0f) or (cp >= 0x1f3fb and cp <= 0x1f3ff);
 }
 
-// ---- UAX #14 (Unicode 16 rules LB4-LB31), adjacency form ----------------------------------
+// ---- UAX #14, adjacency form -------------------------------------------------------------
+// takumi breaks lines with ICU4X's rule-based segmenter, which (in the version it ships)
+// implements the Unicode 15.0 rule set: LB21a without the 15.1 look-ahead, the pair-based LB25,
+// no quotation-mark / Aksara rules (LB15a-b, LB19a, LB20a, LB28a). The class table is generated
+// from the 15.0 LineBreak.txt accordingly. One empirical quirk is reproduced as well: a run of
+// two or more "complex context" (SA: Thai, Lao, Khmer, Myanmar, ...) characters is handed to a
+// dictionary segmenter that is not there, and the end of such a run is always a break
+// opportunity while the run itself has none.
 
-const lb_h2: u8 = 28; // must equal @intFromEnum(Lb.h2)
-/// Extra classes on top of `Lb`: U+2010 (a BA that also acts as the hyphen of LB20a) and
-/// U+25CC (an AL that takes part in LB28a).
-const lb_hyb: u8 = 43;
-const lb_dc: u8 = 44;
+/// Internal class: the last character of an SA run of >= 2 characters.
+const lb_sa_end: u8 = 63;
 
-/// Line-break byte of `cp` for `lineBreaks`: class in bits 0-5, East Asian (F/W/H) in bit 6.
+/// Line-break byte of `cp` for `lineBreaksPrepare`: class in bits 0-5, East Asian (F/W/H) in bit 6.
 pub fn lbByte(cp: u21) u8 {
-    if (cp == 0x2010) return lb_hyb;
-    if (cp == 0x25cc) return lb_dc;
-    if (cp >= 0xac00 and cp <= 0xd7a3 and (cp - 0xac00) % 28 == 0) return lb_h2 | 0x40;
+    if (cp >= 0xac00 and cp <= 0xd7a3 and (cp - 0xac00) % 28 == 0) return L(.h2) | 0x40;
     return @truncate(props(cp) & 0x7f);
 }
 
@@ -321,33 +323,38 @@ inline fn L(comptime c: Lb) u8 {
     return @intFromEnum(c);
 }
 inline fn isAl(c: u8) bool {
-    return c == L(.al) or c == L(.hl) or c == lb_dc;
-}
-inline fn isQu(c: u8) bool {
-    return c == L(.qu) or c == L(.qu_pi) or c == L(.qu_pf);
-}
-inline fn isAks(c: u8) bool {
-    return c == L(.ak) or c == lb_dc or c == L(.@"as");
+    return c == L(.al) or c == L(.hl);
 }
 inline fn isHangul(c: u8) bool {
     return c == L(.jl) or c == L(.jv) or c == L(.jt) or c == L(.h2) or c == L(.h3);
 }
 
 /// UAX #14 break opportunities, step 1. On entry `cls[i]` = `lbByte` of character i (hard
-/// breaks as `Lb.bk`); on return the classes are resolved (LB9 / LB10, word-break) and
+/// breaks as `Lb.bk`); on return the classes are resolved (LB9 / LB10, SA runs, word-break) and
 /// `lineBreakAt` answers for any position. Spaces are left to the caller (Blink always breaks
 /// after a run of U+0020), so the "SP*" look-behind rules are not modelled.
 pub fn lineBreaksPrepare(cls: []u8, mode: WordBreak) void {
-    const n = cls.len;
-    if (n == 0) return;
-    // LB9 / LB10 + word-break remapping. Bit 7 temporarily marks "no break before" (a CM / ZWJ
-    // absorbed by its base, or the character after a ZWJ: LB8a).
+    // Bit 7 marks "no break before" (a CM / ZWJ absorbed by its base, or the character after a
+    // ZWJ: LB8a).
     var base: u8 = L(.bk);
     var prev_zwj = false;
-    for (cls) |*p| {
+    var sa_run: usize = 0;
+    for (cls, 0..) |*p, i| {
         var c = p.* & 0x3f;
         const raw_zwj = c == L(.zwj);
         var stick: u8 = if (prev_zwj) 0x80 else 0;
+        const is_sa = c == L(.sa) or c == L(.sam);
+        if (is_sa) {
+            sa_run += 1;
+        } else {
+            if (sa_run >= 2) cls[i - 1] = (cls[i - 1] & 0xc0) | lb_sa_end;
+            sa_run = 0;
+        }
+        if (c == L(.sa)) c = L(.al);
+        if (c == L(.sam)) {
+            // inside its run a mark sticks to the previous character
+            c = L(.cm);
+        }
         if (c == L(.cm) or raw_zwj) {
             if (base == L(.bk) or base == L(.sp) or base == L(.zw)) {
                 c = L(.al);
@@ -357,7 +364,7 @@ pub fn lineBreaksPrepare(cls: []u8, mode: WordBreak) void {
             }
         }
         if (mode == .break_all) {
-            if (c == L(.al) or c == L(.hl) or c == L(.nu) or c == lb_dc) c = L(.id);
+            if (c == L(.al) or c == L(.hl) or c == L(.nu)) c = L(.id);
         } else if (mode == .keep_all) {
             if (c == L(.id) or isHangul(c)) c = L(.al);
         }
@@ -370,6 +377,11 @@ pub fn lineBreaksPrepare(cls: []u8, mode: WordBreak) void {
 /// Whether a break is allowed before character `i` (`cls` prepared by `lineBreaksPrepare`).
 pub fn lineBreakAt(cls: []const u8, i: usize) bool {
     if (i == 0 or i >= cls.len) return false;
+    if (cls[i - 1] & 0x3f == lb_sa_end) {
+        // the end of a complex-context run breaks before anything but a space / ZWSP / newline
+        const a = cls[i] & 0x3f;
+        return a != L(.sp) and a != L(.zw) and a != L(.bk);
+    }
     return cls[i] & 0x80 == 0 and pairBreak(cls, i);
 }
 
@@ -379,90 +391,66 @@ pub fn lineBreaks(cls: []u8, mode: WordBreak) void {
     var i: usize = cls.len;
     while (i > 1) {
         i -= 1;
-        const brk = cls[i] & 0x80 == 0 and pairBreak(cls, i);
+        const brk = lineBreakAt(cls, i);
         cls[i] = (cls[i] & 0x7f) | (if (brk) @as(u8, 0x80) else 0);
     }
     if (cls.len != 0) cls[0] &= 0x7f;
 }
 
+inline fn clsAt(cls: []const u8, i: usize) u8 {
+    const c = cls[i] & 0x3f;
+    return if (c == lb_sa_end) L(.al) else c;
+}
+
 /// Break between i-1 and i (i >= 1). Bit 7 of the entries (stick flag or an earlier result) is
-/// ignored: classes are masked with 0x3f.
+/// ignored.
 fn pairBreak(cls: []const u8, i: usize) bool {
-    const n = cls.len;
-    const b = cls[i - 1] & 0x3f;
-    const a = cls[i] & 0x3f;
+    const b = clsAt(cls, i - 1);
+    const a = clsAt(cls, i);
     const ea_b = cls[i - 1] & 0x40 != 0;
     const ea_a = cls[i] & 0x40 != 0;
-    const bb: u8 = if (i >= 2) cls[i - 2] & 0x3f else 0xff;
-    const nx: u8 = if (i + 1 < n) cls[i + 1] & 0x3f else 0xff;
+    const bb: u8 = if (i >= 2) clsAt(cls, i - 2) else 0xff;
     if (b == L(.bk)) return true;
     if (a == L(.bk) or a == L(.sp) or a == L(.zw)) return false;
     if (b == L(.zw)) return true;
-    if (a == L(.wj) or b == L(.wj) or b == L(.gl)) return false;
-    if (a == L(.gl) and b != L(.sp) and b != L(.ba) and b != L(.hy) and b != lb_hyb) return false;
-    if (a == L(.cl) or a == L(.cp) or a == L(.ex) or a == L(.sy)) return false;
-    if (b == L(.op)) return false;
-    if (b == L(.qu_pi) and (bb == 0xff or bb == L(.bk) or bb == L(.op) or isQu(bb) or bb == L(.gl) or bb == L(.sp) or bb == L(.zw))) return false;
-    if (a == L(.qu_pf)) {
-        if (nx == 0xff or nx == L(.sp) or nx == L(.gl) or nx == L(.wj) or nx == L(.cl) or isQu(nx) or nx == L(.cp) or nx == L(.ex) or nx == L(.is) or nx == L(.sy) or nx == L(.bk) or nx == L(.zw)) return false;
-    }
-    if (a == L(.is)) return false;
-    if ((b == L(.cl) or b == L(.cp)) and a == L(.ns)) return false;
-    if (b == L(.b2) and a == L(.b2)) return false;
-    if (b == L(.sp)) return true;
-    if (a == L(.qu) or a == L(.qu_pf) or b == L(.qu) or b == L(.qu_pi)) return false;
-    if (isQu(a)) {
-        if (!ea_b) return false;
-        if (nx == 0xff or cls[i + 1] & 0x40 == 0) return false;
-    }
-    if (isQu(b)) {
-        if (!ea_a) return false;
-        if (bb == 0xff or cls[i - 2] & 0x40 == 0) return false;
-    }
-    if (a == L(.cb) or b == L(.cb)) return true;
-    if ((b == L(.hy) or b == lb_hyb) and isAl(a) and (bb == 0xff or bb == L(.bk) or bb == L(.sp) or bb == L(.zw) or bb == L(.cb) or bb == L(.gl))) return false;
-    if (a == L(.ba) or a == lb_hyb or a == L(.hy) or a == L(.ns) or b == L(.bb)) return false;
-    if (bb == L(.hl) and (b == L(.hy) or ((b == L(.ba) or b == lb_hyb) and !ea_b)) and a != L(.hl)) return false;
-    if (b == L(.sy) and a == L(.hl)) return false;
-    if (a == L(.in)) return false;
-    if ((isAl(b) and a == L(.nu)) or (b == L(.nu) and isAl(a))) return false;
+    if (a == L(.wj) or b == L(.wj) or b == L(.gl)) return false; // LB11, LB12
+    if (a == L(.gl) and b != L(.sp) and b != L(.ba) and b != L(.hy)) return false; // LB12a
+    if (a == L(.cl) or a == L(.cp) or a == L(.ex) or a == L(.is) or a == L(.sy)) return false; // LB13
+    if (b == L(.op)) return false; // LB14
+    if ((b == L(.cl) or b == L(.cp)) and a == L(.ns)) return false; // LB16
+    if (b == L(.b2) and a == L(.b2)) return false; // LB17
+    if (b == L(.sp)) return true; // LB18
+    if (a == L(.qu) or b == L(.qu)) return false; // LB19
+    if (a == L(.cb) or b == L(.cb)) return true; // LB20
+    if (a == L(.ba) or a == L(.hy) or a == L(.ns) or b == L(.bb)) return false; // LB21
+    if (bb == L(.hl) and (b == L(.hy) or b == L(.ba))) return false; // LB21a
+    if (b == L(.sy) and a == L(.hl)) return false; // LB21b
+    if (a == L(.in)) return false; // LB22
+    if ((isAl(b) and a == L(.nu)) or (b == L(.nu) and isAl(a))) return false; // LB23
     const a_ideo = a == L(.id) or a == L(.eb) or a == L(.em) or a == L(.xp);
     const b_ideo = b == L(.id) or b == L(.eb) or b == L(.em) or b == L(.xp);
-    if ((b == L(.pr) and a_ideo) or (b_ideo and a == L(.po))) return false;
-    if (((b == L(.pr) or b == L(.po)) and isAl(a)) or (isAl(b) and (a == L(.pr) or a == L(.po)))) return false;
-    // LB25
-    if (a == L(.po) or a == L(.pr) or a == L(.nu)) {
-        var k = i - 1;
-        if (a != L(.nu) and (b == L(.cl) or b == L(.cp)) and k > 0) k -= 1;
-        while (k > 0 and (cls[k] & 0x3f == L(.sy) or cls[k] & 0x3f == L(.is))) k -= 1;
-        if (cls[k] & 0x3f == L(.nu)) return false;
-    }
-    if (b == L(.po) or b == L(.pr)) {
-        if (a == L(.nu)) return false;
-        if (a == L(.op) and (nx == L(.nu) or (nx == L(.is) and i + 2 < n and cls[i + 2] & 0x3f == L(.nu)))) return false;
-    }
-    if ((b == L(.hy) or b == L(.is)) and a == L(.nu)) return false;
+    if ((b == L(.pr) and a_ideo) or (b_ideo and a == L(.po))) return false; // LB23a
+    if (((b == L(.pr) or b == L(.po)) and isAl(a)) or (isAl(b) and (a == L(.pr) or a == L(.po)))) return false; // LB24
+    // LB25 (pair form)
+    if ((b == L(.cl) or b == L(.cp) or b == L(.nu)) and (a == L(.po) or a == L(.pr))) return false;
+    if ((b == L(.po) or b == L(.pr)) and (a == L(.op) or a == L(.nu))) return false;
+    if ((b == L(.hy) or b == L(.is) or b == L(.nu) or b == L(.sy)) and a == L(.nu)) return false;
     // LB26 / LB27
     if (b == L(.jl) and (a == L(.jl) or a == L(.jv) or a == L(.h2) or a == L(.h3))) return false;
     if ((b == L(.jv) or b == L(.h2)) and (a == L(.jv) or a == L(.jt))) return false;
     if ((b == L(.jt) or b == L(.h3)) and a == L(.jt)) return false;
     if ((isHangul(b) and a == L(.po)) or (b == L(.pr) and isHangul(a))) return false;
-    if (isAl(b) and isAl(a)) return false;
-    // LB28a
-    if (b == L(.ap) and isAks(a)) return false;
-    if (isAks(b) and (a == L(.vf) or a == L(.vi))) return false;
-    if (b == L(.vi) and bb != 0xff and isAks(bb) and (a == L(.ak) or a == lb_dc)) return false;
-    if (isAks(b) and isAks(a) and nx == L(.vf)) return false;
-    if (b == L(.is) and isAl(a)) return false;
-    if ((isAl(b) or b == L(.nu)) and a == L(.op) and !ea_a) return false;
+    if (isAl(b) and isAl(a)) return false; // LB28
+    if (b == L(.is) and isAl(a)) return false; // LB29
+    if ((isAl(b) or b == L(.nu)) and a == L(.op) and !ea_a) return false; // LB30
     if (b == L(.cp) and !ea_b and (isAl(a) or a == L(.nu))) return false;
-    if (b == L(.ri) and a == L(.ri)) {
+    if (b == L(.ri) and a == L(.ri)) { // LB30a
         var k = i - 1;
         var cnt: usize = 1;
         while (k > 0 and cls[k - 1] & 0x3f == L(.ri)) : (k -= 1) cnt += 1;
         if (cnt & 1 == 1) return false;
     }
-    if ((b == L(.eb) or b == L(.xp)) and a == L(.em)) return false;
+    if ((b == L(.eb) or b == L(.xp)) and a == L(.em)) return false; // LB30b
     return true;
 }
 

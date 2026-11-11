@@ -64,6 +64,26 @@ fn shaperFor(script: u8) Shaper {
     };
 }
 
+fn isRtlScript(script: u8) bool {
+    return switch (script) {
+        ucd.sc_arabic, ucd.sc_hebrew, ucd.sc_syriac, ucd.sc_nko, ucd.sc_mandaic => true,
+        else => false,
+    };
+}
+
+/// Reverses the order of the clusters, keeping the glyph order inside each cluster.
+fn reverseClusters(b: *ot.Buffer) void {
+    const gs = b.g();
+    std.mem.reverse(Glyph, gs);
+    var i: usize = 0;
+    while (i < gs.len) {
+        var j = i + 1;
+        while (j < gs.len and gs[j].cluster == gs[i].cluster) j += 1;
+        std.mem.reverse(Glyph, gs[i..j]);
+        i = j;
+    }
+}
+
 /// Scripts that never take letter-spacing (Blink: cursive scripts).
 pub fn isCursiveScript(script: u8) bool {
     return switch (script) {
@@ -415,6 +435,30 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
             gl.mask = ot.global_mask;
         }
     }
+    // HarfBuzz `hb_ensure_native_direction`: a run whose direction is not the native one of
+    // its script (Latin under an RTL override, Arabic letters forced LTR) is shaped in the
+    // native direction on the reversed text.
+    var flip = false;
+    if (complex) {
+        var native_rtl = isRtlScript(run.script);
+        if (native_rtl and !run.rtl) {
+            // numbers in a right-to-left script are natively left-to-right
+            var digit = false;
+            var letter = false;
+            for (b.g()) |gl| {
+                const gc = gl.uprops & Glyph.U_GC;
+                if (gc == 6) digit = true;
+                if (gc == 5) letter = true;
+            }
+            if (digit and !letter) native_rtl = false;
+        }
+        if (native_rtl != run.rtl) {
+            flip = true;
+            reverseClusters(b);
+            b.rtl = native_rtl;
+        }
+    }
+    defer if (flip) std.mem.reverse(Glyph, b.g());
     if (complex and sp.shaper == .thai) try preprocessThai(b);
     if (complex and run.rtl) {
         for (b.g()) |*gl| {

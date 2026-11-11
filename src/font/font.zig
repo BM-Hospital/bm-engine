@@ -76,5 +76,6 @@ test {
     _ = cff;
     _ = variations;
     _ = @import("tests.zig");
+    _ = @import("tests_shaping.zig");
     _ = @import("tests_formats.zig");
 }

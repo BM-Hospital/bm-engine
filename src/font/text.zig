@@ -63,7 +63,13 @@ pub const ShapeCache = shp.Cache;
 pub const Direction = enum { ltr, rtl };
 pub const TextWrap = enum { wrap, balance, pretty };
 
-pub const Run = struct { text: []const u8, style: TextStyle = .{} };
+pub const Run = struct {
+    text: []const u8,
+    style: TextStyle = .{},
+    /// A forced line break follows this run in every white-space mode (HTML `<br>`: pass an
+    /// empty or non-empty run with this set). U+2028 inside the text does the same.
+    hard_break_after: bool = false,
+};
 
 pub const LineHeight = union(enum) {
     normal,
@@ -342,7 +348,7 @@ pub const Paragraph = struct {
         for (runs) |r| total += r.text.len;
         if (total > 0x3fff_ffff or runs.len > 0xffff) return error.OutOfMemory;
 
-        const chars = try alloc.alloc(Char, total);
+        const chars = try alloc.alloc(Char, total + runs.len);
         defer alloc.free(chars);
         const n_chars = collectChars(runs, opts, chars);
         const rtl_base = complex and opts.direction == .rtl;
@@ -886,7 +892,8 @@ pub const Paragraph = struct {
         while (it.next()) |li| : (li_index += 1) {
             if (li_index >= lines.len) break;
             // Blink aligns on the LayoutUnit grid: free space = available - snapped line width
-            const free = @max(floor64(container) - ceil64(li.content_w), 0);
+            const free_raw = floor64(container) - ceil64(li.content_w);
+            const free = @max(free_raw, 0);
             var extra: f32 = 0;
             if (self.opts.text_align == .justify and !li.last and !li.ellipsis and free > 0) {
                 var spaces: u32 = 0;
@@ -903,6 +910,9 @@ pub const Paragraph = struct {
                 .end => if (self.rtl) 0 else free,
                 .justify => if (self.rtl and extra == 0) free else 0,
             };
+            // an overflowing line keeps its start edge: in a right-to-left paragraph it sticks
+            // out on the left
+            if (free_raw < 0) x = if (self.rtl) free_raw else 0;
             const line_x = x;
             const baseline = top + li.ascent;
             const g_start = out.items.len;
@@ -1036,6 +1046,14 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
             var cp = d.cp;
             const was_cr = prev_cr;
             prev_cr = cp == '\r';
+            if (cp == 0x2028) {
+                // LINE SEPARATOR: a preserved segment break in every white-space mode
+                if (collapse and n > 0 and out[n - 1].cp == ' ') n -= 1;
+                if (collapse) prev_space = true;
+                out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = cluster };
+                n += 1;
+                continue;
+            }
             if (cp == '\n' or cp == '\r' or cp == 0x0c) {
                 if (collapse and opts.white_space != .pre_line) {
                     cp = ' ';
@@ -1063,6 +1081,13 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char) usize {
             n += 1;
         }
         base += @intCast(s.len);
+        if (r.hard_break_after) {
+            if (collapse and n > 0 and out[n - 1].cp == ' ') n -= 1;
+            if (collapse) prev_space = true;
+            out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = base };
+            n += 1;
+            prev_cr = false;
+        }
     }
     return n;
 }
@@ -1083,19 +1108,24 @@ fn markBreaks(chars: []Char, opts: ParagraphOptions) void {
 /// always break after a run of spaces, Chromium's table for printable-ASCII pairs.
 fn markBreaksFull(alloc: std.mem.Allocator, chars: []Char, opts: ParagraphOptions) !void {
     if (opts.white_space == .nowrap or opts.white_space == .pre) return;
-    const cls = try alloc.alloc(u8, chars.len);
+    // pure ASCII without break-all never consults UAX #14
+    var need_uax = opts.word_break == .break_all;
+    if (!need_uax) {
+        for (chars) |c| {
+            if (c.cp >= 0x80) {
+                need_uax = true;
+                break;
+            }
+        }
+    }
+    const cls = try alloc.alloc(u8, if (need_uax) chars.len else 0);
     defer alloc.free(cls);
-    var ascii_only = true;
-    for (chars, cls) |c, *k| {
-        if (c.cp >= 0x80) ascii_only = false;
-        k.* = if (c.cp == hard_break_cp) @intFromEnum(uni.Lb.bk) else if (c.cp == '\t') @intFromEnum(uni.Lb.sp) else if (c.cp < 0x80) 0 else uni.lbByte(c.cp);
+    if (need_uax) {
+        for (chars, cls) |c, *k| {
+            k.* = if (c.cp == hard_break_cp) @intFromEnum(uni.Lb.bk) else if (c.cp == '\t') @intFromEnum(uni.Lb.sp) else uni.lbByte(c.cp);
+        }
+        uni.lineBreaksPrepare(cls, opts.word_break);
     }
-    if (ascii_only) return markBreaks(chars, opts);
-    // ASCII classes are only needed as context of non-ASCII neighbours
-    for (chars, cls) |c, *k| {
-        if (c.cp < 0x80 and c.cp != hard_break_cp and c.cp != '\t') k.* = uni.lbByte(c.cp);
-    }
-    uni.lineBreaksPrepare(cls, opts.word_break);
     var bb: u21 = 0;
     var b: u21 = 0;
     for (chars, 0..) |*c, i| {
@@ -1323,8 +1353,13 @@ const Builder = struct {
             if (joiner or forced) {
                 // never a reason to fall back
             } else {
+                // a cluster continuation (mark, modifier, ...) stays in the face of its base even
+                // when that face has no glyph for it: Blink picks fallback fonts per cluster from
+                // the base character (oracle: Inter "1" + U+20E3 renders .notdef, not Roboto's keycap)
                 const cont = pending and (if (complex) uni.isContinuation(b.prev_cp, c.cp) else uni.isContinuationSimple(b.prev_cp, c.cp));
-                if (!(cont and shp.fontCovers(complex, b.fonts.font(b.seg_face), &b.starter, c.cp))) {
+                if (cont) {
+                    gid = b.fonts.font(b.seg_face).glyphIndex(c.cp);
+                } else {
                     face = faces[0];
                     for (faces) |id| {
                         gid = b.fonts.font(id).glyphIndex(c.cp);

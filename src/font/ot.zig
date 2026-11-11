@@ -12,10 +12,19 @@
 //! by `ttf.zig`'s `Font.kerning`.
 const std = @import("std");
 const ttf = @import("ttf.zig");
-const rd16 = ttf.rd16;
-const rdi16 = ttf.rdi16;
-const rd32 = ttf.rd32;
 const tail = ttf.tail;
+
+// Out-of-line bounds-checked readers: the engine has several hundred read sites, inlining the
+// checks everywhere costs ~10 KB of wasm for no measurable speed (hot searches use `be16`).
+noinline fn rd16(t: []const u8, off: u32) u16 {
+    return ttf.rd16(t, off);
+}
+fn rdi16(t: []const u8, off: u32) i16 {
+    return @bitCast(rd16(t, off));
+}
+noinline fn rd32(t: []const u8, off: u32) u32 {
+    return ttf.rd32(t, off);
+}
 const Font = ttf.Font;
 
 pub inline fn tag(comptime s: *const [4]u8) u32 {
@@ -160,7 +169,7 @@ fn lookupAt(table: []const u8, index: u16) Lookup {
 /// Resolves subtable `i` of a lookup, following extension subtables (`ext_type` 9 for GPOS,
 /// 7 for GSUB). Returns the effective lookup type through `kind`.
 fn subtable(l: Lookup, i: u32, ext_type: u16, kind: *u16) []const u8 {
-    var st = tail(l.t, rd16(l.t, 6 + i * 2));
+    var st = tail(l.t, ttf.rd16(l.t, 6 + i * 2));
     kind.* = l.kind;
     if (l.kind == ext_type) {
         if (rd16(st, 0) != 1) return &.{};
@@ -297,16 +306,18 @@ pub fn pairLookup(gpos: []const u8, index: u16, left: u16, right: u16, r: *PairA
 fn pairSetFind(st: []const u8, ci: u32, right: u16, vsize: u32) ?u32 {
     if (ci >= rd16(st, 8)) return null;
     const set = tail(st, rd16(st, 10 + ci * 2));
+    if (set.len < 2) return null;
     const rec = 2 + vsize;
-    const count: u32 = rd16(set, 0);
+    // records validated once, then searched with unchecked reads
+    const count: u32 = @min(be16(set.ptr, 0), @as(u32, @intCast((set.len - 2) / rec)));
     var lo: u32 = 0;
     var hi: u32 = count;
     while (lo < hi) {
         const mid = (lo + hi) / 2;
-        if (rd16(set, 2 + mid * rec) < right) lo = mid + 1 else hi = mid;
+        if (be16(set.ptr, 2 + mid * rec) < right) lo = mid + 1 else hi = mid;
     }
     const p = 2 + lo * rec;
-    if (lo >= count or p + rec > set.len or rd16(set, p) != right) return null;
+    if (lo >= count or be16(set.ptr, p) != right) return null;
     return p;
 }
 
@@ -376,6 +387,14 @@ pub const Gdef = struct {
         return g.classes.len != 0;
     }
     /// Glyph props (class bit + mark attachment class in the high byte).
+    pub fn propsMemo(g: *const Gdef, b: *Buffer, gid: u16) u16 {
+        return switch (b.cls(g.classes, gid)) {
+            1 => Glyph.BASE,
+            2 => Glyph.LIGATURE,
+            3 => Glyph.MARK | (classOf(g.mark_attach, gid) << 8),
+            else => 0,
+        };
+    }
     pub fn props(g: *const Gdef, gid: u16) u16 {
         return switch (classOf(g.classes, gid)) {
             1 => Glyph.BASE,
@@ -460,8 +479,19 @@ pub const Glyph = struct {
     }
 };
 
+/// Direct-mapped memo of coverage / class lookups. Text repeats the same few dozen glyphs, so
+/// most of the binary searches of the hot lookups (kerning, ccmp ligatures, GDEF classes) are
+/// answered from here. Keyed by table address + glyph, so it stays valid across runs and fonts.
+const Memo = struct {
+    ptr: usize = 0,
+    gid: u16 = 0,
+    val: u32 = 0,
+};
+const memo_size = 256;
+
 pub const Buffer = struct {
     alloc: std.mem.Allocator,
+    memo: [memo_size]Memo = @splat(.{}),
     list: std.ArrayList(Glyph) = .empty,
     rtl: bool = false,
     serial: u8 = 0,
@@ -470,6 +500,8 @@ pub const Buffer = struct {
     /// Work budget for nested lookups.
     ops: i32 = 0,
     has_attach: bool = false,
+    /// Set whenever a substitution changes a glyph id or the glyph count.
+    changed: bool = false,
 
     pub fn deinit(b: *Buffer) void {
         b.list.deinit(b.alloc);
@@ -488,6 +520,28 @@ pub const Buffer = struct {
         const n = b.list.items.len;
         b.max_len = n * 8 + 64;
         b.ops = @intCast(@min(n * 1024 + 16384, 0x3fff_ffff));
+    }
+    inline fn memoSlot(b: *Buffer, t: []const u8, gid: u16) *Memo {
+        const h = (@intFromPtr(t.ptr) >> 1) ^ (@as(usize, gid) *% 0x9e37);
+        return &b.memo[h & (memo_size - 1)];
+    }
+    /// Memoized `coverage`.
+    pub fn cov(b: *Buffer, t: []const u8, gid: u16) ?u32 {
+        if (t.len == 0) return null;
+        const m = b.memoSlot(t, gid);
+        if (m.ptr != @intFromPtr(t.ptr) or m.gid != gid) {
+            m.* = .{ .ptr = @intFromPtr(t.ptr), .gid = gid, .val = coverage(t, gid) orelse 0xffff_ffff };
+        }
+        return if (m.val == 0xffff_ffff) null else m.val;
+    }
+    /// Memoized `classOf` (class definitions and coverages never share an address).
+    pub fn cls(b: *Buffer, t: []const u8, gid: u16) u16 {
+        if (t.len == 0) return 0;
+        const m = b.memoSlot(t, gid);
+        if (m.ptr != @intFromPtr(t.ptr) or m.gid != gid) {
+            m.* = .{ .ptr = @intFromPtr(t.ptr), .gid = gid, .val = classOf(t, gid) };
+        }
+        return @truncate(m.val);
     }
     fn allocLigId(b: *Buffer) u8 {
         b.serial +%= 1;
@@ -509,6 +563,7 @@ pub const Buffer = struct {
         for (gs[s..e]) |*x| x.cluster = c;
     }
     pub fn remove(b: *Buffer, i: usize) void {
+        b.changed = true;
         _ = b.list.orderedRemove(i);
     }
     pub fn insert(b: *Buffer, i: usize, gl: Glyph) !void {
@@ -737,11 +792,14 @@ fn compileTable(alloc: std.mem.Allocator, tp: *TablePlan, table: []const u8, ls:
         }
         // sort by lookup index, merge duplicates
         const items = list.items[first..];
-        std.mem.sort(LookupRef, items, {}, struct {
-            fn lt(_: void, a: LookupRef, b: LookupRef) bool {
-                return a.index < b.index;
-            }
-        }.lt);
+        // insertion sort (feature lookup lists are short and mostly ascending; std.mem.sort
+        // would cost several KB of wasm)
+        for (1..@max(items.len, 1)) |r| {
+            const it = items[r];
+            var k = r;
+            while (k > 0 and items[k - 1].index > it.index) : (k -= 1) items[k] = items[k - 1];
+            items[k] = it;
+        }
         var w: usize = 0;
         for (items, 0..) |it, r| {
             if (r != 0 and items[w - 1].index == it.index) {
@@ -1005,12 +1063,13 @@ const Ctx = struct {
         }
         if (component) p |= Glyph.MULTIPLIED;
         if (c.gdef.hasClasses()) {
-            p = (p & Glyph.PRESERVE) | c.gdef.props(gid);
+            p = (p & Glyph.PRESERVE) | c.gdef.propsMemo(c.b, gid);
         } else if (class_guess != 0) {
             p = (p & Glyph.PRESERVE) | class_guess;
         }
         gl.props = p;
         gl.gid = gid;
+        c.b.changed = true;
     }
 
     // ------------------------------------------------------------------ nested lookups
@@ -1127,7 +1186,7 @@ const Ctx = struct {
                 nla = rd16(st, la_off);
                 nrec = rd16(st, la_off + 2 + nla * 2);
                 rec_off = la_off + 4 + nla * 2;
-                if (coverage(tail(st, rd16(st, in_vals)), gid) == null) return false;
+                if (c.b.cov(tail(st, rd16(st, in_vals)), gid) == null) return false;
                 const end = c.matchInput(ni, .{ .kind = .coverage, .vals = tail(st, in_vals + 2), .data = st }, &pos, null) orelse return false;
                 if (!c.matchBack(nb, .{ .kind = .coverage, .vals = tail(st, 4), .data = st })) return false;
                 if (!c.matchAhead(nla, .{ .kind = .coverage, .vals = tail(st, la_off + 2), .data = st }, end)) return false;
@@ -1142,7 +1201,7 @@ const Ctx = struct {
             return true;
         }
         if (format != 1 and format != 2) return false;
-        const ci = coverage(tail(st, rd16(st, 2)), gid) orelse return false;
+        const ci = c.b.cov(tail(st, rd16(st, 2)), gid) orelse return false;
         var kind: MatchKind = .glyph;
         var cd_back: []const u8 = &.{};
         var cd_in: []const u8 = &.{};
@@ -1204,10 +1263,10 @@ const Ctx = struct {
         const gs = b.g();
         const gl = &gs[c.idx];
         const gid = gl.gid;
-        const format = rd16(st, 0);
+        const format = ttf.rd16(st, 0);
         switch (kind) {
             1 => {
-                const ci = coverage(tail(st, rd16(st, 2)), gid) orelse return false;
+                const ci = b.cov(tail(st, rd16(st, 2)), gid) orelse return false;
                 var out: u16 = undefined;
                 if (format == 1) {
                     out = gid +% rd16(st, 4);
@@ -1262,7 +1321,7 @@ const Ctx = struct {
             },
             4 => {
                 if (format != 1) return false;
-                const ci = coverage(tail(st, rd16(st, 2)), gid) orelse return false;
+                const ci = b.cov(tail(st, ttf.rd16(st, 2)), gid) orelse return false;
                 if (ci >= rd16(st, 4)) return false;
                 const set = tail(st, rd16(st, 6 + ci * 2));
                 const nl: u32 = rd16(set, 0);
@@ -1461,7 +1520,7 @@ const Ctx = struct {
             },
             2 => {
                 if (st.len < 10) return false;
-                const ci = coverage(tail(st, rd16(st, 2)), gid) orelse return false;
+                const ci = b.cov(tail(st, ttf.rd16(st, 2)), gid) orelse return false;
                 const j = c.next(c.idx, c.props) orelse return false;
                 const vf1 = rd16(st, 4);
                 const vf2 = rd16(st, 6);
@@ -1473,7 +1532,13 @@ const Ctx = struct {
                     gl.kern += c.applyValue(set, set, p + 2, vf1, gl);
                     _ = c.applyValue(set, set, p + 2 + s1, vf2, &gs[j]);
                 } else if (format == 2) {
-                    const p = pairClassFind(st, gid, gs[j].gid, s1 + s2) orelse return false;
+                    // class pair record (memoized class lookups)
+                    const c1: u32 = b.cls(tail(st, rd16(st, 8)), gid);
+                    const c2: u32 = b.cls(tail(st, rd16(st, 10)), gs[j].gid);
+                    const n2: u32 = rd16(st, 14);
+                    if (c1 >= rd16(st, 12) or c2 >= n2) return false;
+                    const p = 16 +| (c1 * n2 + c2) *| (s1 + s2);
+                    if (p > st.len or s1 + s2 > st.len - p) return false;
                     gl.kern += c.applyValue(st, st, p, vf1, gl);
                     _ = c.applyValue(st, st, p + s1, vf2, &gs[j]);
                 } else return false;
@@ -1624,7 +1689,7 @@ pub fn substituteStart(plan: *const Plan, b: *Buffer) void {
     const has = plan.gdef.hasClasses();
     for (b.g()) |*gl| {
         gl.lig = 0;
-        gl.props = if (has) plan.gdef.props(gl.gid) else if (gl.uprops & Glyph.U_GC == 1 and gl.uprops & Glyph.U_IGNORABLE == 0) Glyph.MARK else Glyph.BASE;
+        gl.props = if (has) plan.gdef.propsMemo(b, gl.gid) else if (gl.uprops & Glyph.U_GC == 1 and gl.uprops & Glyph.U_IGNORABLE == 0) Glyph.MARK else Glyph.BASE;
     }
 }
 
@@ -1684,8 +1749,9 @@ pub fn substituteStage(plan: *const Plan, font: *const Font, b: *Buffer, s: usiz
     var bd = bufferDigest(b);
     for (refs) |*ref| {
         if (!ref.digest.mayIntersect(&bd)) continue;
+        b.changed = false;
         applyLookup(&c, &plan.gsub, ref);
-        bd = bufferDigest(b);
+        if (b.changed) bd = bufferDigest(b);
     }
 }
 
