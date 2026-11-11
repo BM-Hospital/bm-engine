@@ -1,127 +1,135 @@
 # bm-engine
 
-Bản port bằng **Zig 0.17** của phần lõi [takumi](https://github.com/kane50613/takumi) (cây node/JSX → ảnh),
-biên dịch ra wasm theo ba cấu hình — **core 429 KiB, standard 850 KiB, full 1 070 KiB** (takumi: 4 235 KiB) — chạy được ở cả trình duyệt lẫn Node.js / Bun /
-Deno / edge runtime. Module wasm **không có import nào** (không WASI, không glue wasm-bindgen).
+[English](README.md) · [Tiếng Việt](README.vi.md)
 
-- Nhận cùng định dạng node của takumi (`{ type: "container" | "text" | "image", style, children }`),
-  cùng tuỳ chọn `render(node, { width, height, format, quality, devicePixelRatio, images })`.
-- Layout: flexbox, block, CSS grid, absolute — khớp takumi tới 1/64 px trên toàn bộ fixture.
-- Vẽ: màu nền, gradient (linear / radial / conic, repeating), border, border-radius, box-shadow (outer + inset),
-  opacity, overflow clip, transform 2D, text-shadow, filter (blur, grayscale, …), ảnh PNG/JPEG/WebP-lossless/GIF
-  với object-fit, background-image `url()`.
-- Text: font TrueType tĩnh (`.ttf` / `.ttc`), kerning GPOS, ligature GSUB cơ bản, xuống dòng UAX#14 rút gọn,
-  line-height, letter-spacing, text-align, ellipsis, line-clamp, fake bold / fake italic.
-- Xuất: PNG (indexed / RGB / RGBA tự chọn), JPEG, WebP lossless, raw RGBA.
+Render node trees, HTML and Tailwind/CSS to PNG, JPEG, WebP, ICO, raw RGBA, SVG and animated WebP / APNG /
+GIF with a dependency-free WebAssembly engine. bm-engine is a port of the Rust renderer
+[takumi](https://github.com/kane50613/takumi) (2.20) to Zig 0.17: it accepts takumi's node format, render
+options and API, and was checked against takumi fixture by fixture. It runs in Node.js, browsers,
+bundlers, Bun, Deno and edge runtimes such as Cloudflare Workers, and ships in three build profiles so
+you only load the features you use.
 
-Kết quả benchmark và so sánh điểm ảnh với takumi: [docs/BENCHMARK.md](docs/BENCHMARK.md).
-Kiến trúc: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Ghi chú ngữ nghĩa takumi: [docs/TAKUMI_NOTES.md](docs/TAKUMI_NOTES.md).
+Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNER/bm-engine/tree/main/docs/en`).
 
-## Cấu hình build
+## Highlights
 
-| Profile | Kích thước (wasm-opt) | File | Nội dung |
-|:--|--:|:--|:--|
-| core | 428.5 KiB | `js/bm_engine.core.wasm` (`js/node-core.mjs`) | node JSON + style inline, flex/grid/block, TTF tĩnh, PNG/JPEG |
-| standard | 849.6 KiB | `js/bm_engine.standard.wasm` (`js/node-standard.mjs`) | + CSS, Tailwind, HTML, SVG, WOFF2, font biến thiên, CFF, bảng, float, hiệu ứng |
-| full | 1 070.0 KiB | `js/bm_engine.wasm` (`js/node.mjs`) | + chữ phức/bidi, emoji màu, animation, renderSvg, codec phụ |
+Measured against `@takumi-rs/wasm` 2.20.0 on 184 shared fixtures (Node 26, i3-10100; details in
+[docs/en/benchmark.md](docs/en/benchmark.md)):
 
-`node scripts/build.mjs` build cả ba (`--profile=core|standard|full` để build một); `zig build -Dprofile=core -D<cờ>=true|false` để tuỳ biến.
-Add-on `js/bm_woff.wasm` (84 KiB) + `js/addons.mjs` cho phép bản core nạp WOFF/WOFF2 theo yêu cầu. `features` (export của `js/index.mjs`) cho biết bản đang nạp có gì.
-Giai đoạn 2 đã port thêm: stylesheet/selector, Tailwind, HTML, SVG vào/ra (`renderSvg`), WOFF2, font biến thiên, CFF, emoji màu, shaping đầy đủ + bidi,
-bảng, float, animation + `renderAnimation`, clip-path/mask/blend, viền nét đứt, WebP lossy, ảnh động, ICO. Test trình duyệt thật: `cd bench && npm run browser`.
+- **Small**: `core` 428.5 KiB, `standard` 849.6 KiB, `full` 1 070.0 KiB of wasm (171 / 365 / 443 KiB
+  brotli), against 4 234.9 KiB for takumi — 9.9× / 5.0× / 4.0× smaller. The module has **no imports**
+  (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
+- **Same output**: 74 fixtures byte-identical, 109 equivalent (SSIM ≥ 0.99, differences at
+  anti-aliased edges), 1 close, 0 different. `measure()` layouts match takumi to 0.001 px.
+- **Fast**: PNG rendering 0.48× takumi's time (geometric mean; faster in 175/175 cases), raw RGBA
+  0.65× (faster in 155/175); cold start (init + font + first PNG) 72 ms vs 187 ms; PNG files 24 %
+  smaller.
+- **Synchronous or async**: every method has a `*Sync` twin; `init` / `initSync` accept bytes, URLs,
+  `Response`s or a precompiled `WebAssembly.Module`.
 
-## Dùng thử
+Where it still loses: wasm linear memory is **9 % larger** than takumi's after 50 renders (11.6 vs
+10.6 MiB); raw rendering is slower in the `border-radius` group (1.18×), `text-stroke` (1.58×),
+`svg-image` (1.55×) and `text-decoration` (1.07×). See [Status](#status-and-limitations).
 
-Node.js (file wasm đã build sẵn nằm ở `js/bm_engine.wasm`):
+## Install
+
+```sh
+npm install bm-engine
+```
+
+## Quick start (Node.js)
 
 ```js
-import { readFileSync } from "node:fs";
-import { Renderer } from "./js/node.mjs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { Renderer } from "bm-engine"; // Node: the full profile, initialised on import
 
-const r = new Renderer();
-r.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
+const renderer = new Renderer();
+renderer.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") }); // no font is bundled
 
-const png = r.renderSync(
+const png = renderer.renderSync(
   {
     type: "container",
-    style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center",
-             backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)" },
-    children: [{ type: "text", text: "Xin chào Việt Nam", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
+    style: {
+      display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center",
+      backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)",
+    },
+    children: [{ type: "text", text: "Hello from bm-engine", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
   },
-  { width: 1200, height: 630 }, // format: "png" (mặc định) | "jpeg" | "webp" | "raw"
+  { width: 1200, height: 630 }, // format: "png" (default) | "jpeg" | "webp" | "raw" | "ico"
 );
+writeFileSync("og.png", png);
 ```
 
-Trình duyệt / edge (ESM, không cần bundler):
+HTML and stylesheets work too (`standard` and `full` profiles):
+`renderer.renderSync("<div style='display:flex;...'>Hi</div>", { width: 1200, height: 630, css: [".x { ... }"] })`.
+
+## Quick start (browser)
 
 ```js
-import init, { Renderer } from "./js/index.mjs";
-await init(fetch(new URL("./js/bm_engine.wasm", import.meta.url))); // hoặc bytes / WebAssembly.Module
-const r = new Renderer();
-r.registerFont(await (await fetch("/Inter-Regular.ttf")).arrayBuffer());
-const png = await r.render(node, { width: 1200, height: 630 });
+import { init, Renderer } from "bm-engine/full"; // or bm-engine/standard, bm-engine/core
+
+await init(); // fetches bm_engine.wasm next to the module (bundlers emit it as an asset)
+const renderer = new Renderer();
+renderer.registerFont(await (await fetch("/fonts/Inter-Regular.ttf")).arrayBuffer());
+const png = await renderer.render(node, { width: 1200, height: 630 });
+document.querySelector("img").src = URL.createObjectURL(new Blob([png], { type: "image/png" }));
 ```
 
-Ví dụ đầy đủ: `examples/browser.html` (serve thư mục gốc qua HTTP rồi mở `/examples/browser.html`).
+On Cloudflare Workers import the binary as a module and pass it: `import wasm from "bm-engine/full.wasm";
+initSync(wasm)`. See [Getting started](docs/en/getting-started.md) for bundlers, Workers, Deno and Bun.
 
-API: `init()` / `initSync()`, `new Renderer()`, `registerFont(bytes | { name, data, weight, style })`,
-`render()` / `renderSync()`, `measure()` / `measureSync()`, `renderAsDataUrl()`, `clearFonts()`, `memoryBytes()`, `free()`.
+## Profiles
 
-## Build
+| Profile | Import | wasm (raw / brotli) | Adds |
+|:--|:--|--:|:--|
+| `core` | `bm-engine/core` | 428.5 / 171.0 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
+| `standard` | `bm-engine/standard` | 849.6 / 364.5 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 070.0 / 442.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
 
-Yêu cầu: Zig **0.17.x**, Node.js ≥ 20 (chỉ để chạy `wasm-opt` và benchmark).
+An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the
+loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.md).
 
-```powershell
-# 1. cài công cụ benchmark + wasm-opt (binaryen), không chạy install script
-cd D:\project\bm-engine\bench ; npm install --ignore-scripts ; cd ..
+## Documentation
 
-# 2. build bản phát hành: zig build (optimize = small) + wasm-opt -Oz → zig-out/bin/bm_engine.wasm và js/bm_engine.wasm
-$env:ZIG = "C:\Users\admini\Downloads\zig-x86_64-windows-0.17.1\zig-x86_64-windows-0.17.1\zig.exe"
-node scripts/build.mjs
+- [Getting started](docs/en/getting-started.md): install, Node / browser / bundlers / Workers, profiles, fonts, images, formats
+- [API reference](docs/en/api.md): `init`, `Renderer`, node format, options, errors, limits, memory
+- [CSS and feature support](docs/en/css-support.md): the feature matrix and every supported property
+- [Profiles and size](docs/en/profiles-and-size.md) · [Differences from takumi / migration](docs/en/differences-from-takumi.md)
+- [Benchmark](docs/en/benchmark.md) · [Building from source](docs/en/building-from-source.md) · [Playground](docs/en/playground.md) · [Troubleshooting](docs/en/troubleshooting.md)
+- Developer docs: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (full report, Vietnamese)](docs/BENCHMARK.md)
 
-# (hoặc chỉ biên dịch, không wasm-opt)
-& $env:ZIG build
-# tuỳ chọn: -Dwasm-optimize=fast|safe|debug  -Dstrip=false  -Dstack-kib=1024
+The repository includes a browser **playground** (`npm run playground`, then open
+`http://127.0.0.1:8080/playground/`) with templates, all three profiles and every output format; see
+[docs/en/playground.md](docs/en/playground.md).
 
-# 3. unit test native của mọi module (137 test)
-& $env:ZIG build test --summary all
-```
+## Status and limitations
 
-## Benchmark & kiểm tra tương đương với takumi
+Version 0.1.0. What to know before adopting it:
 
-```powershell
-cd D:\project\bm-engine\bench
-node run.mjs                 # đầy đủ: tương đương điểm ảnh + hiệu năng + cold start + bộ nhớ + kích thước
-node run.mjs --quick         # nhanh
-node run.mjs --filter="text|card" --engines=takumi-wasm,bm
-node report.mjs              # sinh lại out/RESULTS.md từ out/results.json
-node selftest.mjs            # tự kiểm tra bộ đo (SSIM, pixelmatch, …)
-node probe/lay.mjs "^(?!transform)" 0.001   # so cây layout (measure) với takumi, sai số 0.001 px
-```
+- **No bundled font.** takumi ships Geist; bm-engine draws no text until you register a font.
+- **No network access.** Remote images and `@font-face` URLs are never fetched (`prepare()` does not
+  fetch either); pass bytes through `images` and `registerFont`.
+- **No JSX, no `ImageResponse`, no PDF, no native binding.** Convert JSX with `@takumi-rs/helpers`.
+- **Layout gaps in progress in 0.1.0** (see [docs/BENCHMARK.md](docs/BENCHMARK.md) for the final status):
+  text flowing around floats; atomic inlines in the middle of a line and inline span padding.
+- Not supported: `display: contents`, list markers / counters, `writing-mode`, 3D transforms,
+  `clip-path: url()`, relative colour syntax, Tailwind `animate-*` and interactive variants (as in
+  takumi), `<text>` inside SVG images and some SVG filters.
+- Known differences: `direction: rtl` does not reverse flex rows; `image-rendering: pixelated` is
+  ignored on raster images; `measure()` text runs carry no `text` field.
+- Single-threaded and synchronous inside one instance; WebAssembly memory grows but never shrinks.
 
-Ảnh kết quả từng fixture: `bench/out/<id>/{takumi,bm,native,diff}.png`.
+Full list: [CSS support → Known gaps](docs/en/css-support.md#known-gaps) and
+[Differences from takumi](docs/en/differences-from-takumi.md).
 
-Fuzz toàn pipeline trên bản ReleaseSafe:
+## License and attribution
 
-```powershell
-& $env:ZIG build "-Dwasm-optimize=safe" "-Dstrip=false" -p $env:TEMP\bmsafe
-$env:BM_WASM = "$env:TEMP\bmsafe\bin\bm_engine.wasm" ; node bench/probe/fuzz.mjs 1 3000
-```
+bm-engine is licensed under either of the [MIT License](LICENSE-MIT) or the
+[Apache License 2.0](LICENSE-APACHE), at your option — the same terms as takumi.
 
-## Cấu trúc thư mục
-
-```
-src/json.zig       parser JSON tối giản        src/style/    parse giá trị CSS → ComputedStyle
-src/layout/        flex / block / grid         src/font/     sfnt, GPOS/GSUB, shaping, dàn dòng
-src/raster/        path, rasterizer AA, blur   src/codec/    PNG, JPEG, WebP, GIF, deflate
-src/render.zig     pipeline + cache            src/paint.zig painter (thứ tự vẽ kiểu Blink)
-src/bump.zig, src/pages.zig   cấp phát bộ nhớ  src/wasm.zig  export C-ABI
-js/                wrapper ESM + bm_engine.wasm
-bench/             fixture dùng chung với takumi, harness benchmark, probe
-ref/takumi/        bản clone takumi để tham chiếu (không nằm trong git)
-```
-
-## Giấy phép
-
-Chưa chọn giấy phép cho mã nguồn bm-engine (tuỳ chủ dự án quyết định). Font trong `assets/fonts` theo giấy phép riêng
-của từng font (Inter, Noto Sans: OFL; Roboto: Apache-2.0). takumi (tham chiếu) là MIT / Apache-2.0.
+bm-engine is a derivative work of **takumi** by Kane Wang (MIT OR Apache-2.0): large parts are
+transliterations of takumi's Rust code (layout, painting, text, CSS, Tailwind, HTML, SVG, animation,
+codecs), and its behaviour was verified against takumi's own output. All credit for the design of the
+renderer goes to the takumi project. takumi in turn follows Chromium's Blink and Skia; bm-engine also
+ports algorithms and data from tiny-skia, HarfBuzz, libwebp, libjpeg, Unicode / ICU, Brotli and others.
+See [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the attributions.

@@ -1,0 +1,183 @@
+# Troubleshooting and FAQ
+
+[English](troubleshooting.md) · [Tiếng Việt](../vi/troubleshooting.md)
+
+Symptoms you are likely to hit with bm-engine 0.1.0, their cause and the fix. Most of them come from
+two design decisions inherited from takumi (`display` defaults to `inline`; inputs are never fetched)
+and one of bm-engine's own (no bundled font).
+
+- [Text is missing, or shows as boxes](#text-is-missing-or-shows-as-boxes)
+- [Containers collapse to zero height](#containers-collapse-to-zero-height)
+- ["this build has no ... support"](#this-build-has-no--support)
+- [Images do not appear](#images-do-not-appear)
+- [The .wasm file is not found (bundlers, workers)](#the-wasm-file-is-not-found)
+- [Memory keeps growing](#memory-keeps-growing)
+- [Output is blurry on high-DPI screens](#output-is-blurry-on-high-dpi-screens)
+- [Vietnamese text](#vietnamese-text)
+- [Emoji are not in colour](#emoji-are-not-in-colour)
+- [A style is ignored](#a-style-is-ignored)
+- ["invalid value for style property"](#invalid-value-for-style-property)
+- [Other errors](#other-errors)
+
+## Text is missing, or shows as boxes
+
+- **Nothing at all is drawn**: no font is registered on this `Renderer` (or `clearFonts()` was called).
+  bm-engine does not bundle a font and never reads system fonts. Register one:
+  `renderer.registerFont(readFileSync("Inter-Regular.ttf"))`. Fonts are per renderer.
+- **Boxes (tofu) for some characters**: no registered font contains those characters; they are drawn
+  with the `.notdef` glyph. Register a font that covers the script (for example Noto Sans JP for
+  Japanese). Fallback already walks every registered family in registration order (also when you pass
+  `fontFamilies`, which only sets the root font stack).
+- **Wrong font**: the family name you use in `fontFamily` must match the registered name — the `name`
+  you passed, or the font's own family name (`registerFont` returns it).
+- **A `.woff2` / `.otf` font throws**: `core` lacks WOFF and CFF; use `standard` / `full`, or the WOFF
+  add-on for WOFF (CFF outlines still need `standard`).
+
+## Containers collapse to zero height
+
+`display` defaults to `inline` for every node, as in takumi and CSS. An inline container ignores
+`width` / `height`, so two sized children of a block container end up on an empty line:
+
+```js
+r.measureSync({ type: "container", style: { display: "block" }, children: [
+  { type: "container", style: { width: 50, height: 50 } },
+  { type: "container", style: { width: 50, height: 50 } },
+] }, { width: 200, height: 200 });
+// -> { width: 200, height: 0, ... }   (takumi gives the same result)
+```
+
+Give containers an explicit `display: "flex"`, `"block"` or `"grid"`. Children of a flex or grid
+container are blockified automatically, so only the containers themselves need it. Text nodes inside
+flex containers need nothing.
+
+## "this build has no ... support"
+
+The loaded profile does not contain the feature. Messages and the smallest profile that has it:
+
+| Message (prefix `bm-engine: `) | Needs |
+|:--|:--|
+| `this build has no HTML input support` | `standard` |
+| `this build has no stylesheet (\`css\` option) support` | `standard` |
+| `Tailwind (\`tw\`) is not supported by this build` | `standard` |
+| `this build has no WOFF/WOFF2 font support` | `standard`, or `loadWoff()` from `bm-engine/woff` |
+| `unsupported font format` (an `.otf`) | `standard` (CFF) |
+| `invalid value for style property backgroundColor` with `oklch()` / `lab()` / `color-mix()` on core | `standard` |
+| `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (the message says "standard / full" in 0.1.0, but only `full` has these) |
+
+Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-engine/full`), or see
+[Profiles and size](profiles-and-size.md).
+
+## Images do not appear
+
+- **A URL is never downloaded.** `src: "https://..."` only looks up an entry of the `images` option.
+  Fetch the bytes yourself and pass `images: [{ src: "https://...", data: bytes }]`.
+- **Node `Buffer` passed directly as `src`** is not recognised in 0.1.0 (it is serialised through
+  `Buffer#toJSON`). Use `src: new Uint8Array(buffer)` or the `images` option.
+- **SVG, WebP or GIF on `core`**: not decoded there; use `standard`.
+- **Lossy WebP or animated sources on `standard`**: need `full`.
+- **Lazy `images[].data` with a sync method** throws `lazy images[].data() needs the async API`; use
+  `render()` / `prepare()`.
+- **The image node has no size**: an image with an unknown or undecodable `src` has a 0 × 0 intrinsic
+  size; set `width` / `height` if the layout must not depend on it.
+
+## The .wasm file is not found
+
+- **Browser / bundler**: import a profile entry (`bm-engine/full`, `/standard`, `/core`) and call
+  `await init()`. These entries reference their binary with `new URL("./bm_engine....wasm",
+  import.meta.url)`, which Vite, webpack 5, Rollup (with an asset plugin) and Parcel emit as an asset.
+  If your bundler does not, import the binary URL explicitly (`import wasmUrl from
+  "bm-engine/full.wasm?url"` in Vite) or copy the file to your public directory and call
+  `init("/bm_engine.wasm")`.
+- **The generic `bm-engine` entry outside Node** has no default location: `init()` without an argument
+  throws `bm-engine: init() needs the wasm binary ...`. Pass bytes, a URL / `Response` or a
+  `WebAssembly.Module`, or switch to a profile entry.
+- **Cloudflare Workers** do not allow compiling WebAssembly from bytes at runtime: import the module
+  (`import wasm from "bm-engine/full.wasm"`) and pass it to `init` / `initSync`.
+- **Wrong content type**: if the server does not send `application/wasm`, `init` falls back to the
+  non-streaming path. That works, but a 404 HTML page will fail to compile — check the URL.
+- **Node in a custom setup**: `BM_WASM=/path/to/bm_engine.wasm` overrides the binary of the `bm-engine`
+  entry.
+
+## Memory keeps growing
+
+WebAssembly memory can grow but never shrink. bm-engine reuses memory between renders (a per-render
+arena, fixed-budget caches: decoded images cleared above 96 MiB, glyphs above 8 MiB), so a steady
+workload plateaus — about 6 MiB for 1200 × 630 cards with one font. What makes it grow:
+
+- **A large canvas**: one 3000 × 2000 render raises the instance to about 29 MiB, and it stays there.
+  Render big images in a separate instance (worker) if that matters.
+- **Many renderers**: each one keeps its own fonts and caches. Reuse one renderer per font set; call
+  `free()` (or `using`) when you are done with one. Freed memory is reused by later renders but not
+  returned to the operating system.
+- **Many large images**: up to 96 MiB of decoded images are cached per renderer.
+
+`renderer.memoryBytes()` reports the current linear memory size. For a hard reset, drop the whole
+instance (a worker thread or a new isolate).
+
+## Output is blurry on high-DPI screens
+
+Render more pixels and keep the CSS layout: set the canvas to the device size and `devicePixelRatio` to
+the scale factor. `devicePixelRatio` multiplies CSS px lengths and font sizes but does not change the
+canvas size:
+
+```js
+// a 1200 × 630 design rendered for a 2× screen
+const png = renderer.renderSync(node, { width: 2400, height: 1260, devicePixelRatio: 2 });
+```
+
+`%`, `vw` and `vh` already refer to the canvas, so they need no change. Then display the image at half
+its pixel size (`<img width="1200">`).
+
+## Vietnamese text
+
+- Use a font with full Vietnamese coverage (Inter, Noto Sans, Roboto, Be Vietnam Pro, ...). Missing
+  precomposed letters (`ắ`, `ợ`, ...) show as boxes.
+- Normalise user input to NFC (`text.normalize("NFC")`). Precomposed text renders correctly on every
+  profile; decomposed (NFD) text relies on the font's mark positioning, and only the `full` profile
+  normalises it for you.
+- Line breaking follows UAX #14 and breaks at spaces, which is what Vietnamese needs; `text-wrap:
+  balance` (standard / full) gives nicer headlines.
+- The repository's fixtures `text-vietnamese*` render equivalently to takumi.
+
+## Emoji are not in colour
+
+Colour emoji need **both** the `full` profile (`features.colorFonts`) and a registered colour emoji
+font (COLR, CBDT or sbix, e.g. Noto Color Emoji). Without the font, emoji show as boxes or as glyphs of
+another font; on `core` / `standard` a colour font is drawn without colour. Registering the font is
+enough — fallback walks every registered family.
+
+## A style is ignored
+
+- Inline `style` keys must be **camelCase**: `backgroundColor`, not `"background-color"` (kebab-case keys
+  are ignored silently, as in takumi). In stylesheets, HTML and `tw` use normal CSS syntax.
+- The property needs a larger profile (for example `float`, `clipPath` or `mixBlendMode` on `core`
+  are accepted and ignored).
+- A stylesheet or Tailwind declaration with an invalid value is dropped silently. Check it as an inline
+  style, which throws on invalid values.
+- Tailwind variants other than breakpoints, structural variants and `before:` / `after:`
+  (`hover:`, `dark:`, `group-*:`) never apply, and `animate-*` is not supported — as in takumi.
+- See the list of [parsed-but-not-implemented properties](css-support.md#appendix-supported-property-names).
+
+## "invalid value for style property"
+
+An inline `style` (or `preset`) value could not be parsed; the whole render throws, as in takumi. Typical
+causes: a typo (`"10 px"`), a 3D transform (`rotateX()`), relative colour syntax, modern colour
+functions on `core`. Stylesheet declarations do not throw; they are dropped.
+
+## Other errors
+
+| Message (prefix `bm-engine: `) | Cause |
+|:--|:--|
+| `call init()/initSync() before creating a Renderer` | outside Node, the entry was not initialised |
+| `renderer has been freed` | the renderer was used after `free()` |
+| `invalid viewport: width/height must be > 0` | `width` or `height` is 0 |
+| `invalid viewport: content has zero size and no width/height was given` | no canvas size and nothing to measure |
+| `canvas too large` | more than 16384 px per side or 40 megapixels |
+| `node tree is nested too deeply` | more than 512 levels |
+| `node is missing \`type\`` / `text node is missing \`text\`` | malformed node |
+| `invalid node JSON` | malformed `{ json }` source |
+| `unsupported format: <x>` | `format` is not png / jpeg / webp / raw / ico |
+| `raw image data length must be width*height*4` | RGBA image object with the wrong length |
+| `renderAsDataUrl needs an encoded format` | `format: "raw"` (or the `"jpg"` alias) with `renderAsDataUrl` |
+| `Frame rate N fps exceeds the maximum ...` | GIF > 50 fps, WebP / APNG > 90 fps |
+| `invalid font data` | not a font file |
