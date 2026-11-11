@@ -13,3 +13,5 @@ pub const enable_color_fonts: bool = opts.color_fonts;
 pub const enable_complex_text: bool = opts.complex_text;
 pub const enable_animation: bool = opts.animation;
 pub const enable_extra_codecs: bool = opts.extra_codecs;
+pub const enable_tables: bool = opts.tables;
+pub const enable_floats: bool = opts.floats;

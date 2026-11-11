@@ -7,9 +7,37 @@
 //   r.registerFont(fontBytes);
 //   const png = r.renderSync(node, { width: 1200, height: 630 });
 //
-// The node format and render options follow takumi (`@takumi-rs/wasm`), so the same input renders on both:
-// a source is a node object, `{ json: string }`, or a string of HTML; `css`, `tw`, `className` etc. are honoured
-// when the wasm build includes them (see renderSync).
+// The node format and render options follow takumi (`@takumi-rs/wasm` 2.20), so the same input renders on
+// both: a source is a node object, `{ json: string }`, or a string of HTML; `css`, `tw`, `className` etc. are
+// honoured when the wasm build includes them. Typings: ./index.d.ts.
+//
+// takumi `Renderer` API parity (async methods resolve immediately; every one has a *Sync twin here):
+//
+//   takumi                         bm-engine
+//   ----------------------------   ---------------------------------------------------------------------------
+//   new Renderer(options)          works; `cacheMaxBytes` / `fontCacheMaxBytes` accepted and ignored (fixed
+//                                  budgets: 96 MiB decoded images, 8 MiB glyph masks)
+//   registerFont(font)             works for bytes, `{ name, data, weight, style }` (data may be a function /
+//                                  promise -> async) and URL strings (fetched); `unicodeRange`, `subsetOf`,
+//                                  `generic` ignored (every face is registered eagerly)
+//   unregisterFont(family)         works (`{ name }` or a string)
+//   clearFonts()                   works
+//   render(source, options)        works: png | jpeg | webp (always lossless, like takumi-wasm) | ico | raw;
+//                                  `timeMs` samples CSS animations; `fonts` (FontLoader[]) registers the fonts
+//                                  and, without `fontFamilies`, makes them the fallback stack; `images`
+//                                  (array or `{ sources }`, lazy `data()` allowed); `signal` checked before
+//                                  rendering. Remote image URLs are NOT fetched (as in takumi without prepare)
+//   renderAsDataUrl                works (raw rejected)
+//   renderSvg                      throws "not supported in bm-engine"
+//   measure                        works
+//   prepare(source, options)       returns a prepared handle; `render`/`renderAsDataUrl`/`measure` accept it and
+//                                  merge its options. NOTE: unlike takumi it fetches nothing (no `needs` pass):
+//                                  remote images / @font-face files must be passed as `images` / fonts
+//   prepareAnimation(options)      same, for renderAnimation
+//   renderAnimation(options)       works: webp (default, lossless) | apng | gif; takumi's frame schedule
+//   read / readAnimation           private in takumi: not provided
+//   free / [Symbol.dispose]        works
+//   setGlyphCacheMaxBytes(bytes)   module function accepted and ignored (fixed 8 MiB glyph budget)
 
 /** @type {WebAssembly.Exports & Record<string, any>} */
 let wasm = null;
@@ -55,9 +83,14 @@ function check(status) {
   if (status !== 0) throw new Error("bm-engine: " + (lastError() || "error " + status));
 }
 
-/** Synchronously instantiate from bytes or a compiled WebAssembly.Module. */
+function unsupported(what) {
+  return new Error(`bm-engine: ${what} is not supported in bm-engine`);
+}
+
+/** Synchronously instantiate from bytes or a compiled WebAssembly.Module (or `{ module }`). */
 export function initSync(input) {
   if (wasm) return wasm;
+  if (input && typeof input === "object" && "module" in input && !(input instanceof WebAssembly.Module)) input = input.module;
   const mod = input instanceof WebAssembly.Module ? input : new WebAssembly.Module(input);
   wasm = new WebAssembly.Instance(mod, {}).exports;
   return wasm;
@@ -92,10 +125,44 @@ export async function init(input) {
 
 export default init;
 
-const STYLE_ITALIC = 1;
+/** takumi module function. bm-engine's glyph-mask budget is fixed (8 MiB): accepted and ignored. */
+export function setGlyphCacheMaxBytes(bytes) {
+  void bytes;
+}
 
 function isBinary(v) {
-  return v instanceof Uint8Array || v instanceof ArrayBuffer;
+  return v instanceof Uint8Array || v instanceof ArrayBuffer || ArrayBuffer.isView(v);
+}
+
+const PREPARED = Symbol("bm-engine.prepared");
+
+/** Handle returned by `prepare` / `prepareAnimation` (opaque, like takumi's `Prepared`). */
+export class Prepared {
+  constructor(kind, source, options) {
+    this[PREPARED] = { kind, source, options };
+  }
+}
+
+function unwrap(source, options, kind) {
+  const p = source && source[PREPARED];
+  if (!p) return [source, options];
+  if (p.kind !== kind) throw new TypeError(`bm-engine: this prepared handle is for ${p.kind === "anim" ? "renderAnimation" : "render"}`);
+  return [p.source, { ...p.options, ...options }];
+}
+
+function throwIfAborted(signal) {
+  if (signal && signal.aborted) throw signal.reason ?? new Error("bm-engine: aborted");
+}
+
+function imageList(images) {
+  return Array.isArray(images) ? images : images && images.sources ? images.sources : [];
+}
+
+/** Resolves lazy `images[].data()` entries (async paths only). */
+async function resolveImages(images) {
+  const list = imageList(images);
+  if (!list.some((i) => typeof i.data === "function" || (i.data && typeof i.data.then === "function"))) return images;
+  return Promise.all(list.map(async (i) => ({ ...i, data: await (typeof i.data === "function" ? i.data() : i.data) })));
 }
 
 export class Renderer {
@@ -109,19 +176,37 @@ export class Renderer {
     void options;
   }
 
+  #handle() {
+    if (!this.#h) throw new Error("bm-engine: renderer has been freed");
+    return this.#h;
+  }
+
   /**
    * Register a font: TTF/OTF/TTC (every face of a collection), variable fonts, and WOFF/WOFF2 when the
-   * build includes them. Accepts raw bytes or `{ name, data, weight, style }`.
-   * Returns takumi's `RegisteredFamily[]`: `[{ name, faces: [{ weight, style, width, index }], weight, style }]`
-   * (`weight`/`style` = the family's first face, kept for compatibility).
+   * build includes them. Accepts raw bytes or `{ name, data, weight, style }`. Returns takumi's
+   * `RegisteredFamily[]`: `[{ name, faces: [{ weight, style, width, index }], weight, style }]`.
+   * A URL string, or `data` given as a function / promise, makes it async (returns a Promise).
    */
   registerFont(font) {
-    const details = isBinary(font) || ArrayBuffer.isView(font) ? { data: font } : font;
+    if (typeof font === "string" || (typeof URL !== "undefined" && font instanceof URL)) {
+      return fetch(font).then((res) => {
+        if (!res.ok) throw new Error(`bm-engine: failed to fetch font ${font}: ${res.status}`);
+        return res.arrayBuffer();
+      }).then((buf) => this.registerFont(new Uint8Array(buf)));
+    }
+    if (font && typeof font.then === "function") return font.then((f) => this.registerFont(f));
+    const details = isBinary(font) ? { data: font } : font;
+    if (!details || details.data == null) throw new TypeError("bm-engine: registerFont expects bytes or { data }");
+    if (typeof details.data === "function" || typeof details.data.then === "function") {
+      return Promise.resolve(typeof details.data === "function" ? details.data() : details.data)
+        .then((data) => this.registerFont({ ...details, data }));
+    }
+    const h = this.#handle();
     const [ptr, len] = copyIn(toBytes(details.data));
     const [nptr, nlen, ncap] = copyInString(details.name || "");
     const italic = details.style == null ? -1 : /italic|oblique/.test(String(details.style)) ? 1 : 0;
     // Ownership of the font bytes moves to the renderer (zero-copy parsing inside wasm).
-    const status = wasm.bm_register_font(this.#h, ptr, len, nptr, nlen, details.weight | 0, italic);
+    const status = wasm.bm_register_font(h, ptr, len, nptr, nlen, details.weight | 0, italic);
     wasm.bm_free(nptr, ncap);
     check(status);
     return JSON.parse(this.#takeString());
@@ -132,22 +217,31 @@ export class Renderer {
     return this.registerFont(font);
   }
 
-  /** Removes every face of `family`. Returns true when something was removed. */
+  /** Removes every face of `family` (a name or `{ name }`). Returns true when something was removed. */
   unregisterFont(family) {
-    const [nptr, nlen, ncap] = copyInString(String(family));
-    const r = wasm.bm_unregister_font(this.#h, nptr, nlen);
+    const name = family && typeof family === "object" ? family.name : family;
+    const [nptr, nlen, ncap] = copyInString(String(name));
+    const r = wasm.bm_unregister_font(this.#handle(), nptr, nlen);
     wasm.bm_free(nptr, ncap);
     return r !== 0;
   }
 
   clearFonts() {
-    wasm.bm_clear_fonts(this.#h);
+    wasm.bm_clear_fonts(this.#handle());
   }
 
   #takeString() {
     const ptr = wasm.bm_result_ptr(this.#h);
     const len = wasm.bm_result_len(this.#h);
     return dec.decode(u8().subarray(ptr, ptr + len));
+  }
+
+  #takeBytes() {
+    const ptr = wasm.bm_result_ptr(this.#h);
+    const len = wasm.bm_result_len(this.#h);
+    const out = u8().slice(ptr, ptr + len);
+    wasm.bm_release_result(this.#h);
+    return out;
   }
 
   #putImage(src, data) {
@@ -168,44 +262,52 @@ export class Renderer {
     check(status);
   }
 
+  /** JSON.stringify where binary / RGBA image `src` values are moved into wasm and replaced by ids. */
+  #stringify(value) {
+    return JSON.stringify(value, (key, v) => {
+      if (key === "src" && v && typeof v === "object") {
+        const id = "bm-res:" + this.#resSeq++;
+        if (isBinary(v)) this.#putImage(id, v);
+        else if (v.data && v.width) this.#putRgba(id, v);
+        else return v;
+        return id;
+      }
+      return v;
+    });
+  }
+
+  /** Copies the `images` option entries the source text references into wasm. */
+  #putImages(images, text, own) {
+    for (const img of imageList(images)) {
+      if (typeof img.data === "function") throw new TypeError("bm-engine: lazy images[].data() needs the async API");
+      const needle = JSON.stringify(String(img.src)).slice(1, -1);
+      if (!own || text.includes(needle)) this.#putImage(img.src, img.data);
+    }
+  }
+
   /**
    * Serialises the source; binary image sources are moved into wasm and replaced by ids.
    * Returns [text, kind] with kind 0 = JSON node tree, 1 = HTML markup.
    */
-  #prepare(node, options) {
-    wasm.bm_clear_images(this.#h);
+  #prepareSource(node, options) {
+    wasm.bm_clear_images(this.#handle());
     let json;
     let kind = 0;
     let own = false; // true when we produced the JSON ourselves (so escaping is predictable)
     // takumi semantics: every JS string is HTML; a JSON tree as text is passed as { json }.
     if (typeof node === "string") { json = node; kind = 1; }
     else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
-    else {
-      own = true;
-      json = JSON.stringify(node, (key, value) => {
-        if (key === "src" && value && typeof value === "object") {
-          const id = "bm-res:" + this.#resSeq++;
-          if (isBinary(value) || ArrayBuffer.isView(value)) this.#putImage(id, value);
-          else if (value.data && value.width) this.#putRgba(id, value);
-          else return value;
-          return id;
-        }
-        return value;
-      });
-    }
+    else { own = true; json = this.#stringify(node); }
     // Only images the tree actually references are copied into wasm memory.
-    const images = options.images;
-    const list = Array.isArray(images) ? images : images && images.sources ? images.sources : [];
-    for (const img of list) {
-      const needle = JSON.stringify(String(img.src)).slice(1, -1);
-      if (!own || json.includes(needle)) this.#putImage(img.src, img.data);
-    }
+    this.#putImages(options.images, json, own);
     return [json, kind];
   }
 
   #call(which, node, options) {
-    const [json, kind] = this.#prepare(node, options);
-    // `images` were copied in above; `fonts`/`signal` are JS-side takumi options (not supported here).
+    [node, options] = unwrap(node, options, "render");
+    throwIfAborted(options.signal);
+    const [json, kind] = this.#prepareSource(node, options);
+    // `images` were copied in above; `fonts`/`signal` are JS-side takumi options.
     const { images: _i, fonts: _f, signal: _s, ...rest } = options;
     const [jptr, jlen, jcap] = copyInString(json);
     const [optr, olen, ocap] = copyInString(JSON.stringify(rest));
@@ -214,50 +316,69 @@ export class Renderer {
     const status = fn ? fn(this.#h, kind, jptr, jlen, optr, olen)
       : kind === 0 ? (which === "render" ? wasm.bm_render : wasm.bm_measure)(this.#h, jptr, jlen, optr, olen)
       : -1;
-    if (status === -1) {
-      wasm.bm_free(jptr, jcap);
-      wasm.bm_free(optr, ocap);
-      throw new Error("bm-engine: this wasm build does not accept HTML sources");
-    }
     wasm.bm_free(jptr, jcap);
     wasm.bm_free(optr, ocap);
+    if (status === -1) throw new Error("bm-engine: this wasm build does not accept HTML sources");
     check(status);
+  }
+
+  /** Async option extras (takumi `RenderExtras`): `fonts` loaders and lazy `images`. */
+  async #extras(options) {
+    let o = options;
+    if (o.fonts) {
+      const loaders = await o.fonts;
+      const names = [];
+      for (const f of loaders) {
+        const fams = await this.registerFont(f);
+        for (const fam of fams || []) if (!names.includes(fam.name)) names.push(fam.name);
+      }
+      const { fonts: _f, ...rest } = o;
+      o = o.fontFamilies || names.length === 0 ? rest : { ...rest, fontFamilies: names };
+    }
+    if (o.images) o = { ...o, images: await resolveImages(o.images) };
+    return o;
   }
 
   /**
    * Render synchronously. Returns a fresh Uint8Array (PNG by default; `format: "raw"` = straight RGBA8).
    *
-   * `source`: a takumi node object, `{ json: string }` (a node tree as JSON text), or a STRING = HTML
-   * markup (`<style>` elements are honoured), exactly like `@takumi-rs/wasm`.
-   * `options` (takumi RenderOptions): `width`, `height`, `format` ("png"|"jpeg"|"webp"|"raw"), `quality`,
-   * `devicePixelRatio`, `images` ([{src, data}] or {sources}), `css` (array of stylesheet strings and/or
-   * takumi rule objects), `stylesheets` (deprecated: strings, used when `css` is absent), `keyframes`
-   * (deprecated keyframes map/list; parsed, animation not rendered yet), `fontFamilies` (root
-   * font-family fallback stack), `lang` (root language for `:lang()`), `timeMs` (stored),
-   * `drawDebugBorder` / `dithering` (accepted, ignored). Node fields `tw`, `className`, `id`,
-   * `tagName`, `attributes`, `dir`, `lang`, `preset`, `style` are honoured.
+   * `source`: a takumi node object, `{ json: string }` (a node tree as JSON text), a STRING = HTML
+   * markup (`<style>` elements are honoured), or a handle from `prepare()`.
+   * `options` (takumi RenderOptions): `width`, `height`, `format` ("png"|"jpeg"|"webp"|"ico"|"raw"),
+   * `quality` (jpeg), `lossless` (ignored: webp is always lossless), `devicePixelRatio`, `images`
+   * ([{src, data}] or {sources}), `css` (stylesheet strings and/or takumi rule objects), `stylesheets`
+   * (deprecated), `keyframes` (deprecated keyframes map/list), `timeMs` (CSS animation timeline, default 0),
+   * `fontFamilies`, `lang`, `drawDebugBorder` / `dithering` (accepted, ignored).
    */
   renderSync(node, options = {}) {
     this.#call("render", node, options);
-    const ptr = wasm.bm_result_ptr(this.#h);
-    const len = wasm.bm_result_len(this.#h);
-    const out = u8().slice(ptr, ptr + len);
-    wasm.bm_release_result(this.#h);
-    return out;
+    return this.#takeBytes();
   }
 
-  /** takumi-compatible async signature (resolves immediately; rendering is synchronous). */
+  /** takumi-compatible async signature (rendering itself is synchronous). */
   async render(node, options = {}) {
-    return this.renderSync(node, options);
+    [node, options] = unwrap(node, options, "render");
+    return this.renderSync(node, await this.#extras(options));
   }
 
-  async renderAsDataUrl(node, options = {}) {
-    const bytes = this.renderSync(node, options);
-    const mime = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp" }[options.format || "png"];
+  renderAsDataUrlSync(node, options = {}) {
+    [node, options] = unwrap(node, options, "render");
+    const mime = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" }[options.format || "png"];
     if (!mime) throw new Error("bm-engine: renderAsDataUrl needs an encoded format");
+    const bytes = this.renderSync(node, options);
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return `data:${mime};base64,${btoa(bin)}`;
+  }
+
+  async renderAsDataUrl(node, options = {}) {
+    [node, options] = unwrap(node, options, "render");
+    return this.renderAsDataUrlSync(node, await this.#extras(options));
+  }
+
+  /** takumi `renderSvg` (SVG output): not implemented yet. */
+  async renderSvg() {
+    throw unsupported("renderSvg");
   }
 
   /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */
@@ -269,7 +390,60 @@ export class Renderer {
   }
 
   async measure(node, options = {}) {
-    return this.measureSync(node, options);
+    [node, options] = unwrap(node, options, "render");
+    return this.measureSync(node, await this.#extras(options));
+  }
+
+  /**
+   * takumi `prepare`: resolves `fonts` / lazy `images` and returns a handle for `render`,
+   * `renderAsDataUrl` and `measure` (whose options are merged over the prepared ones). bm-engine does
+   * not fetch remote resources here (no `needs` pass): pass image bytes via `images`.
+   */
+  async prepare(source, options = {}) {
+    return new Prepared("render", source, await this.#extras(options));
+  }
+
+  /** takumi `prepareAnimation`: like `prepare`, for `renderAnimation`. */
+  async prepareAnimation(options = {}) {
+    const { scenes, ...rest } = options;
+    return new Prepared("anim", scenes, await this.#extras(rest));
+  }
+
+  /**
+   * takumi `renderAnimation`: `{ scenes: [{ node, durationMs }], width, height, fps, format?: "webp" |
+   * "apng" | "gif" (default webp, always lossless), css?, stylesheets?, keyframes?, images?,
+   * devicePixelRatio?, fontFamilies?, lang? }` -> encoded animation. Frame schedule as takumi-raster:
+   * ceil(total * fps / 1000) frames, frame i at floor(i * 1000 / fps) ms (time restarts per scene).
+   * Max fps: 50 for gif, 90 for webp / apng.
+   */
+  renderAnimationSync(options) {
+    let scenes = options.scenes;
+    if (options[PREPARED]) {
+      const p = options[PREPARED];
+      if (p.kind !== "anim") throw new TypeError("bm-engine: this prepared handle is for render");
+      scenes = p.source;
+      options = { ...p.options };
+    }
+    throwIfAborted(options.signal);
+    if (!wasm.bm_render_animation) throw unsupported("renderAnimation (this wasm build)");
+    const h = this.#handle();
+    wasm.bm_clear_images(h);
+    const { images, fonts: _f, signal: _s, scenes: _sc, ...rest } = options;
+    const text = this.#stringify({ ...rest, scenes: scenes || [] });
+    this.#putImages(images, text, true);
+    const [ptr, len, cap] = copyInString(text);
+    const status = wasm.bm_render_animation(h, ptr, len);
+    wasm.bm_free(ptr, cap);
+    check(status);
+    return this.#takeBytes();
+  }
+
+  async renderAnimation(options, extra = {}) {
+    if (options && options[PREPARED]) {
+      throwIfAborted(extra.signal);
+      return this.renderAnimationSync(options);
+    }
+    return this.renderAnimationSync(await this.#extras(options));
   }
 
   /** Current wasm linear memory size in bytes (shared by all renderers of this module instance). */
@@ -285,6 +459,8 @@ export class Renderer {
     if (this.#h) wasm.bm_renderer_free(this.#h);
     this.#h = 0;
   }
-}
 
-void STYLE_ITALIC;
+  [Symbol.dispose]() {
+    this.free();
+  }
+}

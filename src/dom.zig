@@ -125,6 +125,21 @@ pub const Dom = struct {
 
     fn jsonNode(d: *Dom, a: Allocator, v: json.Value, parent: u32, depth: u32) Error!u32 {
         if (depth > d.max_depth) return d.fail("node tree is nested too deeply", "");
+        const id = try d.jsonElement(a, v, parent);
+        if (d.els.items[id].kind == .container) {
+            if (v.get("children")) |c| if (c == .array) {
+                for (c.array) |cv| {
+                    if (cv == .null) continue;
+                    _ = try d.jsonNode(a, cv, id, depth + 1);
+                }
+            };
+        }
+        return id;
+    }
+
+    /// One JSON node as an element (children excluded). Out of line: the `El` under construction
+    /// would otherwise sit in every level of the recursion's stack frame.
+    noinline fn jsonElement(d: *Dom, a: Allocator, v: json.Value, parent: u32) Error!u32 {
         if (v != .object) return d.fail("node must be an object", "");
         const tv = v.get("type") orelse return d.fail("node is missing `type`", "");
         const t = tv.asString() orelse return d.fail("node `type` must be a string", "");
@@ -185,16 +200,7 @@ pub const Dom = struct {
             },
             .container => {},
         }
-        const id = try d.add(a, el, parent);
-        if (el.kind == .container) {
-            if (v.get("children")) |c| if (c == .array) {
-                for (c.array) |cv| {
-                    if (cv == .null) continue;
-                    _ = try d.jsonNode(a, cv, id, depth + 1);
-                }
-            };
-        }
-        return id;
+        return d.add(a, el, parent);
     }
 
     // ------------------------------------------------------------------------------- HTML source
@@ -248,8 +254,26 @@ pub const Dom = struct {
             _ = try d.add(a, .{ .kind = .text, .run = true, .text = n.text }, parent);
             return;
         }
+        const id = (try d.htmlElement(a, H, n, parent, disabled_fs)) orelse return;
         const tag = n.tag;
-        if (H.isUnrendered(tag)) return;
+        const disables = std.mem.eql(u8, tag, "fieldset") and n.attr("disabled") != null;
+        var seen_legend = false;
+        for (n.children) |c| {
+            var dis = disabled_fs or disables;
+            if (disables and !seen_legend and c.kind == .element and std.mem.eql(u8, c.tag, "legend")) {
+                seen_legend = true;
+                dis = disabled_fs; // the first legend of a disabled fieldset is exempt
+            }
+            try d.htmlNode(a, H, c, id, depth + 1, dis);
+        }
+    }
+
+    /// One HTML element (children excluded); returns its id when its children must be built, null
+    /// when it is unrendered or not a container. Out of line: keeps the `El` under construction out
+    /// of the recursion's stack frame.
+    noinline fn htmlElement(d: *Dom, a: Allocator, comptime H: type, n: *const H.Node, parent: u32, disabled_fs: bool) Error!?u32 {
+        const tag = n.tag;
+        if (H.isUnrendered(tag)) return null;
         var el: El = .{ .kind = .container, .tag = tag };
         var pres: std.ArrayList(u8) = .empty;
         if (std.mem.eql(u8, tag, "br")) {
@@ -306,17 +330,8 @@ pub const Dom = struct {
         el.pres = pres.items;
         const id = try d.add(a, el, parent);
         try d.htmlMeta(a, H, id, n.attrs, tag);
-        if (el.kind != .container) return;
-        const disables = std.mem.eql(u8, tag, "fieldset") and n.attr("disabled") != null;
-        var seen_legend = false;
-        for (n.children) |c| {
-            var dis = disabled_fs or disables;
-            if (disables and !seen_legend and c.kind == .element and std.mem.eql(u8, c.tag, "legend")) {
-                seen_legend = true;
-                dis = disabled_fs; // the first legend of a disabled fieldset is exempt
-            }
-            try d.htmlNode(a, H, c, id, depth + 1, dis);
-        }
+        if (el.kind != .container) return null;
+        return id;
     }
 
     /// takumi `apply_metadata`: class/id/lang/dir/style/tw are structured fields, the rest attributes.

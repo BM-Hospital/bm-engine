@@ -16,10 +16,12 @@ import grid from "./grid.mjs";
 import cards from "./cards.mjs";
 import stress from "./stress.mjs";
 import gaps from "./gaps.mjs";
+import paintfx from "./paintfx.mjs";
 import frontend from "./frontend.mjs";
+import anim from "./anim.mjs";
 
 /** All cases: { id, feature, title, width, height, node (object, or HTML string), images?, fonts?, notes?, opts? (extra render options, e.g. css) } */
-export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradients, radial, shadow, opacity, overflow, transform, text, images, grid, cards, stress, gaps, frontend].flat();
+export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradients, radial, shadow, opacity, overflow, transform, text, images, grid, cards, stress, gaps, paintfx, frontend, anim].flat();
 const ids = new Set();
 for (const k of ALL_CASES) { if (ids.has(k.id)) throw new Error("duplicate fixture id " + k.id); ids.add(k.id); }
 

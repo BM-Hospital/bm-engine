@@ -16,12 +16,14 @@ const ot = @import("ot.zig");
 const cff = @import("cff.zig");
 const variations = @import("variations.zig");
 
-/// INTEGRATOR: wire these to the build flags (`config.enable_cff` /
-/// `config.enable_variable_fonts`). With `false` the corresponding file is not referenced
-/// at all: CFF fonts are then rejected with `error.UnsupportedFontFormat`, variable fonts
-/// render as their default instance.
-pub const enable_cff = true;
-pub const enable_variations = true;
+/// Wired to the build flags through the root module (`pub const bm_config = @import("config.zig")`
+/// in src/wasm.zig / src/root.zig): `config.enable_cff` / `config.enable_variable_fonts`. With
+/// `false` the corresponding file is not referenced at all: CFF fonts are then rejected with
+/// `error.UnsupportedFontFormat`, variable fonts render as their default instance. A root without
+/// `bm_config` (standalone `zig test src/font/font.zig`) enables both.
+const root_mod = @import("root");
+pub const enable_cff = if (@hasDecl(root_mod, "bm_config")) root_mod.bm_config.enable_cff else true;
+pub const enable_variations = if (@hasDecl(root_mod, "bm_config")) root_mod.bm_config.enable_variable_fonts else true;
 
 pub const Error = error{
     /// Recognised but not supported: CFF outlines when CFF support is compiled out, Type 1

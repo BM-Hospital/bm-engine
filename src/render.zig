@@ -22,6 +22,8 @@ const dom_mod = @import("dom.zig");
 const css = @import("css/css.zig");
 const twc = @import("tw/tw.zig");
 const html = @import("html/html.zig");
+const animate = @import("animate.zig");
+const svgm = @import("svg/svg.zig");
 
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
@@ -44,9 +46,14 @@ pub const Node = struct {
     lid: u32 = none,
     para: ?*font.Paragraph = null,
     img: ?*const raster.Pixmap = null,
-    /// intrinsic image size in device px
+    /// SVG image source: the document markup (per-render arena or renderer-owned image bytes,
+    /// valid for the frame). `img` stays null; `img_w`/`img_h` hold its intrinsic size.
+    svg: ?[]const u8 = null,
+    /// intrinsic image size in device px (0 x 0 = no natural size)
     img_w: f32 = 0,
     img_h: f32 = 0,
+    /// natural aspect ratio when there is no natural size (SVG with only a viewBox); 0 = none
+    img_ratio: f32 = 0,
 };
 
 const ImageEntry = struct {
@@ -68,7 +75,10 @@ const CachedImage = struct {
 
 pub const GlyphMask = struct { x: i32, y: i32, w: u32, h: u32, data: []u8 };
 
-pub const Format = enum { png, jpeg, webp, raw };
+pub const Format = enum { png, jpeg, webp, ico, raw };
+
+/// `renderAnimation` output formats (takumi default: webp).
+pub const AnimFormat = enum { webp, apng, gif };
 
 /// How the `source` bytes of a render are interpreted (C ABI `kind` argument).
 pub const SourceKind = enum(u8) { json = 0, html = 1 };
@@ -90,7 +100,7 @@ pub const Options = struct {
     lang: []const u8 = "",
     /// root font-family fallback stack (used when the root sets no `font-family`).
     font_families: []const []const u8 = &.{},
-    /// animation timeline position in ms (stored for the animation pass; not used yet).
+    /// animation timeline position in ms (takumi: integer ms; default 0 = animations sampled at 0).
     time_ms: f32 = 0,
 };
 
@@ -114,13 +124,17 @@ pub const Renderer = struct {
     result: []const u8 = "",
     err: []const u8 = "",
     err_buf: [256]u8 = undefined,
+    /// Timeline position of the frame being rendered (animated image sources).
+    time_ms: f32 = 0,
+    /// Shape-plan cache (long-lived; plans reference font data: cleared with the fonts).
+    shape_cache: font.ShapeCache,
 
     pub const glyph_budget: usize = 8 << 20;
     pub const image_budget: usize = 96 << 20;
 
     pub fn create(gpa: Allocator) ?*Renderer {
         const self = gpa.create(Renderer) catch return null;
-        self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .scratch = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa) };
+        self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .scratch = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa), .shape_cache = font.ShapeCache.init(gpa) };
         self.rast.levels16 = true;
         self.scratch.idle_limit = 255;
         return self;
@@ -135,6 +149,7 @@ pub const Renderer = struct {
         self.images.deinit(self.gpa);
         self.img_cache.deinit(self.gpa);
         self.glyphs.deinit(self.gpa);
+        self.shape_cache.deinit();
         self.rast.deinit();
         self.gpa.free(self.canvas);
         self.scratch.deinit();
@@ -253,12 +268,16 @@ pub const Renderer = struct {
     /// takumi `unregisterFont(family)`: removes every face of `family`; true when any was removed.
     pub fn unregisterFont(self: *Renderer, family: []const u8) bool {
         const any = self.fonts.unregisterFamily(self.gpa, family);
-        if (any) self.clearGlyphs();
+        if (any) {
+            self.clearGlyphs();
+            self.shape_cache.clear();
+        }
         return any;
     }
 
     pub fn clearFonts(self: *Renderer) void {
         self.clearGlyphs();
+        self.shape_cache.clear();
         self.fonts.clear(self.gpa);
         for (self.font_blobs.items) |b| self.gpa.free(b);
         self.font_blobs.clearRetainingCapacity();
@@ -314,8 +333,44 @@ pub const Renderer = struct {
         self.beginCall();
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
-        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
-        try f.prepare(kind, source);
+        const pm = try self.renderPixels(.{ .kind = kind, .text = source }, opts);
+
+        self.result = switch (opts.format) {
+            .raw => pm.data,
+            .png => codec.encodePng(a, pm.data, pm.width, pm.height, .{}) catch return error.OutOfMemory,
+            .jpeg => codec.encodeJpeg(a, pm.data, pm.width, pm.height, .{ .quality = opts.quality orelse 75 }) catch return error.OutOfMemory,
+            .webp => codec.encodeWebp(a, pm.data, pm.width, pm.height, .{}) catch return error.OutOfMemory,
+            .ico => blk: {
+                if (comptime !config.enable_extra_codecs) unreachable; // rejected by parseOptions
+                if (pm.width > 256 or pm.height > 256) {
+                    var buf: [64]u8 = undefined;
+                    self.setErr("ICO images are 1 to 256 pixels on a side, not ", decimal(&buf, @max(pm.width, pm.height)));
+                    return error.Invalid;
+                }
+                break :blk codec.encodeIco(a, pm.data, pm.width, pm.height) catch |e| switch (e) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => {
+                        self.setErr("ICO encoding failed", "");
+                        return error.Invalid;
+                    },
+                };
+            },
+        };
+        return self.result;
+    }
+
+    /// A render source: text (JSON node tree / HTML) or an already parsed JSON node value
+    /// (`renderAnimation` scenes; the value must outlive the call).
+    pub const Source = struct { kind: SourceKind = .json, text: []const u8 = "", value: ?json.Value = null };
+
+    /// Lays out and paints one frame into `self.canvas` and un-premultiplies it. The per-render
+    /// arena is reset afterwards (everything of the layout / paint phase is dead), so `opts` must
+    /// not reference it when the caller still needs them; scalar fields are fine.
+    fn renderPixels(self: *Renderer, src: Source, opts: Options) Error!raster.Pixmap {
+        const a = self.arena.allocator();
+        self.time_ms = opts.time_ms;
+        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined, .pre = src.value };
+        try f.prepare(src.kind, src.text);
 
         const need = @as(usize, f.canvas_w) * f.canvas_h * 4;
         if (self.canvas.len != need) {
@@ -327,17 +382,151 @@ pub const Renderer = struct {
         var pm: raster.Pixmap = .{ .width = f.canvas_w, .height = f.canvas_h, .data = self.canvas };
         try paint.paintFrame(&f, &pm);
         unpremultiply(pm.data);
-        // Everything of the layout / paint phase is dead now: recycle the arena so the encoder
-        // reuses the same chunks instead of growing memory further.
+        // Recycle the arena so the encoder reuses the same chunks instead of growing memory.
         self.arena.reset();
+        return pm;
+    }
 
-        self.result = switch (opts.format) {
-            .raw => pm.data,
-            .png => codec.encodePng(a, pm.data, pm.width, pm.height, .{}) catch return error.OutOfMemory,
-            .jpeg => codec.encodeJpeg(a, pm.data, pm.width, pm.height, .{ .quality = opts.quality orelse 75 }) catch return error.OutOfMemory,
-            .webp => codec.encodeWebp(a, pm.data, pm.width, pm.height, .{}) catch return error.OutOfMemory,
+    // ---- renderAnimation
+
+    /// Upper bound of the raw frames kept for one `renderAnimation` call.
+    pub const max_animation_bytes: usize = 512 << 20;
+
+    /// takumi `renderAnimation`. `json_text`: `{scenes: [{node, durationMs}], width, height, fps,
+    /// format?: "webp"|"apng"|"gif" (default webp), quality?, lossless? (ignored: webp is always
+    /// lossless, like takumi-wasm), css?, stylesheets?, keyframes?, devicePixelRatio?,
+    /// fontFamilies?, lang?}`; a scene `node` is a node object, an HTML string or `{json}`.
+    /// Frame schedule (takumi-raster `frame_spans`): total = sum of durations, frame count =
+    /// ceil(total * fps / 1000), frame i starts at floor(i * 1000 / fps) ms and lasts until the next
+    /// start (clamped to total; zero-length frames dropped); a frame renders the scene active at its
+    /// start with that scene's local time (time restarts per scene). Result in the arena.
+    pub fn renderAnimation(self: *Renderer, json_text: []const u8) Error![]const u8 {
+        if (comptime !config.enable_animation) {
+            self.beginCall();
+            self.setErr("renderAnimation is not supported by this build", "");
+            return error.Invalid;
+        }
+        return self.renderAnimationImpl(json_text);
+    }
+
+    noinline fn renderAnimationImpl(self: *Renderer, json_text: []const u8) Error![]const u8 {
+        self.beginCall();
+        // the options + scenes live in their own arena for the whole call (the render arena is
+        // recycled after every frame)
+        var keep = bump.Bump.init(self.gpa);
+        defer keep.deinit();
+        const ka = keep.allocator();
+        const v = json.parse(ka, json_text) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.JsonTooDeep => return self.invalid("node tree is nested too deeply"),
+            else => return self.invalid("invalid animation options JSON"),
         };
+        if (v != .object) return self.invalid("invalid animation options JSON");
+        const opts = try self.optionsFrom(ka, v, true);
+        const scenes_v = v.get("scenes") orelse return self.invalid("Expected at least one animation scene");
+        if (scenes_v != .array or scenes_v.array.len == 0) return self.invalid("Expected at least one animation scene");
+        const fps_n = (if (v.get("fps")) |x| x.asNumber() else null) orelse return self.invalid("missing field `fps`");
+        if (!(fps_n >= 1)) return self.invalid("Expected fps to be greater than 0");
+        const fps: u64 = @intFromFloat(@min(fps_n, 1.0e6));
+        if (opts.width == null or opts.height == null) return self.invalid("renderAnimation needs `width` and `height`");
+        var format: AnimFormat = .webp;
+        if (v.get("format")) |fv| if (fv.asString()) |s| {
+            if (std.mem.eql(u8, s, "webp")) format = .webp else if (std.mem.eql(u8, s, "apng")) format = .apng else if (std.mem.eql(u8, s, "gif")) format = .gif else {
+                self.setErr("unsupported animation format: ", s);
+                return error.Invalid;
+            }
+        };
+        // takumi `AnimationFormat::max_fps`: GIF 20 ms, WebP / APNG 11 ms shortest frame
+        const max_fps: u64 = if (format == .gif) 1000 / 20 else 1000 / 11;
+        if (fps > max_fps) {
+            var b1: [24]u8 = undefined;
+            var b2: [24]u8 = undefined;
+            var msg: [128]u8 = undefined;
+            var n: usize = 0;
+            for ([_][]const u8{ "Frame rate ", decimal(&b1, fps), " fps exceeds the maximum ", decimal(&b2, max_fps), " fps for this animation format" }) |part| {
+                @memcpy(msg[n..][0..part.len], part);
+                n += part.len;
+            }
+            self.setErr(msg[0..n], "");
+            return error.Invalid;
+        }
+
+        // scenes
+        const Scene = struct { src: Source, dur: u64 };
+        const scenes = try ka.alloc(Scene, scenes_v.array.len);
+        var total: u64 = 0;
+        for (scenes_v.array, scenes) |sv, *sc| {
+            const node = sv.get("node") orelse return self.invalid("animation scene is missing `node`");
+            const d = (if (sv.get("durationMs")) |x| x.asNumber() else null) orelse return self.invalid("animation scene is missing `durationMs`");
+            sc.dur = if (d >= 0 and d < 4.0e9) @intFromFloat(d) else 0;
+            total += sc.dur;
+            sc.src = switch (node) {
+                .string => |s| .{ .kind = .html, .text = s },
+                .object => if (node.get("type") == null and node.get("json") != null and node.get("json").? == .string)
+                    .{ .kind = .json, .text = node.get("json").?.string }
+                else
+                    .{ .kind = .json, .value = node },
+                else => return self.invalid("animation scene `node` must be a node, an HTML string or {json}"),
+            };
+        }
+        if (total == 0) return self.invalid("Animation must contain at least one frame");
+        const count = (total * fps + 999) / 1000;
+        const w = opts.width.?;
+        const h = opts.height.?;
+        const frame_bytes = @as(usize, w) * h * 4;
+        if (count > 1 << 20 or @as(u64, frame_bytes) * count > max_animation_bytes) return self.invalid("animation too large");
+
+        var frames: std.ArrayList(codec.AnimFrame) = .empty;
+        defer {
+            for (frames.items) |fr| self.gpa.free(fr.rgba);
+            frames.deinit(self.gpa);
+        }
+        try frames.ensureTotalCapacity(self.gpa, @intCast(count));
+        var i: u64 = 0;
+        while (i < count) : (i += 1) {
+            const start = i * 1000 / fps;
+            const end = @min((i + 1) * 1000 / fps, total);
+            if (end <= start) continue;
+            // scene active at `start` (clamped to the last ms), time restarting per scene
+            const at = @min(start, total - 1);
+            var elapsed: u64 = 0;
+            var si: usize = 0;
+            while (si + 1 < scenes.len and at >= elapsed + scenes[si].dur) : (si += 1) elapsed += scenes[si].dur;
+            var fo = opts;
+            fo.time_ms = @floatFromInt(at - elapsed);
+            fo.format = .raw;
+            // per-frame housekeeping (arena, font frame, glyph / image cache budgets)
+            self.beginCall();
+            const pm = try self.renderPixels(scenes[si].src, fo);
+            if (pm.width != w or pm.height != h) return self.invalid("Animation frames must share the same dimensions");
+            const copy = try self.gpa.dupe(u8, pm.data);
+            frames.appendAssumeCapacity(.{ .rgba = copy, .delay_ms = @intCast(end - start) });
+        }
+        if (frames.items.len == 0) return self.invalid("Animation must contain at least one frame");
+        // the canvas is not needed any more: give its memory back before encoding
+        self.gpa.free(self.canvas);
+        self.canvas = &.{};
+        self.arena.reset();
+        const a = self.arena.allocator();
+        const eo: codec.AnimOptions = .{};
+        const out = switch (format) {
+            .webp => codec.encodeWebpAnim(a, frames.items, w, h, eo),
+            .apng => codec.encodeApng(a, frames.items, w, h, eo),
+            .gif => codec.encodeGif(a, frames.items, w, h, eo),
+        } catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => {
+                if (format == .gif and (w > 65535 or h > 65535)) return self.invalid("GIF frame dimensions must be <= 65535x65535");
+                return self.invalid("animation encoding failed");
+            },
+        };
+        self.result = out;
         return self.result;
+    }
+
+    fn invalid(self: *Renderer, msg: []const u8) Error {
+        self.setErr(msg, "");
+        return error.Invalid;
     }
 
     pub fn measure(self: *Renderer, node_json: []const u8, opts_json: []const u8) Error![]const u8 {
@@ -348,6 +537,7 @@ pub const Renderer = struct {
         self.beginCall();
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
+        self.time_ms = opts.time_ms;
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
         var out: std.ArrayList(u8) = .empty;
@@ -357,8 +547,7 @@ pub const Renderer = struct {
     }
 
     fn parseOptions(self: *Renderer, text: []const u8) Error!Options {
-        var o: Options = .{};
-        if (text.len == 0) return o;
+        if (text.len == 0) return .{};
         const v = json.parse(self.arena.allocator(), text) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             else => {
@@ -366,6 +555,14 @@ pub const Renderer = struct {
                 return error.Invalid;
             },
         };
+        return self.optionsFrom(self.arena.allocator(), v, false);
+    }
+
+    /// Render options from a parsed JSON object (`a` holds the derived lists; it must live as
+    /// long as `v`).
+    fn optionsFrom(self: *Renderer, a: Allocator, v: json.Value, anim: bool) Error!Options {
+        var o: Options = .{};
+        if (v != .object) return o;
         if (v.get("width")) |w| if (w.asNumber()) |n| {
             o.width = dimOpt(n);
         };
@@ -382,8 +579,8 @@ pub const Renderer = struct {
         if (v.get("quality")) |q| if (q.asNumber()) |n| {
             o.quality = @intFromFloat(@min(100, @max(1, n)));
         };
-        if (v.get("format")) |fv| if (fv.asString()) |s| {
-            if (std.mem.eql(u8, s, "png")) o.format = .png else if (std.mem.eql(u8, s, "jpeg") or std.mem.eql(u8, s, "jpg")) o.format = .jpeg else if (std.mem.eql(u8, s, "webp")) o.format = .webp else if (std.mem.eql(u8, s, "raw")) o.format = .raw else {
+        if (!anim) if (v.get("format")) |fv| if (fv.asString()) |s| {
+            if (std.mem.eql(u8, s, "png")) o.format = .png else if (std.mem.eql(u8, s, "jpeg") or std.mem.eql(u8, s, "jpg")) o.format = .jpeg else if (std.mem.eql(u8, s, "webp")) o.format = .webp else if (std.mem.eql(u8, s, "raw")) o.format = .raw else if (config.enable_extra_codecs and std.mem.eql(u8, s, "ico")) o.format = .ico else {
                 self.setErr("unsupported format: ", s);
                 return error.Invalid;
             }
@@ -401,16 +598,16 @@ pub const Renderer = struct {
             o.lang = s;
         };
         if (v.get("timeMs")) |x| if (x.asNumber()) |n| {
-            o.time_ms = @max(0, n);
+            o.time_ms = if (n >= 0 and n < 1.0e15) @floor(n) else 0;
         };
         if (v.get("fontFamilies")) |x| switch (x) {
             .string => |s| {
-                const l = try self.arena.allocator().alloc([]const u8, 1);
+                const l = try a.alloc([]const u8, 1);
                 l[0] = s;
                 o.font_families = l;
             },
             .array => |arr| {
-                const l = try self.arena.allocator().alloc([]const u8, arr.len);
+                const l = try a.alloc([]const u8, arr.len);
                 var n: usize = 0;
                 for (arr) |e| if (e.asString()) |s| {
                     l[n] = s;
@@ -420,7 +617,8 @@ pub const Renderer = struct {
             },
             else => {},
         };
-        // `drawDebugBorder` and `dithering` are accepted and ignored.
+        // `lossless` (webp is always lossless, like takumi-wasm), `drawDebugBorder` and `dithering`
+        // are accepted and ignored.
         return o;
     }
 
@@ -455,6 +653,10 @@ pub const Renderer = struct {
 
     /// Resolves an image `src` (data: URI or a key of the `images` option) to a decoded,
     /// premultiplied pixmap (cached across renders by content hash). null = paints nothing.
+    /// Animated GIF / WebP / APNG sources show the frame at the render's `timeMs` (looping over
+    /// the animation's total duration, like takumi `AnimatedSource::frame_at_time`) when
+    /// animation support and the animated decoders are compiled in; otherwise their first frame.
+    /// SVG sources resolve to null here (see `resolveSvg`).
     pub fn resolveImage(self: *Renderer, src: []const u8) ?*const raster.Pixmap {
         var bytes: []const u8 = undefined;
         var raw: ?*const ImageEntry = null;
@@ -466,6 +668,11 @@ pub const Renderer = struct {
         } else return null;
 
         const key = std.hash.Wyhash.hash(bytes.len, bytes);
+        if (comptime config.enable_animation and config.enable_extra_codecs) {
+            if (raw == null and self.time_ms > 0) {
+                if (self.animatedFrame(key, bytes)) |pm| return pm;
+            }
+        }
         if (self.cacheLookup(key, 0, 0)) |pm| return pm;
 
         var pm: raster.Pixmap = undefined;
@@ -474,7 +681,8 @@ pub const Renderer = struct {
             @memcpy(pm.data, bytes);
             if (!e.premultiplied) premultiply(pm.data);
         } else {
-            const img = codec.decode(self.gpa, bytes, .{ .max_pixels = 40 << 20 }) catch return null;
+            if (codec.sniff(bytes) == .unknown) return null; // SVG, text, unsupported formats
+            const img = codec.decodeEx(self.gpa, bytes, .{ .max_pixels = max_image_pixels }, .{ .webp_lossy = config.enable_extra_codecs }) catch return null;
             premultiply(img.data);
             pm = .{ .width = img.width, .height = img.height, .data = img.data };
         }
@@ -482,6 +690,69 @@ pub const Renderer = struct {
             pm.deinit(self.gpa);
             return null;
         };
+    }
+
+    /// Largest decoded image: one image may fill the whole decoded-image cache budget.
+    pub const max_image_pixels: u64 = image_budget / 4;
+
+    /// Frame of an animated source shown at `self.time_ms` (null: still image / frame 0 / error,
+    /// the caller then decodes normally). Cached per (content, frame index).
+    noinline fn animatedFrame(self: *Renderer, key: u64, bytes: []const u8) ?*const raster.Pixmap {
+        const n = codec.frameCount(bytes);
+        if (n <= 1) return null;
+        const limits: codec.Limits = .{ .max_pixels = max_image_pixels };
+        // pass 1: frame delays -> total loop duration -> frame index
+        var delays: std.ArrayList(u32) = .empty;
+        defer delays.deinit(self.gpa);
+        {
+            var an = codec.anim.Animator.init(self.gpa, bytes, limits) catch return null;
+            defer an.deinit();
+            while (an.next() catch return null) |d| delays.append(self.gpa, d) catch return null;
+        }
+        var total: u64 = 0;
+        for (delays.items) |d| total += d;
+        if (total == 0 or delays.items.len <= 1) return null;
+        const target = @as(u64, @intFromFloat(self.time_ms)) % total;
+        var idx: u32 = @intCast(delays.items.len - 1);
+        var acc: u64 = 0;
+        for (delays.items, 0..) |d, k| {
+            acc += d;
+            if (target < acc) {
+                idx = @intCast(k);
+                break;
+            }
+        }
+        if (idx == 0) return null;
+        const fkey = key ^ (@as(u64, idx) *% 0x9E3779B97F4A7C15);
+        if (self.cacheLookup(fkey, 0, 0)) |pm| return pm;
+        const fr = codec.decodeFrame(self.gpa, bytes, idx, limits) catch return null;
+        premultiply(fr.image.data);
+        var pm: raster.Pixmap = .{ .width = fr.image.width, .height = fr.image.height, .data = fr.image.data };
+        return self.cacheStore(fkey, 0, 0, pm) orelse {
+            pm.deinit(self.gpa);
+            return null;
+        };
+    }
+
+    /// SVG markup behind an image `src` / `url()`: inline markup (takumi: a string that starts like
+    /// `<svg`), a `data:` URI (base64 or percent-encoded, decoded into the per-render arena) or an
+    /// `images` option entry, when the bytes sniff as SVG. null when SVG support is compiled out.
+    /// The slice is valid for the current render.
+    pub fn resolveSvg(self: *Renderer, src: []const u8) ?[]const u8 {
+        if (comptime !config.enable_svg) return null;
+        if (std.mem.startsWith(u8, src, "data:")) {
+            const b = decodeDataUri(self.arena.allocator(), src) orelse return null;
+            return if (svgm.looksLikeSvg(b)) b else null;
+        }
+        if (svgm.looksLikeSvg(src)) return src;
+        const e = self.findImage(src) orelse return null;
+        if (e.width != 0) return null;
+        return if (svgm.looksLikeSvg(e.data)) e.data else null;
+    }
+
+    /// Alias of `resolveSvg` (the name paint_svg.zig probes for).
+    pub fn svgSource(self: *Renderer, src: []const u8) ?[]const u8 {
+        return self.resolveSvg(src);
     }
 
     /// Catmull-Rom downscaled variant of a cached image (cached as well).
@@ -504,6 +775,61 @@ pub const Renderer = struct {
         };
     }
 };
+
+pub const SvgSize = struct { w: f32, h: f32, ratio: f32 };
+
+/// Root `width` / `height` attribute of an SVG image source in CSS px, resolved like takumi's
+/// image sizing: font-relative units against 12 px (em, rem) / 6 px (ex), absolute units at
+/// 96 dpi; percentages and anything else = not specified.
+fn svgLength(attr: ?[]const u8) ?f32 {
+    const s = std.mem.trim(u8, attr orelse return null, " \t\r\n\x0c");
+    const r = json.parseNumber(s) orelse return null;
+    const v: f32 = @floatCast(r.value);
+    const u = s[r.len..];
+    const k: f32 = if (u.len == 0 or std.ascii.eqlIgnoreCase(u, "px")) 1 else if (std.ascii.eqlIgnoreCase(u, "em") or std.ascii.eqlIgnoreCase(u, "rem")) 12 else if (std.ascii.eqlIgnoreCase(u, "ex")) 6 else if (std.ascii.eqlIgnoreCase(u, "pt")) 4.0 / 3.0 else if (std.ascii.eqlIgnoreCase(u, "pc")) 16 else if (std.ascii.eqlIgnoreCase(u, "in")) 96 else if (std.ascii.eqlIgnoreCase(u, "cm")) 96.0 / 2.54 else if (std.ascii.eqlIgnoreCase(u, "mm")) 96.0 / 25.4 else if (std.ascii.eqlIgnoreCase(u, "q")) 96.0 / 101.6 else return null;
+    const px = v * k;
+    return if (px > 0 and px < 1.0e7) px else null;
+}
+
+/// Natural size (device px) and ratio of an SVG image source, mirroring takumi (EMPIRICAL,
+/// bench/probe/anim/svgsize*.mjs): width + height -> that size; one of them + a viewBox -> the
+/// other from the viewBox ratio; one of them without a viewBox -> the other defaults to 300 / 150
+/// (no natural ratio); only a viewBox -> no natural size, ratio only; nothing -> 300 x 150.
+pub fn svgSizeFrom(w_attr: ?f32, h_attr: ?f32, view_box: ?[4]f32, dpr: f32) SvgSize {
+    var vr: f32 = 0;
+    if (view_box) |vb| {
+        if (vb[2] > 0 and vb[3] > 0) vr = vb[2] / vb[3];
+    }
+    if (w_attr) |w| {
+        if (h_attr) |h| return .{ .w = w * dpr, .h = h * dpr, .ratio = w / h };
+        if (vr > 0) return .{ .w = w * dpr, .h = w / vr * dpr, .ratio = vr };
+        return .{ .w = w * dpr, .h = 150 * dpr, .ratio = 0 };
+    }
+    if (h_attr) |h| {
+        if (vr > 0) return .{ .w = h * vr * dpr, .h = h * dpr, .ratio = vr };
+        return .{ .w = 300 * dpr, .h = h * dpr, .ratio = 0 };
+    }
+    if (vr > 0) return .{ .w = 0, .h = 0, .ratio = vr };
+    return .{ .w = 300 * dpr, .h = 150 * dpr, .ratio = 0 };
+}
+
+fn svgIntrinsic(doc: *const svgm.Document, dpr: f32) SvgSize {
+    const root = doc.root();
+    return svgSizeFrom(svgLength(root.attr("width")), svgLength(root.attr("height")), svgm.intrinsicSize(doc).view_box, dpr);
+}
+
+/// Decimal text of `n` in `buf` (no std.fmt).
+fn decimal(buf: []u8, n_in: u64) []const u8 {
+    var n = n_in;
+    var i: usize = buf.len;
+    while (true) {
+        i -= 1;
+        buf[i] = @intCast('0' + n % 10);
+        n /= 10;
+        if (n == 0 or i == 0) break;
+    }
+    return buf[i..];
+}
 
 fn dimOpt(n: f32) u32 {
     if (!(n >= 1)) return 0;
@@ -587,11 +913,44 @@ fn premultiply(data: []u8) void {
     }
 }
 
+fn hexDigit(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
+}
+
+/// RFC 3986 percent-decoding of a non-base64 `data:` payload (malformed escapes kept literally).
+/// Returns `payload` itself when it holds no escape.
+fn percentDecode(a: Allocator, payload: []const u8) ?[]const u8 {
+    if (std.mem.indexOfScalar(u8, payload, '%') == null) return payload;
+    const out = a.alloc(u8, payload.len) catch return null;
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < payload.len) : (i += 1) {
+        const c = payload[i];
+        if (c == '%' and i + 2 < payload.len) {
+            if (hexDigit(payload[i + 1])) |h| if (hexDigit(payload[i + 2])) |l| {
+                out[n] = h * 16 + l;
+                n += 1;
+                i += 2;
+                continue;
+            };
+        }
+        out[n] = c;
+        n += 1;
+    }
+    return out[0..n];
+}
+
+/// Payload bytes of a `data:` URI (base64 decoded, or percent-decoded), in `a`.
 fn decodeDataUri(a: Allocator, src: []const u8) ?[]const u8 {
     const comma = std.mem.indexOfScalar(u8, src, ',') orelse return null;
     const meta = src[5..comma];
     const payload = src[comma + 1 ..];
-    if (!std.mem.endsWith(u8, meta, ";base64")) return payload;
+    if (!std.ascii.endsWithIgnoreCase(meta, ";base64")) return percentDecode(a, payload);
     const out = a.alloc(u8, payload.len / 4 * 3 + 3) catch return null;
     var n: usize = 0;
     var acc: u32 = 0;
@@ -697,6 +1056,10 @@ pub const Frame = struct {
     /// Stylesheet rules are active (selector matching runs for every element).
     css_on: bool = false,
     cssx: CssState = .{},
+    /// Already parsed JSON node tree (renderAnimation scenes); used instead of the source text.
+    pre: ?json.Value = null,
+    /// `lang` of the element being built (nearest ancestor's, else the `lang` option).
+    cur_lang: []const u8 = "",
 
     pub const Pseudo = struct { cs: *const CS, text: []const u8 };
 
@@ -714,7 +1077,7 @@ pub const Frame = struct {
 
     /// Keyframes of `name` from the stylesheet (`@keyframes`) or the deprecated `keyframes` option;
     /// null when undefined or when CSS support is compiled out. For the animation pass.
-    pub fn keyframes(f: *const Frame, name: []const u8) if (config.enable_css) ?[]const css.Keyframe else ?void {
+    pub fn keyframes(f: *const Frame, name: []const u8) ?[]const css.Keyframe {
         if (comptime !config.enable_css) return null;
         return css.keyframes(&f.cssx.m, name);
     }
@@ -730,7 +1093,7 @@ pub const Frame = struct {
         f.dom = .{ .lang = o.lang, .max_depth = max_node_depth };
         switch (kind) {
             .json => {
-                const v = json.parse(f.a, source) catch |e| switch (e) {
+                const v = f.pre orelse json.parse(f.a, source) catch |e| switch (e) {
                     error.OutOfMemory => return error.OutOfMemory,
                     error.JsonTooDeep => return f.fail("node tree is nested too deeply", ""),
                     else => return f.fail("invalid node JSON", ""),
@@ -752,6 +1115,7 @@ pub const Frame = struct {
             return f.fail("the `css` option is not supported by this build", "");
         }
         try f.styleTree(f.dom.root, null, 0);
+        f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
 
         // Initial containing block.
@@ -911,6 +1275,59 @@ pub const Frame = struct {
         };
     }
 
+    /// Cascade layers of element `i`: preset (UA) < presentation hints < tw utilities < stylesheet
+    /// rules < inline style. Returns the count written to `layers` (room for one extra layer).
+    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[6]style.Layer) Error!usize {
+        const a = f.a;
+        const el = f.dom.at(i);
+        var n: usize = 0;
+        layers[n] = try f.srcLayer(el.preset, diag);
+        n += 1;
+        if (el.pres.len > 0 or el.dir != .none) {
+            var list: std.ArrayList(style.Declaration) = .empty;
+            if (comptime config.enable_html) if (el.pres.len > 0) try list.appendSlice(a, try parseBlock(a, el.pres));
+            if (el.dir != .none) try list.append(a, .{ .name = "direction", .value = if (el.dir == .rtl) "rtl" else "ltr" });
+            layers[n] = .{ .decls = list.items, .lenient = true };
+            n += 1;
+        }
+        if (comptime config.enable_tw) if (el.tw.len > 0) {
+            layers[n] = .{ .decls = try f.twDecls(i, .element), .lenient = true };
+            n += 1;
+        };
+        if (comptime config.enable_css) if (f.css_on) {
+            layers[n] = .{ .decls = try f.cssDecls(i, .none, null), .lenient = true };
+            n += 1;
+        };
+        layers[n] = try f.srcLayer(el.style, diag);
+        n += 1;
+        return n;
+    }
+
+    /// Applies the element's CSS animations at `opts.time_ms` to `cs` in place (see animate.zig).
+    noinline fn animateElement(f: *Frame, i: u32, cs: *CS, parent_cs: ?*const CS) Error!void {
+        const Host = struct {
+            f: *Frame,
+            i: u32,
+            parent: ?*const CS,
+            pub fn keyframes(h: @This(), name: []const u8) ?[]const css.Keyframe {
+                return h.f.keyframes(name);
+            }
+            /// The element's style with `decls` as the top (lenient) layer.
+            pub fn keyframeStyle(h: @This(), decls: []const style.Declaration) Error!*const CS {
+                var diag: style.Diagnostics = .{};
+                var layers: [6]style.Layer = undefined;
+                var n = try h.f.elementLayers(h.i, &diag, &layers);
+                layers[n] = .{ .decls = decls, .lenient = true };
+                n += 1;
+                const out = try h.f.a.create(CS);
+                out.* = style.computeLayers(h.f.a, &h.f.ctx, h.parent, layers[0..n], &diag) catch |e| return h.f.styleFail(e, &diag);
+                return out;
+            }
+        };
+        const r = animate.apply(f.a, cs, f.opts.time_ms, Host{ .f = f, .i = i, .parent = parent_cs }) catch |e| return e;
+        if (r) |x| cs.* = x.*;
+    }
+
     noinline fn styleElement(f: *Frame, i: u32, parent_cs: ?*const CS) Error!void {
         const a = f.a;
         const el = f.dom.at(i);
@@ -923,30 +1340,12 @@ pub const Frame = struct {
             // fast path (JSON source, no stylesheet, no tw): exactly the phase-1 computation
             cs.* = style.compute(a, &f.ctx, parent_cs, jsonOf(el.preset), jsonOf(el.style), &diag) catch |e| return f.styleFail(e, &diag);
         } else {
-            // preset (UA) < presentation hints < tw utilities < stylesheet rules < inline style
-            var layers: [5]style.Layer = undefined;
-            var n: usize = 0;
-            layers[n] = try f.srcLayer(el.preset, &diag);
-            n += 1;
-            if (el.pres.len > 0 or el.dir != .none) {
-                var list: std.ArrayList(style.Declaration) = .empty;
-                if (comptime config.enable_html) if (el.pres.len > 0) try list.appendSlice(a, try parseBlock(a, el.pres));
-                if (el.dir != .none) try list.append(a, .{ .name = "direction", .value = if (el.dir == .rtl) "rtl" else "ltr" });
-                layers[n] = .{ .decls = list.items, .lenient = true };
-                n += 1;
-            }
-            if (comptime config.enable_tw) if (has_tw) {
-                layers[n] = .{ .decls = try f.twDecls(i, .element), .lenient = true };
-                n += 1;
-            };
-            if (comptime config.enable_css) if (f.css_on) {
-                layers[n] = .{ .decls = try f.cssDecls(i, .none, null), .lenient = true };
-                n += 1;
-            };
-            layers[n] = try f.srcLayer(el.style, &diag);
-            n += 1;
+            var layers: [6]style.Layer = undefined;
+            const n = try f.elementLayers(i, &diag, &layers);
             cs.* = style.computeLayers(a, &f.ctx, parent_cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
         }
+        // CSS animations sampled at `timeMs`, before the children inherit from this style
+        if (comptime config.enable_animation) if (!el.run and cs.animation_name.len > 0) try f.animateElement(i, cs, parent_cs);
         if (parent_cs == null) {
             if (f.opts.font_families.len > 0 and cs.font_family.len == 0) cs.font_family = f.opts.font_families;
             f.ctx.root_font_size = cs.font_size;
@@ -1085,7 +1484,7 @@ pub const Frame = struct {
         return true;
     }
 
-    fn buildPseudo(f: *Frame, p: u32, parent: u32) Error!u32 {
+    noinline fn buildPseudo(f: *Frame, p: u32, parent: u32) Error!u32 {
         const ps = f.pseudos.items[p];
         const id = try f.addNode(.{ .kind = .text, .cs = ps.cs, .parent = parent });
         var runs: [1]font.Run = .{try f.makeRun(ps.text, ps.cs)};
@@ -1103,34 +1502,13 @@ pub const Frame = struct {
     fn buildElement(f: *Frame, i: u32, parent: u32, depth: u32) Error!u32 {
         if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
         const el = f.dom.at(i);
-        var cs = el.cs;
+        const saved_lang = f.cur_lang;
+        defer f.cur_lang = saved_lang;
+        if (el.lang.len > 0) f.cur_lang = el.lang;
+        const cs = el.cs;
         switch (el.kind) {
-            .text => if (!hasGenerated(el)) {
-                const id = try f.addNode(.{ .kind = .text, .cs = cs, .parent = parent });
-                var runs: [1]font.Run = .{try f.makeRun(el.text, cs)};
-                f.nodes.items[id].para = try f.makeParagraph(&runs, cs);
-                return id;
-            },
-            .image => {
-                var img: ?*const raster.Pixmap = null;
-                if (el.src) |src| img = f.r.resolveImage(src);
-                // `width` / `height` attributes act as a low-priority size preset.
-                const wa = el.width;
-                const ha = el.height;
-                if ((wa != null and cs.width == .auto) or (ha != null and cs.height == .auto)) {
-                    const m = try f.a.create(CS);
-                    m.* = cs.*;
-                    if (wa != null and m.width == .auto) m.width = .{ .lp = .{ .px = wa.? * f.opts.dpr } };
-                    if (ha != null and m.height == .auto) m.height = .{ .lp = .{ .px = ha.? * f.opts.dpr } };
-                    cs = m;
-                }
-                var n: Node = .{ .kind = .image, .cs = cs, .parent = parent, .img = img };
-                if (img) |pm| {
-                    n.img_w = @as(f32, @floatFromInt(pm.width)) * f.opts.dpr;
-                    n.img_h = @as(f32, @floatFromInt(pm.height)) * f.opts.dpr;
-                }
-                return f.addNode(n);
-            },
+            .text => if (!hasGenerated(el)) return f.buildText(i, parent),
+            .image => return f.buildImage(i, parent),
             else => {},
         }
         const id = try f.addNode(.{ .kind = .container, .cs = cs, .parent = parent });
@@ -1153,8 +1531,58 @@ pub const Frame = struct {
         try f.flushRuns(&pending, cs, id);
         return id;
     }
+    /// Text element without generated content: one paragraph. (Out of line: keeps the run and the
+    /// paragraph options out of buildElement's recursive stack frame.)
+    noinline fn buildText(f: *Frame, i: u32, parent: u32) Error!u32 {
+        const el = f.dom.at(i);
+        const id = try f.addNode(.{ .kind = .text, .cs = el.cs, .parent = parent });
+        var runs: [1]font.Run = .{try f.makeRun(el.text, el.cs)};
+        f.nodes.items[id].para = try f.makeParagraph(&runs, el.cs);
+        return id;
+    }
 
-    fn flushRuns(f: *Frame, pending: *std.ArrayList(font.Run), cs: *const CS, parent: u32) Error!void {
+    /// Image element: raster pixmap (decoded, cached) or SVG markup with its intrinsic size.
+    noinline fn buildImage(f: *Frame, i: u32, parent: u32) Error!u32 {
+        const el = f.dom.at(i);
+        var cs = el.cs;
+        {
+            var img: ?*const raster.Pixmap = null;
+            var svg_src: ?[]const u8 = null;
+            if (el.src) |src| {
+                img = f.r.resolveImage(src);
+                if (comptime config.enable_svg) if (img == null) {
+                    svg_src = f.r.resolveSvg(src);
+                };
+            }
+            // `width` / `height` attributes act as a low-priority size preset.
+            const wa = el.width;
+            const ha = el.height;
+            if ((wa != null and cs.width == .auto) or (ha != null and cs.height == .auto)) {
+                const m = try f.a.create(CS);
+                m.* = cs.*;
+                if (wa != null and m.width == .auto) m.width = .{ .lp = .{ .px = wa.? * f.opts.dpr } };
+                if (ha != null and m.height == .auto) m.height = .{ .lp = .{ .px = ha.? * f.opts.dpr } };
+                cs = m;
+            }
+            var n: Node = .{ .kind = .image, .cs = cs, .parent = parent, .img = img };
+            if (img) |pm| {
+                n.img_w = @as(f32, @floatFromInt(pm.width)) * f.opts.dpr;
+                n.img_h = @as(f32, @floatFromInt(pm.height)) * f.opts.dpr;
+                n.img_ratio = n.img_w / n.img_h;
+            } else if (comptime config.enable_svg) if (svg_src) |s| {
+                if (svgm.parse(f.a, s)) |doc| {
+                    n.svg = s;
+                    const sz = svgIntrinsic(&doc, f.opts.dpr);
+                    n.img_w = sz.w;
+                    n.img_h = sz.h;
+                    n.img_ratio = sz.ratio;
+                } else |e| if (e == error.OutOfMemory) return error.OutOfMemory;
+            };
+            return f.addNode(n);
+        }
+    }
+
+    noinline fn flushRuns(f: *Frame, pending: *std.ArrayList(font.Run), cs: *const CS, parent: u32) Error!void {
         if (pending.items.len == 0) return;
         defer pending.* = .empty;
         if (cs.white_space_collapse == .collapse) {
@@ -1179,14 +1607,13 @@ pub const Frame = struct {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
                 if (ps.cs.display == .none) return;
-                try out.append(f.a, try f.makeRun(ps.text, ps.cs));
+                try f.appendRun(out, ps.text, ps.cs, false);
             },
             .el => |i| {
                 const el = f.dom.at(i);
                 if (el.cs.display == .none) return;
                 if (el.kind == .text and !hasGenerated(el)) {
-                    try out.append(f.a, try f.makeRun(el.text, el.cs));
-                    return;
+                    return f.appendRun(out, el.text, el.cs, el.tag.len == 2 and std.ascii.eqlIgnoreCase(el.tag, "br"));
                 }
                 var it: Items = .{ .f = f, .el = i };
                 while (it.next()) |c| try f.collectRuns(c, out, depth + 1);
@@ -1194,23 +1621,31 @@ pub const Frame = struct {
         }
     }
 
-    fn makeRun(f: *Frame, text: []const u8, cs: *const CS) Error!font.Run {
+    /// Appends the run of a text element (HTML `<br>`: an empty run ending in a forced break, in
+    /// every white-space mode). Out of line so collectRuns' recursive frame stays small.
+    noinline fn appendRun(f: *Frame, out: *std.ArrayList(font.Run), text: []const u8, cs: *const CS, br: bool) Error!void {
+        if (br) {
+            var r = try f.makeRun("", cs);
+            r.hard_break_after = true;
+            return out.append(f.a, r);
+        }
+        try out.append(f.a, try f.makeRun(text, cs));
+    }
+
+    noinline fn makeRun(f: *Frame, text: []const u8, cs: *const CS) Error!font.Run {
         try f.run_styles.append(f.a, cs);
         var st = textStyle(cs, @intCast(f.run_styles.items.len - 1));
-        if (comptime @hasField(font.TextStyle, "features")) {
-            // font-variant-* / font-kerning / font-feature-settings as OpenType features
-            const feats = try cs.fontFeatures(f.a);
-            if (feats.len > 0) {
-                const Fs = @typeInfo(@TypeOf(st.features)).pointer.child;
-                const out = try f.a.alloc(Fs, feats.len);
-                for (feats, out) |x, *o| o.* = .{ .tag = x.tag, .value = @intCast(@min(x.value, 0xFFFF)) };
-                st.features = out;
-            }
+        // font-variant-* / font-kerning / font-feature-settings as OpenType features
+        const feats = try cs.fontFeatures(f.a);
+        if (feats.len > 0) {
+            const out = try f.a.alloc(font.FeatureSetting, feats.len);
+            for (feats, out) |x, *o| o.* = .{ .tag = x.tag, .value = @intCast(@min(x.value, 0xFFFF)) };
+            st.features = out;
         }
         return .{ .text = try transformText(f.a, text, cs.text_transform), .style = st };
     }
 
-    fn makeParagraph(f: *Frame, runs: []const font.Run, cs: *const CS) Error!*font.Paragraph {
+    noinline fn makeParagraph(f: *Frame, runs: []const font.Run, cs: *const CS) Error!*font.Paragraph {
         const ws: font.WhiteSpace = switch (cs.white_space_collapse) {
             .collapse => if (cs.text_wrap_mode == .nowrap) .nowrap else .normal,
             .preserve, .preserve_spaces => if (cs.text_wrap_mode == .nowrap) .pre else .pre_wrap,
@@ -1246,60 +1681,79 @@ pub const Frame = struct {
             .max_lines = if (cs.line_clamp > 0) cs.line_clamp else null,
             .ellipsis = cs.text_overflow == .ellipsis and clip,
             .strut = textStyle(cs, 0),
+            .direction = if (cs.direction == .rtl) .rtl else .ltr,
+            .lang = f.cur_lang,
+            .text_wrap = switch (cs.text_wrap_style) {
+                .balance => .balance,
+                .pretty => .pretty,
+                .auto, .stable => .wrap,
+            },
+            .shape_cache = &f.r.shape_cache,
         };
         const p = try f.a.create(font.Paragraph);
-        p.* = font.Paragraph.init(f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
+        p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
         return p;
     }
 
     // ---- layout tree
 
-    fn buildLayout(f: *Frame, id: u32) Error!u32 {
+    /// Layout node of render node `id` (style mapped, measured leaves flagged). Kept out of the
+    /// recursion: `layout.Style` is large and would otherwise sit in every level's stack frame.
+    noinline fn layoutNode(f: *Frame, id: u32) Error!struct { lid: u32, block: bool, leaf: bool } {
         const n = f.nodes.items[id];
-        const cs = n.cs;
-        var st: layout.Style = if (n.kind == .anon_text) .{ .display = .block } else mapStyle(f, cs);
+        var st: layout.Style = if (n.kind == .anon_text) .{ .display = .block } else mapStyle(f, n.cs);
         const leaf = n.kind != .container;
         if (leaf and st.display != .none) st.display = .block;
-        if (n.kind == .image and st.aspect_ratio == null and n.img_w > 0 and n.img_h > 0) st.aspect_ratio = n.img_w / n.img_h;
+        if (n.kind == .image and st.aspect_ratio == null and n.img_ratio > 0) st.aspect_ratio = n.img_ratio;
         const lid = f.tree.addNode(st) catch return error.OutOfMemory;
         f.nodes.items[id].lid = lid;
         while (f.lid_node.items.len <= lid) try f.lid_node.append(f.a, none);
         f.lid_node.items[lid] = id;
-        if (leaf) {
-            f.tree.setMeasured(lid, true);
-            return lid;
-        }
-        // children, honouring `order` for flex/grid containers
+        if (leaf) f.tree.setMeasured(lid, true);
+        return .{ .lid = lid, .block = st.display == .block, .leaf = leaf };
+    }
+
+    /// Children of `id` in `order` order (stable), or null when document order applies.
+    noinline fn orderedChildren(f: *Frame, id: u32, block: bool) Error!?[]const u32 {
+        if (block) return null;
         var needs_order = false;
-        var c = n.first_child;
+        var c = f.nodes.items[id].first_child;
         while (c != none) : (c = f.nodes.items[c].next) {
             if (f.nodes.items[c].cs.order != 0 and f.nodes.items[c].kind != .anon_text) needs_order = true;
         }
-        if (!needs_order or st.display == .block) {
-            c = n.first_child;
-            while (c != none) : (c = f.nodes.items[c].next) {
-                const cl = try f.buildLayout(c);
-                f.tree.appendChild(lid, cl) catch return error.OutOfMemory;
+        if (!needs_order) return null;
+        var list: std.ArrayList(u32) = .empty;
+        c = f.nodes.items[id].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) try list.append(f.a, c);
+        // stable insertion sort by order
+        var i: usize = 1;
+        while (i < list.items.len) : (i += 1) {
+            const x = list.items[i];
+            const ox = f.nodes.items[x].cs.order;
+            var j = i;
+            while (j > 0 and f.nodes.items[list.items[j - 1]].cs.order > ox) : (j -= 1) list.items[j] = list.items[j - 1];
+            list.items[j] = x;
+        }
+        return list.items;
+    }
+
+    fn buildLayout(f: *Frame, id: u32) Error!u32 {
+        const ln = try f.layoutNode(id);
+        if (ln.leaf) return ln.lid;
+        // children, honouring `order` for flex/grid containers
+        if (try f.orderedChildren(id, ln.block)) |list| {
+            for (list) |x| {
+                const cl = try f.buildLayout(x);
+                f.tree.appendChild(ln.lid, cl) catch return error.OutOfMemory;
             }
         } else {
-            var list: std.ArrayList(u32) = .empty;
-            c = n.first_child;
-            while (c != none) : (c = f.nodes.items[c].next) try list.append(f.a, c);
-            // stable insertion sort by order
-            var i: usize = 1;
-            while (i < list.items.len) : (i += 1) {
-                const x = list.items[i];
-                const ox = f.nodes.items[x].cs.order;
-                var j = i;
-                while (j > 0 and f.nodes.items[list.items[j - 1]].cs.order > ox) : (j -= 1) list.items[j] = list.items[j - 1];
-                list.items[j] = x;
-            }
-            for (list.items) |x| {
-                const cl = try f.buildLayout(x);
-                f.tree.appendChild(lid, cl) catch return error.OutOfMemory;
+            var c = f.nodes.items[id].first_child;
+            while (c != none) : (c = f.nodes.items[c].next) {
+                const cl = try f.buildLayout(c);
+                f.tree.appendChild(ln.lid, cl) catch return error.OutOfMemory;
             }
         }
-        return lid;
+        return ln.lid;
     }
 
     fn measureCb(ctx: *anyopaque, lid: layout.NodeId, known: [2]?f32, avail: [2]layout.AvailableSpace) [2]f32 {
@@ -1311,12 +1765,18 @@ pub const Frame = struct {
         if (n.kind == .image) {
             const iw = n.img_w;
             const ih = n.img_h;
+            const r = n.img_ratio;
             if (known[0]) |w| {
                 if (known[1]) |h| return .{ w, h };
-                return .{ w, if (iw > 0) w * ih / iw else 0 };
+                return .{ w, if (r > 0) w / r else ih };
             }
-            if (known[1]) |h| return .{ if (ih > 0) h * iw / ih else 0, h };
-            return .{ iw, ih };
+            if (known[1]) |h| return .{ if (r > 0) h * r else iw, h };
+            if (iw > 0 or ih > 0 or !(r > 0)) return .{ iw, ih };
+            // ratio only (SVG with just a viewBox): fill the available width
+            return switch (avail[0]) {
+                .definite => |w| .{ w, w / r },
+                else => .{ 0, 0 },
+            };
         }
         const p = n.para orelse return .{ known[0] orelse 0, known[1] orelse 0 };
         const limit: ?f32 = known[0] orelse switch (avail[0]) {
@@ -1453,16 +1913,14 @@ pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
         .letter_spacing = cs.letter_spacing,
         .word_spacing = cs.word_spacing,
         .user = user,
+        .stretch = cs.font_stretch,
+        .optical_sizing = cs.font_optical_sizing != .none,
     };
-    if (comptime @hasField(font.TextStyle, "stretch")) ts.stretch = cs.font_stretch;
-    if (comptime @hasField(font.TextStyle, "optical_sizing")) ts.optical_sizing = cs.font_optical_sizing != .none;
-    if (comptime @hasField(font.TextStyle, "variations")) {
-        // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
-        const V = @typeInfo(@TypeOf(ts.variations)).pointer.child;
-        comptime std.debug.assert(@sizeOf(V) == @sizeOf(style.computed.FontVariation));
-        const vs = cs.font_variation_settings;
-        ts.variations = @as([*]const V, @ptrCast(vs.ptr))[0..vs.len];
-    }
+    // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
+    const V = @typeInfo(@TypeOf(ts.variations)).pointer.child;
+    comptime std.debug.assert(@sizeOf(V) == @sizeOf(style.computed.FontVariation));
+    const vs = cs.font_variation_settings;
+    ts.variations = @as([*]const V, @ptrCast(vs.ptr))[0..vs.len];
     return ts;
 }
 
@@ -1662,9 +2120,12 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.position = switch (cs.position) {
         .static => .static,
         .relative, .sticky => .relative,
-        .absolute, .fixed => .absolute,
+        .absolute => .absolute,
+        .fixed => .fixed,
     };
     s.box_sizing = if (cs.box_sizing == .border_box) .border_box else .content_box;
+    s.order = cs.order;
+    s.visibility_collapse = cs.visibility == .collapse;
     s.overflow_x = mapOverflow(cs.overflow_x);
     s.overflow_y = mapOverflow(cs.overflow_y);
     // inset properties do not apply to position: static
@@ -1967,4 +2428,134 @@ test "keyframes option is parsed and exposed" {
     try std.testing.expect(t.f.keyframes("spin") != null);
     try std.testing.expect(t.f.keyframes("fade") != null);
     try std.testing.expect(t.f.keyframes("nope") == null);
+}
+
+test "animation layering at timeMs: keyframe layer, missing 100%, two animations, inheritance" {
+    if (comptime !(config.enable_css and config.enable_animation)) return error.SkipZigTest;
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","id":"p","className":"p","children":[
+        \\ {"type":"container","id":"a","className":"a","style":{"opacity":0.5,"width":"10px !important"}},
+        \\ {"type":"container","id":"c"}]}
+    ,
+        \\{"width":100,"height":100,"timeMs":250,"css":[
+        \\ "@keyframes w{from{width:0px}to{width:100px}} @keyframes o{50%{opacity:1}}",
+        \\ "@keyframes w2{from{width:200px}to{width:400px}} @keyframes col{from{color:#000000}to{color:#ff0000}}",
+        \\ ".a{animation:w 1000ms linear, o 1000ms linear, w2 1000ms linear 500ms} .p{animation:col 500ms linear}"]}
+    );
+    defer t.deinit();
+    const a = t.byId("a").cs;
+    // keyframes beat `!important` inline; w2 (delay 500ms, fill none) has no effect yet
+    try std.testing.expectApproxEqAbs(@as(f32, 25), pxOf(a.width), 0.01);
+    // no 0% / 100% keyframes: 0.5 -> 1 over the first half
+    try std.testing.expectApproxEqAbs(@as(f32, 0.75), a.opacity, 0.001);
+    // the parent's animated colour is inherited by the children
+    const pc = t.byId("p").cs.color;
+    try std.testing.expect(pc.r > 120 and pc.r < 135);
+    try std.testing.expectEqual(pc.r, t.byId("c").cs.color.r);
+    try std.testing.expectEqual(pc.r, a.color.r);
+}
+
+test "animation: later animation wins per property; default timeMs is 0 with backwards fill" {
+    if (comptime !(config.enable_css and config.enable_animation)) return error.SkipZigTest;
+    {
+        const t = try TestFrame.init(.json, "{\"type\":\"container\",\"id\":\"a\",\"className\":\"a\"}",
+            \\{"width":10,"height":10,"timeMs":750,"css":["@keyframes w{to{width:100px}} @keyframes w2{from{width:200px}to{width:400px}}",
+            \\ ".a{width:0px;animation:w 1000ms linear, w2 1000ms linear 500ms}"]}
+        );
+        defer t.deinit();
+        try std.testing.expectApproxEqAbs(@as(f32, 250), pxOf(t.byId("a").cs.width), 0.01);
+    }
+    {
+        const t = try TestFrame.init(.json, "{\"type\":\"container\",\"id\":\"a\",\"className\":\"a\"}",
+            \\{"width":10,"height":10,"css":["@keyframes f{from{opacity:0.2}to{opacity:1}} .a{animation:f 1s linear 1s backwards}"]}
+        );
+        defer t.deinit();
+        try std.testing.expectApproxEqAbs(@as(f32, 0.2), t.byId("a").cs.opacity, 0.001);
+    }
+}
+
+test "svg intrinsic size mapping (takumi probe values)" {
+    const S = SvgSize;
+    const eq = struct {
+        fn f(want: S, got: S) !void {
+            try std.testing.expectApproxEqAbs(want.w, got.w, 0.001);
+            try std.testing.expectApproxEqAbs(want.h, got.h, 0.001);
+            try std.testing.expectApproxEqAbs(want.ratio, got.ratio, 0.001);
+        }
+    }.f;
+    const vb: [4]f32 = .{ 0, 0, 40, 20 };
+    try eq(.{ .w = 40, .h = 20, .ratio = 2 }, svgSizeFrom(40, 20, null, 1));
+    try eq(.{ .w = 0, .h = 0, .ratio = 2 }, svgSizeFrom(null, null, vb, 1));
+    try eq(.{ .w = 80, .h = 40, .ratio = 2 }, svgSizeFrom(40, null, vb, 2));
+    try eq(.{ .w = 80, .h = 40, .ratio = 2 }, svgSizeFrom(null, 40, vb, 1));
+    try eq(.{ .w = 300, .h = 150, .ratio = 0 }, svgSizeFrom(null, null, null, 1));
+    try eq(.{ .w = 600, .h = 60, .ratio = 0 }, svgSizeFrom(null, 30, null, 2));
+    try eq(.{ .w = 40, .h = 150, .ratio = 0 }, svgSizeFrom(40, null, null, 1));
+    try std.testing.expectEqual(@as(?f32, 24), svgLength("2em"));
+    try std.testing.expectEqual(@as(?f32, 24), svgLength(" 2rem "));
+    try std.testing.expectEqual(@as(?f32, 12), svgLength("2ex"));
+    try std.testing.expectEqual(@as(?f32, 96), svgLength("1in"));
+    try std.testing.expectEqual(@as(?f32, 40), svgLength("40px"));
+    try std.testing.expectEqual(@as(?f32, null), svgLength("50%"));
+    try std.testing.expectEqual(@as(?f32, null), svgLength("0"));
+    try std.testing.expectEqual(@as(?f32, null), svgLength(null));
+}
+
+test "data: URI decoding (base64, percent-encoded, malformed escapes)" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    try std.testing.expectEqualStrings("<svg a=\"1\">", decodeDataUri(a, "data:image/svg+xml,%3Csvg%20a=%221%22%3E").?);
+    try std.testing.expectEqualStrings("<svg>", decodeDataUri(a, "data:image/svg+xml;utf8,<svg>").?);
+    try std.testing.expectEqualStrings("100%zz%4", decodeDataUri(a, "data:text/plain,100%25zz%4").?);
+    try std.testing.expectEqualStrings("<svg/>", decodeDataUri(a, "data:image/svg+xml;BASE64,PHN2Zy8+").?);
+    try std.testing.expect(decodeDataUri(a, "data:nocomma") == null);
+}
+
+test "svg image sources: intrinsic size, inline markup, data URIs" {
+    if (comptime !config.enable_svg) return error.SkipZigTest;
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","style":{"display":"flex","alignItems":"flex-start"},"children":[
+        \\ {"type":"image","src":"<svg xmlns='http://www.w3.org/2000/svg' width='40' height='20'/>"},
+        \\ {"type":"image","src":"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20height='10'%20viewBox='0%200%2040%2020'/%3E"},
+        \\ {"type":"image","src":"<svg xmlns='http://www.w3.org/2000/svg'/>"}]}
+    , "{\"width\":400,\"height\":300,\"devicePixelRatio\":2}");
+    defer t.deinit();
+    var seen: usize = 0;
+    for (t.f.nodes.items) |n| {
+        if (n.kind != .image) continue;
+        try std.testing.expect(n.svg != null and n.img == null);
+        const want: [2]f32 = switch (seen) {
+            0 => .{ 80, 40 },
+            1 => .{ 40, 20 },
+            else => .{ 600, 300 },
+        };
+        try std.testing.expectEqual(want[0], n.img_w);
+        try std.testing.expectEqual(want[1], n.img_h);
+        seen += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 3), seen);
+}
+
+test "renderAnimation: frame schedule, formats, errors; ico output" {
+    if (comptime !(config.enable_animation and config.enable_extra_codecs)) return error.SkipZigTest;
+    const gpa = std.testing.allocator;
+    const r = Renderer.create(gpa).?;
+    defer r.destroy();
+    const scene = "{\"type\":\"container\",\"style\":{\"width\":8,\"height\":8,\"backgroundColor\":\"red\"}}";
+    for ([_][]const u8{ "webp", "apng", "gif" }) |fmt| {
+        var buf: [512]u8 = undefined;
+        const j = try std.fmt.bufPrint(&buf, "{{\"scenes\":[{{\"node\":{s},\"durationMs\":250}},{{\"node\":{{\"type\":\"container\",\"style\":{{\"width\":8,\"height\":8,\"backgroundColor\":\"blue\"}}}},\"durationMs\":100}}],\"width\":8,\"height\":8,\"fps\":10,\"format\":\"{s}\"}}", .{ scene, fmt });
+        const out = try r.renderAnimation(j);
+        // 4 frames (red 0/100/200, blue 300); identical neighbours may be merged by the encoder
+        const n = codec.frameCount(out);
+        try std.testing.expect(n >= 2 and n <= 4);
+    }
+    try std.testing.expectError(error.Invalid, r.renderAnimation("{\"scenes\":[],\"width\":8,\"height\":8,\"fps\":10}"));
+    try std.testing.expectError(error.Invalid, r.renderAnimation("{\"scenes\":[{\"node\":{\"type\":\"container\"},\"durationMs\":100}],\"width\":8,\"height\":8,\"fps\":0}"));
+    try std.testing.expectError(error.Invalid, r.renderAnimation("{\"scenes\":[{\"node\":{\"type\":\"container\"},\"durationMs\":100}],\"width\":8,\"height\":8,\"fps\":51,\"format\":\"gif\"}"));
+    try std.testing.expect(std.mem.indexOf(u8, r.err, "maximum 50 fps") != null);
+    const ico = try r.render(scene, "{\"width\":8,\"height\":8,\"format\":\"ico\"}");
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 1, 0, 1, 0, 8, 8 }, ico[0..8]);
+    try std.testing.expectError(error.Invalid, r.render(scene, "{\"width\":300,\"height\":8,\"format\":\"ico\"}"));
 }

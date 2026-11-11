@@ -1,6 +1,8 @@
 //! wasm32-freestanding entry point: plain C-ABI exports, no imports.
 const std = @import("std");
 const render = @import("render.zig");
+/// Feature switches, visible to modules as `@import("root").bm_config` (see src/font/ttf.zig).
+pub const bm_config = @import("config.zig");
 
 const gpa = @import("pages.zig").allocator;
 const Renderer = render.Renderer;
@@ -108,4 +110,12 @@ export fn bm_result_len(r: *Renderer) usize {
 
 export fn bm_release_result(r: *Renderer) void {
     r.releaseResult();
+}
+
+/// takumi `renderAnimation`: `json` = `{scenes:[{node, durationMs}], width, height, fps, format?, ...}`
+/// (scene `node`: a node object, an HTML string or `{json}`; binary image sources registered with
+/// bm_put_image / bm_put_rgba beforehand). Result (bm_result_*): the encoded WebP / APNG / GIF.
+export fn bm_render_animation(r: *Renderer, json: [*]const u8, len: usize) u32 {
+    _ = r.renderAnimation(json[0..len]) catch |e| return fail(r, e);
+    return 0;
 }
