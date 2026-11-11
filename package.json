@@ -1,0 +1,159 @@
+{
+  "name": "bm-engine",
+  "version": "0.1.0",
+  "description": "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG and animations with a dependency-free WebAssembly engine (Zig port of takumi). Runs in Node.js, browsers, Bun, Deno and edge runtimes such as Cloudflare Workers.",
+  "keywords": [
+    "og-image",
+    "open-graph",
+    "image-generation",
+    "image-rendering",
+    "html-to-image",
+    "jsx-to-image",
+    "css",
+    "flexbox",
+    "png",
+    "svg",
+    "webp",
+    "wasm",
+    "webassembly",
+    "zig",
+    "takumi",
+    "satori",
+    "satori-alternative",
+    "vercel-og-alternative",
+    "edge",
+    "cloudflare-workers",
+    "deno",
+    "bun"
+  ],
+  "license": "(MIT OR Apache-2.0)",
+  "author": "AUTHOR_NAME",
+  "homepage": "https://github.com/OWNER/bm-engine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/bm-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/bm-engine/issues"
+  },
+  "type": "module",
+  "main": "./js/node.mjs",
+  "module": "./js/index.mjs",
+  "types": "./js/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./js/index.d.mts",
+      "workerd": "./js/index.mjs",
+      "worker": "./js/index.mjs",
+      "edge-light": "./js/index.mjs",
+      "browser": "./js/index.mjs",
+      "node": "./js/node.mjs",
+      "default": "./js/index.mjs"
+    },
+    "./core": {
+      "types": "./js/core.d.mts",
+      "workerd": "./js/core.mjs",
+      "worker": "./js/core.mjs",
+      "edge-light": "./js/core.mjs",
+      "browser": "./js/core.mjs",
+      "node": "./js/node-core.mjs",
+      "default": "./js/core.mjs"
+    },
+    "./standard": {
+      "types": "./js/standard.d.mts",
+      "workerd": "./js/standard.mjs",
+      "worker": "./js/standard.mjs",
+      "edge-light": "./js/standard.mjs",
+      "browser": "./js/standard.mjs",
+      "node": "./js/node-standard.mjs",
+      "default": "./js/standard.mjs"
+    },
+    "./full": {
+      "types": "./js/full.d.mts",
+      "workerd": "./js/full.mjs",
+      "worker": "./js/full.mjs",
+      "edge-light": "./js/full.mjs",
+      "browser": "./js/full.mjs",
+      "node": "./js/node-full.mjs",
+      "default": "./js/full.mjs"
+    },
+    "./woff": {
+      "types": "./js/addons.d.mts",
+      "default": "./js/addons.mjs"
+    },
+    "./wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm"
+    },
+    "./core.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.core.wasm"
+    },
+    "./standard.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.standard.wasm"
+    },
+    "./full.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm"
+    },
+    "./woff.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_woff.wasm"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "./js/node.mjs",
+    "./js/node-core.mjs",
+    "./js/node-standard.mjs",
+    "./js/node-full.mjs"
+  ],
+  "files": [
+    "js/index.mjs",
+    "js/index.d.mts",
+    "js/engine.mjs",
+    "js/node.mjs",
+    "js/core.mjs",
+    "js/core.d.mts",
+    "js/node-core.mjs",
+    "js/standard.mjs",
+    "js/standard.d.mts",
+    "js/node-standard.mjs",
+    "js/full.mjs",
+    "js/full.d.mts",
+    "js/node-full.mjs",
+    "js/addons.mjs",
+    "js/addons.d.mts",
+    "js/wasm.d.mts",
+    "js/bm_engine.core.wasm",
+    "js/bm_engine.standard.wasm",
+    "js/bm_engine.wasm",
+    "js/bm_woff.wasm",
+    "js/build-manifest.json",
+    "README.md",
+    "README.vi.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:core": "node scripts/build.mjs --profile=core",
+    "build:standard": "node scripts/build.mjs --profile=standard",
+    "build:full": "node scripts/build.mjs --profile=full",
+    "build:manifest": "node scripts/build.mjs --manifest",
+    "verify": "node scripts/build.mjs --verify",
+    "test": "node scripts/build.mjs --test",
+    "test:pack": "node scripts/pack-test.mjs",
+    "playground": "node playground/serve.mjs",
+    "prepublishOnly": "node scripts/build.mjs --verify && node scripts/pack-test.mjs"
+  },
+  "devDependencies": {
+    "binaryen": "^132.0.0"
+  }
+}

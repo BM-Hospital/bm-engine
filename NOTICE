@@ -1,0 +1,32 @@
+bm-engine
+Copyright (c) 2026 bm-engine contributors
+
+Licensed under the MIT License (LICENSE-MIT) or the Apache License, Version 2.0 (LICENSE-APACHE), at
+your option.
+
+bm-engine is a port to Zig / WebAssembly of takumi (https://github.com/kane50613/takumi):
+
+    takumi
+    Copyright (c) 2025 Kane Wang
+    Licensed under the MIT License or the Apache License, Version 2.0, at your option.
+
+Large parts of bm-engine are transliterations of takumi's Rust code (layout, painting, text, CSS,
+Tailwind, HTML, SVG, animation, codecs); bm-engine is therefore a derivative work of takumi and keeps
+its copyright notice in LICENSE-MIT and LICENSE-APACHE.
+
+takumi in turn follows Chromium's Blink renderer and Skia in many places, and bm-engine ports or follows
+further third-party code, algorithms and data. The notices they require are reproduced in
+THIRD-PARTY-NOTICES.md:
+
+  - Chromium (Blink) and Skia ............ BSD-style (via takumi's LICENSE-CHROMIUM)
+  - tiny-skia ............................ BSD 3-Clause
+  - HarfBuzz ............................. "Old MIT"
+  - libwebp .............................. BSD 3-Clause (+ patent grant)
+  - Independent JPEG Group (libjpeg) ..... "This software is based in part on the work of the
+                                            Independent JPEG Group."
+  - Unicode data, ICU / ICU4X ............ Unicode License V3
+  - emoji-segmenter ...................... Apache License 2.0 (Copyright 2019 Google LLC)
+  - Brotli static dictionary ............. MIT (Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors)
+  - Taffy ................................ MIT (Copyright (c) 2018 Visly Inc.)
+
+No font files are distributed with the package. Fonts you register at run time keep their own licenses.

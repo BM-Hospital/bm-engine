@@ -1,0 +1,302 @@
+{
+  "$comment": "Machine-readable packaging facts for the docs (written by the packaging agent, 2026-11-12). Source of truth: package.json, js/*.mjs, js/*.d.mts, scripts/build.mjs, scripts/pack-test.mjs. Quote snippets verbatim; they are exercised by `npm run test:pack`.",
+  "name": "bm-engine",
+  "nameNote": "Unpublished name (npm view bm-engine -> E404 on 2026-11-12). The name appears only in package.json `name` (scripts/build.mjs copies it into js/build-manifest.json; the JS sources use it only in error messages and comments).",
+  "version": "0.1.0",
+  "license": "(MIT OR Apache-2.0)",
+  "moduleFormat": "ESM only (\"type\": \"module\"). No CommonJS build. From CommonJS use `await import(\"bm-engine\")`; on Node.js >= 20.19 / >= 22.12 `require(\"bm-engine\")` also works through require(esm) because no entry uses top-level await.",
+  "engines": {
+    "node": ">=18"
+  },
+  "enginesNote": "Tested on Node.js 26.13 only. The JS needs ES2022 classes with private methods, TextEncoder.encodeInto, WebAssembly SIMD + bulk memory (V8 >= 9.1), btoa, and fetch only for URL inputs. Symbol.dispose is used when present (else Symbol.for(\"nodejs.dispose\")).",
+  "profiles": {
+    "core": {
+      "wasm": "js/bm_engine.core.wasm",
+      "bytes": 438785,
+      "features": "none of the 18 optional features (bm_features() = 0x0)"
+    },
+    "standard": {
+      "wasm": "js/bm_engine.standard.wasm",
+      "bytes": 869971,
+      "features": "13: css, tw, html, svg, woff, variableFonts, cff, effects, modernColor, tables, floats, webpGifDecode, textWrapBalance (0x1fff)"
+    },
+    "full": {
+      "wasm": "js/bm_engine.wasm",
+      "bytes": 1095688,
+      "features": "all 18 (adds colorFonts, complexText, animation, extraCodecs, renderSvg; 0x3ffff)"
+    },
+    "woffAddon": {
+      "wasm": "js/bm_woff.wasm",
+      "bytes": 86268,
+      "what": "WOFF/WOFF2 -> sfnt decoder for builds without the woff feature (bm-engine/woff)"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./js/index.d.mts",
+      "node": "./js/node.mjs",
+      "workerd | worker | edge-light | browser | default": "./js/index.mjs",
+      "what": "Default entry. On Node.js / Bun / Deno (\"node\" condition): the FULL profile, initialised synchronously on import (env BM_WASM=<path> or BM_PROFILE=core|standard|full override the binary). Everywhere else: the environment-neutral API; call `await init(wasm)` with bytes, a URL, a Response or a WebAssembly.Module first (init() without an argument throws)."
+    },
+    "./core": {
+      "types": "./js/core.d.mts",
+      "node": "./js/node-core.mjs",
+      "workerd | worker | edge-light | browser | default": "./js/core.mjs",
+      "what": "core profile, its own wasm instance. Node: initialised on import. Elsewhere: `await init()` loads bm_engine.core.wasm via new URL(\"./bm_engine.core.wasm\", import.meta.url) (bundler asset), or pass the wasm explicitly. Extra exports: `profile` (\"core\"), `wasmUrl()`."
+    },
+    "./standard": {
+      "types": "./js/standard.d.mts",
+      "node": "./js/node-standard.mjs",
+      "workerd | worker | edge-light | browser | default": "./js/standard.mjs",
+      "what": "standard profile, same shape as ./core."
+    },
+    "./full": {
+      "types": "./js/full.d.mts",
+      "node": "./js/node-full.mjs",
+      "workerd | worker | edge-light | browser | default": "./js/full.mjs",
+      "what": "full profile, same shape as ./core. Separate instance from \".\" (importing both on Node loads the full wasm twice)."
+    },
+    "./woff": {
+      "types": "./js/addons.d.mts",
+      "default": "./js/addons.mjs",
+      "what": "WOFF add-on: `await loadWoff(input?)` then registerFont accepts WOFF/WOFF2 on any entry without built-in support; `decodeWoff(bytes)`. Without an argument: Node reads bm_woff.wasm from disk, bundlers emit it via new URL(...)."
+    },
+    "./wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm",
+      "what": "raw full-profile wasm (alias of ./full.wasm)"
+    },
+    "./core.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.core.wasm",
+      "what": "raw core wasm"
+    },
+    "./standard.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.standard.wasm",
+      "what": "raw standard wasm"
+    },
+    "./full.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm",
+      "what": "raw full wasm"
+    },
+    "./woff.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_woff.wasm",
+      "what": "raw WOFF add-on wasm"
+    },
+    "./package.json": "./package.json"
+  },
+  "conditionOrder": "types, workerd, worker, edge-light, browser, node, default. Bun and Deno match \"node\" (they get the auto-initialising entries; untested here: neither runtime is installed on the build machine).",
+  "sideEffects": [
+    "./js/node.mjs",
+    "./js/node-core.mjs",
+    "./js/node-standard.mjs",
+    "./js/node-full.mjs"
+  ],
+  "publicApi": {
+    "everyEntry": [
+      "init (default export)",
+      "initSync",
+      "Renderer",
+      "features",
+      "Prepared (type/class)",
+      "setGlyphCacheMaxBytes (no-op)",
+      "setWoffDecoder (internal)"
+    ],
+    "profileEntriesAlso": [
+      "profile",
+      "wasmUrl()"
+    ],
+    "woffEntry": [
+      "loadWoff",
+      "decodeWoff"
+    ],
+    "rendererMethods": [
+      "registerFont",
+      "loadFont",
+      "unregisterFont",
+      "clearFonts",
+      "render",
+      "renderSync",
+      "renderAsDataUrl",
+      "renderAsDataUrlSync",
+      "renderSvg",
+      "renderSvgSync",
+      "measure",
+      "measureSync",
+      "prepare",
+      "prepareAnimation",
+      "renderAnimation",
+      "renderAnimationSync",
+      "memoryBytes",
+      "static memoryBytes",
+      "free",
+      "[Symbol.dispose]"
+    ],
+    "initSemantics": "Idempotent per entry: after the first successful init every call resolves to the same instance and ignores its argument; concurrent calls share one instantiation; a failed init can be retried. One wasm instance per entry module (\".\" + Node full share one; ./core, ./standard, ./full each have their own), so several profiles can be used in one process.",
+    "renderSize": "width / height are output pixels; devicePixelRatio scales CSS lengths, not the image size. Without width/height the root's laid-out size is used.",
+    "typescript": "Typings tested with TypeScript 5.9.3 (moduleResolution bundler and node16; lib with and without DOM; with @types/node) and 5.0. Byte outputs are typed `OutputBytes` = ReturnType<Uint8Array[\"slice\"]> (Uint8Array<ArrayBuffer> on TS >= 5.7, accepted by new Response()). Typings are ESM-only .d.mts files."
+  },
+  "publishedFiles": [
+    {
+      "path": "LICENSE-APACHE",
+      "bytes": 11699
+    },
+    {
+      "path": "LICENSE-MIT",
+      "bytes": 1201
+    },
+    {
+      "path": "NOTICE",
+      "bytes": 1741
+    },
+    {
+      "path": "README.md",
+      "bytes": 6909,
+      "note": "whatever README.md is at pack time; README.vi.md is included too if present"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES.md",
+      "bytes": 42676
+    },
+    {
+      "path": "js/addons.d.mts",
+      "bytes": 882
+    },
+    {
+      "path": "js/addons.mjs",
+      "bytes": 3217
+    },
+    {
+      "path": "js/bm_engine.core.wasm",
+      "bytes": 438785
+    },
+    {
+      "path": "js/bm_engine.standard.wasm",
+      "bytes": 869971
+    },
+    {
+      "path": "js/bm_engine.wasm",
+      "bytes": 1095688
+    },
+    {
+      "path": "js/bm_woff.wasm",
+      "bytes": 86268
+    },
+    {
+      "path": "js/build-manifest.json",
+      "bytes": 1092
+    },
+    {
+      "path": "js/core.d.mts",
+      "bytes": 923
+    },
+    {
+      "path": "js/core.mjs",
+      "bytes": 1146
+    },
+    {
+      "path": "js/engine.mjs",
+      "bytes": 23366
+    },
+    {
+      "path": "js/full.d.mts",
+      "bytes": 908
+    },
+    {
+      "path": "js/full.mjs",
+      "bytes": 1126
+    },
+    {
+      "path": "js/index.d.mts",
+      "bytes": 21284
+    },
+    {
+      "path": "js/index.mjs",
+      "bytes": 4503
+    },
+    {
+      "path": "js/node-core.mjs",
+      "bytes": 440
+    },
+    {
+      "path": "js/node-full.mjs",
+      "bytes": 430
+    },
+    {
+      "path": "js/node-standard.mjs",
+      "bytes": 472
+    },
+    {
+      "path": "js/node.mjs",
+      "bytes": 1586
+    },
+    {
+      "path": "js/standard.d.mts",
+      "bytes": 955
+    },
+    {
+      "path": "js/standard.mjs",
+      "bytes": 1186
+    },
+    {
+      "path": "js/wasm.d.mts",
+      "bytes": 629
+    },
+    {
+      "path": "package.json",
+      "bytes": 4264
+    }
+  ],
+  "tarball": {
+    "file": "bm-engine-0.1.0.tgz",
+    "files": 27,
+    "packedKiB": 1252.6,
+    "unpackedKiB": 2561.9,
+    "note": "sizes change with the wasm builds; re-run `npm pack --dry-run`"
+  },
+  "notShipped": [
+    "src/",
+    "bench/",
+    "ref/",
+    "assets/ (fonts)",
+    "docs/",
+    "playground/",
+    "examples/",
+    "scripts/",
+    "zig-out/"
+  ],
+  "snippets": {
+    "install": "npm install bm-engine",
+    "nodeEsm": "import { readFileSync } from \"node:fs\";\nimport { Renderer } from \"bm-engine\"; // full profile, ready on import\n\nconst renderer = new Renderer();\nrenderer.registerFont({ name: \"Inter\", data: readFileSync(\"Inter-Regular.ttf\") });\nconst png = renderer.renderSync(\n  { type: \"container\", style: { display: \"flex\", width: \"100%\", height: \"100%\", alignItems: \"center\", justifyContent: \"center\", backgroundColor: \"#7c3aed\" },\n    children: [{ type: \"text\", text: \"Hello\", style: { fontFamily: \"Inter\", fontSize: 64, color: \"white\" } }] },\n  { width: 1200, height: 630 }, // format: \"png\" (default) | \"jpeg\" | \"webp\" | \"raw\" (+ \"ico\" on full)\n);",
+    "nodeProfile": "import { Renderer, features } from \"bm-engine/core\"; // or \"bm-engine/standard\", \"bm-engine/full\"",
+    "nodeCjs": "// CommonJS: the package is ESM-only\nconst { Renderer } = await import(\"bm-engine\"); // inside an async function\n// Node.js >= 20.19 / >= 22.12 also allow: const { Renderer } = require(\"bm-engine\");",
+    "bundler": "import { init, Renderer } from \"bm-engine/core\"; // or /standard, /full\n\nawait init(); // the bundler emits bm_engine.core.wasm (new URL(..., import.meta.url))\nconst renderer = new Renderer();\nrenderer.registerFont(new Uint8Array(await (await fetch(\"/Inter-Regular.ttf\")).arrayBuffer()));\nconst png = await renderer.render(node, { width: 1200, height: 630 });",
+    "viteExplicitUrl": "import init, { Renderer } from \"bm-engine\";\nimport wasmUrl from \"bm-engine/full.wasm?url\";\n\nawait init(wasmUrl);",
+    "browserNoBundler": "<script type=\"module\">\n  import init, { Renderer } from \"https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/index.mjs\";\n  await init(fetch(\"https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/bm_engine.core.wasm\"));\n</script>",
+    "browserNoBundlerProfile": "import { init, Renderer } from \"https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/core.mjs\";\nawait init(); // fetches bm_engine.core.wasm next to core.mjs",
+    "cloudflareWorkers": "import { init, Renderer } from \"bm-engine/core\";\nimport wasm from \"bm-engine/core.wasm\"; // wrangler turns .wasm imports into a WebAssembly.Module\n\nexport default {\n  async fetch(request) {\n    await init(wasm); // no-op after the first request\n    const renderer = new Renderer();\n    renderer.registerFont(fontBytes);\n    const png = renderer.renderSync(node, { width: 1200, height: 630 });\n    return new Response(png, { headers: { \"content-type\": \"image/png\" } });\n  },\n};",
+    "woffAddon": "import { loadWoff } from \"bm-engine/woff\";\nawait loadWoff();                 // Node / bundlers; on Workers: import woff from \"bm-engine/woff.wasm\"; await loadWoff(woff)\nrenderer.registerFont(woff2Bytes); // now works on the core profile",
+    "featureCheck": "import { features } from \"bm-engine/standard\";\nif (!features.renderSvg) { /* renderSvg needs bm-engine/full */ }"
+  },
+  "bundlerNotes": {
+    "vite": "Vite 8.3.8 tested (build + dev server, headless Edge 157): `init()` from bm-engine/<profile> emits the wasm as an asset; `bm-engine/full.wasm?url` works; no optimizeDeps config needed.",
+    "esbuild": "esbuild 0.28 bundles cleanly for browser and workerd conditions but does not copy new URL() assets: pass the wasm to init() yourself (bytes, URL or module).",
+    "webpack": "untested (webpack 5 understands new URL(..., import.meta.url) and the dynamic node:fs import is marked webpackIgnore).",
+    "cloudflareWorkers": "simulated with `node --conditions=workerd` + init(WebAssembly.Module); not run under wrangler/workerd.",
+    "denoBun": "untested (not installed); they resolve the \"node\" condition and use node:fs + import.meta.url, which both implement.",
+    "cdn": "CDN snippets (jsDelivr) are untested until the package is published; the same files work when served from any static server (tested via Vite dist + Edge)."
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs (needs Zig 0.17; writes js/*.wasm + js/build-manifest.json)",
+    "build:core|standard|full": "one profile",
+    "build:manifest": "record the current js/*.wasm in js/build-manifest.json without rebuilding",
+    "verify": "check js/*.wasm against the manifest + package.json placeholders",
+    "test": "zig build test (via scripts/build.mjs --test)",
+    "test:pack": "node scripts/pack-test.mjs (npm pack + install + Node/CJS/workerd/browser-condition/TypeScript/Vite/Edge/esbuild checks)",
+    "playground": "node playground/serve.mjs",
+    "prepublishOnly": "verify + test:pack"
+  }
+}

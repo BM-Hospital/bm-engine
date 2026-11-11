@@ -1,9 +1,9 @@
-// Node.js / Bun entry for the core profile (js/bm_engine.core.wasm, built by `node scripts/build.mjs`).
-// Same API as node.mjs; `features` tells what this binary supports.
+// bm-engine/core on Node.js / Bun / Deno: the core profile (bm_engine.core.wasm), read from next to this file and
+// initialised synchronously on import (shares ./core.mjs's module instance). Same API as ./index.mjs.
 import { readFileSync } from "node:fs";
-import * as bm from "./index.mjs";
+import { initSync } from "./core.mjs";
 
-bm.initSync(readFileSync(new URL("./bm_engine.core.wasm", import.meta.url)));
+initSync(readFileSync(new URL("./bm_engine.core.wasm", import.meta.url)));
 
-export * from "./index.mjs";
-export default bm.default;
+export * from "./core.mjs";
+export { default } from "./core.mjs";

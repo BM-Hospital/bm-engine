@@ -1,28 +1,32 @@
 // Lazily loaded add-on wasm modules for the smaller engine builds.
 //
-//   import { loadWoff } from "bm-engine/js/addons.mjs";
-//   await loadWoff();                       // Node: reads js/bm_woff.wasm; elsewhere pass bytes / URL / Response
+//   import { loadWoff } from "bm-engine/woff";
+//   await loadWoff();   // Node: reads bm_woff.wasm next to this file; bundlers: emitted asset via new URL(...);
+//                       // Workers: await loadWoff(woffModule) with  import woffModule from "bm-engine/woff.wasm"
 //   renderer.registerFont(woff2Bytes);      // now works on a build without WOFF support
 //
 // bm_woff.wasm (WOFF / WOFF2 -> sfnt, the engine's own decoder incl. brotli) is a separate ~90 KB module
 // with no imports; registerFont uses it automatically when the main binary has no WOFF support. The
-// converted font is byte-identical to what the built-in path registers.
-import { setWoffDecoder, features } from "./index.mjs";
+// converted font is byte-identical to what the built-in path registers. The decoder is shared by every
+// entry (bm-engine, bm-engine/core, ...) in the process.
+import { setWoffDecoder, readFileUrl } from "./engine.mjs";
+import { features } from "./index.mjs";
 
 let woff = null;
+let loading = null;
 
 async function bytesOf(input) {
   input = await input;
   if (input == null) {
     const url = new URL("./bm_woff.wasm", import.meta.url);
-    if (url.protocol === "file:") {
-      const { readFileSync } = await import("node:fs");
-      return readFileSync(url);
-    }
+    if (url.protocol === "file:") return readFileUrl(url);
     input = url;
   }
   if (typeof input === "string" || input instanceof URL || (typeof Request !== "undefined" && input instanceof Request)) input = await fetch(input);
-  if (typeof Response !== "undefined" && input instanceof Response) return new Uint8Array(await input.arrayBuffer());
+  if (typeof Response !== "undefined" && input instanceof Response) {
+    if (!input.ok) throw new Error(`bm-engine: failed to fetch bm_woff.wasm (${input.status}): ${input.url}`);
+    return new Uint8Array(await input.arrayBuffer());
+  }
   return input;
 }
 
@@ -50,9 +54,14 @@ export function decodeWoff(bytes) {
  */
 export async function loadWoff(input) {
   if (!woff) {
-    const src = await bytesOf(input);
-    const inst = src instanceof WebAssembly.Module ? await WebAssembly.instantiate(src, {}) : (await WebAssembly.instantiate(src, {})).instance;
-    woff = inst.exports;
+    if (!loading) {
+      loading = (async () => {
+        const src = await bytesOf(input);
+        const inst = src instanceof WebAssembly.Module ? await WebAssembly.instantiate(src, {}) : (await WebAssembly.instantiate(src, {})).instance;
+        woff = inst.exports;
+      })().finally(() => { loading = null; });
+    }
+    await loading;
   }
   setWoffDecoder(decodeWoff);
   return { builtIn: features.woff };
