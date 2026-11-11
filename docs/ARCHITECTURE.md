@@ -9,7 +9,7 @@ by both engines and compared.
 
 | | takumi 2.20 (`@takumi-rs/wasm`) | bm-engine target |
 |---|---|---|
-| `.wasm` size | 4.34 MB (4 235 KiB) | target ≤ 300 KB; **actual 318 KiB** with every codec (target missed by ~6%) |
+| `.wasm` size | 4.34 MB (4 235 KiB) | target ≤ 300 KB; **actual 321 KiB** with every codec (target missed by ~7%) |
 | JS glue | ~38 KB + wasm-bindgen marshalling | one dependency-free ESM file, a few KB |
 | Imports from host | wasm-bindgen shims (dozens) | **none** (pure computation; no WASI) |
 | Init | async fetch/instantiate | sync or async, no start function |

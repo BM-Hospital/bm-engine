@@ -1,0 +1,8619 @@
+{
+ "meta": {
+  "date": "2026-11-11T16:14:24.391Z",
+  "node": "v26.13.0",
+  "platform": "win32 10.0.26200 x64",
+  "cpu": "Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz",
+  "cpus": 8,
+  "totalMemGB": 7.8,
+  "args": [],
+  "config": {
+   "warmup": 3,
+   "rounds": 2,
+   "minIters": 20,
+   "minMs": 300,
+   "maxMs": 2000,
+   "iters": 0
+  },
+  "engines": {
+   "takumi-wasm": {
+    "available": true,
+    "status": "available",
+    "wasmPath": "D:\\project\\bm-engine\\bench\\node_modules\\@takumi-rs\\wasm\\pkg\\takumi_wasm_bg.wasm"
+   },
+   "takumi-native": {
+    "available": true,
+    "status": "available",
+    "wasmPath": "D:\\project\\bm-engine\\bench\\node_modules\\@takumi-rs\\core-win32-x64-msvc\\core.win32-x64-msvc.node"
+   },
+   "bm": {
+    "available": true,
+    "status": "available",
+    "wasmPath": "D:\\project\\bm-engine\\zig-out\\bin\\bm_engine.wasm"
+   }
+  }
+ },
+ "sizes": {
+  "takumi-wasm": {
+   "binary": {
+    "raw": 4336561,
+    "gzip9": 1905546,
+    "brotli": 1443124
+   },
+   "binaryFile": "pkg/takumi_wasm_bg.wasm",
+   "glue": {
+    "raw": 38370,
+    "gzip9": 10276,
+    "brotli": 8960
+   },
+   "glueFile": "dist/export.mjs"
+  },
+  "takumi-native": {
+   "binary": {
+    "raw": 10031104,
+    "gzip9": 4360135,
+    "brotli": 3278115
+   },
+   "binaryFile": ".node addon",
+   "glue": {
+    "raw": 44582,
+    "gzip9": 7589,
+    "brotli": 6663
+   },
+   "glueFile": "dist/export.mjs"
+  },
+  "bm": {
+   "binary": {
+    "raw": 328583,
+    "gzip9": 150619,
+    "brotli": 129546
+   },
+   "binaryFile": "zig-out/bin/bm_engine.wasm",
+   "glue": {
+    "files": [
+     "index.mjs",
+     "node.mjs"
+    ],
+    "raw": 9716,
+    "gzip9": 3310,
+    "brotli": 2902
+   },
+   "glueFile": "js/*.mjs"
+  }
+ },
+ "cold": {
+  "takumi-wasm": {
+   "runs": 7,
+   "initMs": 34.07,
+   "fontMs": 3.66,
+   "firstRenderMs": 151.7,
+   "totalMs": 188.05,
+   "samplesTotalMs": [
+    192.9,
+    200.5,
+    183.9,
+    183.2,
+    188,
+    178.1,
+    194.9
+   ]
+  },
+  "takumi-native": {
+   "runs": 7,
+   "initMs": 22.98,
+   "fontMs": 1.46,
+   "firstRenderMs": 19.86,
+   "totalMs": 44.75,
+   "samplesTotalMs": [
+    44.5,
+    45,
+    43.9,
+    42.3,
+    45.5,
+    44.7,
+    44.9
+   ]
+  },
+  "bm": {
+   "runs": 7,
+   "initMs": 2.7,
+   "fontMs": 1.54,
+   "firstRenderMs": 74.71,
+   "totalMs": 79.51,
+   "samplesTotalMs": [
+    79.4,
+    79.8,
+    79.5,
+    79.6,
+    78,
+    79.3,
+    87.1
+   ]
+  }
+ },
+ "memory": {
+  "poolWasmLinearMemory": {
+   "takumi-wasm": 69599232,
+   "bm": 69009408
+  },
+  "nodeBaselineMaxRssKB": 45644,
+  "takumi-wasm": {
+   "maxRssKB": 101940,
+   "wasmMemoryBytesAfterInit": 6619136,
+   "wasmMemoryBytesAfter50": 11075584
+  },
+  "takumi-native": {
+   "maxRssKB": 86220,
+   "wasmMemoryBytesAfterInit": null,
+   "wasmMemoryBytesAfter50": null
+  },
+  "bm": {
+   "maxRssKB": 79004,
+   "wasmMemoryBytesAfterInit": 6619136,
+   "wasmMemoryBytesAfter50": 12451840
+  }
+ },
+ "cases": [
+  {
+   "id": "colors-solid-bg",
+   "feature": "colors",
+   "title": "Solid page backgrounds",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.3657000000021071,
+      "p95": 0.9341999999960535,
+      "min": 0.21070000000327127,
+      "n": 651,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.3260000000009313,
+      "p95": 2.100400000002992,
+      "min": 1.1709999999948195,
+      "n": 213,
+      "bytes": 862
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.32110000000102445,
+      "p95": 0.6345999999975902,
+      "min": 0.24060000000463333,
+      "n": 662,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.7875000000058208,
+      "p95": 1.1759999999994761,
+      "min": 0.6754999999975553,
+      "n": 364,
+      "bytes": 862
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.22130000000470318,
+      "p95": 0.42639999999664724,
+      "min": 0.16019999999844003,
+      "n": 1024,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.6103000000002794,
+      "p95": 0.7753999999986263,
+      "min": 0.6003999999957159,
+      "n": 469,
+      "bytes": 135
+     }
+    }
+   }
+  },
+  {
+   "id": "colors-hex",
+   "feature": "colors",
+   "title": "Hex syntaxes #rgb #rrggbb #rrggbbaa #rgba",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 304,
+     "pmAA": 94,
+     "pctStrict": 0.0402,
+     "pctAA": 0.0124,
+     "meanAbs": 0.0241,
+     "maxAbs": 57,
+     "psnr": 49.59,
+     "ssim": 0.99986,
+     "ssimRgb": 0.99986
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 4.227999999995518,
+      "p95": 7.272399999994377,
+      "min": 3.028199999993376,
+      "n": 64,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.434300000000803,
+      "p95": 9.114300000001094,
+      "min": 7.9214000000065425,
+      "n": 36,
+      "bytes": 7375
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.704600000004575,
+      "p95": 5.087899999998626,
+      "min": 2.230600000002596,
+      "n": 102,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.520299999996496,
+      "p95": 5.430499999994936,
+      "min": 4.150800000003073,
+      "n": 65,
+      "bytes": 7375
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.9601000000038766,
+      "p95": 3.2660000000032596,
+      "min": 1.5401999999958207,
+      "n": 140,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.614199999996345,
+      "p95": 6.661199999995006,
+      "min": 5.394699999997101,
+      "n": 52,
+      "bytes": 6844
+     }
+    }
+   }
+  },
+  {
+   "id": "colors-functional",
+   "feature": "colors",
+   "title": "rgb()/rgba()/hsl()/hsla() incl. alpha over a stripe",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 66,
+     "pmAA": 16,
+     "pctStrict": 0.0087,
+     "pctAA": 0.0021,
+     "meanAbs": 0.0104,
+     "maxAbs": 56,
+     "psnr": 55.35,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.0737999999983003,
+      "p95": 4.298799999996845,
+      "min": 2.5498999999981606,
+      "n": 92,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.103199999997742,
+      "p95": 10.87220000000525,
+      "min": 7.4689999999973224,
+      "n": 36,
+      "bytes": 6644
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.561099999998987,
+      "p95": 4.491100000006554,
+      "min": 2.059399999998277,
+      "n": 108,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.333800000000338,
+      "p95": 5.720699999998033,
+      "min": 3.6614000000045053,
+      "n": 67,
+      "bytes": 6644
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.823499999998603,
+      "p95": 3.3577000000004773,
+      "min": 1.3778000000020256,
+      "n": 150,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.591300000000047,
+      "p95": 6.353100000000268,
+      "min": 5.171099999999569,
+      "n": 53,
+      "bytes": 6006
+     }
+    }
+   }
+  },
+  {
+   "id": "colors-named",
+   "feature": "colors",
+   "title": "Named colors + transparent + currentColor-free",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1,
+     "pmAA": 1,
+     "pctStrict": 0.0001,
+     "pctAA": 0.0001,
+     "meanAbs": 0.0059,
+     "maxAbs": 26,
+     "psnr": 59.55,
+     "ssim": 0.99997,
+     "ssimRgb": 0.99997
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.724899999993795,
+      "p95": 4.110399999997753,
+      "min": 2.282200000001467,
+      "n": 104,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.981699999996636,
+      "p95": 8.632799999999406,
+      "min": 7.557699999997567,
+      "n": 38,
+      "bytes": 7743
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.461300000002666,
+      "p95": 3.569899999994959,
+      "min": 1.9781999999977415,
+      "n": 116,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.3145000000004075,
+      "p95": 4.997400000000198,
+      "min": 4.017099999997299,
+      "n": 69,
+      "bytes": 7743
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.5419999999940046,
+      "p95": 2.6863999999986845,
+      "min": 1.39610000000539,
+      "n": 173,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.64600000000064,
+      "p95": 6.550100000000384,
+      "min": 5.212899999998626,
+      "n": 53,
+      "bytes": 6978
+     }
+    }
+   }
+  },
+  {
+   "id": "colors-transparent-canvas",
+   "feature": "colors",
+   "title": "Transparent canvas (no root bg): straight-alpha output check",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0185,
+     "maxAbs": 255,
+     "psnr": 44.18,
+     "ssim": 0.99995,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.6220000000030268,
+      "p95": 0.8285000000032596,
+      "min": 0.5274999999965075,
+      "n": 458,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.365799999999581,
+      "p95": 1.5978000000031898,
+      "min": 1.292699999998149,
+      "n": 215,
+      "bytes": 1456
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.48290000000270084,
+      "p95": 0.8911999999982072,
+      "min": 0.3403000000034808,
+      "n": 492,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8274000000019441,
+      "p95": 1.0894000000043889,
+      "min": 0.7438000000038301,
+      "n": 342,
+      "bytes": 1456
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.3922999999995227,
+      "p95": 0.5639000000010128,
+      "min": 0.32510000000183936,
+      "n": 722,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0443999999988591,
+      "p95": 1.2070000000021537,
+      "min": 1.0121999999973923,
+      "n": 283,
+      "bytes": 1214
+     }
+    }
+   }
+  },
+  {
+   "id": "flex-row-column",
+   "feature": "flex",
+   "title": "Row and column with gap",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0013,
+     "maxAbs": 15,
+     "psnr": 66.59,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.7230999999956111,
+      "p95": 3.7096999999994296,
+      "min": 1.1833000000042375,
+      "n": 154,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.112100000005739,
+      "p95": 9.411000000000058,
+      "min": 6.662700000000768,
+      "n": 43,
+      "bytes": 6428
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.8300000000017462,
+      "p95": 3.829200000000128,
+      "min": 1.32220000000234,
+      "n": 146,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.7972000000008848,
+      "p95": 4.547800000000279,
+      "min": 2.8365000000048894,
+      "n": 79,
+      "bytes": 6428
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3496000000013737,
+      "p95": 2.1450000000040745,
+      "min": 1.1793000000034226,
+      "n": 203,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.124400000000605,
+      "p95": 7.154199999997218,
+      "min": 4.62840000000142,
+      "n": 55,
+      "bytes": 3821
+     }
+    }
+   }
+  },
+  {
+   "id": "flex-justify-align",
+   "feature": "flex",
+   "title": "justify-content x align-items matrix",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0031,
+     "maxAbs": 15,
+     "psnr": 63.44,
+     "ssim": 0.99998,
+     "ssimRgb": 0.99998
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.972300000001269,
+      "p95": 3.8285000000032596,
+      "min": 1.6172000000005937,
+      "n": 137,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.674400000003516,
+      "p95": 7.8237000000008265,
+      "min": 6.26589999999851,
+      "n": 45,
+      "bytes": 5344
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.9775000000008731,
+      "p95": 3.5758000000059837,
+      "min": 1.5944000000017695,
+      "n": 135,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.374900000002526,
+      "p95": 4.41019999999844,
+      "min": 3.0710999999937485,
+      "n": 86,
+      "bytes": 5344
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6964000000007218,
+      "p95": 2.74029999999766,
+      "min": 1.5083000000013271,
+      "n": 157,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.687000000005355,
+      "p95": 6.94550000000163,
+      "min": 5.238299999997253,
+      "n": 53,
+      "bytes": 4450
+     }
+    }
+   }
+  },
+  {
+   "id": "flex-wrap-gap",
+   "feature": "flex",
+   "title": "flex-wrap with row/column gap",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0059,
+     "maxAbs": 16,
+     "psnr": 60.23,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.8472000000037951,
+      "p95": 3.5625,
+      "min": 1.5098999999972875,
+      "n": 146,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.5953000000008615,
+      "p95": 7.5230999999985215,
+      "min": 6.222099999999045,
+      "n": 46,
+      "bytes": 6075
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.8865000000005239,
+      "p95": 3.4772999999986496,
+      "min": 1.594600000003993,
+      "n": 142,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.5231000000057975,
+      "p95": 4.5679999999993015,
+      "min": 3.198599999996077,
+      "n": 83,
+      "bytes": 6075
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6909000000014203,
+      "p95": 3.484599999996135,
+      "min": 1.5348999999987427,
+      "n": 161,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.6696999999985565,
+      "p95": 6.0869000000020606,
+      "min": 5.308099999994738,
+      "n": 54,
+      "bytes": 5125
+     }
+    }
+   }
+  },
+  {
+   "id": "flex-grow-shrink-basis",
+   "feature": "flex",
+   "title": "grow / shrink / basis",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.4134999999951106,
+      "p95": 2.7308999999950174,
+      "min": 1.1396999999997206,
+      "n": 191,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.724300000001676,
+      "p95": 6.042600000000675,
+      "min": 5.3695000000006985,
+      "n": 53,
+      "bytes": 2742
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.5969000000040978,
+      "p95": 3.749900000002526,
+      "min": 1.2731999999959953,
+      "n": 165,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 2.920299999997951,
+      "p95": 3.505799999998999,
+      "min": 2.58969999999681,
+      "n": 102,
+      "bytes": 2742
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.2771999999968102,
+      "p95": 2.290899999999965,
+      "min": 1.0820999999996275,
+      "n": 207,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.456999999994878,
+      "p95": 5.000500000001921,
+      "min": 4.20679999999993,
+      "n": 67,
+      "bytes": 1329
+     }
+    }
+   }
+  },
+  {
+   "id": "flex-nested-small",
+   "feature": "flex",
+   "title": "Nested flex, column-reverse / row-reverse, align-self",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0028,
+     "maxAbs": 15,
+     "psnr": 62.96,
+     "ssim": 0.99998,
+     "ssimRgb": 0.99998
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.3164000000033411,
+      "p95": 0.5076000000044587,
+      "min": 0.25979999999981374,
+      "n": 856,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.103900000001886,
+      "p95": 1.3544999999940046,
+      "min": 1.0493999999962398,
+      "n": 263,
+      "bytes": 1010
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.2584999999962747,
+      "p95": 0.6025999999983469,
+      "min": 0.20960000000195578,
+      "n": 857,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.7005999999964843,
+      "p95": 0.9656000000031781,
+      "min": 0.6347999999998137,
+      "n": 395,
+      "bytes": 1010
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.2569000000003143,
+      "p95": 0.3510999999998603,
+      "min": 0.19550000000162981,
+      "n": 1145,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8294000000023516,
+      "p95": 1.0177000000039698,
+      "min": 0.7960999999995693,
+      "n": 351,
+      "bytes": 715
+     }
+    }
+   }
+  },
+  {
+   "id": "sizing-percent",
+   "feature": "sizing",
+   "title": "Percent width/height",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.4325000000026193,
+      "p95": 2.8906999999962864,
+      "min": 1.1573000000062166,
+      "n": 187,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.934799999995448,
+      "p95": 7.6542999999946915,
+      "min": 6.555800000001909,
+      "n": 44,
+      "bytes": 4394
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.6754000000000815,
+      "p95": 3.3986000000004424,
+      "min": 1.2695999999996275,
+      "n": 158,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.5798999999969965,
+      "p95": 4.276900000004389,
+      "min": 3.214299999999639,
+      "n": 83,
+      "bytes": 4394
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.1923999999999069,
+      "p95": 2.0472000000008848,
+      "min": 1.055400000004738,
+      "n": 228,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.357899999995425,
+      "p95": 5.22280000000319,
+      "min": 4.157199999994191,
+      "n": 67,
+      "bytes": 1328
+     }
+    }
+   }
+  },
+  {
+   "id": "sizing-minmax",
+   "feature": "sizing",
+   "title": "min/max width & height",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.2254000000029919,
+      "p95": 2.8241999999954714,
+      "min": 0.9384999999965657,
+      "n": 212,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.42439999999624,
+      "p95": 6.9060000000026776,
+      "min": 6.107000000003609,
+      "n": 47,
+      "bytes": 4248
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.3876999999993131,
+      "p95": 3.218699999997625,
+      "min": 1.163300000000163,
+      "n": 180,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.435300000004645,
+      "p95": 4.233899999999267,
+      "min": 3.1296000000002095,
+      "n": 86,
+      "bytes": 4248
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.0491999999940163,
+      "p95": 1.85120000000461,
+      "min": 0.952899999996589,
+      "n": 250,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.394399999997404,
+      "p95": 5.10460000000603,
+      "min": 4.054099999993923,
+      "n": 68,
+      "bytes": 1066
+     }
+    }
+   }
+  },
+  {
+   "id": "sizing-aspect-ratio",
+   "feature": "sizing",
+   "title": "aspect-ratio",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0006,
+     "maxAbs": 15,
+     "psnr": 70.35,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.2122999999992317,
+      "p95": 2.6956999999965774,
+      "min": 0.9957999999969616,
+      "n": 216,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.011599999997998,
+      "p95": 7.950400000001537,
+      "min": 6.538200000002689,
+      "n": 43,
+      "bytes": 5644
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.5291999999972177,
+      "p95": 3.4922000000005937,
+      "min": 1.2010000000009313,
+      "n": 168,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.5332999999955064,
+      "p95": 4.647799999998824,
+      "min": 3.099499999996624,
+      "n": 84,
+      "bytes": 5644
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.188399999999092,
+      "p95": 2.4543999999950756,
+      "min": 1.0363999999972293,
+      "n": 213,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.577299999997194,
+      "p95": 5.180200000002515,
+      "min": 4.343600000000151,
+      "n": 66,
+      "bytes": 2703
+     }
+    }
+   }
+  },
+  {
+   "id": "sizing-padding-margin",
+   "feature": "sizing",
+   "title": "Padding & margin shorthands + auto margins",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.3552999999956228,
+      "p95": 3.4161000000021886,
+      "min": 1.1158999999897787,
+      "n": 193,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.704900000011548,
+      "p95": 7.233699999997043,
+      "min": 6.305099999997765,
+      "n": 45,
+      "bytes": 3595
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.6431999999913387,
+      "p95": 3.9146999999939,
+      "min": 1.2833000000100583,
+      "n": 155,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.2520999999978812,
+      "p95": 4.272400000001653,
+      "min": 2.8858000000036554,
+      "n": 91,
+      "bytes": 3595
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.4367999999958556,
+      "p95": 2.5587999999988824,
+      "min": 1.1321000000025379,
+      "n": 188,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.552400000000489,
+      "p95": 5.725699999995413,
+      "min": 4.260299999994459,
+      "n": 64,
+      "bytes": 1383
+     }
+    }
+   }
+  },
+  {
+   "id": "sizing-auto-margin-center",
+   "feature": "sizing",
+   "title": "Auto margins centering",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0009,
+     "maxAbs": 15,
+     "psnr": 68.51,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.1755000000121072,
+      "p95": 0.33409999999275897,
+      "min": 0.16619999999238644,
+      "n": 1429,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.9008000000030734,
+      "p95": 1.1763999999966472,
+      "min": 0.8490999999921769,
+      "n": 316,
+      "bytes": 453
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.17849999999452848,
+      "p95": 0.4781000000075437,
+      "min": 0.1422000000020489,
+      "n": 1207,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.5344999999942956,
+      "p95": 0.8064000000013039,
+      "min": 0.4756000000052154,
+      "n": 525,
+      "bytes": 453
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.15369999999529682,
+      "p95": 0.29769999999552965,
+      "min": 0.14009999998961575,
+      "n": 1549,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.6997000000119442,
+      "p95": 1.0138000000006286,
+      "min": 0.673399999999674,
+      "n": 410,
+      "bytes": 308
+     }
+    }
+   }
+  },
+  {
+   "id": "abs-inset",
+   "feature": "absolute",
+   "title": "Absolute with top/left/right/bottom/inset",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.0654000000067754,
+      "p95": 3.46469999999681,
+      "min": 1.6713000000017928,
+      "n": 134,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.876199999998789,
+      "p95": 8.542799999995623,
+      "min": 7.581500000000233,
+      "n": 38,
+      "bytes": 5440
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.6940000000031432,
+      "p95": 3.6631000000052154,
+      "min": 1.4245999999984633,
+      "n": 157,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.8096999999979744,
+      "p95": 4.87939999999071,
+      "min": 3.116699999998673,
+      "n": 79,
+      "bytes": 5440
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3752999999996973,
+      "p95": 2.373200000001816,
+      "min": 1.1446999999898253,
+      "n": 196,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.508799999995972,
+      "p95": 4.9584000000031665,
+      "min": 4.272599999996601,
+      "n": 66,
+      "bytes": 1419
+     }
+    }
+   }
+  },
+  {
+   "id": "abs-zorder",
+   "feature": "absolute",
+   "title": "z-order by document order, overlapping",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0067,
+     "maxAbs": 29,
+     "psnr": 60.35,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99995
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.7364999999990687,
+      "p95": 3.2727000000013504,
+      "min": 1.4035000000003492,
+      "n": 156,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 14.845699999990757,
+      "p95": 16.40820000000531,
+      "min": 14.229800000000978,
+      "n": 21,
+      "bytes": 16339
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.7712999999930616,
+      "p95": 3.220600000000559,
+      "min": 1.4523000000044703,
+      "n": 153,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.166899999996531,
+      "p95": 4.857999999992899,
+      "min": 3.7160000000003492,
+      "n": 72,
+      "bytes": 16339
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.20690000000468,
+      "p95": 3.3136999999987893,
+      "min": 1.9711999999999534,
+      "n": 127,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.783699999999953,
+      "p95": 8.210999999995693,
+      "min": 6.337299999999232,
+      "n": 44,
+      "bytes": 9567
+     }
+    }
+   }
+  },
+  {
+   "id": "abs-in-flow",
+   "feature": "absolute",
+   "title": "Absolute child mixed with in-flow siblings and badge",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0069,
+     "maxAbs": 24,
+     "psnr": 59.36,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.3316000000049826,
+      "p95": 0.6032999999879394,
+      "min": 0.30039999999280553,
+      "n": 788,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.3110999999917112,
+      "p95": 1.6282999999966705,
+      "min": 1.225800000000163,
+      "n": 220,
+      "bytes": 1575
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.2796000000089407,
+      "p95": 0.6205000000045402,
+      "min": 0.231099999989965,
+      "n": 890,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8309000000008382,
+      "p95": 1.0869999999995343,
+      "min": 0.7518999999883818,
+      "n": 351,
+      "bytes": 1575
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.21060000000579748,
+      "p95": 0.4162999999971362,
+      "min": 0.19469999999273568,
+      "n": 1143,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8417000000044936,
+      "p95": 1.0145999999949709,
+      "min": 0.8304000000061933,
+      "n": 345,
+      "bytes": 1117
+     }
+    }
+   }
+  },
+  {
+   "id": "borders-uniform",
+   "feature": "borders",
+   "title": "Uniform borders",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.9603000000061002,
+      "p95": 3.4070000000065193,
+      "min": 1.4394000000029337,
+      "n": 143,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.103299999987939,
+      "p95": 6.831899999990128,
+      "min": 5.75810000000638,
+      "n": 49,
+      "bytes": 3208
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.7788000000000466,
+      "p95": 3.594599999996717,
+      "min": 1.4832000000023982,
+      "n": 153,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.1885999999940395,
+      "p95": 3.631200000003446,
+      "min": 2.851699999999255,
+      "n": 94,
+      "bytes": 3208
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.2295999999914784,
+      "p95": 2.53880000000936,
+      "min": 1.052400000000489,
+      "n": 216,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.417399999991176,
+      "p95": 4.924200000008568,
+      "min": 4.188800000003539,
+      "n": 67,
+      "bytes": 1247
+     }
+    }
+   }
+  },
+  {
+   "id": "borders-per-side",
+   "feature": "borders",
+   "title": "Per-side widths and colors",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 72,
+     "pmAA": 1,
+     "pctStrict": 0.0095,
+     "pctAA": 0.0001,
+     "meanAbs": 0.0024,
+     "maxAbs": 63,
+     "psnr": 58.64,
+     "ssim": 0.99981,
+     "ssimRgb": 0.99991
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.5379000000102678,
+      "p95": 3.291400000001886,
+      "min": 1.2492999999958556,
+      "n": 172,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.396399999997811,
+      "p95": 7.093000000008033,
+      "min": 6.021499999988009,
+      "n": 48,
+      "bytes": 4220
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.932199999995646,
+      "p95": 3.4716999999945983,
+      "min": 1.3580999999976484,
+      "n": 144,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.114799999995739,
+      "p95": 4.196700000000419,
+      "min": 2.7292000000015832,
+      "n": 94,
+      "bytes": 4220
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.286900000006426,
+      "p95": 3.5868000000045868,
+      "min": 1.8669000000081724,
+      "n": 122,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.605300000010175,
+      "p95": 6.901299999997718,
+      "min": 5.178199999994831,
+      "n": 53,
+      "bytes": 2641
+     }
+    }
+   }
+  },
+  {
+   "id": "borders-with-radius",
+   "feature": "borders",
+   "title": "Borders combined with radius",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 96,
+     "pmAA": 20,
+     "pctStrict": 0.08,
+     "pctAA": 0.0167,
+     "meanAbs": 0.0694,
+     "maxAbs": 163,
+     "psnr": 42.95,
+     "ssim": 0.99804,
+     "ssimRgb": 0.99814
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.8077999999950407,
+      "p95": 1.12850000000617,
+      "min": 0.737699999997858,
+      "n": 356,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.808099999994738,
+      "p95": 2.089700000011362,
+      "min": 1.668600000004517,
+      "n": 164,
+      "bytes": 3173
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.47079999999550637,
+      "p95": 0.8928000000014435,
+      "min": 0.41969999999855645,
+      "n": 539,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0073999999876833,
+      "p95": 1.2642000000050757,
+      "min": 0.8924999999871943,
+      "n": 291,
+      "bytes": 3173
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.5458999999973457,
+      "p95": 0.699399999997695,
+      "min": 0.48970000000554137,
+      "n": 534,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.4205999999976484,
+      "p95": 1.549299999998766,
+      "min": 1.3589999999967404,
+      "n": 210,
+      "bytes": 2898
+     }
+    }
+   }
+  },
+  {
+   "id": "radius-uniform-percorner",
+   "feature": "border-radius",
+   "title": "Uniform and per-corner radius",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0054,
+     "maxAbs": 31,
+     "psnr": 60.34,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.418600000004517,
+      "p95": 2.863099999987753,
+      "min": 1.151899999997113,
+      "n": 189,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.24100000000908,
+      "p95": 7.823300000003655,
+      "min": 6.935299999997369,
+      "n": 42,
+      "bytes": 9772
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.672999999995227,
+      "p95": 3.579199999992852,
+      "min": 1.2989999999990687,
+      "n": 154,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.6071999999985565,
+      "p95": 4.407199999986915,
+      "min": 2.9685000000026776,
+      "n": 82,
+      "bytes": 9772
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6722000000008848,
+      "p95": 2.636899999997695,
+      "min": 1.397499999991851,
+      "n": 167,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.721300000004703,
+      "p95": 6.517300000006799,
+      "min": 5.371100000003935,
+      "n": 52,
+      "bytes": 6784
+     }
+    }
+   }
+  },
+  {
+   "id": "radius-elliptical",
+   "feature": "border-radius",
+   "title": "Elliptical radius 50% / 20%",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 18,
+     "pmAA": 0,
+     "pctStrict": 0.0024,
+     "pctAA": 0,
+     "meanAbs": 0.009,
+     "maxAbs": 31,
+     "psnr": 57.88,
+     "ssim": 0.99992,
+     "ssimRgb": 0.99993
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.4085999999952037,
+      "p95": 3.2065999999904307,
+      "min": 1.103400000007241,
+      "n": 178,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.763300000005984,
+      "p95": 7.944199999998091,
+      "min": 6.330400000006193,
+      "n": 45,
+      "bytes": 8820
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.5543000000034226,
+      "p95": 3.5384000000049127,
+      "min": 1.278200000000652,
+      "n": 165,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.2217000000091502,
+      "p95": 3.98770000001241,
+      "min": 2.673000000009779,
+      "n": 91,
+      "bytes": 8820
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6334999999962747,
+      "p95": 2.7982000000047265,
+      "min": 1.4095999999990454,
+      "n": 169,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.796199999997043,
+      "p95": 6.300799999997253,
+      "min": 5.350600000005215,
+      "n": 53,
+      "bytes": 7210
+     }
+    }
+   }
+  },
+  {
+   "id": "radius-pill-circle",
+   "feature": "border-radius",
+   "title": "Pill and circle",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0068,
+     "maxAbs": 30,
+     "psnr": 58.87,
+     "ssim": 0.99995,
+     "ssimRgb": 0.99995
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.2695000000094296,
+      "p95": 2.7908000000024913,
+      "min": 1.040499999988242,
+      "n": 205,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.009500000000116,
+      "p95": 6.663899999999558,
+      "min": 5.653900000004796,
+      "n": 50,
+      "bytes": 6600
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.5970999999990454,
+      "p95": 3.10130000000936,
+      "min": 1.2336000000068452,
+      "n": 170,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.1609999999927823,
+      "p95": 3.9425000000046566,
+      "min": 2.595600000000559,
+      "n": 93,
+      "bytes": 6600
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.4464999999909196,
+      "p95": 2.5081999999965774,
+      "min": 1.277700000006007,
+      "n": 189,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.496899999998277,
+      "p95": 6.468000000008033,
+      "min": 5.1089000000065425,
+      "n": 55,
+      "bytes": 5666
+     }
+    }
+   }
+  },
+  {
+   "id": "radius-small",
+   "feature": "border-radius",
+   "title": "Radius larger than box clamps",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0083,
+     "maxAbs": 14,
+     "psnr": 59.26,
+     "ssim": 0.99995,
+     "ssimRgb": 0.99995
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.21210000000428408,
+      "p95": 0.42470000000321306,
+      "min": 0.19789999999920838,
+      "n": 1211,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.9397999999928288,
+      "p95": 1.1406999999890104,
+      "min": 0.9084000000002561,
+      "n": 310,
+      "bytes": 1340
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.20190000000002328,
+      "p95": 0.4870999999984633,
+      "min": 0.16150000000197906,
+      "n": 1191,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.5626000000047497,
+      "p95": 0.7497000000003027,
+      "min": 0.52730000000156,
+      "n": 511,
+      "bytes": 1340
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.22990000000572763,
+      "p95": 0.37410000000090804,
+      "min": 0.21580000000540167,
+      "n": 1137,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8830000000016298,
+      "p95": 1.0406999999977415,
+      "min": 0.8687000000063563,
+      "n": 330,
+      "bytes": 1015
+     }
+    }
+   }
+  },
+  {
+   "id": "lingrad-angles",
+   "feature": "linear-gradient",
+   "title": "Angles & directions",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0032,
+     "maxAbs": 16,
+     "psnr": 67.32,
+     "ssim": 0.99998,
+     "ssimRgb": 0.99995
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 6.734899999995832,
+      "p95": 7.94890000000305,
+      "min": 5.8215000000054715,
+      "n": 44,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 35.326499999995576,
+      "p95": 36.04779999998573,
+      "min": 34.38340000000608,
+      "n": 20,
+      "bytes": 104338
+     },
+     "jpeg": {
+      "median": 24.683199999999488,
+      "p95": 25.43540000000212,
+      "min": 23.77270000000135,
+      "n": 20,
+      "bytes": 53557
+     },
+     "webp": {
+      "median": 15.584500000011758,
+      "p95": 16.623500000001513,
+      "min": 14.606599999999162,
+      "n": 20,
+      "bytes": 173498
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 5.7304000000003725,
+      "p95": 7.822499999994761,
+      "min": 4.608399999997346,
+      "n": 52,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.39100000000326,
+      "p95": 9.606500000008964,
+      "min": 7.360599999999977,
+      "n": 37,
+      "bytes": 104338
+     },
+     "jpeg": {
+      "median": 18.752700000011828,
+      "p95": 19.48179999999411,
+      "min": 17.649599999989732,
+      "n": 20,
+      "bytes": 53557
+     },
+     "webp": {
+      "median": 113.3237999999983,
+      "p95": 114.01319999998668,
+      "min": 111.00350000000617,
+      "n": 18,
+      "bytes": 23296
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.683599999989383,
+      "p95": 5.216400000004796,
+      "min": 3.297999999995227,
+      "n": 79,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 14.50470000000496,
+      "p95": 15.250400000004447,
+      "min": 14.051599999991595,
+      "n": 22,
+      "bytes": 32991
+     },
+     "jpeg": {
+      "median": 19.28179999999702,
+      "p95": 20.57190000000992,
+      "min": 18.58759999999893,
+      "n": 20,
+      "bytes": 53465
+     },
+     "webp": {
+      "median": 11.568700000003446,
+      "p95": 15.061699999991106,
+      "min": 10.798099999999977,
+      "n": 27,
+      "bytes": 29580
+     }
+    }
+   }
+  },
+  {
+   "id": "lingrad-multistop",
+   "feature": "linear-gradient",
+   "title": "Multi-stop with positions",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0008,
+     "maxAbs": 17,
+     "psnr": 67.86,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 6.569199999998091,
+      "p95": 9.951100000005681,
+      "min": 5.91359999999986,
+      "n": 45,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 24.62720000000263,
+      "p95": 25.216199999995297,
+      "min": 23.89659999999276,
+      "n": 20,
+      "bytes": 15754
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 5.496100000003935,
+      "p95": 6.8475000000034925,
+      "min": 4.864199999996345,
+      "n": 53,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.147400000001653,
+      "p95": 7.875499999994645,
+      "min": 6.58179999999993,
+      "n": 42,
+      "bytes": 15754
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.2461999999941327,
+      "p95": 4.608299999992596,
+      "min": 2.7890000000043074,
+      "n": 91,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 12.11819999999716,
+      "p95": 12.94090000000142,
+      "min": 11.769000000000233,
+      "n": 26,
+      "bytes": 11598
+     }
+    }
+   }
+  },
+  {
+   "id": "lingrad-alpha",
+   "feature": "linear-gradient",
+   "title": "Gradients with alpha over patterned bg",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0018,
+     "maxAbs": 14,
+     "psnr": 71.44,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99997
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 7.442699999999604,
+      "p95": 9.516199999998207,
+      "min": 6.674800000007963,
+      "n": 40,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 29.582600000008824,
+      "p95": 30.120900000008987,
+      "min": 28.939099999988684,
+      "n": 20,
+      "bytes": 24746
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 5.0785999999934575,
+      "p95": 6.631499999988591,
+      "min": 4.6450000000040745,
+      "n": 57,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.097099999999045,
+      "p95": 7.722700000012992,
+      "min": 6.486400000008871,
+      "n": 44,
+      "bytes": 24746
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 4.934299999993527,
+      "p95": 6.614999999990687,
+      "min": 4.454700000002049,
+      "n": 60,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 15.507700000001932,
+      "p95": 17.211599999995087,
+      "min": 14.845199999996112,
+      "n": 20,
+      "bytes": 20793
+     }
+    }
+   }
+  },
+  {
+   "id": "lingrad-hero-small",
+   "feature": "linear-gradient",
+   "title": "Full-bleed hero gradient with text",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 67,
+     "pmAA": 0,
+     "pctStrict": 0.0558,
+     "pctAA": 0,
+     "meanAbs": 0.0305,
+     "maxAbs": 46,
+     "psnr": 50.72,
+     "ssim": 0.99975,
+     "ssimRgb": 0.99976
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.7400000000052387,
+      "p95": 1.0930999999982305,
+      "min": 0.6552999999985332,
+      "n": 381,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 3.2713999999978114,
+      "p95": 3.690199999997276,
+      "min": 3.043999999994412,
+      "n": 92,
+      "bytes": 7738
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.5123999999923399,
+      "p95": 0.7937000000092667,
+      "min": 0.455999999991036,
+      "n": 533,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.422500000000582,
+      "p95": 1.8940000000002328,
+      "min": 1.2480999999970663,
+      "n": 205,
+      "bytes": 7738
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.3879000000015367,
+      "p95": 0.4982999999920139,
+      "min": 0.37319999998726416,
+      "n": 742,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.979699999996228,
+      "p95": 3.1732999999949243,
+      "min": 2.849900000001071,
+      "n": 101,
+      "bytes": 7733
+     }
+    }
+   }
+  },
+  {
+   "id": "radial-shapes",
+   "feature": "radial-gradient",
+   "title": "circle / ellipse, closest/farthest-side",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0012,
+     "maxAbs": 14,
+     "psnr": 71.95,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99998
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 8.203200000003562,
+      "p95": 9.748699999996461,
+      "min": 7.377699999997276,
+      "n": 37,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 37.27950000000419,
+      "p95": 40.432300000000396,
+      "min": 36.24330000000191,
+      "n": 20,
+      "bytes": 160776
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 6.7929000000003725,
+      "p95": 7.943400000003749,
+      "min": 6.205399999991641,
+      "n": 44,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 11.222000000008848,
+      "p95": 13.73379999998724,
+      "min": 10.666700000001583,
+      "n": 27,
+      "bytes": 160776
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.0495000000082655,
+      "p95": 3.7247999999963213,
+      "min": 2.7691000000049826,
+      "n": 97,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 22.957699999999022,
+      "p95": 25.708299999998417,
+      "min": 22.070899999991525,
+      "n": 20,
+      "bytes": 150160
+     }
+    }
+   }
+  },
+  {
+   "id": "radial-at-position",
+   "feature": "radial-gradient",
+   "title": "at position (keywords, %, px)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0009,
+     "maxAbs": 16,
+     "psnr": 69.05,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 10.38289999999688,
+      "p95": 11.983499999987544,
+      "min": 9.75350000000617,
+      "n": 29,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 39.62200000000303,
+      "p95": 42.567600000009406,
+      "min": 38.72720000000845,
+      "n": 20,
+      "bytes": 167660
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 8.91939999999886,
+      "p95": 12.494200000001001,
+      "min": 7.667500000010477,
+      "n": 33,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 12.36809999999241,
+      "p95": 13.611499999999069,
+      "min": 11.442999999999302,
+      "n": 26,
+      "bytes": 167660
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 4.136100000003353,
+      "p95": 5.855999999999767,
+      "min": 3.520300000003772,
+      "n": 70,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 23.19749999999476,
+      "p95": 25.1024000000034,
+      "min": 22.51600000000326,
+      "n": 20,
+      "bytes": 89916
+     }
+    }
+   }
+  },
+  {
+   "id": "radial-spotlight-small",
+   "feature": "radial-gradient",
+   "title": "Spotlight vignette",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0004,
+     "maxAbs": 1,
+     "psnr": 82.18,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.4191999999893596,
+      "p95": 1.7180999999982305,
+      "min": 1.3050999999977648,
+      "n": 206,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 10.260399999999208,
+      "p95": 10.592000000004191,
+      "min": 9.813600000008591,
+      "n": 30,
+      "bytes": 56958
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.3232000000134576,
+      "p95": 1.7788000000000466,
+      "min": 1.1699999999982538,
+      "n": 218,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.8277000000089174,
+      "p95": 3.46469999999681,
+      "min": 2.4618999999947846,
+      "n": 105,
+      "bytes": 56958
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.4294999999983702,
+      "p95": 0.570400000011432,
+      "min": 0.4109000000025844,
+      "n": 658,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 7.596199999999953,
+      "p95": 8.430999999996857,
+      "min": 7.3849000000045635,
+      "n": 40,
+      "bytes": 32132
+     }
+    }
+   }
+  },
+  {
+   "id": "shadow-offset-blur",
+   "feature": "box-shadow",
+   "title": "Offset + blur",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2,
+     "pmAA": 0,
+     "pctStrict": 0.0003,
+     "pctAA": 0,
+     "meanAbs": 0.002,
+     "maxAbs": 24,
+     "psnr": 66.98,
+     "ssim": 0.99998,
+     "ssimRgb": 0.99998
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 8.97939999999653,
+      "p95": 11.400600000008126,
+      "min": 7.843800000002375,
+      "n": 34,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 29.7668999999878,
+      "p95": 30.305899999992107,
+      "min": 29.04649999999674,
+      "n": 20,
+      "bytes": 42285
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 6.217299999989336,
+      "p95": 8.458099999988917,
+      "min": 5.768499999991036,
+      "n": 47,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.614500000010594,
+      "p95": 11.25800000000163,
+      "min": 7.693200000008801,
+      "n": 34,
+      "bytes": 42285
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 5.001600000003236,
+      "p95": 6.892600000006496,
+      "min": 4.41830000000482,
+      "n": 60,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 13.575800000005984,
+      "p95": 14.001700000007986,
+      "min": 13.023200000010547,
+      "n": 24,
+      "bytes": 43225
+     }
+    }
+   }
+  },
+  {
+   "id": "shadow-spread-multi",
+   "feature": "box-shadow",
+   "title": "Spread and multiple shadows",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 23,
+     "pmAA": 0,
+     "pctStrict": 0.003,
+     "pctAA": 0,
+     "meanAbs": 0.0074,
+     "maxAbs": 28,
+     "psnr": 60.04,
+     "ssim": 0.99995,
+     "ssimRgb": 0.99994
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 8.336899999994785,
+      "p95": 9.657099999996717,
+      "min": 7.702000000004773,
+      "n": 36,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 31.305099999997765,
+      "p95": 34.53880000000936,
+      "min": 29.58740000000398,
+      "n": 20,
+      "bytes": 49604
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 6.0741999999881955,
+      "p95": 8.541500000006636,
+      "min": 5.3571999999985565,
+      "n": 50,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.240200000000186,
+      "p95": 8.951700000005076,
+      "min": 7.375199999994948,
+      "n": 37,
+      "bytes": 49604
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 5.235400000005029,
+      "p95": 5.934699999997974,
+      "min": 4.7383000000118045,
+      "n": 58,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 16.744200000001,
+      "p95": 17.57499999999709,
+      "min": 16.216700000004494,
+      "n": 20,
+      "bytes": 49216
+     }
+    }
+   }
+  },
+  {
+   "id": "shadow-inset",
+   "feature": "box-shadow",
+   "title": "Inset shadows",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0049,
+     "maxAbs": 16,
+     "psnr": 63.15,
+     "ssim": 0.99996,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 11.776299999997718,
+      "p95": 13.13530000000901,
+      "min": 11.002099999997881,
+      "n": 26,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 30.22950000000128,
+      "p95": 31.24079999999958,
+      "min": 29.331700000009732,
+      "n": 20,
+      "bytes": 30535
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 8.055199999987963,
+      "p95": 9.407100000011269,
+      "min": 7.42160000000149,
+      "n": 37,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.997600000002421,
+      "p95": 11.43420000000333,
+      "min": 9.217300000003888,
+      "n": 31,
+      "bytes": 30535
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 5.406399999992573,
+      "p95": 6.654900000008638,
+      "min": 4.889500000004773,
+      "n": 56,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 13.174699999988661,
+      "p95": 13.759699999995064,
+      "min": 12.600800000000163,
+      "n": 24,
+      "bytes": 28599
+     }
+    }
+   }
+  },
+  {
+   "id": "shadow-small",
+   "feature": "box-shadow",
+   "title": "Card with soft shadow",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0009,
+     "maxAbs": 4,
+     "psnr": 76.92,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99998
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.3350999999966007,
+      "p95": 1.6244000000006054,
+      "min": 1.2260000000096625,
+      "n": 220,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.241600000008475,
+      "p95": 2.5538000000087777,
+      "min": 2.11610000001383,
+      "n": 132,
+      "bytes": 2927
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.9011999999929685,
+      "p95": 1.303700000004028,
+      "min": 0.8084000000089873,
+      "n": 312,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.439700000002631,
+      "p95": 1.836699999999837,
+      "min": 1.321700000000419,
+      "n": 202,
+      "bytes": 2927
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.6999999999970896,
+      "p95": 0.881599999993341,
+      "min": 0.6673000000009779,
+      "n": 408,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.61710000000312,
+      "p95": 1.8368999999947846,
+      "min": 1.5535999999992782,
+      "n": 183,
+      "bytes": 2712
+     }
+    }
+   }
+  },
+  {
+   "id": "opacity-basic",
+   "feature": "opacity",
+   "title": "Opacity levels over stripes",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2,
+     "pmAA": 0,
+     "pctStrict": 0.0003,
+     "pctAA": 0,
+     "meanAbs": 0.0177,
+     "maxAbs": 47,
+     "psnr": 61.04,
+     "ssim": 0.99997,
+     "ssimRgb": 0.99997
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 7.269099999990431,
+      "p95": 9.087899999998626,
+      "min": 6.259600000004866,
+      "n": 41,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 13.449600000007194,
+      "p95": 15.366399999998976,
+      "min": 12.540100000012899,
+      "n": 23,
+      "bytes": 9826
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.8165999999910127,
+      "p95": 5.101299999994808,
+      "min": 3.178199999994831,
+      "n": 76,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.6806999999971595,
+      "p95": 6.630600000004051,
+      "min": 5.129000000000815,
+      "n": 52,
+      "bytes": 9826
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.544500000003609,
+      "p95": 4.931799999991199,
+      "min": 2.978400000007241,
+      "n": 82,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.166499999992084,
+      "p95": 7.639899999994668,
+      "min": 6.679599999988568,
+      "n": 43,
+      "bytes": 6514
+     }
+    }
+   }
+  },
+  {
+   "id": "opacity-nested",
+   "feature": "opacity",
+   "title": "Nested opacity (group compositing)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 40,
+     "pmAA": 0,
+     "pctStrict": 0.0053,
+     "pctAA": 0,
+     "meanAbs": 0.0883,
+     "maxAbs": 28,
+     "psnr": 57.18,
+     "ssim": 0.99993,
+     "ssimRgb": 0.99996
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 9.747999999992317,
+      "p95": 10.378099999987171,
+      "min": 9.078699999998207,
+      "n": 32,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 14.649099999995087,
+      "p95": 14.953699999998207,
+      "min": 14.068600000013248,
+      "n": 22,
+      "bytes": 5433
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 4.875899999999092,
+      "p95": 6.597299999993993,
+      "min": 4.2673999999969965,
+      "n": 60,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.835900000005495,
+      "p95": 7.883199999996577,
+      "min": 5.986799999998766,
+      "n": 45,
+      "bytes": 5433
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.500799999994342,
+      "p95": 3.395199999999022,
+      "min": 2.124200000005658,
+      "n": 116,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.243300000001909,
+      "p95": 7.188999999998487,
+      "min": 5.6788999999989755,
+      "n": 49,
+      "bytes": 3962
+     }
+    }
+   }
+  },
+  {
+   "id": "opacity-with-radius-shadow",
+   "feature": "opacity",
+   "title": "Opacity with radius + shadow + text",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 9,
+     "pmAA": 0,
+     "pctStrict": 0.0075,
+     "pctAA": 0,
+     "meanAbs": 0.154,
+     "maxAbs": 43,
+     "psnr": 51.4,
+     "ssim": 0.99985,
+     "ssimRgb": 0.99981
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.6045000000012806,
+      "p95": 3.962200000009034,
+      "min": 3.3258999999961816,
+      "n": 84,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 4.71830000000773,
+      "p95": 5.0816999999806285,
+      "min": 4.434700000012526,
+      "n": 64,
+      "bytes": 3633
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.8914999999979045,
+      "p95": 2.3506999999954132,
+      "min": 1.663300000000163,
+      "n": 156,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.4910000000090804,
+      "p95": 2.956899999990128,
+      "min": 2.2400000000052387,
+      "n": 119,
+      "bytes": 3633
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.0485999999946216,
+      "p95": 1.2978999999904772,
+      "min": 0.9833999999973457,
+      "n": 277,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.1788999999989755,
+      "p95": 2.371500000008382,
+      "min": 2.067799999989802,
+      "n": 138,
+      "bytes": 3323
+     }
+    }
+   }
+  },
+  {
+   "id": "overflow-hidden-clip",
+   "feature": "overflow",
+   "title": "overflow:hidden clipping children",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 128,
+     "pmAA": 0,
+     "pctStrict": 0.0169,
+     "pctAA": 0,
+     "meanAbs": 0.0078,
+     "maxAbs": 45,
+     "psnr": 55.52,
+     "ssim": 0.99997,
+     "ssimRgb": 0.99997
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.4059000000124797,
+      "p95": 4.050799999997253,
+      "min": 2.041300000011688,
+      "n": 115,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.13279999999213,
+      "p95": 7.88399999999092,
+      "min": 6.722399999998743,
+      "n": 42,
+      "bytes": 5517
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.4201000000175554,
+      "p95": 4.212599999998929,
+      "min": 1.8962999999930616,
+      "n": 114,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.7955999999830965,
+      "p95": 4.581899999990128,
+      "min": 3.3268999999854714,
+      "n": 79,
+      "bytes": 5517
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3566999999748077,
+      "p95": 2.31339999998454,
+      "min": 1.1589999999850988,
+      "n": 198,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.883599999971921,
+      "p95": 6.2185000000172295,
+      "min": 4.597700000012992,
+      "n": 60,
+      "bytes": 3889
+     }
+    }
+   }
+  },
+  {
+   "id": "overflow-radius-clip",
+   "feature": "overflow",
+   "title": "overflow:hidden + borderRadius clips children (circle, rounded)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 215,
+     "pmAA": 0,
+     "pctStrict": 0.0284,
+     "pctAA": 0,
+     "meanAbs": 0.0165,
+     "maxAbs": 46,
+     "psnr": 52.71,
+     "ssim": 0.99993,
+     "ssimRgb": 0.99993
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.881500000017695,
+      "p95": 5.099900000001071,
+      "min": 3.1132000000216067,
+      "n": 76,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 15.090299999981653,
+      "p95": 15.817299999995157,
+      "min": 14.468199999973876,
+      "n": 20,
+      "bytes": 17398
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.212999999988824,
+      "p95": 5.488299999997253,
+      "min": 2.6748999999836087,
+      "n": 89,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.620999999984633,
+      "p95": 7.144000000000233,
+      "min": 4.481500000023516,
+      "n": 51,
+      "bytes": 17398
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.337900000013178,
+      "p95": 3.29759999999078,
+      "min": 2.0429000000003725,
+      "n": 124,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.64700000002631,
+      "p95": 12.397399999987101,
+      "min": 10.160499999998137,
+      "n": 29,
+      "bytes": 15989
+     }
+    }
+   }
+  },
+  {
+   "id": "overflow-nested",
+   "feature": "overflow",
+   "title": "Nested overflow clips",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0027,
+     "maxAbs": 26,
+     "psnr": 64.53,
+     "ssim": 0.99998,
+     "ssimRgb": 0.99993
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.4335999999893829,
+      "p95": 0.5843000000168104,
+      "min": 0.41029999998863786,
+      "n": 648,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.4904000000096858,
+      "p95": 1.7622999999730382,
+      "min": 1.4183000000193715,
+      "n": 198,
+      "bytes": 1566
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.3585000000020955,
+      "p95": 0.6910999999963678,
+      "min": 0.30439999999362044,
+      "n": 731,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.9437000000034459,
+      "p95": 1.1647000000230037,
+      "min": 0.8768999999738298,
+      "n": 309,
+      "bytes": 1566
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.27959999997983687,
+      "p95": 0.37710000001243316,
+      "min": 0.2686000000103377,
+      "n": 1002,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.9439999999885913,
+      "p95": 1.16370000000461,
+      "min": 0.922500000015134,
+      "n": 306,
+      "bytes": 1081
+     }
+    }
+   }
+  },
+  {
+   "id": "transform-basic",
+   "feature": "transform",
+   "title": "rotate / scale / translate / skew",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 485,
+     "pmAA": 1,
+     "pctStrict": 0.0642,
+     "pctAA": 0.0001,
+     "meanAbs": 0.031,
+     "maxAbs": 84,
+     "psnr": 48.69,
+     "ssim": 0.99941,
+     "ssimRgb": 0.99953
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 4.614399999991292,
+      "p95": 6.0596000000077765,
+      "min": 3.5804000000061933,
+      "n": 64,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.321000000025379,
+      "p95": 9.908400000014808,
+      "min": 8.800499999983003,
+      "n": 33,
+      "bytes": 10175
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.334499999997206,
+      "p95": 5.150000000023283,
+      "min": 2.744299999991199,
+      "n": 87,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.894999999989523,
+      "p95": 5.802899999980582,
+      "min": 4.190600000001723,
+      "n": 62,
+      "bytes": 10175
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.1437999999907333,
+      "p95": 3.927800000004936,
+      "min": 1.7260999999998603,
+      "n": 125,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.089899999991758,
+      "p95": 6.896999999997206,
+      "min": 5.883700000005774,
+      "n": 49,
+      "bytes": 9147
+     }
+    }
+   }
+  },
+  {
+   "id": "transform-combined-origin",
+   "feature": "transform",
+   "title": "Combined transforms + transformOrigin",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 887,
+     "pmAA": 1,
+     "pctStrict": 0.1173,
+     "pctAA": 0.0001,
+     "meanAbs": 0.0455,
+     "maxAbs": 100,
+     "psnr": 45.33,
+     "ssim": 0.99883,
+     "ssimRgb": 0.9991
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.579200000007404,
+      "p95": 5.281899999972666,
+      "min": 3.300599999987753,
+      "n": 78,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.89179999998305,
+      "p95": 9.29729999997653,
+      "min": 8.423399999999674,
+      "n": 34,
+      "bytes": 8798
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.0314000000071246,
+      "p95": 4.447599999984959,
+      "min": 2.5315000000118744,
+      "n": 94,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.630300000018906,
+      "p95": 5.444799999997485,
+      "min": 4.032299999991665,
+      "n": 65,
+      "bytes": 8798
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.9337000000232365,
+      "p95": 2.743900000001304,
+      "min": 1.6486999999906402,
+      "n": 149,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.349599999986822,
+      "p95": 7.691200000001118,
+      "min": 5.816300000005867,
+      "n": 47,
+      "bytes": 8659
+     }
+    }
+   }
+  },
+  {
+   "id": "transform-text-small",
+   "feature": "transform",
+   "title": "Rotated text card",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 341,
+     "pmAA": 14,
+     "pctStrict": 0.2842,
+     "pctAA": 0.0117,
+     "meanAbs": 0.104,
+     "maxAbs": 77,
+     "psnr": 43.5,
+     "ssim": 0.99895,
+     "ssimRgb": 0.99908
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.5252000000036787,
+      "p95": 1.8048000000126194,
+      "min": 1.4243999999889638,
+      "n": 194,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.6455999999889173,
+      "p95": 3.0578999999852385,
+      "min": 2.4886999999871477,
+      "n": 113,
+      "bytes": 4838
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.033900000009453,
+      "p95": 1.4483999999938533,
+      "min": 0.9016999999876134,
+      "n": 280,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.7501000000047497,
+      "p95": 2.3365000000048894,
+      "min": 1.5082000000111293,
+      "n": 167,
+      "bytes": 4838
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.2691000000049826,
+      "p95": 1.5570000000006985,
+      "min": 1.2061000000103377,
+      "n": 229,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.538699999975506,
+      "p95": 2.741600000008475,
+      "min": 2.418499999999767,
+      "n": 118,
+      "bytes": 4816
+     }
+    }
+   }
+  },
+  {
+   "id": "text-single-sizes",
+   "feature": "text-single-line",
+   "title": "Single line at 12/16/24/48/96",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1302,
+     "pmAA": 2,
+     "pctStrict": 0.1722,
+     "pctAA": 0.0003,
+     "meanAbs": 0.0773,
+     "maxAbs": 60,
+     "psnr": 44.54,
+     "ssim": 0.9995,
+     "ssimRgb": 0.9995
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.1099000000103842,
+      "p95": 3.4483999999938533,
+      "min": 1.697199999995064,
+      "n": 132,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.164399999979651,
+      "p95": 7.61720000000787,
+      "min": 6.802800000004936,
+      "n": 43,
+      "bytes": 14634
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.9587999999930616,
+      "p95": 3.8879000000015367,
+      "min": 1.657100000011269,
+      "n": 135,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.7357000000192784,
+      "p95": 4.296100000006845,
+      "min": 3.3681999999971595,
+      "n": 80,
+      "bytes": 14634
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3947999999800231,
+      "p95": 2.944900000002235,
+      "min": 1.1492999999900348,
+      "n": 187,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.883399999991525,
+      "p95": 7.729800000000978,
+      "min": 6.5182000000204425,
+      "n": 44,
+      "bytes": 13232
+     }
+    }
+   }
+  },
+  {
+   "id": "text-single-colors-small",
+   "feature": "text-single-line",
+   "title": "Light on dark + colored small text",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 139,
+     "pmAA": 11,
+     "pctStrict": 0.1158,
+     "pctAA": 0.0092,
+     "meanAbs": 0.0733,
+     "maxAbs": 60,
+     "psnr": 46.79,
+     "ssim": 0.99954,
+     "ssimRgb": 0.99955
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.5996999999915715,
+      "p95": 0.8478999999933876,
+      "min": 0.5460000000020955,
+      "n": 473,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.6512000000220723,
+      "p95": 2.1710000000020955,
+      "min": 1.4948999999905936,
+      "n": 177,
+      "bytes": 4503
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.4602000000013504,
+      "p95": 0.8306999999913387,
+      "min": 0.4021000000066124,
+      "n": 583,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.1480999999912456,
+      "p95": 1.5617000000202097,
+      "min": 0.9798000000009779,
+      "n": 241,
+      "bytes": 4503
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.23170000000391155,
+      "p95": 0.3934000000008382,
+      "min": 0.21969999998691492,
+      "n": 1116,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.2722999999823514,
+      "p95": 1.4750000000058208,
+      "min": 1.2199000000255182,
+      "n": 231,
+      "bytes": 4287
+     }
+    }
+   }
+  },
+  {
+   "id": "text-single-fonts",
+   "feature": "text-single-line",
+   "title": "Same line in Inter / Noto Sans / Roboto",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2349,
+     "pmAA": 0,
+     "pctStrict": 0.3107,
+     "pctAA": 0,
+     "meanAbs": 0.1397,
+     "maxAbs": 75,
+     "psnr": 42.02,
+     "ssim": 0.99929,
+     "ssimRgb": 0.99929
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.0002999999851454,
+      "p95": 3.162799999990966,
+      "min": 1.7245999999868218,
+      "n": 141,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.131599999993341,
+      "p95": 8.710699999995995,
+      "min": 7.777199999982258,
+      "n": 38,
+      "bytes": 20775
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.0407999999879394,
+      "p95": 3.669400000013411,
+      "min": 1.6632000000099652,
+      "n": 135,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.159299999999348,
+      "p95": 4.985000000015134,
+      "min": 3.51490000000922,
+      "n": 73,
+      "bytes": 20775
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3949999999895226,
+      "p95": 2.605299999995623,
+      "min": 1.2174999999988358,
+      "n": 189,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.082099999999627,
+      "p95": 10.210699999995995,
+      "min": 8.690699999977369,
+      "n": 33,
+      "bytes": 19330
+     }
+    }
+   }
+  },
+  {
+   "id": "text-paragraph-wrap",
+   "feature": "text-paragraph",
+   "title": "Paragraph wrapping, left/center/right, justify",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 911,
+     "pmAA": 96,
+     "pctStrict": 0.1205,
+     "pctAA": 0.0127,
+     "meanAbs": 0.0892,
+     "maxAbs": 91,
+     "psnr": 44.08,
+     "ssim": 0.99963,
+     "ssimRgb": 0.99963
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.118800000025658,
+      "p95": 4.629799999995157,
+      "min": 2.7176000000035856,
+      "n": 91,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.848700000002282,
+      "p95": 10.88990000000922,
+      "min": 8.238500000006752,
+      "n": 34,
+      "bytes": 20569
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.689299999998184,
+      "p95": 4.508700000005774,
+      "min": 2.2771000000066124,
+      "n": 105,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.524299999990035,
+      "p95": 5.166499999992084,
+      "min": 4.123500000016065,
+      "n": 67,
+      "bytes": 20569
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.8533999999926891,
+      "p95": 2.7810999999928754,
+      "min": 1.6536999999952968,
+      "n": 152,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.245800000004238,
+      "p95": 9.11679999998887,
+      "min": 7.8870999999926426,
+      "n": 37,
+      "bytes": 19615
+     }
+    }
+   }
+  },
+  {
+   "id": "text-paragraph-lineheight",
+   "feature": "text-paragraph",
+   "title": "lineHeight variants",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 765,
+     "pmAA": 87,
+     "pctStrict": 0.1012,
+     "pctAA": 0.0115,
+     "meanAbs": 0.0931,
+     "maxAbs": 61,
+     "psnr": 44.46,
+     "ssim": 0.99965,
+     "ssimRgb": 0.99966
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.8306999999913387,
+      "p95": 5.341599999985192,
+      "min": 3.2264000000141095,
+      "n": 75,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.24189999999362,
+      "p95": 9.661699999996927,
+      "min": 8.838700000022072,
+      "n": 34,
+      "bytes": 22025
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.075699999986682,
+      "p95": 5.058900000003632,
+      "min": 2.6027999999932945,
+      "n": 92,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.016600000002654,
+      "p95": 6.216500000009546,
+      "min": 4.434300000022631,
+      "n": 60,
+      "bytes": 22025
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.0785999999789055,
+      "p95": 3.024200000014389,
+      "min": 1.8636000000115018,
+      "n": 136,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.441500000015367,
+      "p95": 9.184700000012526,
+      "min": 7.957000000023982,
+      "n": 36,
+      "bytes": 20130
+     }
+    }
+   }
+  },
+  {
+   "id": "text-paragraph-letterspacing",
+   "feature": "text-paragraph",
+   "title": "letterSpacing & wordSpacing",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 927,
+     "pmAA": 82,
+     "pctStrict": 0.1226,
+     "pctAA": 0.0108,
+     "meanAbs": 0.099,
+     "maxAbs": 61,
+     "psnr": 44.18,
+     "ssim": 0.99958,
+     "ssimRgb": 0.99958
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.8179999999993015,
+      "p95": 4.7559000000183005,
+      "min": 3.3273999999801163,
+      "n": 77,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.175799999997253,
+      "p95": 10.788699999975506,
+      "min": 9.69350000002305,
+      "n": 30,
+      "bytes": 29591
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 3.112300000007963,
+      "p95": 5.225700000009965,
+      "min": 2.687000000005355,
+      "n": 89,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.269200000009732,
+      "p95": 6.003100000001723,
+      "min": 4.675199999997858,
+      "n": 57,
+      "bytes": 29591
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.1780999999900814,
+      "p95": 3.9518999999854714,
+      "min": 1.9122999999963213,
+      "n": 126,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.23540000000503,
+      "p95": 11.4434000000183,
+      "min": 9.833099999988917,
+      "n": 30,
+      "bytes": 27517
+     }
+    }
+   }
+  },
+  {
+   "id": "text-paragraph-small",
+   "feature": "text-paragraph",
+   "title": "Small centered paragraph",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 382,
+     "pmAA": 20,
+     "pctStrict": 0.3183,
+     "pctAA": 0.0167,
+     "meanAbs": 0.2258,
+     "maxAbs": 90,
+     "psnr": 39.47,
+     "ssim": 0.99899,
+     "ssimRgb": 0.99899
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.6216000000131316,
+      "p95": 0.9382999999797903,
+      "min": 0.5297999999893364,
+      "n": 447,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.8194999999832362,
+      "p95": 2.2317999999795575,
+      "min": 1.6651000000128988,
+      "n": 162,
+      "bytes": 6100
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.4604999999864958,
+      "p95": 0.8801000000094064,
+      "min": 0.39250000001629815,
+      "n": 566,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.2582000000111293,
+      "p95": 1.6590999999898486,
+      "min": 1.065100000007078,
+      "n": 231,
+      "bytes": 6100
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.30840000000898726,
+      "p95": 0.4781999999831896,
+      "min": 0.28870000000461005,
+      "n": 870,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.8408000000054017,
+      "p95": 1.9733999999880325,
+      "min": 1.7522999999928288,
+      "n": 163,
+      "bytes": 5786
+     }
+    }
+   }
+  },
+  {
+   "id": "text-long-wrap",
+   "feature": "text-paragraph",
+   "title": "Long text with long words / forced breaks",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 350,
+     "pmAA": 0,
+     "pctStrict": 0.0463,
+     "pctAA": 0,
+     "meanAbs": 0.0422,
+     "maxAbs": 60,
+     "psnr": 49.36,
+     "ssim": 0.99985,
+     "ssimRgb": 0.99986
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.3412000000244007,
+      "p95": 3.6943999999784864,
+      "min": 1.7792999999946915,
+      "n": 121,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.227600000012899,
+      "p95": 11.020499999984168,
+      "min": 9.852599999983795,
+      "n": 30,
+      "bytes": 21487
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.1136999999871477,
+      "p95": 3.911599999992177,
+      "min": 1.7268000000040047,
+      "n": 127,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.361300000018673,
+      "p95": 5.331000000005588,
+      "min": 3.713500000012573,
+      "n": 70,
+      "bytes": 21487
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6951999999873806,
+      "p95": 2.924299999984214,
+      "min": 1.4010000000125729,
+      "n": 163,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.621899999998277,
+      "p95": 7.227000000013504,
+      "min": 6.179000000003725,
+      "n": 46,
+      "bytes": 14551
+     }
+    }
+   }
+  },
+  {
+   "id": "fonts-weights-italic",
+   "feature": "fonts",
+   "title": "Weights 400/600/700 and italic",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2878,
+     "pmAA": 3,
+     "pctStrict": 0.3807,
+     "pctAA": 0.0004,
+     "meanAbs": 0.1975,
+     "maxAbs": 65,
+     "psnr": 40.63,
+     "ssim": 0.99929,
+     "ssimRgb": 0.99929
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.0935999999928754,
+      "p95": 5.017099999997299,
+      "min": 2.639100000000326,
+      "n": 90,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.75789999999688,
+      "p95": 10.286500000016531,
+      "min": 9.330599999986589,
+      "n": 32,
+      "bytes": 31754
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.7149999999965075,
+      "p95": 4.7946999999985565,
+      "min": 2.24910000001546,
+      "n": 103,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.664900000003399,
+      "p95": 5.446500000020023,
+      "min": 4.199800000002142,
+      "n": 64,
+      "bytes": 31754
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.8074999999953434,
+      "p95": 2.5314000000071246,
+      "min": 1.5200999999942724,
+      "n": 159,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.521500000002561,
+      "p95": 11.024199999985285,
+      "min": 10.070000000006985,
+      "n": 30,
+      "bytes": 28424
+     }
+    }
+   }
+  },
+  {
+   "id": "fonts-mixed-inline",
+   "feature": "fonts",
+   "title": "Multiple families in one image + family fallback list",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2603,
+     "pmAA": 4,
+     "pctStrict": 0.3443,
+     "pctAA": 0.0005,
+     "meanAbs": 0.1307,
+     "maxAbs": 108,
+     "psnr": 42.57,
+     "ssim": 0.99914,
+     "ssimRgb": 0.9992
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.392699999996694,
+      "p95": 3.6436000000103377,
+      "min": 2.0705999999772757,
+      "n": 118,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.03200000000652,
+      "p95": 8.97530000002007,
+      "min": 7.566800000000512,
+      "n": 38,
+      "bytes": 19873
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.3501000000105705,
+      "p95": 4.497399999992922,
+      "min": 1.8868000000074971,
+      "n": 118,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.9974999999976717,
+      "p95": 4.508900000015274,
+      "min": 3.457700000028126,
+      "n": 76,
+      "bytes": 19873
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3735000000160653,
+      "p95": 2.9277000000001863,
+      "min": 1.2247999999963213,
+      "n": 189,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.735100000019884,
+      "p95": 8.57149999999092,
+      "min": 7.342700000008335,
+      "n": 39,
+      "bytes": 17295
+     }
+    }
+   }
+  },
+  {
+   "id": "text-vietnamese",
+   "feature": "text-i18n",
+   "title": "Vietnamese text (Inter / Noto Sans / Roboto)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1471,
+     "pmAA": 14,
+     "pctStrict": 0.1946,
+     "pctAA": 0.0019,
+     "meanAbs": 0.1142,
+     "maxAbs": 60,
+     "psnr": 43.49,
+     "ssim": 0.99956,
+     "ssimRgb": 0.99956
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.3484000000171363,
+      "p95": 3.6639000000141095,
+      "min": 1.9820000000181608,
+      "n": 117,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.07620000001043,
+      "p95": 9.55580000000191,
+      "min": 7.488299999997253,
+      "n": 37,
+      "bytes": 19552
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.2133000000030734,
+      "p95": 3.75800000000163,
+      "min": 1.8320999999996275,
+      "n": 127,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.622200000012526,
+      "p95": 5.983600000006845,
+      "min": 3.7629000000015367,
+      "n": 64,
+      "bytes": 19552
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.4585000000079162,
+      "p95": 2.5207999999984168,
+      "min": 1.2676999999966938,
+      "n": 185,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.174499999993714,
+      "p95": 10.913300000014715,
+      "min": 7.7277999999932945,
+      "n": 34,
+      "bytes": 18809
+     }
+    }
+   }
+  },
+  {
+   "id": "text-accented-latin",
+   "feature": "text-i18n",
+   "title": "Accented Latin, symbols, punctuation",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2052,
+     "pmAA": 11,
+     "pctStrict": 0.2714,
+     "pctAA": 0.0015,
+     "meanAbs": 0.1316,
+     "maxAbs": 60,
+     "psnr": 41.97,
+     "ssim": 0.99944,
+     "ssimRgb": 0.99944
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.568700000003446,
+      "p95": 5.299500000022817,
+      "min": 2.216600000014296,
+      "n": 105,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.797600000019884,
+      "p95": 8.267900000006193,
+      "min": 7.402899999986403,
+      "n": 40,
+      "bytes": 19554
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.5529999999853317,
+      "p95": 4.3739000000059605,
+      "min": 1.911099999997532,
+      "n": 108,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.097600000008242,
+      "p95": 5.212100000004284,
+      "min": 3.5210000000079162,
+      "n": 73,
+      "bytes": 19554
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.6005000000004657,
+      "p95": 2.9715000000142027,
+      "min": 1.306700000015553,
+      "n": 169,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.7586000000010245,
+      "p95": 9.353000000002794,
+      "min": 7.27479999998468,
+      "n": 37,
+      "bytes": 18453
+     }
+    }
+   }
+  },
+  {
+   "id": "text-ellipsis-nowrap",
+   "feature": "text-truncation",
+   "title": "textOverflow ellipsis + nowrap",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 551,
+     "pmAA": 9,
+     "pctStrict": 0.0729,
+     "pctAA": 0.0012,
+     "meanAbs": 0.0438,
+     "maxAbs": 60,
+     "psnr": 45.96,
+     "ssim": 0.99977,
+     "ssimRgb": 0.99977
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.287400000001071,
+      "p95": 4.805199999973411,
+      "min": 1.6667000000015832,
+      "n": 117,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.087999999988824,
+      "p95": 8.75030000001425,
+      "min": 6.4649999999965075,
+      "n": 42,
+      "bytes": 7809
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.151399999973364,
+      "p95": 3.9843000000109896,
+      "min": 1.618400000006659,
+      "n": 128,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.032600000005914,
+      "p95": 4.9372999999905005,
+      "min": 3.180099999997765,
+      "n": 74,
+      "bytes": 7809
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.5305999999982305,
+      "p95": 2.531700000021374,
+      "min": 1.1494000000238884,
+      "n": 172,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.74100000000908,
+      "p95": 7.343899999978021,
+      "min": 5.343399999983376,
+      "n": 51,
+      "bytes": 6876
+     }
+    }
+   }
+  },
+  {
+   "id": "text-lineclamp",
+   "feature": "text-truncation",
+   "title": "lineClamp 1/2/3",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 235,
+     "pmAA": 9,
+     "pctStrict": 0.0311,
+     "pctAA": 0.0012,
+     "meanAbs": 0.0434,
+     "maxAbs": 60,
+     "psnr": 48.93,
+     "ssim": 0.99988,
+     "ssimRgb": 0.99988
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 3.021999999997206,
+      "p95": 4.440600000001723,
+      "min": 2.646099999983562,
+      "n": 94,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 8.669800000003306,
+      "p95": 10.289500000013504,
+      "min": 8.029099999985192,
+      "n": 35,
+      "bytes": 11627
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.7294999999867287,
+      "p95": 4.951099999976577,
+      "min": 2.2466999999887776,
+      "n": 99,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.518599999981234,
+      "p95": 5.439800000021933,
+      "min": 3.989000000001397,
+      "n": 66,
+      "bytes": 11627
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.197600000014063,
+      "p95": 3.6185999999870546,
+      "min": 1.7558000000135507,
+      "n": 128,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.009600000019418,
+      "p95": 7.9518000000098255,
+      "min": 6.6221000000077765,
+      "n": 43,
+      "bytes": 10273
+     }
+    }
+   }
+  },
+  {
+   "id": "text-lineclamp-small",
+   "feature": "text-truncation",
+   "title": "lineClamp 2 in a small card",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 46,
+     "pmAA": 4,
+     "pctStrict": 0.0383,
+     "pctAA": 0.0033,
+     "meanAbs": 0.0385,
+     "maxAbs": 60,
+     "psnr": 48.17,
+     "ssim": 0.99986,
+     "ssimRgb": 0.99986
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.7206999999762047,
+      "p95": 1.409700000018347,
+      "min": 0.5074999999778811,
+      "n": 372,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.4807999999902677,
+      "p95": 1.779000000009546,
+      "min": 1.2921999999962281,
+      "n": 202,
+      "bytes": 2267
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.5282000000006519,
+      "p95": 0.9091999999945983,
+      "min": 0.3827000000164844,
+      "n": 517,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0455999999830965,
+      "p95": 1.626300000003539,
+      "min": 0.8115000000107102,
+      "n": 261,
+      "bytes": 2267
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.2612000000081025,
+      "p95": 0.4205999999830965,
+      "min": 0.23449999999138527,
+      "n": 1025,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0760000000009313,
+      "p95": 1.3170999999856576,
+      "min": 1.0084999999962747,
+      "n": 272,
+      "bytes": 2031
+     }
+    }
+   }
+  },
+  {
+   "id": "img-png-fit",
+   "feature": "images",
+   "title": "PNG with objectFit cover/contain/fill",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 12,
+     "pmAA": 0,
+     "pctStrict": 0.0016,
+     "pctAA": 0,
+     "meanAbs": 0.0269,
+     "maxAbs": 51,
+     "psnr": 57.22,
+     "ssim": 0.99993,
+     "ssimRgb": 0.99992
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 7.723499999992782,
+      "p95": 9.36500000001979,
+      "min": 6.159899999998743,
+      "n": 39,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 34.64300000001094,
+      "p95": 40.31470000001718,
+      "min": 34.10349999999744,
+      "n": 20,
+      "bytes": 208209
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 5.991600000008475,
+      "p95": 8.60000000000582,
+      "min": 4.472599999979138,
+      "n": 50,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.290399999998044,
+      "p95": 15.840900000010151,
+      "min": 8.222100000013597,
+      "n": 31,
+      "bytes": 208209
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.094600000011269,
+      "p95": 4.648199999995995,
+      "min": 2.4241000000038184,
+      "n": 92,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 22.03409999998985,
+      "p95": 27.75820000001113,
+      "min": 20.74149999997462,
+      "n": 20,
+      "bytes": 207407
+     }
+    }
+   }
+  },
+  {
+   "id": "img-jpeg-fit",
+   "feature": "images",
+   "title": "JPEG with objectFit cover/contain/fill",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1,
+     "pmAA": 1,
+     "pctStrict": 0.0001,
+     "pctAA": 0.0001,
+     "meanAbs": 0.1142,
+     "maxAbs": 28,
+     "psnr": 51.61,
+     "ssim": 0.99959,
+     "ssimRgb": 0.99939
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 20.273800000024494,
+      "p95": 23.31030000001192,
+      "min": 18.72479999999632,
+      "n": 20,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 53.006400000012945,
+      "p95": 57.41290000002482,
+      "min": 52.03780000002007,
+      "n": 20,
+      "bytes": 382111
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 12.966799999994691,
+      "p95": 14.401000000012573,
+      "min": 12.24309999999241,
+      "n": 24,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 18.47569999998086,
+      "p95": 19.061900000000605,
+      "min": 17.105899999995017,
+      "n": 20,
+      "bytes": 382111
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.5292999999946915,
+      "p95": 3.6467999999877065,
+      "min": 2.1603999999933876,
+      "n": 114,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 32.33129999999073,
+      "p95": 32.9034999999858,
+      "min": 31.198700000008103,
+      "n": 20,
+      "bytes": 381071
+     }
+    }
+   }
+  },
+  {
+   "id": "img-intrinsic-size",
+   "feature": "images",
+   "title": "Image with explicit width/height attrs and no style size",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.38779999999678694,
+      "p95": 0.6536999999952968,
+      "min": 0.35999999998603016,
+      "n": 701,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 5.248800000001211,
+      "p95": 5.464299999992363,
+      "min": 4.957699999999022,
+      "n": 58,
+      "bytes": 32038
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.3251999999920372,
+      "p95": 0.5671999999904074,
+      "min": 0.2761999999929685,
+      "n": 789,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.3493999999773223,
+      "p95": 1.7488000000012107,
+      "min": 1.1683999999950174,
+      "n": 215,
+      "bytes": 32038
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.3410999999905471,
+      "p95": 0.5695999999879859,
+      "min": 0.31160000001545995,
+      "n": 789,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 3.5754000000015367,
+      "p95": 4.94649999999092,
+      "min": 3.389100000000326,
+      "n": 81,
+      "bytes": 31896
+     }
+    }
+   }
+  },
+  {
+   "id": "img-radius-clip",
+   "feature": "images",
+   "title": "Image with borderRadius + overflow hidden (avatar circle, rounded photo)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.0233,
+     "maxAbs": 17,
+     "psnr": 62.62,
+     "ssim": 0.99994,
+     "ssimRgb": 0.99991
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 7.469899999996414,
+      "p95": 8.71239999998943,
+      "min": 6.730000000010477,
+      "n": 40,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 35.13709999999264,
+      "p95": 36.75380000000587,
+      "min": 34.07540000000154,
+      "n": 20,
+      "bytes": 263480
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 5.590300000010757,
+      "p95": 7.110300000000279,
+      "min": 4.888099999981932,
+      "n": 54,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.425400000007357,
+      "p95": 12.936599999986356,
+      "min": 8.785800000012387,
+      "n": 29,
+      "bytes": 263480
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 4.2832999999809545,
+      "p95": 5.515599999984261,
+      "min": 3.9085000000195578,
+      "n": 69,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 26.76390000001993,
+      "p95": 29.341300000000047,
+      "min": 25.747399999992922,
+      "n": 20,
+      "bytes": 262301
+     }
+    }
+   }
+  },
+  {
+   "id": "img-photo-bg",
+   "feature": "images",
+   "title": "Photo background (backgroundImage url) with overlay gradient + text",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 407,
+     "pmAA": 5,
+     "pctStrict": 0.0538,
+     "pctAA": 0.0007,
+     "meanAbs": 0.0343,
+     "maxAbs": 60,
+     "psnr": 50.51,
+     "ssim": 0.99977,
+     "ssimRgb": 0.99969
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 6.287499999976717,
+      "p95": 8.305099999997765,
+      "min": 5.718499999988126,
+      "n": 48,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 55.27139999999781,
+      "p95": 56.34429999999702,
+      "min": 53.68280000000959,
+      "n": 20,
+      "bytes": 524989
+     },
+     "jpeg": {
+      "median": 24.863299999997253,
+      "p95": 25.82620000001043,
+      "min": 23.989499999996042,
+      "n": 20,
+      "bytes": 56484
+     },
+     "webp": {
+      "median": 21.496400000003632,
+      "p95": 23.41349999999511,
+      "min": 20.22139999998035,
+      "n": 20,
+      "bytes": 481634
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 4.59429999999702,
+      "p95": 6.31940000000759,
+      "min": 4.0217999999877065,
+      "n": 64,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 13.043999999994412,
+      "p95": 14.405199999979232,
+      "min": 11.011399999988498,
+      "n": 24,
+      "bytes": 524989
+     },
+     "jpeg": {
+      "median": 18.232499999983702,
+      "p95": 19.524600000004284,
+      "min": 17.517699999996694,
+      "n": 20,
+      "bytes": 56484
+     },
+     "webp": {
+      "median": 166.4557999999961,
+      "p95": 175.86660000000848,
+      "min": 164.7603999999992,
+      "n": 12,
+      "bytes": 423728
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.732400000008056,
+      "p95": 2.784400000004098,
+      "min": 1.4547999999776948,
+      "n": 162,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 47.5969000000041,
+      "p95": 49.21540000001551,
+      "min": 46.44200000001001,
+      "n": 20,
+      "bytes": 523396
+     },
+     "jpeg": {
+      "median": 17.881999999983236,
+      "p95": 21.102799999993294,
+      "min": 17.176899999991292,
+      "n": 20,
+      "bytes": 56442
+     },
+     "webp": {
+      "median": 45.93619999999646,
+      "p95": 50.66930000000866,
+      "min": 44.24059999999008,
+      "n": 20,
+      "bytes": 414512
+     }
+    }
+   }
+  },
+  {
+   "id": "grid-fixed-fr",
+   "feature": "grid",
+   "title": "Fixed px + fr tracks with gap",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1,
+     "pmAA": 0,
+     "pctStrict": 0.0001,
+     "pctAA": 0,
+     "meanAbs": 0.002,
+     "maxAbs": 49,
+     "psnr": 64.12,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.019800000009127,
+      "p95": 3.7815999999875203,
+      "min": 1.645699999993667,
+      "n": 133,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 6.837499999994179,
+      "p95": 7.636299999983748,
+      "min": 6.442399999999907,
+      "n": 44,
+      "bytes": 6015
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.1136999999871477,
+      "p95": 4.368399999977555,
+      "min": 1.7396000000007916,
+      "n": 126,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 3.6516999999876134,
+      "p95": 4.807699999975739,
+      "min": 3.184800000017276,
+      "n": 80,
+      "bytes": 6015
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.4167999999772292,
+      "p95": 3.0192999999853782,
+      "min": 1.2550999999803025,
+      "n": 187,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.057700000004843,
+      "p95": 5.490699999994831,
+      "min": 4.746799999993527,
+      "n": 60,
+      "bytes": 4831
+     }
+    }
+   }
+  },
+  {
+   "id": "grid-repeat-gap",
+   "feature": "grid",
+   "title": "repeat(), row/column gap",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 13,
+     "pmAA": 0,
+     "pctStrict": 0.0017,
+     "pctAA": 0,
+     "meanAbs": 0.0052,
+     "maxAbs": 58,
+     "psnr": 59.12,
+     "ssim": 0.99997,
+     "ssimRgb": 0.99997
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.569900000002235,
+      "p95": 4.089900000020862,
+      "min": 2.029000000009546,
+      "n": 109,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 10.787499999976717,
+      "p95": 11.174599999998463,
+      "min": 10.325000000011642,
+      "n": 28,
+      "bytes": 14652
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.4054999999934807,
+      "p95": 4.549400000018068,
+      "min": 1.8770000000076834,
+      "n": 113,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.832800000003772,
+      "p95": 5.99309999999241,
+      "min": 4.163200000009965,
+      "n": 62,
+      "bytes": 14652
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.637799999996787,
+      "p95": 2.766399999993155,
+      "min": 1.397499999991851,
+      "n": 169,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.481399999989662,
+      "p95": 5.890299999999115,
+      "min": 5.1644999999844,
+      "n": 55,
+      "bytes": 7362
+     }
+    }
+   }
+  },
+  {
+   "id": "grid-spans",
+   "feature": "grid",
+   "title": "Column/row spans & explicit placement",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2,
+     "pmAA": 0,
+     "pctStrict": 0.0003,
+     "pctAA": 0,
+     "meanAbs": 0.0022,
+     "maxAbs": 38,
+     "psnr": 63.64,
+     "ssim": 0.99999,
+     "ssimRgb": 0.99999
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.9496999999973923,
+      "p95": 3.0789999999979045,
+      "min": 1.6393000000098255,
+      "n": 144,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.650900000007823,
+      "p95": 8.272299999982351,
+      "min": 7.271099999983562,
+      "n": 40,
+      "bytes": 7209
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.9888999999966472,
+      "p95": 3.857499999983702,
+      "min": 1.6190000000060536,
+      "n": 132,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 4.009700000024168,
+      "p95": 4.87400000001071,
+      "min": 3.3030999999900814,
+      "n": 75,
+      "bytes": 7209
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.3901999999943655,
+      "p95": 2.5190999999758787,
+      "min": 1.2141999999876134,
+      "n": 197,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 5.347700000012992,
+      "p95": 6.888300000020536,
+      "min": 4.868300000001909,
+      "n": 55,
+      "bytes": 4761
+     }
+    }
+   }
+  },
+  {
+   "id": "grid-small-mixed",
+   "feature": "grid",
+   "title": "Mixed auto / minmax / % tracks, align/justify",
+   "width": 400,
+   "height": 300,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1,
+     "pmAA": 0,
+     "pctStrict": 0.0008,
+     "pctAA": 0,
+     "meanAbs": 0.013,
+     "maxAbs": 49,
+     "psnr": 55.98,
+     "ssim": 0.99993,
+     "ssimRgb": 0.99993
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.7757999999739695,
+      "p95": 1.2131999999983236,
+      "min": 0.6575000000011642,
+      "n": 356,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.6614999999874271,
+      "p95": 1.9727999999886379,
+      "min": 1.5187999999907333,
+      "n": 178,
+      "bytes": 2664
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.5538999999989755,
+      "p95": 0.952499999984866,
+      "min": 0.48799999998300336,
+      "n": 490,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.1375999999872874,
+      "p95": 1.4083999999857042,
+      "min": 0.9906999999948312,
+      "n": 262,
+      "bytes": 2664
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.33230000000912696,
+      "p95": 0.5408999999926891,
+      "min": 0.31839999998919666,
+      "n": 805,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.13990000000922,
+      "p95": 1.3060000000114087,
+      "min": 1.1148000000102911,
+      "n": 257,
+      "bytes": 2361
+     }
+    }
+   }
+  },
+  {
+   "id": "card-og",
+   "feature": "og-card",
+   "title": "OG card composite (gradient, avatar, title, description, tags, footer)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 2524,
+     "pmAA": 55,
+     "pctStrict": 0.3339,
+     "pctAA": 0.0073,
+     "meanAbs": 0.1433,
+     "maxAbs": 59,
+     "psnr": 42.29,
+     "ssim": 0.99907,
+     "ssimRgb": 0.99908
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 6.170099999988452,
+      "p95": 7.666899999981979,
+      "min": 5.5635999999940395,
+      "n": 48,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 21.979700000025332,
+      "p95": 24.749600000010105,
+      "min": 21.136300000012852,
+      "n": 20,
+      "bytes": 95820
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 4.816500000015367,
+      "p95": 6.818200000008801,
+      "min": 4.128700000001118,
+      "n": 61,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.929800000012619,
+      "p95": 8.747700000007171,
+      "min": 7.269499999994878,
+      "n": 37,
+      "bytes": 95820
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 3.6031999999831896,
+      "p95": 4.077799999999115,
+      "min": 3.203899999993155,
+      "n": 83,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 20.93979999999283,
+      "p95": 21.904799999989336,
+      "min": 20.0857000000251,
+      "n": 20,
+      "bytes": 92465
+     }
+    }
+   }
+  },
+  {
+   "id": "card-og-small",
+   "feature": "og-card",
+   "title": "OG card scaled to 600x315",
+   "width": 600,
+   "height": 315,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 355,
+     "pmAA": 14,
+     "pctStrict": 0.1878,
+     "pctAA": 0.0074,
+     "meanAbs": 0.1425,
+     "maxAbs": 58,
+     "psnr": 44.17,
+     "ssim": 0.99946,
+     "ssimRgb": 0.99947
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 2.8678000000072643,
+      "p95": 3.3325999999942724,
+      "min": 2.5397999999986496,
+      "n": 104,
+      "bytes": 756000
+     },
+     "png": {
+      "median": 8.315000000002328,
+      "p95": 8.886599999997998,
+      "min": 7.941300000005867,
+      "n": 37,
+      "bytes": 44851
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 2.0719000000099186,
+      "p95": 2.5975000000034925,
+      "min": 1.7793999999994412,
+      "n": 141,
+      "bytes": 756000
+     },
+     "png": {
+      "median": 3.645300000003772,
+      "p95": 4.5983999999880325,
+      "min": 3.2929000000003725,
+      "n": 81,
+      "bytes": 44851
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.4091999999945983,
+      "p95": 1.821799999976065,
+      "min": 1.2897999999986496,
+      "n": 207,
+      "bytes": 756000
+     },
+     "png": {
+      "median": 9.03090000001248,
+      "p95": 9.56349999998929,
+      "min": 8.685700000001816,
+      "n": 34,
+      "bytes": 43750
+     }
+    }
+   }
+  },
+  {
+   "id": "card-blog",
+   "feature": "blog-card",
+   "title": "Blog card (photo header, badge, shadow, rounded overflow)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1064,
+     "pmAA": 1,
+     "pctStrict": 0.1407,
+     "pctAA": 0.0001,
+     "meanAbs": 0.0856,
+     "maxAbs": 61,
+     "psnr": 43.77,
+     "ssim": 0.99956,
+     "ssimRgb": 0.99953
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 15.974699999991572,
+      "p95": 17.167100000020582,
+      "min": 15.05669999998645,
+      "n": 20,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 49.24310000002151,
+      "p95": 62.14490000001388,
+      "min": 48.274800000013784,
+      "n": 20,
+      "bytes": 247638
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 7.693200000008801,
+      "p95": 9.484599999996135,
+      "min": 6.66370000000461,
+      "n": 39,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 12.873699999996461,
+      "p95": 13.878399999986868,
+      "min": 11.17850000000908,
+      "n": 24,
+      "bytes": 247638
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 9.606499999994412,
+      "p95": 10.776700000016717,
+      "min": 8.816700000024866,
+      "n": 32,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 32.984700000000885,
+      "p95": 35.10349999999744,
+      "min": 31.96960000001127,
+      "n": 20,
+      "bytes": 244970
+     }
+    }
+   }
+  },
+  {
+   "id": "card-flat-ui",
+   "feature": "blog-card",
+   "title": "Flat UI card (solid colors, borders, text only)",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 1659,
+     "pmAA": 1018,
+     "pctStrict": 0.2194,
+     "pctAA": 0.1347,
+     "meanAbs": 0.1398,
+     "maxAbs": 107,
+     "psnr": 38.11,
+     "ssim": 0.99486,
+     "ssimRgb": 0.99489
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 7.143199999991339,
+      "p95": 8.926000000006752,
+      "min": 6.224799999996321,
+      "n": 42,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 19.92870000001858,
+      "p95": 22.127999999996973,
+      "min": 19.07990000001155,
+      "n": 20,
+      "bytes": 25948
+     },
+     "jpeg": {
+      "median": 25.138799999986077,
+      "p95": 27.728100000007544,
+      "min": 24.303699999989476,
+      "n": 20,
+      "bytes": 50167
+     },
+     "webp": {
+      "median": 12.329999999987194,
+      "p95": 13.332999999984168,
+      "min": 11.610000000015134,
+      "n": 26,
+      "bytes": 28238
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 4.7387999999918975,
+      "p95": 7.774100000009639,
+      "min": 3.8585000000020955,
+      "n": 60,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.1723000000056345,
+      "p95": 8.910600000002887,
+      "min": 6.302700000000186,
+      "n": 43,
+      "bytes": 25948
+     },
+     "jpeg": {
+      "median": 17.67730000001029,
+      "p95": 18.46020000000135,
+      "min": 17.131600000022445,
+      "n": 20,
+      "bytes": 50167
+     },
+     "webp": {
+      "median": 17.049399999988964,
+      "p95": 18.670799999992596,
+      "min": 16.190200000011828,
+      "n": 20,
+      "bytes": 13704
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 2.3827000000164844,
+      "p95": 3.456400000024587,
+      "min": 1.9046999999845866,
+      "n": 121,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 7.125499999994645,
+      "p95": 8.089299999992363,
+      "min": 6.725799999985611,
+      "n": 43,
+      "bytes": 13381
+     },
+     "jpeg": {
+      "median": 17.62630000000354,
+      "p95": 18.666700000001583,
+      "min": 17.065600000001723,
+      "n": 20,
+      "bytes": 47298
+     },
+     "webp": {
+      "median": 8.994900000019697,
+      "p95": 9.971099999995204,
+      "min": 8.587200000009034,
+      "n": 34,
+      "bytes": 11134
+     }
+    }
+   }
+  },
+  {
+   "id": "stress-600-boxes",
+   "feature": "stress",
+   "title": "600 small rounded colored boxes",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0.07,
+     "maxAbs": 28,
+     "psnr": 49.08,
+     "ssim": 0.99953,
+     "ssimRgb": 0.99955
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 8.787400000001071,
+      "p95": 10.818200000008801,
+      "min": 8.121899999998277,
+      "n": 34,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 15.854800000000978,
+      "p95": 16.399499999999534,
+      "min": 15.035700000007637,
+      "n": 20,
+      "bytes": 39177
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 7.243300000001909,
+      "p95": 9.567200000019511,
+      "min": 6.671699999977136,
+      "n": 40,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 9.21850000001723,
+      "p95": 10.376900000002934,
+      "min": 8.452499999984866,
+      "n": 33,
+      "bytes": 39177
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 7.911299999977928,
+      "p95": 10.964600000006612,
+      "min": 7.143500000005588,
+      "n": 38,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 14.655999999988126,
+      "p95": 15.316599999991013,
+      "min": 14.171200000011595,
+      "n": 21,
+      "bytes": 24853
+     }
+    }
+   }
+  },
+  {
+   "id": "stress-200-labels",
+   "feature": "stress",
+   "title": "200 short text labels",
+   "width": 1200,
+   "height": 630,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 704,
+     "pmAA": 7,
+     "pctStrict": 0.0931,
+     "pctAA": 0.0009,
+     "meanAbs": 0.1522,
+     "maxAbs": 54,
+     "psnr": 44.29,
+     "ssim": 0.99911,
+     "ssimRgb": 0.99911
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 15.788299999985611,
+      "p95": 17.20669999998063,
+      "min": 14.137700000021141,
+      "n": 20,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 23.19460000001709,
+      "p95": 25.381099999998696,
+      "min": 21.971500000014203,
+      "n": 20,
+      "bytes": 58193
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 12.244000000006054,
+      "p95": 15.098499999992782,
+      "min": 10.594499999977415,
+      "n": 25,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 14.67180000001099,
+      "p95": 17.533499999990454,
+      "min": 12.659399999974994,
+      "n": 22,
+      "bytes": 58193
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 7.5396999999939,
+      "p95": 9.70120000001043,
+      "min": 6.788100000005215,
+      "n": 39,
+      "bytes": 3024000
+     },
+     "png": {
+      "median": 18.333699999988312,
+      "p95": 22.16120000000228,
+      "min": 17.23180000000866,
+      "n": 20,
+      "bytes": 51769
+     }
+    }
+   }
+  },
+  {
+   "id": "stress-3000x2000-card",
+   "feature": "stress",
+   "title": "3000x2000 OG-style card (large canvas)",
+   "width": 3000,
+   "height": 2000,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 5510,
+     "pmAA": 1,
+     "pctStrict": 0.0918,
+     "pctAA": 0,
+     "meanAbs": 0.0444,
+     "maxAbs": 60,
+     "psnr": 48.11,
+     "ssim": 0.99967,
+     "ssimRgb": 0.99967
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 31.715400000015507,
+      "p95": 35.30879999999888,
+      "min": 29.82129999998142,
+      "n": 20,
+      "bytes": 24000000
+     },
+     "png": {
+      "median": 135.47649999998976,
+      "p95": 140.19430000000284,
+      "min": 133.95619999998598,
+      "n": 16,
+      "bytes": 353090
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 27.33320000002277,
+      "p95": 29.23530000000028,
+      "min": 24.931700000015553,
+      "n": 20,
+      "bytes": 24000000
+     },
+     "png": {
+      "median": 42.203200000018114,
+      "p95": 45.83249999998952,
+      "min": 40.44139999998151,
+      "n": 20,
+      "bytes": 353090
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 22.604200000001583,
+      "p95": 26.334600000001956,
+      "min": 21.1704000000027,
+      "n": 20,
+      "bytes": 24000000
+     },
+     "png": {
+      "median": 135.58719999997993,
+      "p95": 140.56420000002254,
+      "min": 132.784799999994,
+      "n": 16,
+      "bytes": 357654
+     }
+    }
+   }
+  },
+  {
+   "id": "fx-text-shadow",
+   "feature": "text-shadow",
+   "title": "text-shadow (blurred)",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 170,
+     "pmAA": 1,
+     "pctStrict": 0.1417,
+     "pctAA": 0.0008,
+     "meanAbs": 0.1052,
+     "maxAbs": 60,
+     "psnr": 45.2,
+     "ssim": 0.99961,
+     "ssimRgb": 0.99959
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.0002999999851454,
+      "p95": 1.3287000000127591,
+      "min": 0.8936000000103377,
+      "n": 289,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 4.363800000021001,
+      "p95": 5.61109999998007,
+      "min": 4.043399999995017,
+      "n": 68,
+      "bytes": 21386
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.7049999999871943,
+      "p95": 1.1313000000081956,
+      "min": 0.6226000000024214,
+      "n": 396,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.8693999999959487,
+      "p95": 2.4298999999882653,
+      "min": 1.630700000008801,
+      "n": 155,
+      "bytes": 21386
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.0033999999868684,
+      "p95": 1.2545000000100117,
+      "min": 0.9402000000118278,
+      "n": 289,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 5.442399999999907,
+      "p95": 6.623600000020815,
+      "min": 5.200100000016391,
+      "n": 54,
+      "bytes": 21678
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-dashed-dotted-border",
+   "feature": "known-gaps",
+   "title": "dashed / dotted / double borders",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "different",
+     "identical": false,
+     "pmStrict": 4219,
+     "pmAA": 3402,
+     "pctStrict": 3.5158,
+     "pctAA": 2.835,
+     "meanAbs": 3.7892,
+     "maxAbs": 233,
+     "psnr": 19.66,
+     "ssim": 0.93351,
+     "ssimRgb": 0.93524
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.7914999999920838,
+      "p95": 2.147899999981746,
+      "min": 1.642599999991944,
+      "n": 166,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.6093000000109896,
+      "p95": 2.89790000001085,
+      "min": 2.394800000009127,
+      "n": 115,
+      "bytes": 1958
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.060300000011921,
+      "p95": 1.5051999999850523,
+      "min": 0.9420000000100117,
+      "n": 270,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.4756000000052154,
+      "p95": 1.8181000000040513,
+      "min": 1.3506000000052154,
+      "n": 199,
+      "bytes": 1958
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.1932999999844469,
+      "p95": 0.34500000000116415,
+      "min": 0.18220000001019798,
+      "n": 1284,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.7937000000092667,
+      "p95": 0.9471000000194181,
+      "min": 0.7786999999952968,
+      "n": 367,
+      "bytes": 594
+     }
+    }
+   }
+  },
+  {
+   "id": "fx-filter-blur-grayscale",
+   "feature": "filter",
+   "title": "filter: blur() / grayscale()",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.763199999986682,
+      "p95": 2.0856999999959953,
+      "min": 1.6414999999979045,
+      "n": 167,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 4.951999999990221,
+      "p95": 5.522599999996601,
+      "min": 4.625499999994645,
+      "n": 60,
+      "bytes": 7514
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.1353999999992084,
+      "p95": 1.5795000000216532,
+      "min": 1.0417999999772292,
+      "n": 250,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.950700000015786,
+      "p95": 2.570899999991525,
+      "min": 1.6682999999902677,
+      "n": 149,
+      "bytes": 7514
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 1.124599999981001,
+      "p95": 1.5072999999974854,
+      "min": 1.0763999999908265,
+      "n": 253,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 3.4909000000043306,
+      "p95": 5.425000000017462,
+      "min": 3.316500000015367,
+      "n": 82,
+      "bytes": 7384
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-tailwind-tw",
+   "feature": "known-gaps",
+   "title": "Tailwind `tw` prop",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "different",
+     "identical": false,
+     "pmStrict": 119990,
+     "pmAA": 118193,
+     "pctStrict": 99.9917,
+     "pctAA": 98.4942,
+     "meanAbs": 105.1096,
+     "maxAbs": 255,
+     "psnr": 4.72,
+     "ssim": 0.26105,
+     "ssimRgb": 0.28926
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.3281999999890104,
+      "p95": 0.572199999995064,
+      "min": 0.3030999999900814,
+      "n": 811,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.3607999999949243,
+      "p95": 1.5785000000032596,
+      "min": 1.2149999999965075,
+      "n": 220,
+      "bytes": 2206
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.29290000000037253,
+      "p95": 0.6649000000033993,
+      "min": 0.24530000000959262,
+      "n": 866,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8152000000118278,
+      "p95": 1.0709999999962747,
+      "min": 0.7626999999920372,
+      "n": 350,
+      "bytes": 2206
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.14470000000437722,
+      "p95": 0.31060000002617016,
+      "min": 0.11089999999967404,
+      "n": 1596,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.8000999999931082,
+      "p95": 0.9970000000030268,
+      "min": 0.7786000000196509,
+      "n": 358,
+      "bytes": 1295
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-oklch-color",
+   "feature": "known-gaps",
+   "title": "oklch() / color-mix() colours",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "error": "bm-engine: invalid value for style property backgroundColor"
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "error/unsupported",
+     "error": "bm-engine: invalid value for style property backgroundColor"
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "bm": {
+     "raw": {
+      "error": "bm-engine: invalid value for style property backgroundColor"
+     },
+     "png": {
+      "error": "bm-engine: invalid value for style property backgroundColor"
+     }
+    },
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.22449999998207204,
+      "p95": 0.4188999999896623,
+      "min": 0.1688000000140164,
+      "n": 1171,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0895000000018626,
+      "p95": 1.2519000000029337,
+      "min": 1.0320000000065193,
+      "n": 271,
+      "bytes": 777
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.21199999999953434,
+      "p95": 0.5332000000053085,
+      "min": 0.14370000001508743,
+      "n": 1098,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.6509000000078231,
+      "p95": 0.8435000000172295,
+      "min": 0.6076999999932013,
+      "n": 441,
+      "bytes": 777
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-svg-image",
+   "feature": "known-gaps",
+   "title": "SVG image source",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "different",
+     "identical": false,
+     "pmStrict": 15228,
+     "pmAA": 14682,
+     "pctStrict": 12.69,
+     "pctAA": 12.235,
+     "meanAbs": 11.8429,
+     "maxAbs": 233,
+     "psnr": 14.53,
+     "ssim": 0.93442,
+     "ssimRgb": 0.9257
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.2918999999819789,
+      "p95": 0.5217000000120606,
+      "min": 0.2782000000006519,
+      "n": 908,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.088000000017928,
+      "p95": 1.274199999985285,
+      "min": 1.0295999999798369,
+      "n": 271,
+      "bytes": 1788
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.22920000000158325,
+      "p95": 0.5170999999972992,
+      "min": 0.1967000000004191,
+      "n": 1081,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.6356000000087079,
+      "p95": 0.809899999992922,
+      "min": 0.5963000000047032,
+      "n": 456,
+      "bytes": 1788
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.13879999998607673,
+      "p95": 0.2691000000049826,
+      "min": 0.12489999999525025,
+      "n": 1690,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.573099999979604,
+      "p95": 0.6690999999991618,
+      "min": 0.5673999999999069,
+      "n": 508,
+      "bytes": 108
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-inline-box-decoration",
+   "feature": "known-gaps",
+   "title": "inline spans with their own background / padding (matches here only because takumi also skips it for bare text nodes)",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "equivalent",
+     "identical": false,
+     "pmStrict": 388,
+     "pmAA": 1,
+     "pctStrict": 0.3233,
+     "pctAA": 0.0008,
+     "meanAbs": 0.1948,
+     "maxAbs": 60,
+     "psnr": 40.92,
+     "ssim": 0.99898,
+     "ssimRgb": 0.99898
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.5507999999972526,
+      "p95": 0.9588999999978114,
+      "min": 0.47170000002370216,
+      "n": 484,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.7468000000226311,
+      "p95": 2.428799999994226,
+      "min": 1.549700000003213,
+      "n": 169,
+      "bytes": 4660
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.4323000000149477,
+      "p95": 0.830599999986589,
+      "min": 0.36170000000856817,
+      "n": 598,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0783999999985099,
+      "p95": 1.3623999999836087,
+      "min": 0.9155999999784399,
+      "n": 271,
+      "bytes": 4660
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.24480000001494773,
+      "p95": 0.38159999999334104,
+      "min": 0.2288000000116881,
+      "n": 1069,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.507500000006985,
+      "p95": 1.6343000000051688,
+      "min": 1.4435999999986961,
+      "n": 198,
+      "bytes": 4312
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-mix-blend-mode",
+   "feature": "known-gaps",
+   "title": "mix-blend-mode",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "close",
+     "identical": false,
+     "pmStrict": 5280,
+     "pmAA": 5081,
+     "pctStrict": 4.4,
+     "pctAA": 4.2342,
+     "meanAbs": 3.0469,
+     "maxAbs": 180,
+     "psnr": 21.63,
+     "ssim": 0.96766,
+     "ssimRgb": 0.97224
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.7270000000135042,
+      "p95": 0.9915000000037253,
+      "min": 0.6803999999829102,
+      "n": 388,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.6486999999906402,
+      "p95": 2.042600000015227,
+      "min": 1.4952999999804888,
+      "n": 179,
+      "bytes": 2247
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.4328000000095926,
+      "p95": 0.8024000000150409,
+      "min": 0.38430000000516884,
+      "n": 610,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 0.9176000000152271,
+      "p95": 1.1883000000088941,
+      "min": 0.8268999999854714,
+      "n": 319,
+      "bytes": 2247
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.3244000000122469,
+      "p95": 0.4630999999935739,
+      "min": 0.3164000000106171,
+      "n": 856,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.1159000000043306,
+      "p95": 1.253900000010617,
+      "min": 1.0855999999912456,
+      "n": 265,
+      "bytes": 1895
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-clip-path",
+   "feature": "known-gaps",
+   "title": "clip-path",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "different",
+     "identical": false,
+     "pmStrict": 24200,
+     "pmAA": 22823,
+     "pctStrict": 20.1667,
+     "pctAA": 19.0192,
+     "meanAbs": 18.1246,
+     "maxAbs": 233,
+     "psnr": 13.6,
+     "ssim": 0.85938,
+     "ssimRgb": 0.86272
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.6150999999954365,
+      "p95": 0.9856999999901745,
+      "min": 0.5841000000073109,
+      "n": 444,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 6.457300000009127,
+      "p95": 6.895799999998417,
+      "min": 6.195899999991525,
+      "n": 48,
+      "bytes": 8855
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.45029999999678694,
+      "p95": 0.8766999999934342,
+      "min": 0.3498000000254251,
+      "n": 526,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.2044000000169035,
+      "p95": 1.605199999990873,
+      "min": 1.0499999999883585,
+      "n": 237,
+      "bytes": 8855
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.2582000000111293,
+      "p95": 0.4004000000131782,
+      "min": 0.23719999997410923,
+      "n": 1014,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.8659999999799766,
+      "p95": 2.189799999992829,
+      "min": 1.7864000000117812,
+      "n": 154,
+      "bytes": 2479
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-background-clip-text",
+   "feature": "known-gaps",
+   "title": "background-clip: text (gradient text)",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "different",
+     "identical": false,
+     "pmStrict": 23970,
+     "pmAA": 22599,
+     "pctStrict": 19.975,
+     "pctAA": 18.8325,
+     "meanAbs": 17.5772,
+     "maxAbs": 234,
+     "psnr": 14.16,
+     "ssim": 0.73732,
+     "ssimRgb": 0.75835
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 1.9103999999933876,
+      "p95": 2.689199999993434,
+      "min": 1.637700000021141,
+      "n": 151,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 5.393700000015087,
+      "p95": 5.958299999998417,
+      "min": 5.070999999996275,
+      "n": 56,
+      "bytes": 8811
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 1.3853999999992084,
+      "p95": 2.0984999999927823,
+      "min": 1.0898999999917578,
+      "n": 206,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 2.1099000000103842,
+      "p95": 2.8220000000146683,
+      "min": 1.8321000000287313,
+      "n": 137,
+      "bytes": 8811
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.23670000000856817,
+      "p95": 0.3467999999993481,
+      "min": 0.2258000000147149,
+      "n": 1157,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.8587999999872409,
+      "p95": 2.0212999999930616,
+      "min": 1.7863000000070315,
+      "n": 160,
+      "bytes": 2969
+     }
+    }
+   }
+  },
+  {
+   "id": "gap-text-wrap-balance",
+   "feature": "known-gaps",
+   "title": "text-wrap: balance",
+   "width": 600,
+   "height": 200,
+   "renders": {
+    "takumi-wasm": {
+     "ok": true
+    },
+    "bm": {
+     "ok": true
+    },
+    "takumi-native": {
+     "ok": true
+    }
+   },
+   "cmp": {
+    "bm": {
+     "verdict": "close",
+     "identical": false,
+     "pmStrict": 815,
+     "pmAA": 0,
+     "pctStrict": 0.6792,
+     "pctAA": 0,
+     "meanAbs": 0.3311,
+     "maxAbs": 60,
+     "psnr": 36.79,
+     "ssim": 0.99815,
+     "ssimRgb": 0.99815
+    },
+    "takumi-native": {
+     "verdict": "identical",
+     "identical": true,
+     "pmStrict": 0,
+     "pmAA": 0,
+     "pctStrict": 0,
+     "pctAA": 0,
+     "meanAbs": 0,
+     "maxAbs": 0,
+     "psnr": 100,
+     "ssim": 1,
+     "ssimRgb": 1
+    }
+   },
+   "perf": {
+    "takumi-wasm": {
+     "raw": {
+      "median": 0.4763000000093598,
+      "p95": 0.7853999999933876,
+      "min": 0.4096999999892432,
+      "n": 584,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.5579999999899883,
+      "p95": 1.914100000023609,
+      "min": 1.4671999999845866,
+      "n": 189,
+      "bytes": 4488
+     }
+    },
+    "takumi-native": {
+     "raw": {
+      "median": 0.376300000003539,
+      "p95": 0.733700000011595,
+      "min": 0.31260000000474975,
+      "n": 690,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.0341999999945983,
+      "p95": 1.3031999999948312,
+      "min": 0.8663999999989755,
+      "n": 282,
+      "bytes": 4488
+     }
+    },
+    "bm": {
+     "raw": {
+      "median": 0.2166000000142958,
+      "p95": 0.3669999999983702,
+      "min": 0.20429999998304993,
+      "n": 1187,
+      "bytes": 480000
+     },
+     "png": {
+      "median": 1.4976000000024214,
+      "p95": 1.8896999999997206,
+      "min": 1.41459999998915,
+      "n": 195,
+      "bytes": 4138
+     }
+    }
+   }
+  }
+ ]
+}

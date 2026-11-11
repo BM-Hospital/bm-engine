@@ -1,7 +1,7 @@
 # bm-engine
 
 Bản port bằng **Zig 0.17** của phần lõi [takumi](https://github.com/kane50613/takumi) (cây node/JSX → ảnh),
-biên dịch ra **một file `.wasm` ~318 KiB** (takumi: 4 235 KiB) chạy được ở cả trình duyệt lẫn Node.js / Bun /
+biên dịch ra **một file `.wasm` ~321 KiB** (takumi: 4 235 KiB) chạy được ở cả trình duyệt lẫn Node.js / Bun /
 Deno / edge runtime. Module wasm **không có import nào** (không WASI, không glue wasm-bindgen).
 
 - Nhận cùng định dạng node của takumi (`{ type: "container" | "text" | "image", style, children }`),
