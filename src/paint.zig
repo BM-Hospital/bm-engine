@@ -780,11 +780,52 @@ const Painter = struct {
         return gm;
     }
 
+    /// text-shadow: the glyph masks of the paragraph merged into one A8 mask, blurred and filled.
+    noinline fn paintTextShadows(p: *Painter, ctx: *const Ctx, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, cw: f32) Error!void {
+        const cs = n.cs;
+        const vis = region(ctx);
+        if (vis.isEmpty()) return;
+        var i = cs.text_shadow.len;
+        while (i > 0) {
+            i -= 1;
+            const sh = cs.text_shadow[i];
+            const col = cs.resolveColor(sh.color);
+            if (col.a == 0) continue;
+            const sigma = sh.blur * 0.5;
+            const reach = raster.blurReach(sigma);
+            const pad = cs.font_size + 2;
+            const sarea: Rect = .{ .x = x + sh.x - pad, .y = y + sh.y - pad, .w = @max(cw, tl.width) + 2 * pad, .h = tl.height + 2 * pad };
+            const b = toIRect(sarea).intersect(vis.expand(reach));
+            if (b.isEmpty()) continue;
+            var mask = raster.Mask.init(p.a, b) catch return error.OutOfMemory;
+            for (tl.glyphs) |g| {
+                if (g.size > 400) continue;
+                const fc = p.f.r.fonts.face(g.face);
+                const rcs = if (g.user < p.f.run_styles.items.len) p.f.run_styles.items[g.user] else cs;
+                var synth: u2 = 0;
+                if (rcs.font_style != .normal and !fc.italic) synth |= 1;
+                if (rcs.font_weight >= 600 and fc.weight < 600) synth |= 2;
+                const qx = roundHalfUp((x + g.x + sh.x) * 4) * 0.25;
+                const ix = @floor(qx);
+                const sub: u2 = @intFromFloat(std.math.clamp((qx - ix) * 4, 0, 3));
+                const iy = roundHalfUp(y + g.y + sh.y);
+                if (@abs(ix) > 1.0e6 or @abs(iy) > 1.0e6) continue;
+                const gm = p.glyphMask(g.face, g.gid, g.size, sub, synth) orelse continue;
+                if (gm.w == 0 or gm.h == 0) continue;
+                const one: raster.Mask = .{ .bounds = .{ .x = gm.x + @as(i32, @intFromFloat(ix)), .y = gm.y + @as(i32, @intFromFloat(iy)), .w = gm.w, .h = gm.h }, .data = gm.data };
+                mergeMax(&mask, &one);
+            }
+            raster.blurMaskClipped(p.a, &mask, sigma, vis) catch return error.OutOfMemory;
+            raster.fillMask(ctx.dst, &mask, &.{ .solid = rcolor(col) }, ctx.clip);
+        }
+    }
+
     noinline fn paintText(p: *Painter, ctx: *const Ctx, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
         const para = n.para orelse return;
         const tl = para.layout(p.a, cw) catch return error.OutOfMemory;
         const f = p.f;
         const plain = ctx.plain();
+        if (plain and n.cs.text_shadow.len > 0) try p.paintTextShadows(ctx, n, &tl, x, y, cw);
         for (tl.glyphs) |g| {
             const rcs = if (g.user < f.run_styles.items.len) f.run_styles.items[g.user] else n.cs;
             if (rcs.color.a == 0 or rcs.visibility != .visible) continue;
@@ -939,11 +980,16 @@ const Painter = struct {
             }
             const op = cs.opacity;
             if (!(op > 0)) return;
-            if (op < 1) {
+            if (op < 1 or cs.filter.len > 0) {
                 // Offscreen group, limited to the subtree's visual bounds when they are known.
                 var reg = region(&ctx);
+                var blur_reach: u32 = 0;
+                for (cs.filter) |fl| switch (fl) {
+                    .blur => |r| blur_reach += raster.blurReach(r * tfScale(ctx.tf)),
+                    else => {},
+                };
                 if (ctx.plain()) {
-                    if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2));
+                    if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2 + blur_reach));
                 }
                 if (reg.isEmpty()) return;
                 if (p.layer_depth >= p.layers.items.len) {
@@ -965,11 +1011,99 @@ const Painter = struct {
                 try p.paintBox(id, x, y, &lctx, depth);
                 var comp = reg_clip;
                 if (ctx.clip) |c| comp = raster.clipIntersect(p.a, c.*, comp) catch return error.OutOfMemory;
+                if (cs.filter.len > 0) {
+                    // Filters run on a copy of the group region.
+                    var sub = Pixmap.init(p.a, reg.w, reg.h) catch return error.OutOfMemory;
+                    const lsrc = &p.layers.items[p.layer_depth - 1];
+                    var ry: usize = 0;
+                    while (ry < reg.h) : (ry += 1) {
+                        const off = (@as(usize, @intCast(reg.y)) + ry) * stride + @as(usize, @intCast(reg.x)) * 4;
+                        @memcpy(sub.data[ry * reg.w * 4 ..][0 .. @as(usize, reg.w) * 4], lsrc.data[off..][0 .. @as(usize, reg.w) * 4]);
+                    }
+                    try p.applyFilters(&sub, cs, tfScale(ctx.tf));
+                    raster.drawPixmap(ctx.dst, &sub, Affine.translate(@floatFromInt(reg.x), @floatFromInt(reg.y)), op, .nearest, &comp);
+                    return;
+                }
                 raster.drawPixmap(ctx.dst, &p.layers.items[p.layer_depth - 1], Affine.identity, op, .nearest, &comp);
                 return;
             }
         }
         try p.paintBox(id, x, y, &ctx, depth);
+    }
+
+    /// CSS filter functions on a premultiplied pixmap (drop-shadow is not implemented).
+    noinline fn applyFilters(p: *Painter, pm: *Pixmap, cs: *const CS, scale: f32) Error!void {
+        for (cs.filter) |fl| {
+            // colour matrix rows (r, g, b) + offset, applied to straight colour; alpha factor
+            var m: [3][4]f32 = .{ .{ 1, 0, 0, 0 }, .{ 0, 1, 0, 0 }, .{ 0, 0, 1, 0 } };
+            var alpha: f32 = 1;
+            switch (fl) {
+                .blur => |r| {
+                    raster.blurPixmap(p.a, pm, r * scale) catch return error.OutOfMemory;
+                    continue;
+                },
+                .drop_shadow => continue,
+                .opacity => |a| alpha = std.math.clamp(a, 0, 1),
+                .brightness => |b| m = .{ .{ b, 0, 0, 0 }, .{ 0, b, 0, 0 }, .{ 0, 0, b, 0 } },
+                .contrast => |c| {
+                    const o = 0.5 - 0.5 * c;
+                    m = .{ .{ c, 0, 0, o }, .{ 0, c, 0, o }, .{ 0, 0, c, o } };
+                },
+                .invert => |a_in| {
+                    const a = std.math.clamp(a_in, 0, 1);
+                    const k = 1 - 2 * a;
+                    m = .{ .{ k, 0, 0, a }, .{ 0, k, 0, a }, .{ 0, 0, k, a } };
+                },
+                .grayscale => |a_in| {
+                    const t = 1 - std.math.clamp(a_in, 0, 1);
+                    m = .{
+                        .{ 0.2126 + 0.7874 * t, 0.7152 - 0.7152 * t, 0.0722 - 0.0722 * t, 0 },
+                        .{ 0.2126 - 0.2126 * t, 0.7152 + 0.2848 * t, 0.0722 - 0.0722 * t, 0 },
+                        .{ 0.2126 - 0.2126 * t, 0.7152 - 0.7152 * t, 0.0722 + 0.9278 * t, 0 },
+                    };
+                },
+                .sepia => |a_in| {
+                    const t = 1 - std.math.clamp(a_in, 0, 1);
+                    m = .{
+                        .{ 0.393 + 0.607 * t, 0.769 - 0.769 * t, 0.189 - 0.189 * t, 0 },
+                        .{ 0.349 - 0.349 * t, 0.686 + 0.314 * t, 0.168 - 0.168 * t, 0 },
+                        .{ 0.272 - 0.272 * t, 0.534 - 0.534 * t, 0.131 + 0.869 * t, 0 },
+                    };
+                },
+                .saturate => |sv| m = .{
+                    .{ 0.213 + 0.787 * sv, 0.715 - 0.715 * sv, 0.072 - 0.072 * sv, 0 },
+                    .{ 0.213 - 0.213 * sv, 0.715 + 0.285 * sv, 0.072 - 0.072 * sv, 0 },
+                    .{ 0.213 - 0.213 * sv, 0.715 - 0.715 * sv, 0.072 + 0.928 * sv, 0 },
+                },
+                .hue_rotate => |deg| {
+                    const sc = rtypes.sinCos(deg * (std.math.pi / 180.0));
+                    const sn = sc[0];
+                    const cn = sc[1];
+                    m = .{
+                        .{ 0.213 + cn * 0.787 - sn * 0.213, 0.715 - cn * 0.715 - sn * 0.715, 0.072 - cn * 0.072 + sn * 0.928, 0 },
+                        .{ 0.213 - cn * 0.213 + sn * 0.143, 0.715 + cn * 0.285 + sn * 0.140, 0.072 - cn * 0.072 - sn * 0.283, 0 },
+                        .{ 0.213 - cn * 0.213 - sn * 0.787, 0.715 - cn * 0.715 + sn * 0.715, 0.072 + cn * 0.928 + sn * 0.072, 0 },
+                    };
+                },
+            }
+            var i: usize = 0;
+            const d = pm.data;
+            while (i + 4 <= d.len) : (i += 4) {
+                const a8 = d[i + 3];
+                if (a8 == 0) continue;
+                const af = @as(f32, @floatFromInt(a8));
+                const inv = 1.0 / af;
+                const r0 = @as(f32, @floatFromInt(d[i])) * inv;
+                const g0 = @as(f32, @floatFromInt(d[i + 1])) * inv;
+                const b0 = @as(f32, @floatFromInt(d[i + 2])) * inv;
+                const na = af * alpha;
+                inline for (0..3) |k| {
+                    const v = std.math.clamp(m[k][0] * r0 + m[k][1] * g0 + m[k][2] * b0 + m[k][3], 0, 1);
+                    d[i + k] = @intFromFloat(v * na + 0.5);
+                }
+                d[i + 3] = @intFromFloat(na + 0.5);
+            }
+        }
     }
 
     fn paintBox(p: *Painter, id: u32, x: f32, y: f32, ctx: *const Ctx, depth: u32) Error!void {

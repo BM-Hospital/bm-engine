@@ -15,9 +15,10 @@ import images from "./images.mjs";
 import grid from "./grid.mjs";
 import cards from "./cards.mjs";
 import stress from "./stress.mjs";
+import gaps from "./gaps.mjs";
 
 /** All cases: { id, feature, title, width, height, node, images?, fonts?, notes? } */
-export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradients, radial, shadow, opacity, overflow, transform, text, images, grid, cards, stress].flat();
+export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradients, radial, shadow, opacity, overflow, transform, text, images, grid, cards, stress, gaps].flat();
 const ids = new Set();
 for (const k of ALL_CASES) { if (ids.has(k.id)) throw new Error("duplicate fixture id " + k.id); ids.add(k.id); }
 

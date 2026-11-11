@@ -31,7 +31,7 @@ const props = {
   fontSize: () => pick([0, 1, 8, 16, 24, 72, 300, "2em", "150%"]), fontWeight: () => pick([100, 400, 700, 900, "bold"]), fontStyle: () => pick(["italic", "normal"]), fontFamily: () => pick(["Inter", "Noto Sans", "Nope, Inter", "serif"]),
   lineHeight: () => pick([0, 1, 1.5, "40px", "normal", "200%"]), letterSpacing: () => pick([0, 2, -1, "0.1em"]), textAlign: () => pick(["left", "center", "right", "justify", "end"]), textTransform: () => pick(["uppercase", "lowercase", "capitalize"]),
   whiteSpace: () => pick(["nowrap", "pre", "pre-wrap", "pre-line", "normal"]), wordBreak: () => pick(["break-all", "keep-all", "normal"]), overflowWrap: () => pick(["anywhere", "break-word"]), textOverflow: () => pick(["ellipsis", "clip"]), lineClamp: () => pick([1, 2, 3]),
-  textDecoration: () => pick(["underline", "line-through", "underline overline"]), objectFit: () => pick(["cover", "contain", "fill", "none", "scale-down"]), objectPosition: () => pick(["top left", "20% 80%"]), visibility: () => pick(["hidden", "visible"]),
+  textDecoration: () => pick(["underline", "line-through", "underline overline"]), textShadow: () => pick(["0 2px 4px red", "1px 1px 0 #000, 0 0 30px blue"]), filter: () => pick(["blur(3px)", "grayscale(1) brightness(1.2)", "hue-rotate(90deg) invert(0.5) sepia(1) saturate(2) contrast(0.5) opacity(0.5)", "blur(500px)"]), objectFit: () => pick(["cover", "contain", "fill", "none", "scale-down"]), objectPosition: () => pick(["top left", "20% 80%"]), visibility: () => pick(["hidden", "visible"]),
 };
 const keys = Object.keys(props);
 const style = () => { const s = {}; const n = Math.floor(rnd() * 9); for (let i = 0; i < n; i++) { const k = pick(keys); s[k] = props[k](); } return s; };
