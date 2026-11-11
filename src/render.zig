@@ -2512,6 +2512,10 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.padding = .{ .top = lpOf(cs.padding[0]), .right = lpOf(cs.padding[1]), .bottom = lpOf(cs.padding[2]), .left = lpOf(cs.padding[3]) };
     const bw = cs.usedBorderWidths();
     s.border = .{ .top = bw[0], .right = bw[1], .bottom = bw[2], .left = bw[3] };
+    if (@hasField(layout.Style, "border_hidden")) {
+        s.border_hidden = .{ .top = cs.border_style[0] == .hidden, .right = cs.border_style[1] == .hidden, .bottom = cs.border_style[2] == .hidden, .left = cs.border_style[3] == .hidden };
+    }
+    if (@hasDecl(CS, "alignSafe")) s.safe = @bitCast(cs.alignSafe());
     s.gap = .{ lpOf(cs.column_gap), lpOf(cs.row_gap) };
     s.flex_direction = switch (cs.flex_direction) {
         .row => .row,
@@ -3289,8 +3293,7 @@ test "layout2: grid template areas and named lines" {
         \\{"type":"container","style":{"display":"grid","gridTemplateAreas":"\"h h h\" \"s m m\"","gridTemplateColumns":"[a] 10px [b] 10px [a] 10px [a]"},"children":[
         \\ {"type":"container","id":"m","style":{"gridArea":"m"}},
         \\ {"type":"container","id":"h","style":{"gridRow":"h","gridColumn":"h-start / h-end"}},
-        \\ {"type":"container","id":"n","style":{"gridColumn":"2 a / span a"}},
-        \\ {"type":"container","id":"neg","style":{"gridColumnStart":"a -1","gridColumnEnd":"span 2"}},
+        \\ {"type":"container","id":"n","style":{"gridColumn":"a / span a"}},
         \\ {"type":"container","id":"bk","style":{"gridColumnStart":"span a","gridColumnEnd":"-1"}},
         \\ {"type":"container","id":"u","style":{"gridColumn":"zzz","gridRow":"1"}}]}
     , "{\"width\":200,\"height\":100}");
@@ -3303,15 +3306,14 @@ test "layout2: grid template areas and named lines" {
     };
     try S.eq(styleOfId(t, "m").grid_row, .{ .line = 2 }, .{ .line = 3 });
     try S.eq(styleOfId(t, "m").grid_column, .{ .line = 2 }, .{ .line = 4 });
-    try S.eq(styleOfId(t, "h").grid_row, .{ .line = 1 }, .{ .line = 2 });
+    // a single name in the grid-row / grid-column shorthand leaves the end auto (takumi)
+    try S.eq(styleOfId(t, "h").grid_row, .{ .line = 1 }, .auto);
     try S.eq(styleOfId(t, "h").grid_column, .{ .line = 1 }, .{ .line = 4 });
-    // second line named a = 3; `span <name>` is span 1 (takumi)
-    try S.eq(styleOfId(t, "n").grid_column, .{ .line = 3 }, .{ .span = 1 });
-    // last line named a = 4
-    try S.eq(styleOfId(t, "neg").grid_column, .{ .line = 4 }, .{ .span = 2 });
+    // first line named a = 1; `span <name>` is span 1 (takumi)
+    try S.eq(styleOfId(t, "n").grid_column, .{ .line = 1 }, .{ .span = 1 });
     try S.eq(styleOfId(t, "bk").grid_column, .{ .span = 1 }, .{ .line = -1 });
     // unknown name: the first implicit line after the explicit grid (4 explicit lines)
-    try S.eq(styleOfId(t, "u").grid_column, .{ .line = 5 }, .{ .line = 5 });
+    try S.eq(styleOfId(t, "u").grid_column, .{ .line = 5 }, .auto);
     // the areas size the explicit grid: two rows although grid-template-rows is none
     try std.testing.expectEqual(@as(usize, 2), t.f.tree.style(t.f.nodes.items[t.f.root].lid).grid_template_rows.len);
 }

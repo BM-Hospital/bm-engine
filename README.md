@@ -1,7 +1,7 @@
 # bm-engine
 
 Bản port bằng **Zig 0.17** của phần lõi [takumi](https://github.com/kane50613/takumi) (cây node/JSX → ảnh),
-biên dịch ra **một file `.wasm` ~321 KiB** (takumi: 4 235 KiB) chạy được ở cả trình duyệt lẫn Node.js / Bun /
+biên dịch ra wasm theo ba cấu hình — **core 429 KiB, standard 850 KiB, full 1 070 KiB** (takumi: 4 235 KiB) — chạy được ở cả trình duyệt lẫn Node.js / Bun /
 Deno / edge runtime. Module wasm **không có import nào** (không WASI, không glue wasm-bindgen).
 
 - Nhận cùng định dạng node của takumi (`{ type: "container" | "text" | "image", style, children }`),
@@ -16,6 +16,19 @@ Deno / edge runtime. Module wasm **không có import nào** (không WASI, không
 
 Kết quả benchmark và so sánh điểm ảnh với takumi: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 Kiến trúc: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Ghi chú ngữ nghĩa takumi: [docs/TAKUMI_NOTES.md](docs/TAKUMI_NOTES.md).
+
+## Cấu hình build
+
+| Profile | Kích thước (wasm-opt) | File | Nội dung |
+|:--|--:|:--|:--|
+| core | 428.5 KiB | `js/bm_engine.core.wasm` (`js/node-core.mjs`) | node JSON + style inline, flex/grid/block, TTF tĩnh, PNG/JPEG |
+| standard | 849.6 KiB | `js/bm_engine.standard.wasm` (`js/node-standard.mjs`) | + CSS, Tailwind, HTML, SVG, WOFF2, font biến thiên, CFF, bảng, float, hiệu ứng |
+| full | 1 070.0 KiB | `js/bm_engine.wasm` (`js/node.mjs`) | + chữ phức/bidi, emoji màu, animation, renderSvg, codec phụ |
+
+`node scripts/build.mjs` build cả ba (`--profile=core|standard|full` để build một); `zig build -Dprofile=core -D<cờ>=true|false` để tuỳ biến.
+Add-on `js/bm_woff.wasm` (84 KiB) + `js/addons.mjs` cho phép bản core nạp WOFF/WOFF2 theo yêu cầu. `features` (export của `js/index.mjs`) cho biết bản đang nạp có gì.
+Giai đoạn 2 đã port thêm: stylesheet/selector, Tailwind, HTML, SVG vào/ra (`renderSvg`), WOFF2, font biến thiên, CFF, emoji màu, shaping đầy đủ + bidi,
+bảng, float, animation + `renderAnimation`, clip-path/mask/blend, viền nét đứt, WebP lossy, ảnh động, ICO. Test trình duyệt thật: `cd bench && npm run browser`.
 
 ## Dùng thử
 

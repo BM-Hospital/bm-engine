@@ -4,3 +4,4 @@ node_modules/
 zig-out/
 bench/out/
 *.tmp
+nul
