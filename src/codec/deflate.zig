@@ -1,6 +1,6 @@
 //! DEFLATE / zlib compressor (RFC 1950/1951).
-//! LZ77 with a 15-bit hash of 4 bytes + 32 KB hash chains (chain depth, nice length and
-//! one-step lazy matching set by `Level`), symbols buffered per block (up to 64 K), each block
+//! LZ77 with a 15-bit hash of 4 bytes (3..6 via `Options.hash_len`) + 32 KB hash chains (chain
+//! depth, nice length and one-step lazy matching set by `Level`), symbols buffered per block (up to 16 K), each block
 //! emitted as the cheapest of dynamic Huffman / fixed Huffman / stored (exact bit costs).
 //!
 //! Allocation: ~0.5 MB of working tables are allocated from `alloc` and freed before return;
@@ -15,7 +15,8 @@ pub const Level = enum {
     fastest,
     /// Short chains, greedy (default for PNG).
     fast,
-    /// zlib-6 like: chain 32, lazy.
+    /// chain 32 (8 for the lazy probe after a match >= 8), lazy; long pixel-run matches
+    /// only hash their ends.
     default,
     /// chain 512, lazy, nice 258.
     best,
@@ -41,7 +42,7 @@ fn cfgOf(level: Level) Cfg {
     return switch (level) {
         .fastest => .{ .chain = 1, .nice = 258, .lazy = 0, .max_insert = 0 },
         .fast => .{ .chain = 8, .nice = 258, .lazy = 0, .max_insert = 258 },
-        .default => .{ .chain = 64, .nice = 258, .lazy = 258, .max_insert = 258, .run_insert = 16, .good = 16 },
+        .default => .{ .chain = 32, .nice = 258, .lazy = 258, .max_insert = 258, .run_insert = 16, .good = 8 },
         .best => .{ .chain = 512, .nice = 258, .lazy = 258, .max_insert = 258, .min3 = true, .hash_len = 3 },
     };
 }
@@ -338,7 +339,6 @@ inline fn read32(s: []const u8, i: usize) u32 {
 inline fn hashAt(s: []const u8, i: usize, m: u64) u32 {
     return @intCast(((bytes.le64(s, i) & m) *% 0x9E3779B97F4A7C15) >> (64 - hash_bits));
 }
-
 
 inline fn matchLen(s: []const u8, a: usize, b: usize, max: usize) usize {
     var l: usize = 0;
@@ -748,6 +748,53 @@ test "deflate round trips at every level" {
         for (big[0..len]) |*b| b.* = rnd.uintLessThan(u8, alpha);
         _ = try roundTrip(big[0..len], levels[rnd.uintLessThan(usize, 4)]);
     }
+}
+
+test "hash_len option, reset and markHistory" {
+    var prng = std.Random.DefaultPrng.init(11);
+    const rnd = prng.random();
+    const data = try testing.allocator.alloc(u8, 200_000);
+    defer testing.allocator.free(data);
+    for (data, 0..) |*b, i| b.* = @truncate((i % 997) / 9 + (if (rnd.uintLessThan(u8, 30) == 0) rnd.int(u8) & 3 else 0));
+    for ([_]u8{ 3, 4, 5, 6 }) |hl| for ([_]Level{ .fast, .default }) |lv| {
+        const z = try compressEx(testing.allocator, data, .{ .level = lv, .dist_hints = .{ 1, 997 }, .hash_len = hl });
+        defer testing.allocator.free(z);
+        const back = try inflate.zlibDecompressAlloc(testing.allocator, z, data.len, .{ .verify_checksum = true });
+        defer testing.allocator.free(back);
+        try testing.expectEqualSlices(u8, data, back);
+    };
+    // reset() gives the same bytes as a fresh raw stream; history makes the next part smaller
+    var s = try Stream.init(testing.allocator, .{ .level = .fast }, 1024, 0, false);
+    defer s.deinit();
+    try s.write(data[0..50_000]);
+    try s.finish();
+    const fresh = try testing.allocator.dupe(u8, s.w.buf[0..s.w.pos]);
+    defer testing.allocator.free(fresh);
+    s.reset();
+    try s.write(data[0..50_000]);
+    try s.finish();
+    try testing.expectEqualSlices(u8, fresh, s.w.buf[0..s.w.pos]);
+    s.reset();
+    try s.write(data[50_000..60_000]);
+    try s.finish();
+    const alone = s.w.pos;
+    s.reset();
+    try s.write(data[40_000..50_000]);
+    s.markHistory();
+    try s.write(data[50_000..60_000]);
+    try s.finish();
+    try testing.expect(s.w.pos < alone);
+    // Valid deflate once the history precedes it as a (non-final) stored block.
+    const cat = try testing.allocator.alloc(u8, 5 + 10_000 + s.w.pos);
+    defer testing.allocator.free(cat);
+    cat[0] = 0;
+    std.mem.writeInt(u16, cat[1..3], 10_000, .little);
+    std.mem.writeInt(u16, cat[3..5], ~@as(u16, 10_000), .little);
+    @memcpy(cat[5..][0..10_000], data[40_000..50_000]);
+    @memcpy(cat[10_005..], s.w.buf[0..s.w.pos]);
+    const back = try inflate.inflateAlloc(testing.allocator, cat, 20_000);
+    defer testing.allocator.free(back);
+    try testing.expectEqualSlices(u8, data[40_000..60_000], back);
 }
 
 test "streamed writes in random chunks give the same bytes as one-shot" {

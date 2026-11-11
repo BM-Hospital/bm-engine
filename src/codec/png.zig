@@ -499,8 +499,8 @@ pub const FilterStrategy = enum {
     adaptive,
     /// Per row: minimum sum among Sub/Up/Paeth (skips the rarely-best None/Avg).
     adaptive_fast,
-    /// takumi-like: palette images use None; RGB(A) images try None vs adaptive on a 1-in-32
-    /// row sample (deflated at `.fastest`) and keep the smaller.
+    /// Palette images use None; RGB(A) images deflate a sample of rows (3-6 bands of 8, see
+    /// `pickStrategy`) both unfiltered and with `.adaptive_fast` and keep the smaller.
     auto,
 };
 
@@ -653,14 +653,14 @@ const Palette = struct {
     /// Index of a colour known to be in the palette (0 if absent); first probe inlined.
     inline fn find(p: *Palette, key: u32) u8 {
         const s = (key *% 0x9E3779B1) >> 22;
-        if (p.keys[s] == key and p.ents[s] != 0) return @intCast(p.ents[s] - 1);
+        if (p.ents[s] != 0 and p.keys[s] == key) return @intCast(p.ents[s] - 1);
         return p.lookup(key) orelse 0;
     }
 
     /// Inserts `key` if new; false when the palette is full.
     inline fn has(p: *Palette, key: u32) bool {
         const s = (key *% 0x9E3779B1) >> 22;
-        if (p.keys[s] == key and p.ents[s] != 0) return true;
+        if (p.ents[s] != 0 and p.keys[s] == key) return true;
         return p.lookup(key) != null;
     }
 
@@ -728,7 +728,6 @@ const Palette = struct {
         };
         return true;
     }
-
 };
 
 /// Source rows converted to the packed scanline pixel format (RGBA, RGB or palette indices).
@@ -949,58 +948,40 @@ fn choose(c: []const u8, prev: []const u8, bpp: usize, full: bool) u8 {
 }
 
 const trial_rows = 8;
-const trial_level: deflate.Level = .fast;
-/// A second set of bands is sampled when the two best candidates are within 1/close_margin.
+/// A second set of bands is sampled when the two candidates are within 1/close_margin.
 const close_margin = 8;
 
-/// Picks the filter strategy by deflating a sample of the image with each candidate: 3 bands
-/// of `trial_rows` rows (3 more when the result is close), or the whole image when small.
-/// Each band is preceded by its context row, given to the compressor as history only, so
-/// unfiltered rows can match the row above just as filtered rows predict from it.
+/// Picks unfiltered vs. per-row adaptive filtering by deflating a sample of the image both
+/// ways at `.fast`: 3 bands of `trial_rows` rows (3 more when the result is close), or the
+/// whole image when small. Each band is preceded by its context row, given to the
+/// compressor as history only, so unfiltered rows can match the row above just as filtered
+/// rows predict from it. (`.up` won such trials now and then but rarely the full encode.)
 fn pickStrategy(alloc: std.mem.Allocator, rows: *Rows, h: u32, bufs: []u8) EncodeError!FilterStrategy {
     const stride = rows.rb + 1;
-    // `.up` won the trials now and then but rarely the full encode; skipping it saves a third.
-    const cands = [_]FilterStrategy{ .none, .adaptive_fast };
-    var s = try deflate.Stream.init(alloc, .{ .level = trial_level, .dist_hints = .{ @intCast(rows.bpp), @intCast(stride) } }, 64 << 10, 0, false);
+    var s = try deflate.Stream.init(alloc, .{ .level = .fast, .dist_hints = .{ @intCast(rows.bpp), @intCast(stride) } }, 64 << 10, 0, false);
     defer s.deinit();
-    var size: [cands.len]usize = @splat(0);
+    var size = [2]usize{ 0, 0 }; // none, adaptive_fast
     const whole = h <= 12 * (trial_rows + 2);
-    for (0..@as(usize, if (whole) 1 else 2)) |pass| {
-        for (cands, &size) |c, *sz| {
-            if (whole) {
+    for (0..2) |pass| {
+        // pass 0: bands centred at 3/12, 7/12, 11/12 of the height; pass 1: 1/12, 5/12, 9/12
+        for (0..@as(usize, if (whole) 1 else 3)) |k| {
+            const y0: usize = if (whole) 0 else (4 * k + 3 - 2 * pass) * h / 12 - trial_rows / 2;
+            const y1: usize = if (whole) h else y0 + trial_rows;
+            for (&size, [_]FilterStrategy{ .none, .adaptive_fast }) |*sz, c| {
                 s.reset();
-                try streamRows(rows, &s, c, 0, h, bufs);
-                try s.finish();
-                sz.* = s.w.pos;
-                continue;
-            }
-            // pass 0: bands centred at 3/12, 7/12, 11/12 of the height; pass 1: 1/12, 5/12, 9/12
-            for (0..3) |k| {
-                const y0 = (4 * k + 3 - 2 * pass) * h / 12 - trial_rows / 2;
-                s.reset();
-                try streamRows(rows, &s, c, y0 - 1, y0, bufs);
-                s.markHistory();
-                try streamRows(rows, &s, c, y0, y0 + trial_rows, bufs);
+                if (y0 > 0) {
+                    try streamRows(rows, &s, c, y0 - 1, y0, bufs);
+                    s.markHistory();
+                }
+                try streamRows(rows, &s, c, y0, y1, bufs);
                 try s.finish();
                 sz.* += s.w.pos;
             }
         }
-        var lo = size[0];
-        var lo2: usize = std.math.maxInt(usize);
-        for (size[1..]) |v| {
-            if (v < lo) {
-                lo2 = lo;
-                lo = v;
-            } else lo2 = @min(lo2, v);
-        }
-        if (lo2 / close_margin > lo2 - lo) continue; // close: sample more
-        break;
+        const hi = @max(size[0], size[1]);
+        if (whole or hi - @min(size[0], size[1]) >= hi / close_margin) break;
     }
-    var best: usize = 0;
-    for (size, 0..) |v, i| {
-        if (v < size[best]) best = i;
-    }
-    return cands[best];
+    return if (size[0] <= size[1]) .none else .adaptive_fast;
 }
 
 // =================================================================== tests
@@ -1009,7 +990,8 @@ const testing = std.testing;
 test "png encode -> decode round trip (all modes)" {
     var prng = std.Random.DefaultPrng.init(7);
     const rnd = prng.random();
-    const sizes = [_][2]u32{ .{ 1, 1 }, .{ 3, 2 }, .{ 17, 9 }, .{ 64, 70 }, .{ 129, 65 } };
+    // 37x150 and 70x131: banded filter trials (h > 120), row tails that are not a multiple of 16
+    const sizes = [_][2]u32{ .{ 1, 1 }, .{ 3, 2 }, .{ 17, 9 }, .{ 64, 70 }, .{ 129, 65 }, .{ 37, 150 }, .{ 70, 131 } };
     const strats = [_]FilterStrategy{ .none, .up, .paeth, .adaptive, .adaptive_fast, .auto };
     for (sizes) |sz| {
         const n = sz[0] * sz[1] * 4;

@@ -3,7 +3,8 @@
 //! Pipeline: palette (color-indexing transform with pixel bundling) when the image has
 //! <= 256 colors, otherwise subtract-green + per-tile predictor transform (mode picked by
 //! a sum-of-abs-residual heuristic). Then LZ77 over ARGB pixels (left/up candidates +
-//! hash chains in a 64K-pixel window, VP8L 2D distance codes), a color cache, and one set
+//! hash chains in a 64K-pixel window, skipped for photo-like content, VP8L 2D distance codes),
+//! a color cache simulated in the same pass as the LZ77 histograms, and one set
 //! of 5 canonical Huffman codes (length-limited to 15). Output: RIFF/WEBP/VP8L.
 //! All memory comes from `alloc`; temporaries are freed before return; the returned
 //! slice is owned by the caller.
@@ -12,9 +13,12 @@ const huffman = @import("huffman.zig");
 const dec = @import("webp_dec.zig");
 
 pub const Options = struct {
-    /// 0 = fastest (predictor search on every 4th row, chain 4, 10-bit cache),
+    /// 0 = fastest (predictor search on every 4th row, LZ77 chain 4, 10-bit colour cache),
     /// 1 = default (every 2nd row, chain 16, 11-bit cache),
-    /// 2 = slower/smaller (all rows, 16x16 tiles, chain 64, cache size chosen by entropy).
+    /// 2 = slower/smaller (all rows, 16x16 predictor tiles, chain 64, 11-bit cache).
+    /// At effort 0/1, photo-like images (detected on a sample of rows: few long hash-chain
+    /// copies, many literals) are encoded with left/up copies only and no hash search:
+    /// faster and, on such content, smaller.
     effort: u2 = 1,
     /// Color cache size in bits (0 = off, 1..11); null = per `effort`.
     cache_bits: ?u4 = null,
@@ -32,11 +36,21 @@ pub fn encodeLossless(alloc: std.mem.Allocator, straight_rgba: []const u8, width
     defer alloc.free(argb);
     // NB: plain *align(1) loads; `slice[i..][0..4].*` lowers to a memcpy call under -Oz (wasm).
     const src32: [*]align(1) const u32 = @ptrCast(straight_rgba.ptr);
-    var alpha_and: u32 = 0xff000000;
-    for (argb, 0..) |*p, i| {
-        const s = std.mem.littleToNative(u32, src32[i]); // A B G R
+    // (explicit vectors: -Oz does not auto-vectorize loops)
+    const V4 = @Vector(4, u32);
+    var and4: V4 = @splat(0xff000000);
+    var ci4: usize = 0;
+    while (ci4 + 4 <= n) : (ci4 += 4) {
+        const s: V4 = @as(*align(1) const V4, @ptrCast(src32 + ci4)).*; // A B G R (little-endian)
+        and4 &= s;
+        @as(*align(4) V4, @ptrCast(argb.ptr + ci4)).* = (s & @as(V4, @splat(0xff00ff00))) |
+            ((s >> @splat(16)) & @as(V4, @splat(0xff))) | ((s & @as(V4, @splat(0xff))) << @splat(16));
+    }
+    var alpha_and: u32 = @reduce(.And, and4);
+    while (ci4 < n) : (ci4 += 1) {
+        const s = std.mem.littleToNative(u32, src32[ci4]);
         alpha_and &= s;
-        p.* = (s & 0xff00ff00) | ((s >> 16) & 0xff) | ((s & 0xff) << 16);
+        argb[ci4] = (s & 0xff00ff00) | ((s >> 16) & 0xff) | ((s & 0xff) << 16);
     }
     alpha_and &= 0xff000000;
 
@@ -93,7 +107,14 @@ pub fn encodeLossless(alloc: std.mem.Allocator, straight_rgba: []const u8, width
         main_w = pw;
     } else {
         // Subtract green.
-        for (argb) |*p| {
+        var j: usize = 0;
+        while (j + 4 <= n) : (j += 4) {
+            const p: *align(4) V4 = @ptrCast(argb.ptr + j);
+            const v = p.*;
+            const g = (v >> @splat(8)) & @as(V4, @splat(0xff));
+            p.* = (v & @as(V4, @splat(0xff00ff00))) | ((v -% (g << @splat(16))) & @as(V4, @splat(0x00ff0000))) | ((v -% g) & @as(V4, @splat(0xff)));
+        }
+        for (argb[j..]) |*p| {
             const g = (p.* >> 8) & 0xff;
             p.* = (p.* & 0xff00ff00) | ((p.* -% (g << 16)) & 0x00ff0000) | ((p.* -% g) & 0xff);
         }
@@ -141,6 +162,22 @@ const BitWriter = struct {
         bw.n += nbits;
         if (bw.n >= 32) {
             try bw.out.ensureUnusedCapacity(bw.alloc, 4);
+            const len = bw.out.items.len;
+            bw.out.items.len = len + 4;
+            @as(*align(1) u32, @ptrCast(bw.out.items.ptr + len)).* = std.mem.nativeToLittle(u32, @truncate(bw.acc));
+            bw.acc >>= 32;
+            bw.n -= 32;
+        }
+    }
+    /// Makes room for `n` more bytes so `putFast` can skip capacity checks.
+    fn reserve(bw: *BitWriter, n: usize) !void {
+        try bw.out.ensureUnusedCapacity(bw.alloc, n + 8);
+    }
+    /// `put` without the capacity check (`reserve` first); `nbits` <= 31.
+    inline fn putFast(bw: *BitWriter, v: u32, nbits: u32) void {
+        bw.acc |= @as(u64, v) << bw.n;
+        bw.n += @intCast(nbits);
+        if (bw.n >= 32) {
             const len = bw.out.items.len;
             bw.out.items.len = len + 4;
             @as(*align(1) u32, @ptrCast(bw.out.items.ptr + len)).* = std.mem.nativeToLittle(u32, @truncate(bw.acc));
@@ -359,94 +396,200 @@ const window_bits = 16;
 const max_dist: u32 = (1 << window_bits) - 1;
 const hash_bits = 16;
 
-const Enc = struct {
-    alloc: std.mem.Allocator,
-    bw: *BitWriter,
-    opts: Options,
+/// Chain copies must cover >= 1/sample_div of the sampled pixels to keep the hash search.
+const sample_div = 5;
 
-    fn lz77(e: *Enc, px: []const u32, w: u32, toks: *std.ArrayList(Tok)) !void {
-        const n = px.len;
-        const head = try e.alloc.alloc(u32, 1 << hash_bits);
-        defer e.alloc.free(head);
-        @memset(head, std.math.maxInt(u32));
-        const prev = try e.alloc.alloc(u32, 1 << window_bits);
-        defer e.alloc.free(prev);
-        const chain: u32 = switch (e.opts.effort) {
-            0 => 4,
-            1 => 16,
-            else => 64,
-        };
+/// LZ77 match finder over ARGB pixels: left/up copies plus hash chains (`chain` > 0).
+const Lz = struct {
+    px: []const u32,
+    w: u32,
+    chain: u32,
+    big: bool,
+    head: []u32 = &.{},
+    prev: []u32 = &.{},
+    /// Fused histogram + colour-cache pass (single cache size): when set, `run` fills it
+    /// and marks literal tokens that hit `cache` with dcode = 1 (the decoder replays the same cache).
+    hist: ?*Histos = null,
+    cache: []u32 = &.{},
+    shift: u5 = 0,
+    /// Pixels coded as literals or copies shorter than 8 (dry runs count them).
+    busy: usize = 0,
+
+    inline fn countLiteral(lz: *Lz, hs: *Histos, v: u32) u32 {
+        if (lz.cache.len > 0) {
+            const k = (0x1e35a7bd *% v) >> lz.shift;
+            if (lz.cache[k] == v) {
+                hs.g[280 + k] += 1;
+                return 1;
+            }
+            lz.cache[k] = v;
+        }
+        hs.g[(v >> 8) & 0xff] += 1;
+        hs.r[(v >> 16) & 0xff] += 1;
+        hs.b[v & 0xff] += 1;
+        hs.a[v >> 24] += 1;
+        return 0;
+    }
+
+    inline fn countCopy(lz: *Lz, hs: *Histos, t: Tok, i: usize) void {
+        hs.g[256 + prefixEncode(t.len).sym] += 1;
+        hs.d[prefixEncode(t.dcode).sym] += 1;
+        if (lz.cache.len == 0) return;
+        const seg = lz.px[i .. i + t.len];
+        var last: u32 = ~seg[0];
+        for (seg) |v| {
+            if (v == last) continue;
+            last = v;
+            lz.cache[(0x1e35a7bd *% v) >> lz.shift] = v;
+        }
+    }
+
+    inline fn insert(lz: *Lz, i: usize) void {
+        const hsh = Enc.hash(lz.px[i], lz.px[i + 1]);
+        lz.prev[i & max_dist] = lz.head[hsh];
+        lz.head[hsh] = @intCast(i);
+    }
+
+    /// Tokenizes pixels [start, end) into `toks` (null: dry run). Returns the number of
+    /// pixels covered by hash-chain copies of >= 8 pixels.
+    fn run(lz: *Lz, toks: ?*std.ArrayList(Tok), start: usize, end: usize, alloc: std.mem.Allocator) !usize {
+        const px = lz.px;
+        const w = lz.w;
+        const n = end;
+        const chain = lz.chain;
         // Positions inside a match that get indexed: all for short matches, else only the
         // first and last `skip_keep` (runs and repeated rows would flood the chains).
-        const skip_thr: usize = if (e.opts.effort >= 2) 32 else 4;
-        const skip_keep: usize = if (e.opts.effort >= 2) 8 else 2;
-        const nice: u32 = switch (e.opts.effort) {
-            0 => 64,
-            1 => 256,
-            else => 1024,
-        };
-        var i: usize = 0;
+        const skip_thr: usize = if (lz.big) 32 else 4;
+        const skip_keep: usize = if (lz.big) 8 else 2;
+        const nice: u32 = if (lz.big) 1024 else if (chain <= 4) 64 else 256;
+        var covered: usize = 0;
+        var i: usize = start;
         while (i < n) {
             var best_len: usize = 0;
             var best_dist: usize = 0;
             const lim = @min(max_len, n - i);
             if (lim >= 2) {
-                if (i >= 1) {
-                    const l = matchLen(px, i, i - 1, lim);
-                    best_len = l;
+                if (i >= 1 and px[i] == px[i - 1]) {
+                    best_len = Enc.matchLen(px, i, i - 1, lim);
                     best_dist = 1;
                 }
-                if (i >= w and best_len < lim) {
-                    const l = matchLen(px, i, i - w, lim);
+                if (i >= w and best_len < lim and px[i] == px[i - w]) {
+                    const l = Enc.matchLen(px, i, i - w, lim);
                     if (l > best_len) {
                         best_len = l;
                         best_dist = w;
                     }
                 }
-                if (best_len < nice and best_len < lim) {
-                    var cand = head[hash(px[i], px[i + 1])];
+                if (chain > 0 and best_len < nice and best_len < lim) {
+                    var cand = lz.head[Enc.hash(px[i], px[i + 1])];
                     var depth = chain;
                     while (cand != std.math.maxInt(u32) and depth > 0) : (depth -= 1) {
                         const d = i - cand;
-                        if (d > max_dist) break;
+                        if (d > max_dist or cand < start) break;
                         if (px[cand + best_len] == px[i + best_len]) {
-                            const l = matchLen(px, i, cand, lim);
+                            const l = Enc.matchLen(px, i, cand, lim);
                             if (l > best_len) {
                                 best_len = l;
                                 best_dist = d;
                                 if (l >= nice or l == lim) break;
                             }
                         }
-                        cand = prev[cand & max_dist];
+                        cand = lz.prev[cand & max_dist];
                     }
                 }
             }
             const min_len: usize = if (best_dist == 1 or best_dist == w) 2 else 3;
             if (best_len >= min_len) {
-                try toks.append(e.alloc, .{ .len = @intCast(best_len), .dcode = distCode(@intCast(best_dist), w) });
-                const end = i + best_len;
+                if (toks) |t| {
+                    const tok = Tok{ .len = @intCast(best_len), .dcode = distCode(@intCast(best_dist), w) };
+                    if (t.items.len < t.capacity) t.appendAssumeCapacity(tok) else try t.append(alloc, tok);
+                    if (lz.hist) |hs| lz.countCopy(hs, tok, i);
+                }
+                if (best_len >= 8 and best_dist != 1 and best_dist != w) covered += best_len;
+                if (best_len < 8) lz.busy += best_len;
+                const e = i + best_len;
+                if (chain == 0) {
+                    i = e;
+                    continue;
+                }
                 // Long matches: only index their first and last few positions (runs and
                 // repeated rows would otherwise flood the chains with useless entries).
-                const skip_from = if (best_len > skip_thr) i + skip_keep else end;
-                const skip_to = if (best_len > skip_thr) end - skip_keep else end;
-                while (i < end) : (i += 1) {
+                const skip_from = if (best_len > skip_thr) i + skip_keep else e;
+                const skip_to = if (best_len > skip_thr) e - skip_keep else e;
+                while (i < e) : (i += 1) {
                     if (i == skip_from) i = skip_to;
-                    if (i + 1 < n) {
-                        const hsh = hash(px[i], px[i + 1]);
-                        prev[i & max_dist] = head[hsh];
-                        head[hsh] = @intCast(i);
-                    }
+                    if (i + 1 < n) lz.insert(i);
                 }
             } else {
-                try toks.append(e.alloc, .{ .len = 0, .dcode = 0 });
-                if (i + 1 < n) {
-                    const hsh = hash(px[i], px[i + 1]);
-                    prev[i & max_dist] = head[hsh];
-                    head[hsh] = @intCast(i);
+                if (toks) |t| {
+                    var tok = Tok{ .len = 0, .dcode = 0 };
+                    if (lz.hist) |hs| tok.dcode = lz.countLiteral(hs, px[i]);
+                    if (t.items.len < t.capacity) t.appendAssumeCapacity(tok) else try t.append(alloc, tok);
                 }
+                lz.busy += 1;
+                if (chain > 0 and i + 1 < n) lz.insert(i);
                 i += 1;
             }
         }
+        return covered;
+    }
+};
+
+const Enc = struct {
+    alloc: std.mem.Allocator,
+    bw: *BitWriter,
+    opts: Options,
+
+    /// `hist`: when non-null, histograms and colour-cache hits for a cache of `cache_bits`
+    /// are computed on the fly.
+    fn lz77(e: *Enc, px: []const u32, w: u32, toks: *std.ArrayList(Tok), hist: ?*Histos, cache_bits: u4) !void {
+        const n = px.len;
+        // one block: hash heads, chain links, colour cache
+        const ncache: usize = if (hist != null and cache_bits > 0) @as(usize, 1) << cache_bits else 0;
+        const tables = try e.alloc.alloc(u32, (1 << hash_bits) + (1 << window_bits) + ncache);
+        defer e.alloc.free(tables);
+        const head = tables[0 .. 1 << hash_bits];
+        var lz = Lz{ .px = px, .w = w, .chain = switch (e.opts.effort) {
+            0 => 4,
+            1 => 16,
+            else => 64,
+        }, .big = e.opts.effort >= 2, .head = head, .prev = tables[1 << hash_bits ..][0 .. 1 << window_bits] };
+        // Photo-like content: hash-chain copies (beyond the left/up pixel) are short and
+        // cost more than the literals they replace, and the search dominates the encode
+        // time. Sample bands of rows; when chain copies of >= 8 pixels cover less than
+        // 1/sample_div of them while more than 1/4 of them are "busy" (literals or short
+        // copies), encode with left/up copies only and no hashing. Flat content keeps the
+        // chains: they are cheap there and find the repeated shapes.
+        const bands = 4;
+        const brows = 8;
+        if (e.opts.effort < 2 and n >= @as(usize, w) * (bands * brows * 4)) {
+            const h = n / w;
+            var covered: usize = 0;
+            var total: usize = 0;
+            const all = bands * brows * @as(usize, w);
+            for (0..bands) |k| {
+                const y0 = (2 * k + 1) * h / (2 * bands);
+                @memset(head, std.math.maxInt(u32));
+                covered += lz.run(null, y0 * w, (y0 + brows) * w, e.alloc) catch 0; // dry run: no allocation
+                total += brows * @as(usize, w);
+                if (covered * sample_div >= all) break; // keeps the chains whatever follows
+                // clearly photo-like after two bands: skip the rest of the sample
+                if (k >= 1 and covered * 4 * sample_div < total and lz.busy * 2 > total) break;
+            }
+            if (covered * sample_div < total and lz.busy * 4 > total) lz.chain = 0;
+        }
+        // Token list sized up front: in a bump arena a growing list is copied at every step.
+        // Photo-like content needs about one token per pixel, flat content far fewer.
+        try toks.ensureTotalCapacity(e.alloc, if (lz.chain == 0) n else n / 8 + 64);
+        @memset(head, std.math.maxInt(u32));
+        if (hist) |hs| {
+            hs.* = .{};
+            lz.hist = hs;
+            lz.cache = tables[tables.len - ncache ..];
+            @memset(lz.cache, 0);
+            lz.shift = @intCast(32 - @as(u32, cache_bits) & 31);
+        }
+        _ = try lz.run(toks, 0, n, e.alloc);
     }
 
     inline fn hash(a: u32, b: u32) u32 {
@@ -467,107 +610,17 @@ const Enc = struct {
         return l;
     }
 
-    /// Simulates a color cache of each size in `cands` (0 = none) in one pass, builds the
-    /// symbol histograms for each, and returns the index of the cheapest candidate with its
-    /// histograms in `out`. Each literal token's `dcode` receives a bitmask of the
-    /// candidates whose cache it hits, so emission needs no second replay.
-    fn selectCache(e: *Enc, px: []const u32, toks: []Tok, cands: []const u4, out: *Histos) !usize {
-        const nc = cands.len;
-        const caches = try e.alloc.alloc(u32, nc << 11);
-        defer e.alloc.free(caches);
-        @memset(caches, 0);
-        const hs = try e.alloc.alloc(Histos, nc);
-        defer e.alloc.free(hs);
-        for (hs) |*h| h.* = .{};
-        var shifts: [16]u5 = undefined;
-        var any_cache = false;
-        for (cands, 0..) |cb, ci| {
-            shifts[ci] = if (cb > 0) @intCast(32 - @as(u32, cb)) else 0;
-            any_cache = any_cache or cb > 0;
-        }
-        out.* = .{};
-        var pos: usize = 0;
-        for (toks) |*t| {
-            if (t.len == 0) {
-                const v = px[pos];
-                pos += 1;
-                const m = 0x1e35a7bd *% v;
-                var mask: u32 = 0;
-                for (hs[0..nc], 0..) |*h, ci| {
-                    if (cands[ci] != 0) {
-                        const k = m >> shifts[ci];
-                        const c = &caches[(ci << 11) + k];
-                        if (c.* == v) {
-                            h.g[280 + k] += 1;
-                            mask |= @as(u32, 1) << @intCast(ci);
-                            continue;
-                        }
-                        c.* = v;
-                    }
-                    h.g[(v >> 8) & 0xff] += 1;
-                    h.r[(v >> 16) & 0xff] += 1;
-                    h.b[v & 0xff] += 1;
-                    h.a[v >> 24] += 1;
-                }
-                t.dcode = mask;
-            } else {
-                out.g[256 + prefixEncode(t.len).sym] += 1;
-                out.d[prefixEncode(t.dcode).sym] += 1;
-                const run = px[pos .. pos + t.len];
-                pos += t.len;
-                if (!any_cache) continue;
-                for (0..nc) |ci| {
-                    if (cands[ci] == 0) continue;
-                    const cache = caches[ci << 11 ..][0 .. @as(usize, 1) << 11];
-                    const sh = shifts[ci];
-                    var last: u32 = ~run[0];
-                    for (run) |v| {
-                        if (v == last) continue;
-                        last = v;
-                        cache[(0x1e35a7bd *% v) >> sh] = v;
-                    }
-                }
-            }
-        }
-        var best: f32 = std.math.floatMax(f32);
-        var best_ci: usize = 0;
-        for (hs[0..nc], cands, 0..) |*h, cb, ci| {
-            const c = h.cost(@as(usize, 280) + (if (cb > 0) @as(usize, 1) << cb else 0));
-            if (c < best) {
-                best = c;
-                best_ci = ci;
-            }
-        }
-        const b = &hs[best_ci];
-        for (out.g[0..256], b.g[0..256]) |*o, s| o.* = s;
-        for (out.g[280..], b.g[280..]) |*o, s| o.* = s;
-        out.r = b.r;
-        out.b = b.b;
-        out.a = b.a;
-        return best_ci;
-    }
-
     fn writeImage(e: *Enc, px: []const u32, w: u32, h: u32, main: bool) !void {
         _ = h;
-        var toks: std.ArrayList(Tok) = .empty;
-        defer toks.deinit(e.alloc);
-        try e.lz77(px, w, &toks);
-
         const histos = try e.alloc.create(Histos);
         defer e.alloc.destroy(histos);
+        var toks: std.ArrayList(Tok) = .empty;
+        defer toks.deinit(e.alloc);
 
-        var single: [1]u4 = .{0};
-        const cands: []const u4 = if (!main) &single else if (e.opts.cache_bits) |cb| blk: {
-            single[0] = @min(cb, 11);
-            break :blk &single;
-        } else switch (e.opts.effort) {
-            0 => &.{10},
-            1 => &.{11},
-            else => &.{ 0, 2, 4, 6, 7, 8, 9, 10, 11 },
-        };
-        const ci = try e.selectCache(px, toks.items, cands, histos);
-        const cache_bits = cands[ci];
-        const hit_bit = @as(u32, 1) << @intCast(ci);
+        // Colour cache size: 10 bits at effort 0, else 11 (an explicit `cache_bits` wins).
+        const cache_bits: u4 = if (!main) 0 else if (e.opts.cache_bits) |cb| @min(cb, 11) else if (e.opts.effort == 0) 10 else 11;
+        try e.lz77(px, w, &toks, histos, cache_bits);
+        const hit_bit: u32 = 1;
         const shift: u5 = if (cache_bits > 0) @intCast(32 - @as(u32, cache_bits)) else 0;
 
         const bw = e.bw;
@@ -586,32 +639,33 @@ const Enc = struct {
         try writeCode(bw, &histos.a, &codes.al, &codes.ac);
         try writeCode(bw, &histos.d, &codes.dl, &codes.dc);
 
-        // Emit.
+        // Emit. Each token takes <= 61 bits: reserve room per 4096 tokens, then write
+        // without capacity checks.
         var pos: usize = 0;
-        for (toks.items) |t| {
+        for (toks.items, 0..) |t, ti| {
+            if (ti & 4095 == 0) try bw.reserve(4096 * 8);
             if (t.len == 0) {
                 const v = px[pos];
                 pos += 1;
                 if (t.dcode & hit_bit != 0) {
                     const k = 280 + ((0x1e35a7bd *% v) >> shift);
-                    try bw.put(codes.gc[k], @intCast(codes.gl[k]));
+                    bw.putFast(codes.gc[k], codes.gl[k]);
                     continue;
                 }
                 const g = (v >> 8) & 0xff;
                 const r = (v >> 16) & 0xff;
                 const b = v & 0xff;
                 const a = v >> 24;
-                try bw.put(codes.gc[g], @intCast(codes.gl[g]));
-                try bw.put(codes.rc[r], @intCast(codes.rl[r]));
-                try bw.put(codes.bc[b], @intCast(codes.bl[b]));
-                try bw.put(codes.ac[a], @intCast(codes.al[a]));
+                // two writes of <= 30 bits each
+                bw.putFast(codes.gc[g] | @as(u32, codes.rc[r]) << @intCast(codes.gl[g]), codes.gl[g] + codes.rl[r]);
+                bw.putFast(codes.bc[b] | @as(u32, codes.ac[a]) << @intCast(codes.bl[b]), codes.bl[b] + codes.al[a]);
             } else {
                 const lp = prefixEncode(t.len);
-                try bw.put(codes.gc[256 + lp.sym], @intCast(codes.gl[256 + lp.sym]));
-                if (lp.nb > 0) try bw.put(lp.extra, lp.nb);
+                bw.putFast(codes.gc[256 + lp.sym], codes.gl[256 + lp.sym]);
+                bw.putFast(lp.extra, lp.nb);
                 const dp = prefixEncode(t.dcode);
-                try bw.put(codes.dc[dp.sym], @intCast(codes.dl[dp.sym]));
-                if (dp.nb > 0) try bw.put(dp.extra, dp.nb);
+                bw.putFast(codes.dc[dp.sym], codes.dl[dp.sym]);
+                bw.putFast(dp.extra, dp.nb);
                 pos += t.len;
             }
         }
@@ -624,27 +678,7 @@ const Histos = struct {
     b: [256]u32 = @splat(0),
     a: [256]u32 = @splat(0),
     d: [40]u32 = @splat(0),
-
-    fn cost(h: *const Histos, gsize: usize) f32 {
-        return entropy(h.g[0..gsize]) + entropy(&h.r) + entropy(&h.b) + entropy(&h.a);
-    }
 };
-
-fn entropy(h: []const u32) f32 {
-    var total: u64 = 0;
-    var sum: f32 = 0;
-    var nz: u32 = 0;
-    for (h) |c| {
-        if (c == 0) continue;
-        total += c;
-        const f: f32 = @floatFromInt(c);
-        sum += f * log2f(f);
-        nz += 1;
-    }
-    if (nz <= 1) return @floatFromInt(nz * 8);
-    const t: f32 = @floatFromInt(total);
-    return t * log2f(t) - sum + @as(f32, @floatFromInt(nz)) * 4.0;
-}
 
 const Codes = struct {
     gl: [280 + 2048]u8,
@@ -833,6 +867,28 @@ test "round trip varied images" {
     }
 }
 
+test "photo-like and flat images large enough for the LZ77 sample" {
+    const a = std.testing.allocator;
+    var prng = std.Random.DefaultPrng.init(3);
+    const rnd = prng.random();
+    const w = 96;
+    const h = 160;
+    const buf = try a.alloc(u8, w * h * 4);
+    defer a.free(buf);
+    for (0..3) |kind| {
+        for (0..h) |y| for (0..w) |x| {
+            const p = buf[(y * w + x) * 4 ..][0..4];
+            switch (kind) {
+                0 => p.* = .{ @truncate(x * 2 + rnd.uintLessThan(u8, 40)), @truncate(y + rnd.uintLessThan(u8, 40)), rnd.int(u8), 255 }, // noisy
+                1 => p.* = .{ @truncate((x / 8) * 30), @truncate((y / 8) * 20), 77, 255 }, // flat blocks
+                else => p.* = .{ @truncate(x + y), @truncate(x * 3), @truncate(y * 5), @truncate(x * 7 + y) }, // gradients + alpha
+            }
+        };
+        for (0..3) |eff| _ = try roundTrip(buf, w, h, .{ .effort = @intCast(eff) });
+        _ = try roundTrip(buf, w, h, .{ .cache_bits = 0 });
+    }
+}
+
 test "round trip takumi render" {
     const raw = @embedFile("testdata/webp_takumi.rgba");
     const len = try roundTrip(raw, 120, 48, .{});
@@ -843,13 +899,4 @@ test "rejects bad input" {
     const a = std.testing.allocator;
     try std.testing.expectError(error.InvalidInput, encodeLossless(a, &.{}, 0, 0, .{}));
     try std.testing.expectError(error.InvalidInput, encodeLossless(a, &.{ 1, 2, 3 }, 1, 1, .{}));
-}
-
-/// Fast log2 approximation (|err| < 0.005), good enough for entropy estimates and avoids
-/// linking compiler-rt's log2f.
-fn log2f(x: f32) f32 {
-    const bits: u32 = @bitCast(x);
-    const e: f32 = @floatFromInt(@as(i32, @intCast(bits >> 23)) - 127);
-    const m: f32 = @bitCast((bits & 0x007fffff) | 0x3f800000);
-    return e + (-0.34484843 * m + 2.02466578) * m - 0.67487759;
 }
