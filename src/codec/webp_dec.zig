@@ -1,6 +1,6 @@
-//! WebP decoder: lossless VP8L (all transforms, color cache, meta prefix codes), plain RIFF
-//! or VP8X-wrapped (still image, or the first ANMF frame of an animation composited onto a
-//! transparent canvas). Lossy VP8 returns `error.UnsupportedFormat`.
+//! WebP decoder: lossless VP8L (all transforms, color cache, meta prefix codes) and lossy
+//! VP8 (+ ALPH alpha, see vp8.zig), plain RIFF or VP8X-wrapped (still image, or the first
+//! ANMF frame of an animation on a transparent canvas; full animation: anim.zig).
 //! Inputs are untrusted: every read is bounds-checked; allocations are bounded by
 //! `Limits.max_pixels`. Temporaries use an internal arena on top of `alloc`; only the
 //! returned `Image.data` stays allocated (caller frees with `alloc`).
@@ -57,66 +57,108 @@ fn rd24(b: []const u8) u32 {
     return @as(u32, b[0]) | (@as(u32, b[1]) << 8) | (@as(u32, b[2]) << 16);
 }
 
-/// Decodes a WebP file to straight RGBA8.
+/// Optional decoder features, resolved at compile time so unused code is not linked.
+pub const Features = struct {
+    /// Lossy VP8 (+ ALPH) support; when false lossy files return error.UnsupportedFormat.
+    lossy: bool = true,
+};
+
+/// Decodes a WebP file to straight RGBA8 (animated files: the first frame on the canvas).
 pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: Limits) Error!Image {
-    if (bytes.len < 20 or !std.mem.eql(u8, bytes[0..4], "RIFF") or !std.mem.eql(u8, bytes[8..12], "WEBP")) return error.InvalidData;
+    return decodeEx(alloc, bytes, limits, .{});
+}
+
+/// RIFF chunk iterator over `data` (the bytes after a RIFF/ANMF header). Truncated
+/// chunk bodies are clipped to the available data.
+pub const Chunks = struct {
+    data: []const u8,
+    pos: usize = 0,
+
+    pub const Chunk = struct { tag: [4]u8, body: []const u8, offset: usize };
+
+    pub fn next(it: *Chunks) ?Chunk {
+        if (it.data.len < 8 or it.pos > it.data.len - 8) return null;
+        const tag = it.data[it.pos..][0..4].*;
+        const len = std.mem.readInt(u32, it.data[it.pos + 4 ..][0..4], .little);
+        const start = it.pos + 8;
+        const end: usize = @intCast(@min(@as(u64, it.data.len), @as(u64, start) + len));
+        const next_pos = @as(u64, start) + len + (len & 1);
+        it.pos = @intCast(@min(next_pos, @as(u64, it.data.len)));
+        return .{ .tag = tag, .body = it.data[start..end], .offset = start - 8 };
+    }
+};
+
+/// The chunk area of a RIFF/WEBP file, or null if the header is wrong.
+pub fn riffBody(bytes: []const u8) ?[]const u8 {
+    if (bytes.len < 12 or !std.mem.eql(u8, bytes[0..4], "RIFF") or !std.mem.eql(u8, bytes[8..12], "WEBP")) return null;
     const riff_len = std.mem.readInt(u32, bytes[4..8], .little);
-    const end: usize = @min(bytes.len, @as(u64, riff_len) + 8);
-    var pos: usize = 12;
-    var canvas: ?[2]u32 = null;
-    while (pos + 8 <= end) {
-        const tag = bytes[pos .. pos + 4];
-        const clen = std.mem.readInt(u32, bytes[pos + 4 ..][0..4], .little);
-        const body_start = pos + 8;
-        const body_end: usize = @min(end, @as(u64, body_start) + clen);
-        const body = bytes[body_start..body_end];
-        if (std.mem.eql(u8, tag, "VP8L")) {
-            return decodeVp8l(alloc, body, limits);
-        } else if (std.mem.eql(u8, tag, "VP8 ")) {
-            return error.UnsupportedFormat;
-        } else if (std.mem.eql(u8, tag, "VP8X")) {
-            if (body.len < 10) return error.InvalidData;
-            canvas = .{ rd24(body[4..7]) + 1, rd24(body[7..10]) + 1 };
-        } else if (std.mem.eql(u8, tag, "ANMF")) {
-            const cv = canvas orelse return error.InvalidData;
-            if (body.len < 16 + 8) return error.InvalidData;
-            const fx = rd24(body[0..3]) * 2;
-            const fy = rd24(body[3..6]) * 2;
-            // Find the frame's image chunk.
-            var q: usize = 16;
-            while (q + 8 <= body.len) {
-                const t2 = body[q .. q + 4];
-                const l2 = std.mem.readInt(u32, body[q + 4 ..][0..4], .little);
-                const b2 = body[q + 8 .. @min(body.len, @as(u64, q + 8) + l2)];
-                if (std.mem.eql(u8, t2, "VP8 ")) return error.UnsupportedFormat;
-                if (std.mem.eql(u8, t2, "VP8L")) {
-                    const frame = try decodeVp8l(alloc, b2, limits);
-                    defer frame.deinit(alloc);
-                    const n = try types.checkSize(cv[0], cv[1], limits);
-                    const out = try alloc.alloc(u8, n);
-                    @memset(out, 0);
-                    var y: u32 = 0;
-                    while (y < frame.height) : (y += 1) {
-                        const dy = @as(u64, fy) + y;
-                        if (dy >= cv[1]) break;
-                        if (fx >= cv[0]) break;
-                        const wcopy: usize = @min(frame.width, cv[0] - fx);
-                        const dst = (@as(usize, @intCast(dy)) * cv[0] + fx) * 4;
-                        const src = @as(usize, y) * frame.width * 4;
-                        @memcpy(out[dst .. dst + wcopy * 4], frame.data[src .. src + wcopy * 4]);
-                    }
-                    return .{ .width = cv[0], .height = cv[1], .data = out };
-                }
-                q = q + 8 + l2 + (l2 & 1);
-                if (q > body.len) break;
-            }
-            return error.InvalidData;
+    const end: usize = @intCast(@min(@as(u64, bytes.len), @as(u64, riff_len) + 8));
+    if (end < 12) return null;
+    return bytes[12..end];
+}
+
+/// Decodes one image from a chunk sequence: `VP8L`, or optional `ALPH` followed by `VP8 `
+/// (other chunks are skipped). Used for still files and for ANMF frame payloads.
+pub fn decodeImageChunks(alloc: std.mem.Allocator, chunks: []const u8, limits: Limits, comptime f: Features) Error!Image {
+    var it = Chunks{ .data = chunks };
+    var alph: ?[]const u8 = null;
+    while (it.next()) |c| {
+        if (std.mem.eql(u8, &c.tag, "VP8L")) return decodeVp8l(alloc, c.body, limits);
+        if (std.mem.eql(u8, &c.tag, "ALPH")) {
+            alph = c.body;
+        } else if (std.mem.eql(u8, &c.tag, "VP8 ")) {
+            if (!f.lossy) return error.UnsupportedFormat;
+            return @import("vp8.zig").decode(alloc, c.body, alph, limits);
         }
-        const next = @as(u64, body_start) + clen + (clen & 1);
-        if (next > end) break;
-        pos = @intCast(next);
     }
     return error.InvalidData;
+}
+
+/// `decode` with compile-time feature selection.
+pub fn decodeEx(alloc: std.mem.Allocator, bytes: []const u8, limits: Limits, comptime f: Features) Error!Image {
+    const body = riffBody(bytes) orelse return error.InvalidData;
+    var it = Chunks{ .data = body };
+    var canvas: ?[2]u32 = null;
+    while (it.next()) |c| {
+        if (std.mem.eql(u8, &c.tag, "VP8X")) {
+            if (c.body.len < 10) return error.InvalidData;
+            canvas = .{ rd24(c.body[4..7]) + 1, rd24(c.body[7..10]) + 1 };
+        } else if (std.mem.eql(u8, &c.tag, "ANMF")) {
+            // First frame of an animation, placed on a transparent canvas (frame 0 has
+            // nothing below it, so blending is a plain copy).
+            const cv = canvas orelse return error.InvalidData;
+            if (c.body.len < 16) return error.InvalidData;
+            const fx = rd24(c.body[0..3]) * 2;
+            const fy = rd24(c.body[3..6]) * 2;
+            const n = try types.checkSize(cv[0], cv[1], limits);
+            const frame = try decodeImageChunks(alloc, c.body[16..], limits, f);
+            defer frame.deinit(alloc);
+            const out = try alloc.alloc(u8, n);
+            @memset(out, 0);
+            blit(out, cv[0], cv[1], frame, fx, fy);
+            return .{ .width = cv[0], .height = cv[1], .data = out };
+        } else if (std.mem.eql(u8, &c.tag, "VP8L") or std.mem.eql(u8, &c.tag, "VP8 ") or std.mem.eql(u8, &c.tag, "ALPH")) {
+            const img = try decodeImageChunks(alloc, body[c.offset..], limits, f);
+            if (canvas) |cv| if (cv[0] != img.width or cv[1] != img.height) {
+                img.deinit(alloc);
+                return error.InvalidData;
+            };
+            return img;
+        }
+    }
+    return error.InvalidData;
+}
+
+/// Copies `src` into the `cw`x`ch` RGBA canvas at (fx, fy), clipped.
+pub fn blit(out: []u8, cw: u32, c_h: u32, src: Image, fx: u32, fy: u32) void {
+    if (fx >= cw or fy >= c_h) return;
+    const wcopy: usize = @min(src.width, cw - fx);
+    var y: u32 = 0;
+    while (y < src.height and fy + y < c_h) : (y += 1) {
+        const dst = (@as(usize, fy + y) * cw + fx) * 4;
+        const s = @as(usize, y) * src.width * 4;
+        @memcpy(out[dst .. dst + wcopy * 4], src.data[s .. s + wcopy * 4]);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -484,7 +526,32 @@ pub fn decodeVp8l(alloc: std.mem.Allocator, body: []const u8, limits: Limits) Er
     _ = br.read(1); // alpha hint
     if (br.read(3) != 0) return error.InvalidData;
     const nbytes = try types.checkSize(w, h, limits);
-    const npx = nbytes / 4;
+    const px = try decodeArgb(&d, w, h);
+    const out = try alloc.alloc(u8, nbytes);
+    toRgba(px, out);
+    return .{ .width = w, .height = h, .data = out };
+}
+
+/// Decodes the VP8L-compressed alpha plane of an `ALPH` chunk (`data` = bytes after the
+/// 1-byte ALPH header): a headerless VP8L image stream whose green channel holds the
+/// (still filtered) alpha values. Writes `w*h` bytes to `out`. Caller bounds `w*h`.
+pub fn decodeAlphaStream(alloc: std.mem.Allocator, data: []const u8, w: u32, h: u32, out: []u8) Error!void {
+    var arena_state = std.heap.ArenaAllocator.init(alloc);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var d = Dec{ .arena = arena, .br = .{ .data = data }, .lens = undefined };
+    d.lens = try arena.alloc(u8, 256 + 24 + 2048);
+    const px = try decodeArgb(&d, w, h);
+    if (px.len < out.len) return error.InvalidData;
+    for (out, px[0..out.len]) |*o, p| o.* = @truncate(p >> 8);
+}
+
+/// Decodes a VP8L image stream (transforms + entropy-coded pixels, no header) of `w`x`h`
+/// pixels to ARGB allocated from `d.arena`. Caller must have bounded `w*h`.
+fn decodeArgb(d: *Dec, w: u32, h: u32) Error![]u32 {
+    const arena = d.arena;
+    const br = &d.br;
+    const npx = @as(usize, w) * h;
 
     var transforms: [4]Transform = undefined;
     var nt: usize = 0;
@@ -534,10 +601,7 @@ pub fn decodeVp8l(alloc: std.mem.Allocator, body: []const u8, limits: Limits) Er
             3 => unbundle(px, t.xs, h, t.bits, t.data),
         }
     }
-
-    const out = try alloc.alloc(u8, nbytes);
-    toRgba(px, out);
-    return .{ .width = w, .height = h, .data = out };
+    return px;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-//! GIF decoder: first frame only (GIF87a/89a), LZW, global/local color tables,
-//! transparency index from the Graphic Control Extension, interlaced frames.
-//! The frame is composited onto a fully transparent canvas of the logical screen size.
+//! GIF decoder (GIF87a/89a): LZW, global/local colour tables, GCE transparency / disposal /
+//! delay, interlaced frames. `decode` returns the first frame on a fully transparent canvas
+//! of the logical screen size; `Gif` + `drawFrame` give every frame (compositing: anim.zig).
 //! Untrusted input: all reads bounds-checked; allocation bounded by `Limits.max_pixels`.
 const std = @import("std");
 const types = @import("types.zig");
@@ -43,112 +43,182 @@ const Reader = struct {
     }
 };
 
+/// Decodes the first frame of a GIF onto a transparent canvas of the logical screen size.
 pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: Limits) Error!Image {
-    if (bytes.len < 13 or !std.mem.eql(u8, bytes[0..3], "GIF")) return error.InvalidData;
-    var sw = rd16(bytes, 6);
-    var sh = rd16(bytes, 8);
-    const flags = bytes[10];
-    var r = Reader{ .b = bytes, .pos = 13 };
-    var gct: []const u8 = &.{};
-    if (flags & 0x80 != 0) gct = try r.take(@as(usize, 3) << @intCast((flags & 7) + 1));
-    var transparent: ?u8 = null;
+    var g = try Gif.init(bytes);
+    const fd = (try g.next()) orelse return error.InvalidData;
+    const sz = g.canvasSize(fd);
+    const nbytes = try types.checkSize(sz[0], sz[1], limits);
+    const out = try alloc.alloc(u8, nbytes);
+    errdefer alloc.free(out);
+    @memset(out, 0);
+    try drawFrame(alloc, bytes, fd, out, sz[0], sz[1], limits);
+    return .{ .width = sz[0], .height = sz[1], .data = out };
+}
 
+/// One image descriptor plus the Graphic Control Extension that preceded it.
+pub const FrameDesc = struct {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    /// Colour table (global or local), 3 bytes per entry.
+    ct: []const u8,
+    transparent: ?u8,
+    /// GCE disposal method (0/1 = keep, 2 = restore to background, 3 = restore previous).
+    disposal: u3,
+    delay_cs: u16,
+    interlaced: bool,
+    min_size: u8,
+    /// Offset of the first LZW data sub-block (after the min code size byte).
+    data_pos: usize,
+};
+
+/// Streaming GIF parser (frames in file order).
+pub const Gif = struct {
+    r: Reader,
+    sw: u32,
+    sh: u32,
+    gct: []const u8,
+
+    pub fn init(bytes: []const u8) Error!Gif {
+        if (bytes.len < 13 or !std.mem.eql(u8, bytes[0..3], "GIF")) return error.InvalidData;
+        const flags = bytes[10];
+        var g = Gif{ .r = .{ .b = bytes, .pos = 13 }, .sw = rd16(bytes, 6), .sh = rd16(bytes, 8), .gct = &.{} };
+        if (flags & 0x80 != 0) g.gct = try g.r.take(@as(usize, 3) << @intCast((flags & 7) + 1));
+        return g;
+    }
+
+    /// Canvas size: the logical screen, or the first frame's extent when that is 0x0.
+    pub fn canvasSize(g: *const Gif, first: FrameDesc) [2]u32 {
+        if (g.sw == 0 or g.sh == 0) return .{ first.x + first.w, first.y + first.h };
+        return .{ g.sw, g.sh };
+    }
+
+    /// Next frame, or null at the trailer / end of data.
+    pub fn next(g: *Gif) Error!?FrameDesc {
+        const r = &g.r;
+        var transparent: ?u8 = null;
+        var disposal: u3 = 0;
+        var delay: u16 = 0;
+        while (true) {
+            if (r.pos >= r.b.len) return null;
+            const tag = try r.byte();
+            switch (tag) {
+                0x21 => {
+                    const label = try r.byte();
+                    if (label == 0xf9) {
+                        const n = try r.byte();
+                        const blk = try r.take(n);
+                        if (n >= 4) {
+                            transparent = if (blk[0] & 1 != 0) blk[3] else null;
+                            disposal = @intCast((blk[0] >> 2) & 7);
+                            delay = @intCast(rd16(blk, 1));
+                        }
+                    }
+                    try r.skipSubBlocks();
+                },
+                0x2c => {
+                    const d = try r.take(9);
+                    const iflags = d[8];
+                    var fd = FrameDesc{
+                        .x = rd16(d, 0),
+                        .y = rd16(d, 2),
+                        .w = rd16(d, 4),
+                        .h = rd16(d, 6),
+                        .ct = g.gct,
+                        .transparent = transparent,
+                        .disposal = disposal,
+                        .delay_cs = delay,
+                        .interlaced = iflags & 0x40 != 0,
+                        .min_size = 0,
+                        .data_pos = 0,
+                    };
+                    if (iflags & 0x80 != 0) fd.ct = try r.take(@as(usize, 3) << @intCast((iflags & 7) + 1));
+                    fd.min_size = try r.byte();
+                    if (fd.min_size < 1 or fd.min_size > 11) return error.InvalidData;
+                    fd.data_pos = r.pos;
+                    try r.skipSubBlocks();
+                    return fd;
+                },
+                0x3b => return null,
+                else => return error.InvalidData,
+            }
+        }
+    }
+};
+
+/// Number of frames (image descriptors) in a GIF; stops at the first malformed block.
+pub fn frameCount(bytes: []const u8) u32 {
+    var g = Gif.init(bytes) catch return 0;
+    var n: u32 = 0;
+    while (g.next() catch null) |_| n += 1;
+    return n;
+}
+
+/// LZW-decodes frame `fd` and paints it onto the straight-RGBA canvas (`cw`x`c_h`), skipping
+/// transparent-index pixels (they keep the canvas value) and clipping to the canvas.
+pub fn drawFrame(alloc: std.mem.Allocator, bytes: []const u8, fd: FrameDesc, out: []u8, cw: u32, c_h: u32, limits: Limits) Error!void {
+    // Gather the LZW data sub-blocks.
+    var r = Reader{ .b = bytes, .pos = fd.data_pos };
+    var total: usize = 0;
     while (true) {
-        const tag = try r.byte();
-        switch (tag) {
-            0x21 => {
-                const label = try r.byte();
-                if (label == 0xf9) {
-                    const n = try r.byte();
-                    const blk = try r.take(n);
-                    if (n >= 4 and blk[0] & 1 != 0) transparent = blk[3];
-                }
-                try r.skipSubBlocks();
-            },
-            0x2c => {
-                const d = try r.take(9);
-                const fx = rd16(d, 0);
-                const fy = rd16(d, 2);
-                const fw = rd16(d, 4);
-                const fh = rd16(d, 6);
-                const iflags = d[8];
-                var ct = gct;
-                if (iflags & 0x80 != 0) ct = try r.take(@as(usize, 3) << @intCast((iflags & 7) + 1));
-                if (sw == 0 or sh == 0) {
-                    sw = fx + fw;
-                    sh = fy + fh;
-                }
-                const nbytes = try types.checkSize(sw, sh, limits);
-                const min_size = try r.byte();
-                if (min_size < 1 or min_size > 11) return error.InvalidData;
-                // Gather the LZW data sub-blocks.
-                const start = r.pos;
-                var total: usize = 0;
-                while (true) {
-                    const n = try r.byte();
-                    if (n == 0) break;
-                    _ = try r.take(n);
-                    total += n;
-                }
-                const lzw = try alloc.alloc(u8, total);
-                defer alloc.free(lzw);
-                var q = start;
-                var o: usize = 0;
-                while (o < total) {
-                    const n: usize = bytes[q];
-                    @memcpy(lzw[o .. o + n], bytes[q + 1 .. q + 1 + n]);
-                    o += n;
-                    q += 1 + n;
-                }
-                const npx = @as(usize, fw) * fh;
-                if (npx > limits.max_pixels) return error.ImageTooLarge;
-                const idx = try alloc.alloc(u8, npx);
-                defer alloc.free(idx);
-                @memset(idx, if (transparent) |t| t else 0);
-                lzwDecode(lzw, @intCast(min_size), idx);
+        const n = try r.byte();
+        if (n == 0) break;
+        _ = try r.take(n);
+        total += n;
+    }
+    const lzw = try alloc.alloc(u8, total);
+    defer alloc.free(lzw);
+    var q = fd.data_pos;
+    var o: usize = 0;
+    while (o < total) {
+        const n: usize = bytes[q];
+        @memcpy(lzw[o .. o + n], bytes[q + 1 .. q + 1 + n]);
+        o += n;
+        q += 1 + n;
+    }
+    const fw = fd.w;
+    const fh = fd.h;
+    const npx = @as(usize, fw) * fh;
+    if (npx > limits.max_pixels) return error.ImageTooLarge;
+    const idx = try alloc.alloc(u8, npx);
+    defer alloc.free(idx);
+    @memset(idx, if (fd.transparent) |t| t else 0);
+    lzwDecode(lzw, @intCast(fd.min_size), idx);
 
-                const out = try alloc.alloc(u8, nbytes);
-                @memset(out, 0);
-                const interlaced = iflags & 0x40 != 0;
-                var row: u32 = 0;
-                var pass: u3 = 0;
-                var y: u32 = 0;
-                while (row < fh) : (row += 1) {
-                    if (interlaced) {
-                        // pass starts / steps: (0,8) (4,8) (2,4) (1,2)
-                        const starts = [4]u32{ 0, 4, 2, 1 };
-                        while (pass < 4 and y >= fh) {
-                            pass += 1;
-                            if (pass < 4) y = starts[pass];
-                        }
-                        if (pass >= 4) break;
-                    } else y = row;
-                    const dy = @as(u64, fy) + y;
-                    if (dy < sh) {
-                        var x: u32 = 0;
-                        while (x < fw) : (x += 1) {
-                            const dx = @as(u64, fx) + x;
-                            if (dx >= sw) break;
-                            const ci = idx[@as(usize, row) * fw + x];
-                            if (transparent != null and ci == transparent.?) continue;
-                            const p = @as(usize, ci) * 3;
-                            const di = (@as(usize, @intCast(dy)) * sw + @as(usize, @intCast(dx))) * 4;
-                            if (p + 3 <= ct.len) {
-                                out[di] = ct[p];
-                                out[di + 1] = ct[p + 1];
-                                out[di + 2] = ct[p + 2];
-                            }
-                            out[di + 3] = 255;
-                        }
-                    }
-                    if (interlaced) {
-                        const steps = [4]u32{ 8, 8, 4, 2 };
-                        y += steps[pass];
-                    }
-                }
-                return .{ .width = sw, .height = sh, .data = out };
-            },
-            else => return error.InvalidData, // 0x3b trailer before any image, or garbage
+    const ct = fd.ct;
+    var row: u32 = 0;
+    var pass: u3 = 0;
+    var y: u32 = 0;
+    while (row < fh) : (row += 1) {
+        if (fd.interlaced) {
+            // pass starts / steps: (0,8) (4,8) (2,4) (1,2)
+            const starts = [4]u32{ 0, 4, 2, 1 };
+            while (pass < 4 and y >= fh) {
+                pass += 1;
+                if (pass < 4) y = starts[pass];
+            }
+            if (pass >= 4) break;
+        } else y = row;
+        const dy = @as(u64, fd.y) + y;
+        if (dy < c_h) {
+            var x: u32 = 0;
+            while (x < fw) : (x += 1) {
+                const dx = @as(u64, fd.x) + x;
+                if (dx >= cw) break;
+                const ci = idx[@as(usize, row) * fw + x];
+                if (fd.transparent != null and ci == fd.transparent.?) continue;
+                const p = @as(usize, ci) * 3;
+                const di = (@as(usize, @intCast(dy)) * cw + @as(usize, @intCast(dx))) * 4;
+                if (p + 3 <= ct.len) {
+                    out[di..][0..4].* = .{ ct[p], ct[p + 1], ct[p + 2], 255 };
+                } else out[di..][0..4].* = .{ 0, 0, 0, 255 };
+            }
+        }
+        if (fd.interlaced) {
+            const steps = [4]u32{ 8, 8, 4, 2 };
+            y += steps[pass];
         }
     }
 }

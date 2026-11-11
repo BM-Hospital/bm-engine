@@ -50,7 +50,34 @@ fn passDim(full: u32, start: u8, step: u8) usize {
 }
 
 /// Decodes a PNG to straight RGBA8. Memory: raw scanlines (temporary) + output, from `alloc`.
+/// For APNG this is the default image (IDAT).
 pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: types.Limits) types.Error!types.Image {
+    var idat_total: usize = 0;
+    const info = try parseInfo(bytes, limits, &idat_total);
+    if (idat_total == 0) return error.InvalidData;
+
+    // gather IDAT
+    const z = try alloc.alloc(u8, idat_total);
+    defer alloc.free(z);
+    {
+        var q: usize = 8;
+        var o: usize = 0;
+        while (q + 12 <= bytes.len and o < idat_total) {
+            const len = byt.be32(bytes, q);
+            if (len > bytes.len - q - 12) break;
+            if (std.mem.eql(u8, bytes[q + 4 ..][0..4], "IDAT")) {
+                @memcpy(z[o..][0..len], bytes[q + 8 ..][0..len]);
+                o += len;
+            }
+            q += 12 + len;
+        }
+    }
+    const out = try decodeImage(alloc, &info, z, info.w, info.h, limits);
+    return .{ .width = info.w, .height = info.h, .data = out };
+}
+
+/// Header pass: IHDR/PLTE/tRNS validation; also reports the total IDAT payload size.
+fn parseInfo(bytes: []const u8, limits: types.Limits, idat_total_out: *usize) types.Error!Info {
     if (bytes.len < 8 or !std.mem.eql(u8, bytes[0..8], &signature)) return error.InvalidData;
     var info: Info = undefined;
     var have_ihdr = false;
@@ -120,25 +147,20 @@ pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: types.Limits)
         p += 12 + len;
         if (p == bytes.len) break; // tolerate missing IEND
     }
-    if (!have_ihdr or idat_total == 0) return error.InvalidData;
+    if (!have_ihdr) return error.InvalidData;
     if (info.ct == 3 and !have_plte) return error.InvalidData;
+    idat_total_out.* = idat_total;
+    return info;
+}
 
-    // gather IDAT
-    const z = try alloc.alloc(u8, idat_total);
-    defer alloc.free(z);
-    {
-        var q: usize = 8;
-        var o: usize = 0;
-        while (q + 12 <= bytes.len and o < idat_total) {
-            const len = byt.be32(bytes, q);
-            if (len > bytes.len - q - 12) break;
-            if (std.mem.eql(u8, bytes[q + 4 ..][0..4], "IDAT")) {
-                @memcpy(z[o..][0..len], bytes[q + 8 ..][0..len]);
-                o += len;
-            }
-            q += 12 + len;
-        }
-    }
+/// Inflates + unfilters one zlib image stream of `w`x`h` pixels in `info_in`'s pixel format
+/// to straight RGBA8 (allocated from `alloc`).
+fn decodeImage(alloc: std.mem.Allocator, info_in: *const Info, z: []const u8, w: u32, h: u32, limits: types.Limits) types.Error![]u8 {
+    var info = info_in.*;
+    info.w = w;
+    info.h = h;
+    if (w > (1 << 24) or h > (1 << 24)) return error.ImageTooLarge;
+    _ = try types.checkSize(w, h, limits);
 
     // raw size
     // width <= 2^24 and 64 bits per pixel keep rowBytes < 2^27; the product is checked in u64.
@@ -181,7 +203,111 @@ pub fn decode(alloc: std.mem.Allocator, bytes: []const u8, limits: types.Limits)
     } else {
         try decodePass(&info, raw, info.w, info.h, zero_row, out, .{ 0, 0, 1, 1 });
     }
-    return .{ .width = info.w, .height = info.h, .data = out };
+    return out;
+}
+
+// ------------------------------------------------------------------- APNG frame access
+
+/// One APNG frame control (fcTL) record.
+pub const ApngFrame = struct {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+    delay_ms: u32,
+    /// 0 = none, 1 = background (clear to transparent), 2 = previous.
+    dispose_op: u8,
+    /// 0 = source (replace), 1 = over (alpha blend).
+    blend_op: u8,
+    /// Byte offset of the chunk after this fcTL (its IDAT/fdAT data follow until the next fcTL).
+    data_pos: usize,
+};
+
+/// Iterates the chunks after the PNG signature: returns type + payload, or null at the end
+/// (or on a truncated chunk).
+fn nextChunk(bytes: []const u8, p: *usize) ?struct { typ: *const [4]u8, data: []const u8 } {
+    const q = p.*;
+    if (q < 8 or bytes.len < 12 or q > bytes.len - 12) return null;
+    const len = byt.be32(bytes, q);
+    if (len > bytes.len - q - 12) return null;
+    p.* = q + 12 + len;
+    return .{ .typ = bytes[q + 4 ..][0..4], .data = bytes[q + 8 ..][0..len] };
+}
+
+/// Number of APNG frames (fcTL chunks) when an acTL chunk is present, else 0. Header scan only.
+pub fn apngFrameCount(bytes: []const u8) u32 {
+    if (bytes.len < 8 or !std.mem.eql(u8, bytes[0..8], &signature)) return 0;
+    var p: usize = 8;
+    var actl = false;
+    var n: u32 = 0;
+    while (nextChunk(bytes, &p)) |c| {
+        if (std.mem.eql(u8, c.typ, "acTL")) actl = true;
+        if (std.mem.eql(u8, c.typ, "fcTL")) n += 1;
+        if (std.mem.eql(u8, c.typ, "IEND")) break;
+    }
+    return if (actl) n else 0;
+}
+
+/// The `index`-th fcTL record (null if missing or malformed).
+pub fn apngFrame(bytes: []const u8, index: u32) ?ApngFrame {
+    if (bytes.len < 8 or !std.mem.eql(u8, bytes[0..8], &signature)) return null;
+    var p: usize = 8;
+    var n: u32 = 0;
+    while (nextChunk(bytes, &p)) |c| {
+        if (std.mem.eql(u8, c.typ, "IEND")) break;
+        if (!std.mem.eql(u8, c.typ, "fcTL")) continue;
+        if (n == index) {
+            const d = c.data;
+            if (d.len < 26) return null;
+            const num: u32 = byt.be16(d, 20);
+            var den: u32 = byt.be16(d, 22);
+            if (den == 0) den = 100;
+            return .{
+                .w = byt.be32(d, 4),
+                .h = byt.be32(d, 8),
+                .x = byt.be32(d, 12),
+                .y = byt.be32(d, 16),
+                .delay_ms = num * 1000 / den,
+                .dispose_op = d[24],
+                .blend_op = d[25],
+                .data_pos = p,
+            };
+        }
+        n += 1;
+    }
+    return null;
+}
+
+/// Decodes the pixels of one APNG frame (`fr.w` x `fr.h`, straight RGBA8, not composited).
+pub fn decodeApngFrame(alloc: std.mem.Allocator, bytes: []const u8, fr: ApngFrame, limits: types.Limits) types.Error!types.Image {
+    var idat_total: usize = 0;
+    const info = try parseInfo(bytes, limits, &idat_total);
+    if (fr.w == 0 or fr.h == 0) return error.InvalidData;
+    // Gather the IDAT / fdAT payloads up to the next fcTL.
+    var total: usize = 0;
+    var pass: u2 = 0;
+    var z: []u8 = &.{};
+    defer alloc.free(z);
+    while (pass < 2) : (pass += 1) {
+        var p = fr.data_pos;
+        var o: usize = 0;
+        while (nextChunk(bytes, &p)) |c| {
+            if (std.mem.eql(u8, c.typ, "fcTL") or std.mem.eql(u8, c.typ, "IEND")) break;
+            var payload: []const u8 = &.{};
+            if (std.mem.eql(u8, c.typ, "IDAT")) payload = c.data;
+            if (std.mem.eql(u8, c.typ, "fdAT") and c.data.len >= 4) payload = c.data[4..];
+            if (pass == 0) total += payload.len else {
+                @memcpy(z[o..][0..payload.len], payload);
+                o += payload.len;
+            }
+        }
+        if (pass == 0) {
+            if (total == 0) return error.InvalidData;
+            z = try alloc.alloc(u8, total);
+        }
+    }
+    const out = try decodeImage(alloc, &info, z, fr.w, fr.h, limits);
+    return .{ .width = fr.w, .height = fr.h, .data = out };
 }
 
 fn decodePass(info: *const Info, raw: []u8, pw: usize, ph: usize, zero_row: []const u8, out: []u8, a: [4]u8) types.Error!void {
@@ -434,7 +560,7 @@ pub fn encode(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, opts: 
     const trns_bytes: usize = if (trns_n > 0) 12 + trns_n else 0;
     const prefix = 8 + 25 + pal_bytes + trns_bytes + 8;
     const raw_len = stride * @as(usize, h);
-    var s = try deflate.Stream.init(alloc, .{ .level = level, .dist_hints = .{ @intCast(bpp), @intCast(stride) } }, @max(raw_len / 8, 4096), prefix, true);
+    var s = try deflate.Stream.init(alloc, .{ .level = level, .dist_hints = .{ @intCast(bpp), @intCast(stride) }, .hash_len = if (use_pal) 6 else 0 }, @max(raw_len / 8, 4096), prefix, true);
     errdefer s.deinit();
     try streamRows(&rows, &s, strat, 0, h, bufs);
     try s.finish();
@@ -502,6 +628,20 @@ fn allOpaque(rgba: []const u8) bool {
     return true;
 }
 
+/// Bit j set when pixel i+j differs from pixel i+j-1 (16 pixels; requires i >= 1).
+/// Edge-heavy rows then cost one mask plus a lookup per colour change instead of a
+/// (often mispredicted) branch per pixel.
+inline fn changes16(px: [*]align(1) const u32, i: usize) u32 {
+    const V = @Vector(16, u32);
+    const a: V = @as(*align(1) const V, @ptrCast(px + i)).*;
+    const b: V = @as(*align(1) const V, @ptrCast(px + i - 1)).*;
+    return @as(u16, @bitCast(a != b));
+}
+
+inline fn pixel(px: [*]align(1) const u32, i: usize) u32 {
+    return std.mem.littleToNative(u32, px[i]);
+}
+
 const Palette = struct {
     const slots = 1024;
     keys: [slots]u32,
@@ -509,6 +649,20 @@ const Palette = struct {
     colors: [256][4]u8,
     n: usize,
     ntrans: usize, // non-opaque colours are sorted first; tRNS length
+
+    /// Index of a colour known to be in the palette (0 if absent); first probe inlined.
+    inline fn find(p: *Palette, key: u32) u8 {
+        const s = (key *% 0x9E3779B1) >> 22;
+        if (p.keys[s] == key and p.ents[s] != 0) return @intCast(p.ents[s] - 1);
+        return p.lookup(key) orelse 0;
+    }
+
+    /// Inserts `key` if new; false when the palette is full.
+    inline fn has(p: *Palette, key: u32) bool {
+        const s = (key *% 0x9E3779B1) >> 22;
+        if (p.keys[s] == key and p.ents[s] != 0) return true;
+        return p.lookup(key) != null;
+    }
 
     fn lookup(p: *Palette, key: u32) ?u8 {
         var s = (key *% 0x9E3779B1) >> 22;
@@ -537,13 +691,18 @@ const Palette = struct {
         while (i < npx) : (i += 61) {
             if (p.lookup(byt.le32(rgba, i * 4)) == null) return false;
         }
-        var last: u32 = std.mem.readInt(u32, rgba[0..4], .little) ^ 1;
-        i = 0;
+        // Full pass: only pixels that differ from their left neighbour can be new colours
+        // (pixel 0 was in the sample), found 16 at a time.
+        const px: [*]align(1) const u32 = @ptrCast(rgba.ptr);
+        i = 1;
+        while (i + 16 <= npx) : (i += 16) {
+            var m = changes16(px, i);
+            while (m != 0) : (m &= m - 1) {
+                if (!p.has(pixel(px, i + @ctz(m)))) return false;
+            }
+        }
         while (i < npx) : (i += 1) {
-            const k = byt.le32(rgba, i * 4);
-            if (k == last) continue;
-            last = k;
-            if (p.lookup(k) == null) return false;
+            if (pixel(px, i) != pixel(px, i - 1) and !p.has(pixel(px, i))) return false;
         }
         // reorder: transparent-ish colours first so tRNS can be truncated
         var order: [256]u8 = undefined;
@@ -592,24 +751,56 @@ const Rows = struct {
                 r.last_idx = p.lookup(r.last).?;
                 r.have_last = true;
             }
-            if (r.depth != 8) @memset(dst, 0);
+            if (r.depth == 8) {
+                const px: [*]align(1) const u32 = @ptrCast(src.ptr);
+                const w = r.w;
+                var idx = r.last_idx;
+                if (pixel(px, 0) != r.last) idx = p.find(pixel(px, 0));
+                dst[0] = idx;
+                var x: usize = 1;
+                const B = @Vector(16, u8);
+                while (x + 16 <= w) : (x += 16) {
+                    var m = changes16(px, x);
+                    // 16 indices assembled in `tmp`: each colour change overwrites from its
+                    // position to the end of the block.
+                    var tmp: [32]u8 align(16) = undefined;
+                    @as(*B, @ptrCast(&tmp)).* = @splat(idx);
+                    while (m != 0) : (m &= m - 1) {
+                        const j = @ctz(m);
+                        idx = p.find(pixel(px, x + j));
+                        @as(*align(1) B, @ptrCast(&tmp[j])).* = @splat(idx);
+                    }
+                    @as(*align(1) B, @ptrCast(dst.ptr + x)).* = @as(*B, @ptrCast(&tmp)).*;
+                }
+                while (x < w) : (x += 1) {
+                    if (pixel(px, x) != pixel(px, x - 1)) idx = p.find(pixel(px, x));
+                    dst[x] = idx;
+                }
+                r.last = pixel(px, w - 1);
+                r.last_idx = idx;
+                return;
+            }
+            @memset(dst, 0);
             for (0..r.w) |x| {
                 const k = byt.le32(src, x * 4);
                 if (k != r.last) {
                     r.last = k;
                     r.last_idx = p.lookup(k) orelse 0;
                 }
-                if (r.depth == 8) {
-                    dst[x] = r.last_idx;
-                } else {
-                    const bit = x * r.depth;
-                    dst[bit >> 3] |= r.last_idx << @intCast(8 - r.depth - (bit & 7));
-                }
+                const bit = x * r.depth;
+                dst[bit >> 3] |= r.last_idx << @intCast(8 - r.depth - (bit & 7));
             }
         } else if (r.bpp == 4) {
             @memcpy(dst, src);
         } else {
-            for (0..r.w) |i| {
+            // RGBA -> RGB, 4 pixels per shuffle; each 16-byte store overlaps the next by 4.
+            const B = @Vector(16, u8);
+            var i: usize = 0;
+            while (i + 4 <= r.w and i * 3 + 16 <= dst.len) : (i += 4) {
+                const v: B = @as(*align(1) const B, @ptrCast(src.ptr + i * 4)).*;
+                @as(*align(1) B, @ptrCast(dst.ptr + i * 3)).* = @shuffle(u8, v, undefined, @Vector(16, i32){ 0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 0, 0, 0, 0 });
+            }
+            while (i < r.w) : (i += 1) {
                 dst[i * 3] = src[i * 4];
                 dst[i * 3 + 1] = src[i * 4 + 1];
                 dst[i * 3 + 2] = src[i * 4 + 2];
@@ -625,6 +816,15 @@ fn streamRows(r: *Rows, s: *deflate.Stream, strat: FilterStrategy, y0: usize, y1
     var prev: []u8 = bufs[0..rb];
     var cur: []u8 = bufs[rb..][0..rb];
     const out = bufs[2 * rb ..][0 .. rb + 1];
+    if (strat == .none) {
+        // no predictor: pack straight into the output scanline
+        for (y0..y1) |y| {
+            out[0] = 0;
+            r.pack(y, out[1..]);
+            try s.write(out);
+        }
+        return;
+    }
     if (y0 == 0) @memset(prev, 0) else r.pack(y0 - 1, prev);
     for (y0..y1) |y| {
         r.pack(y, cur);
@@ -748,33 +948,59 @@ fn choose(c: []const u8, prev: []const u8, bpp: usize, full: bool) u8 {
     return best;
 }
 
-/// Picks the filter strategy by deflating a sample of the image with each candidate:
-/// 3 bands of 17 consecutive rows (or the whole image when small) at `.fast`.
+const trial_rows = 8;
+const trial_level: deflate.Level = .fast;
+/// A second set of bands is sampled when the two best candidates are within 1/close_margin.
+const close_margin = 8;
+
+/// Picks the filter strategy by deflating a sample of the image with each candidate: 3 bands
+/// of `trial_rows` rows (3 more when the result is close), or the whole image when small.
+/// Each band is preceded by its context row, given to the compressor as history only, so
+/// unfiltered rows can match the row above just as filtered rows predict from it.
 fn pickStrategy(alloc: std.mem.Allocator, rows: *Rows, h: u32, bufs: []u8) EncodeError!FilterStrategy {
     const stride = rows.rb + 1;
-    // Each band is 1 context row + 16 rows; unfiltered data needs the row above as LZ history
-    // just like filtered data needs it as predictor, so both get it.
-    const band = 17;
-    const nbands: usize = if (h <= 3 * band * 2) 1 else 3;
-    const cands = [_]FilterStrategy{ .none, .up, .adaptive_fast };
-    var best = cands[0];
-    var best_size: usize = std.math.maxInt(usize);
-    for (cands) |c| {
-        var s = try deflate.Stream.init(alloc, .{ .level = .fast, .dist_hints = .{ @intCast(rows.bpp), @intCast(stride) } }, 64 << 10, 0, true);
-        defer s.deinit();
-        if (nbands == 1) {
-            try streamRows(rows, &s, c, 0, h, bufs);
-        } else for (0..nbands) |k| {
-            const y0 = (2 * k + 1) * h / (2 * nbands) - band / 2;
-            try streamRows(rows, &s, c, y0, y0 + band, bufs);
+    // `.up` won the trials now and then but rarely the full encode; skipping it saves a third.
+    const cands = [_]FilterStrategy{ .none, .adaptive_fast };
+    var s = try deflate.Stream.init(alloc, .{ .level = trial_level, .dist_hints = .{ @intCast(rows.bpp), @intCast(stride) } }, 64 << 10, 0, false);
+    defer s.deinit();
+    var size: [cands.len]usize = @splat(0);
+    const whole = h <= 12 * (trial_rows + 2);
+    for (0..@as(usize, if (whole) 1 else 2)) |pass| {
+        for (cands, &size) |c, *sz| {
+            if (whole) {
+                s.reset();
+                try streamRows(rows, &s, c, 0, h, bufs);
+                try s.finish();
+                sz.* = s.w.pos;
+                continue;
+            }
+            // pass 0: bands centred at 3/12, 7/12, 11/12 of the height; pass 1: 1/12, 5/12, 9/12
+            for (0..3) |k| {
+                const y0 = (4 * k + 3 - 2 * pass) * h / 12 - trial_rows / 2;
+                s.reset();
+                try streamRows(rows, &s, c, y0 - 1, y0, bufs);
+                s.markHistory();
+                try streamRows(rows, &s, c, y0, y0 + trial_rows, bufs);
+                try s.finish();
+                sz.* += s.w.pos;
+            }
         }
-        try s.finish();
-        if (s.w.pos < best_size) {
-            best_size = s.w.pos;
-            best = c;
+        var lo = size[0];
+        var lo2: usize = std.math.maxInt(usize);
+        for (size[1..]) |v| {
+            if (v < lo) {
+                lo2 = lo;
+                lo = v;
+            } else lo2 = @min(lo2, v);
         }
+        if (lo2 / close_margin > lo2 - lo) continue; // close: sample more
+        break;
     }
-    return best;
+    var best: usize = 0;
+    for (size, 0..) |v, i| {
+        if (v < size[best]) best = i;
+    }
+    return cands[best];
 }
 
 // =================================================================== tests

@@ -21,14 +21,28 @@ pub const Level = enum {
     best,
 };
 
-const Cfg = struct { chain: u32, nice: u32, lazy: u32, max_insert: u32, min3: bool = false };
+const Cfg = struct {
+    chain: u32,
+    nice: u32,
+    lazy: u32,
+    max_insert: u32,
+    min3: bool = false,
+    /// Bytes hashed for the chains (3..6); longer keys give shorter, better chains on image data.
+    hash_len: u8 = 4,
+    /// The lazy probe after a match of at least `good` walks only chain/4 (zlib good_length).
+    good: u32 = 258,
+    /// Matches at distance 1 or the first hint (pixel runs) longer than this only get their
+    /// last 2 positions hashed: run positions all share one hash and flood its chain,
+    /// while the distance hints already find runs.
+    run_insert: u32 = 258,
+};
 
 fn cfgOf(level: Level) Cfg {
     return switch (level) {
         .fastest => .{ .chain = 1, .nice = 258, .lazy = 0, .max_insert = 0 },
         .fast => .{ .chain = 8, .nice = 258, .lazy = 0, .max_insert = 258 },
-        .default => .{ .chain = 64, .nice = 258, .lazy = 258, .max_insert = 258 },
-        .best => .{ .chain = 512, .nice = 258, .lazy = 258, .max_insert = 258, .min3 = true },
+        .default => .{ .chain = 64, .nice = 258, .lazy = 258, .max_insert = 258, .run_insert = 16, .good = 16 },
+        .best => .{ .chain = 512, .nice = 258, .lazy = 258, .max_insert = 258, .min3 = true, .hash_len = 3 },
     };
 }
 
@@ -39,6 +53,9 @@ pub const Options = struct {
     /// Distances always tried before the hash chain (e.g. PNG: bytes per pixel and the
     /// scanline stride), which finds long image matches with short chains. 0 = unused.
     dist_hints: [2]u32 = .{ 0, 0 },
+    /// Bytes hashed for match candidates (3..6); 0 = the level default (4, or 3 for `.best`).
+    /// 6 suits low-entropy data such as palette indices: shorter chains of better candidates.
+    hash_len: u8 = 0,
 };
 
 /// zlib-wrapped DEFLATE of `input`.
@@ -116,13 +133,15 @@ pub const Stream = struct {
             w.pos += 2;
         }
         var st = State{ .src = win[0..0], .cfg = cfgOf(opts.level), .hints = opts.dist_hints, .head = head, .prev = prev, .syms = syms };
+        if (opts.hash_len >= 3 and opts.hash_len <= 6) st.cfg.hash_len = opts.hash_len;
         if (st.cfg.min3) st.mask = 0xFFFFFF;
+        st.hmask = (@as(u64, 1) << @intCast(8 * st.cfg.hash_len)) - 1;
         return .{ .alloc = alloc, .st = st, .win = win, .w = w, .zlib = zlib };
     }
 
     pub fn write(s: *Stream, data: []const u8) Error!void {
         var d = data;
-        if (s.zlib) s.adler = checksum.adler32(s.adler, d);
+        if (s.zlib) s.adler = adler32(s.adler, d);
         s.total += d.len;
         while (d.len > 0) {
             var fill = s.st.src.len;
@@ -146,6 +165,33 @@ pub const Stream = struct {
             s.st.src = s.win[0 .. fill + n];
             d = d[n..];
         }
+    }
+
+    /// Restarts a raw (non-zlib, prefix 0) stream, keeping its tables and output buffer.
+    pub fn reset(s: *Stream) void {
+        @memset(s.st.head, 0);
+        const o = s.st;
+        s.st = .{ .src = s.win[0..0], .cfg = o.cfg, .hints = o.hints, .head = o.head, .prev = o.prev, .syms = o.syms, .mask = o.mask, .hmask = o.hmask };
+        s.w.pos = 0;
+        s.w.bits = 0;
+        s.w.nbits = 0;
+        s.adler = 1;
+        s.total = 0;
+    }
+
+    /// Turns everything written so far into history: later data can match it, but it is not
+    /// emitted (like a preset dictionary). Only valid before anything was encoded, i.e. less
+    /// than ~128 KB written since `init`/`reset`. Used for trial compressions with context.
+    pub fn markHistory(s: *Stream) void {
+        const st = &s.st;
+        const n = st.src.len;
+        var q = st.ins;
+        while (q + 8 <= n) : (q += 1) _ = st.insert(q);
+        st.ins = n;
+        st.pos = n;
+        st.block_start = st.base + n;
+        s.adler = 1;
+        s.total = 0;
     }
 
     /// Emits the final block (and the zlib trailer). Output is `w.buf[0..w.pos]`.
@@ -288,9 +334,11 @@ inline fn read32(s: []const u8, i: usize) u32 {
     return bytes.le32(s, i);
 }
 
-inline fn hash4(v: u32) u32 {
-    return (v *% 0x9E3779B1) >> (32 - hash_bits);
+/// Hash of the low bytes of the 8 at `i` selected by `m` (needs i + 8 <= s.len).
+inline fn hashAt(s: []const u8, i: usize, m: u64) u32 {
+    return @intCast(((bytes.le64(s, i) & m) *% 0x9E3779B97F4A7C15) >> (64 - hash_bits));
 }
+
 
 inline fn matchLen(s: []const u8, a: usize, b: usize, max: usize) usize {
     var l: usize = 0;
@@ -318,9 +366,10 @@ const State = struct {
     pos: usize = 0, // next position to encode (window-relative)
     base: usize = 0, // absolute stream offset of src[0]
     mask: u32 = 0xFFFFFFFF, // 0xFFFFFF when 3-byte matches are enabled
+    hmask: u64 = 0xFFFFFFFF, // bytes hashed (Cfg.hash_len)
 
     inline fn insert(st: *State, p: usize) u32 {
-        const h = hash4(read32(st.src, p) & st.mask);
+        const h = hashAt(st.src, p, st.hmask);
         const cand = st.head[h];
         st.head[h] = @intCast(p + 1);
         st.prev[p & wmask] = cand;
@@ -328,7 +377,7 @@ const State = struct {
     }
 
     /// Inserts `p` (must equal `ins`) and returns the best match there (len 0 if none >= 4).
-    fn find(st: *State, p: usize) struct { len: u32, dist: u32 } {
+    fn find(st: *State, p: usize, max_chain: u32) struct { len: u32, dist: u32 } {
         const s = st.src;
         var c = st.insert(p);
         st.ins = p + 1;
@@ -336,7 +385,7 @@ const State = struct {
         const m3 = st.mask != 0xFFFFFFFF;
         var best: usize = if (m3) 2 else 3;
         var best_d: usize = 0;
-        var chain = st.cfg.chain;
+        var chain = max_chain;
         const first = read32(s, p) & st.mask;
         for (st.hints) |d| {
             if (d == 0 or d > p or d > wsize or best >= max) continue;
@@ -396,8 +445,8 @@ fn process(w: *Writer, stp: *State, upto: usize, final: bool) Error!void {
     const src = st.src;
     const n = src.len;
     var p = st.pos;
-    // Positions >= limit cannot start a 4-byte hash.
-    const limit = if (n >= 4) n - 3 else 0;
+    // Positions >= limit cannot be hashed (8-byte loads).
+    const limit = if (n >= 8) n - 7 else 0;
     while (p < upto) {
         if (st.nsyms >= block_syms - 2) {
             try emitBlock(w, st, p, false);
@@ -407,7 +456,7 @@ fn process(w: *Writer, stp: *State, upto: usize, final: bool) Error!void {
             p += 1;
             continue;
         }
-        var m = st.find(p);
+        var m = st.find(p, st.cfg.chain);
         if (m.len == 0) {
             st.lit(src[p]);
             p += 1;
@@ -415,7 +464,7 @@ fn process(w: *Writer, stp: *State, upto: usize, final: bool) Error!void {
         }
         // one-step lazy evaluation, repeated while it keeps improving
         while (m.len < st.cfg.lazy and p + 1 < limit) {
-            const m2 = st.find(p + 1);
+            const m2 = st.find(p + 1, if (m.len >= st.cfg.good) st.cfg.chain >> 2 else st.cfg.chain);
             if (m2.len <= m.len) break;
             st.lit(src[p]);
             p += 1;
@@ -427,7 +476,9 @@ fn process(w: *Writer, stp: *State, upto: usize, final: bool) Error!void {
         {
             // Long matches (beyond max_insert) only get their last 2 positions hashed, which
             // keeps short distances (e.g. one pixel back) reachable for the next match.
-            var q = if (m.len <= st.cfg.max_insert) st.ins else @max(st.ins, end - 2);
+            const is_run = m.dist == 1 or m.dist == st.hints[0];
+            const lim = if (is_run) st.cfg.run_insert else st.cfg.max_insert;
+            var q = if (m.len <= lim) st.ins else @max(st.ins, end - 2);
             const e = @min(end, limit);
             while (q < e) : (q += 1) _ = st.insert(q);
         }
@@ -722,4 +773,52 @@ test "streamed writes in random chunks give the same bytes as one-shot" {
         defer testing.allocator.free(back);
         try testing.expectEqualSlices(u8, data, back);
     }
+}
+
+// ------------------------------------------------------------------ adler32
+
+/// Adler-32 (same result as `checksum.adler32`), ~4x faster on wasm simd128: per 16-byte
+/// block only vector adds; the position weights are applied once per 5552-byte chunk
+/// (sum_blocks sum_j (16-j)*x[b][j] == sum_j (16-j) * sum_blocks x[b][j]).
+fn adler32(adler: u32, data: []const u8) u32 {
+    const base: u32 = 65521;
+    var a: u32 = adler & 0xffff;
+    var b: u32 = adler >> 16;
+    var p = data;
+    const V = @Vector(16, u32);
+    const weights: V = .{ 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+    while (p.len > 0) {
+        const n = @min(p.len, 5552);
+        const nb = n / 16;
+        var s1: V = @splat(0); // per-lane byte sums
+        var s2: V = @splat(0); // sum over blocks of s1 before the block
+        for (0..nb) |k| {
+            const v: @Vector(16, u8) = @as(*align(1) const @Vector(16, u8), @ptrCast(p.ptr + k * 16)).*;
+            s2 += s1;
+            s1 += @as(V, v);
+        }
+        b += @as(u32, @intCast(nb * 16)) * a;
+        b += 16 * (@reduce(.Add, s2) % base) + @reduce(.Add, s1 * weights);
+        a += @reduce(.Add, s1);
+        for (p[nb * 16 .. n]) |x| {
+            a += x;
+            b += a;
+        }
+        a %= base;
+        b %= base;
+        p = p[n..];
+    }
+    return (b << 16) | a;
+}
+
+test "adler32 matches checksum.adler32" {
+    var buf: [40000]u8 = undefined;
+    for (&buf, 0..) |*x, i| x.* = @truncate(i *% 7919 +% (i >> 3) +% (i *% i >> 5));
+    for ([_]usize{ 0, 1, 15, 16, 17, 5551, 5552, 5553, 11104, 40000 }) |n| {
+        try testing.expectEqual(checksum.adler32(1, buf[0..n]), adler32(1, buf[0..n]));
+        try testing.expectEqual(checksum.adler32(0xfff0fff0, buf[0..n]), adler32(0xfff0fff0, buf[0..n]));
+    }
+    @memset(&buf, 255);
+    try testing.expectEqual(checksum.adler32(1, &buf), adler32(1, &buf));
+    try testing.expectEqual(checksum.adler32(0xfff0fff0, &buf), adler32(0xfff0fff0, &buf));
 }
