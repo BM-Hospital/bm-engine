@@ -1,0 +1,17 @@
+import { r, raw, px, row } from "./lib.mjs";
+const t = async (label, f) => { try { console.log(label, await f()); } catch (e) { console.log(label, "THROWS:", String(e.message||e).slice(0,200)); } };
+await t("invalid value", () => r.measure({type:"container", style:{width:"banana"}}));
+await t("unknown prop", async () => JSON.stringify(await r.measure({type:"container", style:{fooBar:"1"}})));
+await t("kebab key", async () => JSON.stringify(await r.measure({type:"container", style:{"min-width":"30px"}})));
+await t("string number", async () => JSON.stringify(await r.measure({type:"container", style:{width:"30", height: 5}})));
+await t("default display children", async () => JSON.stringify(await r.measure({type:"container", children:[{type:"container", style:{width:10,height:10}},{type:"container", style:{width:10,height:10}}]}, {width:100,height:50})));
+await t("display block children", async () => JSON.stringify(await r.measure({type:"container", children:[{type:"container", style:{display:"block",width:10,height:10}},{type:"container", style:{display:"block",width:10,height:10}}]}, {width:100,height:50})));
+await t("flex default stretch", async () => JSON.stringify(await r.measure({type:"container", style:{display:"flex", height: 40}, children:[{type:"container", style:{width:10}},{type:"text", text:"Hi"}]}, {width:100,height:50})));
+await t("tw vs style", async () => { const b = await raw({type:"container", tw:"bg-red-500 w-4 h-4", style:{backgroundColor:"blue"}}, {width:20,height:20}); return px(b,20,1,1).join(); });
+await t("preset vs style", async () => { const b = await raw({type:"container", preset:{backgroundColor:"red", width:4, height:4}, style:{backgroundColor:"blue"}}, {width:20,height:20}); return px(b,20,1,1).join(); });
+await t("tw only", async () => { const b = await raw({type:"container", tw:"bg-red-500 w-4 h-4"}, {width:20,height:20}); return px(b,20,1,1).join()+" size? "+px(b,20,15,15).join(); });
+await t("no width/height", async () => { const b = await r.render({type:"container", style:{width:13,height:7, backgroundColor:"red"}}, {format:"raw"}); return b.length/4; });
+await t("text color", async () => { const b = await raw({type:"container", style:{fontSize:40}, children:[{type:"text", text:"█"}]}, {width:60,height:60}); return row(b,60,25,0,40).slice(0,30).join(" | "); });
+await t("lh 64px font", async () => JSON.stringify(await r.measure({type:"text", text:"Hello", style:{fontSize:64}})));
+await t("lh 13px", async () => JSON.stringify(await r.measure({type:"text", text:"Hello", style:{fontSize:13}})));
+await t("lh 1.5", async () => JSON.stringify(await r.measure({type:"text", text:"Hello", style:{fontSize:13, lineHeight:1.5}})));

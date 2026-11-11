@@ -1,0 +1,10 @@
+import { Renderer } from "@takumi-rs/wasm/node";
+import { readFileSync } from "node:fs";
+const F = "D:/project/bm-engine/assets/fonts/";
+const r = new Renderer();
+console.log(Object.getOwnPropertyNames(Object.getPrototypeOf(r)));
+for (const f of ["Inter-Regular.ttf","NotoSans-Regular.ttf","Roboto-Regular.ttf","Inter-Bold.ttf"]) console.log(await r.loadFont?.(readFileSync(F+f)));
+const m = await r.measure({type:"container", style:{display:"flex"}, children:[{type:"text", text:"Hello AV To WA", style:{fontFamily:"Inter", fontSize:16}}]}, {width: 400, height: 100});
+console.log(JSON.stringify(m,null,1));
+const m2 = await r.measure({type:"container", style:{width:120}, children:[{type:"text", text:"The quick brown fox jumps over the lazy dog", style:{fontFamily:"Inter", fontSize:16}}]}, {width: 400, height: 300});
+console.log(JSON.stringify(m2,null,1));

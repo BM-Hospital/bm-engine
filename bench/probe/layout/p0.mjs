@@ -1,0 +1,12 @@
+import { Renderer } from "@takumi-rs/wasm/node";
+const r = new Renderer();
+const show = async (name, node, vp={width:400,height:300}) => { const m = await r.measure(node, vp); console.log(name, JSON.stringify(m)); };
+const c = (style, children=[]) => ({type:"container", style, children});
+await show("default", c({width:300,height:200}, [c({width:50,height:50}), c({width:60,height:30})]));
+await show("default-nosize", c({}, [c({width:50,height:50}), c({width:60,height:30})]));
+await show("flex", c({display:"flex",width:300,height:200}, [c({width:50,height:50}), c({width:60}), c({flexGrow:1,height:10.5})]));
+await show("boxsizing", c({display:"flex",width:300,height:200,padding:10,border:"5px solid black"}, [c({width:50,height:50,padding:10}), c({width:"33.3%",height:"50%"})]));
+await show("block", c({display:"block",width:300,height:200}, [c({display:"block",height:50,marginBottom:20}), c({display:"block",height:30,marginTop:30, width:100.4})]));
+await show("frac", c({display:"flex",width:100,height:200}, [c({flexGrow:1,height:50}), c({flexGrow:1,height:50}), c({flexGrow:1,height:50})]));
+await show("rootauto", c({display:"flex"}, [c({width:50,height:50})]));
+await show("rootblock", c({display:"block"}, [c({width:50,height:50})]));
