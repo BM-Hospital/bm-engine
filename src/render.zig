@@ -28,17 +28,31 @@ const svgm = @import("svg/svg.zig");
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
 pub const none: u32 = std.math.maxInt(u32);
-/// Maximum node nesting. Layout and paint recurse per level on the 1 MiB wasm shadow stack
-/// (verified with a ReleaseSafe build, whose frames are larger than the shipped one).
-pub const max_node_depth = 128;
+/// Maximum number of node nesting levels (takumi's MAXIMUM_DOM_TREE_DEPTH: 512 levels pass, 513 fail).
+/// Every phase recurses per level on the 1 MiB wasm shadow stack. Measured on a ReleaseSafe build
+/// (frames larger than the shipped ReleaseSmall ones; bench/probe/layout2/deep*.mjs): paint is the
+/// limit at ~320-370 B per level (Painter.paintNode / paintBox) plus ~100-140 KB used once by the
+/// rasterizer's fill path; JSON parsing ~144 B per level (json.Parser.value, two JSON levels per
+/// node); a 512-level heavy tree renders + measures with a 384 KiB stack (>2.5x margin). Anonymous
+/// line containers add layout levels: the layout engine's own 512-level limit then fails first.
+pub const max_node_depth = 512;
+
+/// The layout tree with the optional features selected in config.zig (tables / floats compile out;
+/// a disabled table display lays out as a block, a disabled float as an in-flow block).
+pub const LTree = layout.TreeWith(.{ .tables = config.enable_tables, .floats = config.enable_floats, .inline_row = true });
 
 pub const Error = error{ OutOfMemory, Invalid };
 
-pub const Kind = enum(u8) { container, text, image, anon_text };
+/// `anon_text`: anonymous paragraph leaf (merged inline runs of its parent block; `cs` = the block's).
+/// `anon_box`: anonymous line container (layout `inline_row`) around a run of atomic inline boxes and
+/// the text between them; `cs` is an initial-value style inheriting from the block, so it paints nothing.
+pub const Kind = enum(u8) { container, text, image, anon_text, anon_box };
 
 pub const Node = struct {
     kind: Kind,
     cs: *const CS,
+    /// source element (dom index; none for anonymous / generated boxes)
+    el: u32 = none,
     parent: u32 = none,
     first_child: u32 = none,
     last_child: u32 = none,
@@ -369,7 +383,7 @@ pub const Renderer = struct {
     fn renderPixels(self: *Renderer, src: Source, opts: Options) Error!raster.Pixmap {
         const a = self.arena.allocator();
         self.time_ms = opts.time_ms;
-        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined, .pre = src.value };
+        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined, .pre = src.value };
         try f.prepare(src.kind, src.text);
 
         const need = @as(usize, f.canvas_w) * f.canvas_h * 4;
@@ -538,7 +552,7 @@ pub const Renderer = struct {
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
         self.time_ms = opts.time_ms;
-        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
+        var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
         var out: std.ArrayList(u8) = .empty;
         try f.writeMeasured(&out, f.root, 0, 0);
@@ -1040,7 +1054,7 @@ pub const Frame = struct {
     a: Allocator,
     opts: Options,
     ctx: style.Context,
-    tree: layout.Tree,
+    tree: LTree,
     nodes: std.ArrayList(Node) = .empty,
     /// TextStyle.user -> style of the run (colour, decorations)
     run_styles: std.ArrayList(*const CS) = .empty,
@@ -1118,13 +1132,21 @@ pub const Frame = struct {
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
 
-        // Initial containing block.
-        var icb: layout.Style = .{ .display = .block };
-        if (o.width) |w| icb.size[0] = .{ .px = @floatFromInt(w) };
-        if (o.height) |h| icb.size[1] = .{ .px = @floatFromInt(h) };
-        f.lroot = f.tree.addNode(icb) catch return error.OutOfMemory;
+        // The layout root is the root element itself; the available size is the initial containing
+        // block (the engine resolves the root's percentages, margins and fixed boxes against it). Like
+        // takumi, a relative offset or auto margins of the root move nothing. An out-of-flow root is
+        // placed by its insets inside an explicit initial containing block node (one more layout
+        // level, so such a tree reaches the layout engine's depth limit one level earlier).
+        const rcs = f.nodes.items[f.root].cs;
         const lr = try f.buildLayout(f.root);
-        f.tree.appendChild(f.lroot, lr) catch return error.OutOfMemory;
+        f.lroot = lr;
+        if (rcs.position == .absolute or rcs.position == .fixed) {
+            var icb: layout.Style = .{ .display = .block };
+            if (o.width) |w| icb.size[0] = .{ .px = @floatFromInt(w) };
+            if (o.height) |h| icb.size[1] = .{ .px = @floatFromInt(h) };
+            f.lroot = f.tree.addNode(icb) catch return error.OutOfMemory;
+            f.tree.appendChild(f.lroot, lr) catch return error.OutOfMemory;
+        }
         const avail: [2]layout.AvailableSpace = .{
             if (o.width) |w| .{ .definite = @floatFromInt(w) } else .max_content,
             if (o.height) |h| .{ .definite = @floatFromInt(h) } else .max_content,
@@ -1244,7 +1266,7 @@ pub const Frame = struct {
     // ---- style pass: every element's style exactly once, top-down
 
     fn styleTree(f: *Frame, i: u32, parent_cs: ?*const CS, depth: u32) Error!void {
-        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
+        if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
         try f.styleElement(i, parent_cs);
         const cs = f.dom.at(i).cs;
         var c = f.dom.at(i).first;
@@ -1458,19 +1480,62 @@ pub const Frame = struct {
                     .text => if (!hasGenerated(el)) return true,
                     .container => {},
                 }
+                // (an empty inline box is inline content too: it adds no run, like takumi's empty spans)
                 var it: Items = .{ .f = f, .el = i };
-                var any = false;
                 while (it.next()) |c| {
                     if (!f.isInlineLevel(c, depth + 1)) return false;
-                    any = true;
                 }
-                return any;
+                return true;
             },
         }
     }
 
     fn inFlowInline(cs: *const CS) bool {
-        return cs.display == .@"inline" and cs.position != .absolute and cs.position != .fixed;
+        // (a float is blockified)
+        return cs.display == .@"inline" and cs.position != .absolute and cs.position != .fixed and cs.float == .none;
+    }
+
+    /// Atomic inline-level box (inline-block / -flex / -grid / -table, or an image with an inline
+    /// display, takumi's default for images): in a block container it becomes an item of an
+    /// anonymous line container (`Kind.anon_box`) instead of being blockified.
+    fn isAtomic(f: *const Frame, item: Item) bool {
+        var image = false;
+        const cs = switch (item) {
+            .ps => |p| f.pseudos.items[p].cs,
+            .el => |i| blk: {
+                const el = f.dom.at(i);
+                image = el.kind == .image;
+                break :blk el.cs;
+            },
+        };
+        if (cs.position == .absolute or cs.position == .fixed or cs.float != .none) return false;
+        return switch (cs.display) {
+            .inline_block, .inline_flex, .inline_grid, .inline_table, .webkit_inline_box => true,
+            .@"inline" => image,
+            else => false,
+        };
+    }
+
+    /// Block containers lay inline-level children out on lines; flex / grid containers blockify
+    /// them and table boxes other than cells / captions wrap them in anonymous cells (layout engine).
+    fn hasLines(d: style.computed.Display) bool {
+        return switch (d) {
+            .flex, .inline_flex, .grid, .inline_grid, .none => false,
+            .table, .inline_table, .table_row, .table_row_group, .table_header_group, .table_footer_group, .table_column, .table_column_group => !config.enable_tables,
+            else => true,
+        };
+    }
+
+    /// Text elements with a flex / grid / table display become a box holding their text as an
+    /// anonymous leaf: takumi lays the text out as an anonymous flex / grid item (aligned by the
+    /// container, reported by measure() as a child box); a measured leaf could not be aligned inside a
+    /// cell by `vertical-align` either.
+    fn needsTextBox(d: style.computed.Display) bool {
+        return switch (d) {
+            .flex, .inline_flex, .grid, .inline_grid => true,
+            .table, .inline_table, .table_row, .table_row_group, .table_header_group, .table_footer_group, .table_cell, .table_caption => config.enable_tables,
+            else => false,
+        };
     }
 
     fn isBlankRun(f: *const Frame, item: Item) bool {
@@ -1500,42 +1565,129 @@ pub const Frame = struct {
     }
 
     fn buildElement(f: *Frame, i: u32, parent: u32, depth: u32) Error!u32 {
-        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
+        if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
         const el = f.dom.at(i);
         const saved_lang = f.cur_lang;
         defer f.cur_lang = saved_lang;
         if (el.lang.len > 0) f.cur_lang = el.lang;
         const cs = el.cs;
         switch (el.kind) {
-            .text => if (!hasGenerated(el)) return f.buildText(i, parent),
+            .text => if (!hasGenerated(el)) return if (needsTextBox(cs.display)) f.buildTextBox(i, parent) else f.buildText(i, parent),
             .image => return f.buildImage(i, parent),
             else => {},
         }
-        const id = try f.addNode(.{ .kind = .container, .cs = cs, .parent = parent });
+        const id = try f.addNode(.{ .kind = .container, .cs = cs, .el = i, .parent = parent });
         const inline_ctx = switch (cs.display) {
             .flex, .inline_flex, .grid, .inline_grid => false,
             else => true,
         };
+        const lines = hasLines(cs.display);
         var pending: std.ArrayList(font.Run) = .empty;
+        // open anonymous line container of the current run of inline-level children (none = no
+        // atomic inline in the run so far: its text becomes a plain paragraph leaf)
+        var row: u32 = none;
         var it: Items = .{ .f = f, .el = i };
         while (it.next()) |c| {
             if (inline_ctx and f.isInlineLevel(c, 0)) {
                 try f.collectRuns(c, &pending, depth + 1);
                 continue;
             }
+            if (lines and f.isAtomic(c)) {
+                const after_item = row != none;
+                if (row == none) row = try f.openRow(cs, id);
+                try f.flushSegment(&pending, cs, row, after_item, true);
+                try f.buildItem(c, row, depth + 1);
+                continue;
+            }
             // white-space-only text between boxes generates nothing
             if (f.isBlankRun(c)) continue;
-            try f.flushRuns(&pending, cs, id);
+            try f.closeRow(&pending, cs, id, &row);
             try f.buildItem(c, id, depth + 1);
         }
-        try f.flushRuns(&pending, cs, id);
+        try f.closeRow(&pending, cs, id, &row);
+        return id;
+    }
+
+    /// Anonymous line container for a run of inline-level children of block `parent`.
+    noinline fn openRow(f: *Frame, cs: *const CS, parent: u32) Error!u32 {
+        var diag: style.Diagnostics = .{};
+        const rcs = try f.a.create(CS);
+        rcs.* = style.compute(f.a, &f.ctx, cs, null, null, &diag) catch |e| return f.styleFail(e, &diag);
+        return f.addNode(.{ .kind = .anon_box, .cs = rcs, .parent = parent });
+    }
+
+    /// Ends the current run of inline-level children: its last text segment goes into the open
+    /// line container, or (no atomic inline in the run) becomes a paragraph leaf of the block.
+    noinline fn closeRow(f: *Frame, pending: *std.ArrayList(font.Run), cs: *const CS, parent: u32, row: *u32) Error!void {
+        if (row.* == none) return f.flushRuns(pending, cs, parent);
+        try f.flushSegment(pending, cs, row.*, true, false);
+        row.* = none;
+    }
+
+    /// A text segment of a line container (between atomic inlines): collapsible white space at the
+    /// start / end of the run is dropped, white space next to an atomic inline (`after_item`: one
+    /// precedes the segment, `before_item`: one follows) is kept as one no-break space so that it
+    /// keeps its width (a separate leaf would trim it). The text itself becomes a paragraph leaf.
+    noinline fn flushSegment(f: *Frame, pending: *std.ArrayList(font.Run), cs: *const CS, row: u32, after_item: bool, before_item: bool) Error!void {
+        const runs = pending.items;
+        if (runs.len == 0) return;
+        if (cs.white_space_collapse == .collapse) {
+            const nbsp = "\u{a0}";
+            var lead_ws = false;
+            var k: usize = 0;
+            while (k < runs.len) : (k += 1) {
+                const t = runs[k].text;
+                var j: usize = 0;
+                while (j < t.len and isSpace(t[j])) j += 1;
+                if (j > 0) lead_ws = true;
+                runs[k].text = t[j..];
+                if (j < t.len or runs[k].hard_break_after) break;
+            }
+            if (k == runs.len) {
+                // white space only: one space between two atomic inlines, else nothing
+                if (!(after_item and before_item and lead_ws)) {
+                    pending.* = .empty;
+                    return;
+                }
+                runs[0].text = nbsp;
+                pending.items.len = 1;
+            } else {
+                var e = runs.len;
+                var trail_ws = false;
+                while (e > k) {
+                    e -= 1;
+                    const t = runs[e].text;
+                    var j = t.len;
+                    while (j > 0 and isSpace(t[j - 1])) j -= 1;
+                    if (j < t.len) trail_ws = true;
+                    runs[e].text = t[0..j];
+                    if (j > 0 or runs[e].hard_break_after) break;
+                }
+                if (before_item and trail_ws and !runs[e].hard_break_after) runs[e].text = try std.mem.concat(f.a, u8, &.{ runs[e].text, nbsp });
+                if (after_item and lead_ws) runs[k].text = try std.mem.concat(f.a, u8, &.{ nbsp, runs[k].text });
+            }
+        }
+        try f.flushRuns(pending, cs, row);
+    }
+
+    fn isSpace(c: u8) bool {
+        return c == ' ' or c == '\n' or c == '\t' or c == '\r' or c == 0x0c;
+    }
+
+    /// Text element with a table display: a box (the cell) holding its text as an anonymous leaf.
+    noinline fn buildTextBox(f: *Frame, i: u32, parent: u32) Error!u32 {
+        const el = f.dom.at(i);
+        const id = try f.addNode(.{ .kind = .container, .cs = el.cs, .el = i, .parent = parent });
+        const t = try f.addNode(.{ .kind = .anon_text, .cs = el.cs, .parent = id });
+        var runs: [1]font.Run = .{try f.makeRun(el.text, el.cs)};
+        f.nodes.items[t].para = try f.makeParagraph(&runs, el.cs);
         return id;
     }
     /// Text element without generated content: one paragraph. (Out of line: keeps the run and the
     /// paragraph options out of buildElement's recursive stack frame.)
     noinline fn buildText(f: *Frame, i: u32, parent: u32) Error!u32 {
         const el = f.dom.at(i);
-        const id = try f.addNode(.{ .kind = .text, .cs = el.cs, .parent = parent });
+        const id = try f.addNode(.{ .kind = .text, .cs = el.cs, .el = i, .parent = parent });
         var runs: [1]font.Run = .{try f.makeRun(el.text, el.cs)};
         f.nodes.items[id].para = try f.makeParagraph(&runs, el.cs);
         return id;
@@ -1564,7 +1716,7 @@ pub const Frame = struct {
                 if (ha != null and m.height == .auto) m.height = .{ .lp = .{ .px = ha.? * f.opts.dpr } };
                 cs = m;
             }
-            var n: Node = .{ .kind = .image, .cs = cs, .parent = parent, .img = img };
+            var n: Node = .{ .kind = .image, .cs = cs, .el = i, .parent = parent, .img = img };
             if (img) |pm| {
                 n.img_w = @as(f32, @floatFromInt(pm.width)) * f.opts.dpr;
                 n.img_h = @as(f32, @floatFromInt(pm.height)) * f.opts.dpr;
@@ -1602,7 +1754,7 @@ pub const Frame = struct {
     }
 
     fn collectRuns(f: *Frame, item: Item, out: *std.ArrayList(font.Run), depth: u32) Error!void {
-        if (depth > max_node_depth) return f.fail("node tree is nested too deeply", "");
+        if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
         switch (item) {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
@@ -1699,23 +1851,38 @@ pub const Frame = struct {
 
     /// Layout node of render node `id` (style mapped, measured leaves flagged). Kept out of the
     /// recursion: `layout.Style` is large and would otherwise sit in every level's stack frame.
-    noinline fn layoutNode(f: *Frame, id: u32) Error!struct { lid: u32, block: bool, leaf: bool } {
+    noinline fn layoutNode(f: *Frame, id: u32) Error!struct { lid: u32, ordered: bool, leaf: bool } {
         const n = f.nodes.items[id];
-        var st: layout.Style = if (n.kind == .anon_text) .{ .display = .block } else mapStyle(f, n.cs);
-        const leaf = n.kind != .container;
+        var st: layout.Style = switch (n.kind) {
+            // (anonymous inline content: shortens beside floats)
+            .anon_text => .{ .display = .block, .is_inline_content = true },
+            .anon_box => rowStyle(&f.r.fonts, n.cs),
+            else => mapStyle(f, n.cs),
+        };
+        const leaf = n.kind == .text or n.kind == .image or n.kind == .anon_text;
         if (leaf and st.display != .none) st.display = .block;
         if (n.kind == .image and st.aspect_ratio == null and n.img_ratio > 0) st.aspect_ratio = n.img_ratio;
+        if (n.el != none) {
+            if (comptime config.enable_tables) tableSpans(&f.dom, n.el, &st);
+            if (n.parent != none and (st.grid_column.start == .auto or st.grid_column.end == .auto or st.grid_row.start == .auto or st.grid_row.end == .auto)) {
+                const pcs = f.nodes.items[n.parent].cs;
+                if (pcs.display == .grid or pcs.display == .inline_grid) gridNames(pcs, n.cs, &st);
+            }
+        }
+        // the root element establishes a block formatting context (its margins never collapse with
+        // its children's)
+        if (id == f.root) st.flow_root = true;
         const lid = f.tree.addNode(st) catch return error.OutOfMemory;
         f.nodes.items[id].lid = lid;
         while (f.lid_node.items.len <= lid) try f.lid_node.append(f.a, none);
         f.lid_node.items[lid] = id;
         if (leaf) f.tree.setMeasured(lid, true);
-        return .{ .lid = lid, .block = st.display == .block, .leaf = leaf };
+        return .{ .lid = lid, .ordered = st.display == .flex or st.display == .grid, .leaf = leaf };
     }
 
     /// Children of `id` in `order` order (stable), or null when document order applies.
-    noinline fn orderedChildren(f: *Frame, id: u32, block: bool) Error!?[]const u32 {
-        if (block) return null;
+    noinline fn orderedChildren(f: *Frame, id: u32, ordered: bool) Error!?[]const u32 {
+        if (!ordered) return null;
         var needs_order = false;
         var c = f.nodes.items[id].first_child;
         while (c != none) : (c = f.nodes.items[c].next) {
@@ -1741,7 +1908,7 @@ pub const Frame = struct {
         const ln = try f.layoutNode(id);
         if (ln.leaf) return ln.lid;
         // children, honouring `order` for flex/grid containers
-        if (try f.orderedChildren(id, ln.block)) |list| {
+        if (try f.orderedChildren(id, ln.ordered)) |list| {
             for (list) |x| {
                 const cl = try f.buildLayout(x);
                 f.tree.appendChild(ln.lid, cl) catch return error.OutOfMemory;
@@ -1801,9 +1968,13 @@ pub const Frame = struct {
 
     // ---- measure() output
 
+    /// takumi's `MeasuredNode` shape: a block container's inline content is reported as the block's
+    /// own `runs` (x / y relative to its content box) with its atomic inline boxes as `children`;
+    /// anonymous paragraph leaves / line containers only appear as boxes of their own beside
+    /// block-level siblings (takumi's anonymous block wrappers).
     fn writeMeasured(f: *Frame, out: *std.ArrayList(u8), id: u32, ox: f32, oy: f32) Error!void {
         const a = f.a;
-        const n = f.nodes.items[id];
+        const n = &f.nodes.items[id];
         const l = f.tree.layout(n.lid);
         const x = ox + l.x;
         const y = oy + l.y;
@@ -1816,31 +1987,112 @@ pub const Frame = struct {
         try out.append(a, ',');
         try writeNum(a, out, y);
         try out.appendSlice(a, "],\"children\":[");
-        var c = n.first_child;
+        // the anonymous child holding all in-flow content, reported as this box's inline content
+        const inl = if (n.kind == .container and hasLines(n.cs.display)) f.soleInline(id) else none;
         var first = true;
-        while (c != none) : (c = f.nodes.items[c].next) {
-            if (!first) try out.append(a, ',');
-            first = false;
-            try f.writeMeasured(out, c, x, y);
+        if (inl != none and f.nodes.items[inl].kind == .anon_box) {
+            const il = f.tree.layout(f.nodes.items[inl].lid);
+            try f.writeChildren(out, inl, x + il.x, y + il.y, none, &first);
         }
+        try f.writeChildren(out, id, x, y, inl, &first);
         try out.appendSlice(a, "],\"runs\":[");
-        if (n.para) |p| {
-            const cw = l.w - l.padding.left - l.padding.right - l.border.left - l.border.right;
-            const tl = p.layout(a, cw) catch return error.OutOfMemory;
-            for (tl.lines, 0..) |line, i| {
-                if (i != 0) try out.append(a, ',');
-                try out.appendSlice(a, "{\"x\":");
-                try writeNum(a, out, l.border.left + l.padding.left + line.x);
-                try out.appendSlice(a, ",\"y\":");
-                try writeNum(a, out, l.border.top + l.padding.top + line.top);
-                try out.appendSlice(a, ",\"width\":");
-                try writeNum(a, out, line.width);
-                try out.appendSlice(a, ",\"height\":");
-                try writeNum(a, out, line.height);
-                try out.append(a, '}');
+        first = true;
+        const cx = l.border.left + l.padding.left;
+        const cy = l.border.top + l.padding.top;
+        if (n.kind == .anon_box) {
+            try f.writeBoxRuns(out, id, -cx, -cy, &first);
+        } else if (n.para != null) {
+            try f.writeRuns(out, id, 0, 0, &first);
+        } else if (inl != none) {
+            const il = f.tree.layout(f.nodes.items[inl].lid);
+            if (f.nodes.items[inl].kind == .anon_box) {
+                try f.writeBoxRuns(out, inl, il.x - cx, il.y - cy, &first);
+            } else {
+                try f.writeRuns(out, inl, il.x - cx, il.y - cy, &first);
             }
         }
         try out.appendSlice(a, "]}");
+    }
+
+    /// Children of `id` except `skip` (and, for a line container, its paragraph leaves).
+    fn writeChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, skip: u32, first: *bool) Error!void {
+        const box = f.nodes.items[id].kind == .anon_box;
+        var c = f.nodes.items[id].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            if (c == skip or (box and f.nodes.items[c].kind == .anon_text)) continue;
+            if (!first.*) try out.append(f.a, ',');
+            first.* = false;
+            try f.writeMeasured(out, c, x, y);
+        }
+    }
+
+    /// The anonymous paragraph leaf / line container that is the only in-flow child of `id`.
+    noinline fn soleInline(f: *const Frame, id: u32) u32 {
+        var found: u32 = none;
+        var c = f.nodes.items[id].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            const cn = &f.nodes.items[c];
+            if (cn.kind != .anon_text and cn.kind != .anon_box) {
+                const cs = cn.cs;
+                if (cs.display == .none or cs.position == .absolute or cs.position == .fixed or cs.float != .none) continue;
+                return none;
+            }
+            if (found != none) return none;
+            found = c;
+        }
+        return found;
+    }
+
+    /// Runs of every paragraph leaf of line container `box`; (dx, dy) = the box's border-box offset
+    /// from the content box the runs are reported against.
+    noinline fn writeBoxRuns(f: *Frame, out: *std.ArrayList(u8), box: u32, dx: f32, dy: f32, first: *bool) Error!void {
+        var c = f.nodes.items[box].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            if (f.nodes.items[c].kind != .anon_text) continue;
+            const cl = f.tree.layout(f.nodes.items[c].lid);
+            try f.writeRuns(out, c, dx + cl.x, dy + cl.y, first);
+        }
+    }
+
+    /// Text runs of paragraph node `id` (one per line and source run); (dx, dy) = the node's
+    /// border-box offset from the content box the runs are reported against.
+    noinline fn writeRuns(f: *Frame, out: *std.ArrayList(u8), id: u32, dx: f32, dy: f32, first: *bool) Error!void {
+        const a = f.a;
+        const n = &f.nodes.items[id];
+        const p = n.para orelse return;
+        const l = f.tree.layout(n.lid);
+        const cw = l.w - l.padding.left - l.padding.right - l.border.left - l.border.right;
+        const tl = p.layout(a, cw) catch return error.OutOfMemory;
+        const ox = dx + l.border.left + l.padding.left;
+        const oy = dy + l.border.top + l.padding.top;
+        for (tl.lines) |line| {
+            var g = line.glyph_start;
+            const end = @min(line.glyph_end, tl.glyphs.len);
+            // one run per source run (glyph `user`) of the line; an empty line still reports one
+            while (true) {
+                var x0 = line.x;
+                var x1 = line.x + line.width;
+                if (g < end) {
+                    var e = g + 1;
+                    while (e < end and tl.glyphs[e].user == tl.glyphs[g].user) e += 1;
+                    if (g != line.glyph_start) x0 = tl.glyphs[g].x;
+                    if (e < end) x1 = tl.glyphs[e].x;
+                    g = e;
+                }
+                if (!first.*) try out.append(a, ',');
+                first.* = false;
+                try out.appendSlice(a, "{\"x\":");
+                try writeNum(a, out, ox + @min(x0, x1));
+                try out.appendSlice(a, ",\"y\":");
+                try writeNum(a, out, oy + line.top);
+                try out.appendSlice(a, ",\"width\":");
+                try writeNum(a, out, @abs(x1 - x0));
+                try out.appendSlice(a, ",\"height\":");
+                try writeNum(a, out, line.height);
+                try out.append(a, '}');
+                if (g >= end) break;
+            }
+        }
     }
 };
 
@@ -2023,7 +2275,11 @@ fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
 
 // ---- ComputedStyle -> layout.Style
 
+// Non-linear math (`min()/max()/clamp()` mixing % and lengths, `lp.isCalc()`) has no layout
+// representation: such values degrade to their value at a reference of 0.
+
 fn dimLp(lp: style.LP) layout.Dim {
+    if (lp.isCalc()) return .{ .px = lp.resolve(0) };
     if (lp.pct == 0) return .{ .px = lp.px };
     if (lp.px == 0) return .{ .percent = lp.pct };
     return .{ .calc = .{ .px = lp.px, .percent = lp.pct } };
@@ -2034,7 +2290,8 @@ fn dimSize(s: style.Size) layout.Dim {
         .lp => |lp| dimLp(lp),
         .min_content => .min_content,
         .max_content => .max_content,
-        .fit_content => .fit_content,
+        // fit-content(<limit>): the layout keyword has no limit, see mapStyle
+        .fit_content, .fit_content_lp => .fit_content,
         else => .auto,
     };
 }
@@ -2047,6 +2304,7 @@ fn dimAuto(s: style.LengthAuto) layout.Dim {
 }
 
 fn lpOf(lp: style.LP) layout.LengthPercentage {
+    if (lp.isCalc()) return .{ .px = lp.resolve(0) };
     if (lp.pct == 0) return .{ .px = lp.px };
     if (lp.px == 0) return .{ .percent = lp.pct };
     return .{ .calc = .{ .px = lp.px, .percent = lp.pct } };
@@ -2071,7 +2329,7 @@ fn alignOf(al: style.Align) ?layout.Align {
 fn breadth(t: style.TrackSize) layout.TrackBreadth {
     return switch (t) {
         .auto => .auto,
-        .lp => |lp| if (lp.pct == 0) .{ .px = lp.px } else .{ .percent = lp.pct },
+        .lp => |lp| if (lp.isCalc()) .{ .px = lp.resolve(0) } else if (lp.pct == 0) .{ .px = lp.px } else .{ .percent = lp.pct },
         .fr => |v| .{ .fr = v },
         .min_content => .min_content,
         .max_content => .max_content,
@@ -2111,12 +2369,57 @@ fn gridLine(g: style.GridLine) layout.Line {
 
 fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     var s: layout.Style = .{};
+    const tables = config.enable_tables;
     s.display = switch (cs.display) {
         .none => .none,
         .flex, .inline_flex => .flex,
         .grid, .inline_grid => .grid,
+        .table => if (tables) .table else .block,
+        .inline_table => if (tables) .inline_table else .block,
+        .table_row_group => if (tables) .table_row_group else .block,
+        .table_header_group => if (tables) .table_header_group else .block,
+        .table_footer_group => if (tables) .table_footer_group else .block,
+        .table_row => if (tables) .table_row else .block,
+        .table_cell => if (tables) .table_cell else .block,
+        .table_caption => if (tables) .table_caption else .block,
+        .table_column => if (tables) .table_column else .block,
+        .table_column_group => if (tables) .table_column_group else .block,
         else => .block,
     };
+    // inline-block / flow-root establish an independent formatting context
+    s.flow_root = cs.display == .flow_root or cs.display == .inline_block;
+    if (comptime config.enable_floats) if (cs.position != .absolute and cs.position != .fixed) {
+        const rtl = cs.direction == .rtl;
+        s.float = switch (cs.float) {
+            .none => .none,
+            .left => .left,
+            .right => .right,
+            .inline_start => if (rtl) .right else .left,
+            .inline_end => if (rtl) .left else .right,
+        };
+        s.clear = switch (cs.clear) {
+            .none => .none,
+            .left => .left,
+            .right => .right,
+            .both => .both,
+            .inline_start => if (rtl) .right else .left,
+            .inline_end => if (rtl) .left else .right,
+        };
+    };
+    // (sub / super / text-top / text-bottom / <length> are not supported by the layout engine)
+    s.vertical_align = switch (cs.vertical_align) {
+        .top => .top,
+        .middle => .middle,
+        .bottom => .bottom,
+        else => .baseline,
+    };
+    if (s.display.isTablePart() or s.display.isTable()) {
+        // inherited in CSS, per node in the layout engine
+        s.border_spacing = cs.border_spacing;
+        s.border_collapse = cs.border_collapse == .collapse;
+        s.caption_bottom = cs.caption_side == .bottom;
+        s.table_fixed = cs.table_layout == .fixed;
+    }
     s.position = switch (cs.position) {
         .static => .static,
         .relative, .sticky => .relative,
@@ -2133,6 +2436,10 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.size = .{ dimSize(cs.width), dimSize(cs.height) };
     s.min_size = .{ dimSize(cs.min_width), dimSize(cs.min_height) };
     s.max_size = .{ dimSize(cs.max_width), dimSize(cs.max_height) };
+    // fit-content(L) = min(max-content, max(min-content, L)), approximated as fit-content capped by
+    // max-size L (the min-content floor is lost when L is smaller)
+    if (cs.width == .fit_content_lp and s.max_size[0] == .auto) s.max_size[0] = dimLp(cs.width.fit_content_lp);
+    if (cs.height == .fit_content_lp and s.max_size[1] == .auto) s.max_size[1] = dimLp(cs.height.fit_content_lp);
     s.aspect_ratio = cs.aspect_ratio;
     s.margin = .{ .top = dimAuto(cs.margin[0]), .right = dimAuto(cs.margin[1]), .bottom = dimAuto(cs.margin[2]), .left = dimAuto(cs.margin[3]) };
     s.padding = .{ .top = lpOf(cs.padding[0]), .right = lpOf(cs.padding[1]), .bottom = lpOf(cs.padding[2]), .left = lpOf(cs.padding[3]) };
@@ -2170,11 +2477,236 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
         template(f, cs.grid_template_rows, &s.grid_template_rows, &s.grid_auto_repeat_rows);
         s.grid_auto_columns = tracks(f, cs.grid_auto_columns);
         s.grid_auto_rows = tracks(f, cs.grid_auto_rows);
+        // grid-template-areas also sizes the explicit grid; the extra tracks are sized by grid-auto-*
+        const ar = cs.grid_template_areas;
+        padTracks(f, &s.grid_template_columns, ar.cols, s.grid_auto_columns, cs.grid_template_columns);
+        padTracks(f, &s.grid_template_rows, ar.rows, s.grid_auto_rows, cs.grid_template_rows);
         s.grid_auto_flow = if (cs.grid_auto_flow.column) (if (cs.grid_auto_flow.dense) .column_dense else .column) else (if (cs.grid_auto_flow.dense) .row_dense else .row);
     }
     s.grid_column = .{ .start = gridLine(cs.grid_column_start), .end = gridLine(cs.grid_column_end) };
     s.grid_row = .{ .start = gridLine(cs.grid_row_start), .end = gridLine(cs.grid_row_end) };
     return s;
+}
+
+/// grid-template-areas larger than the track list: the extra explicit tracks take grid-auto-* sizes.
+fn padTracks(f: *Frame, list: *[]const layout.Track, want: u16, auto: []const layout.Track, t: style.computed.GridTemplate) void {
+    if (t.auto_repeat != .none or want <= list.len) return;
+    const out = f.a.alloc(layout.Track, want) catch return;
+    @memcpy(out[0..list.len], list.*);
+    for (out[list.len..], 0..) |*o, k| o.* = if (auto.len > 0) auto[k % auto.len] else .auto;
+    list.* = out;
+}
+
+// ---- anonymous line containers
+
+/// Font metrics in em: ascent, descent (positive down), line gap, x-height.
+pub const EmMetrics = struct { ascent: f32, descent: f32, gap: f32, x_height: f32 };
+/// Geist (takumi's bundled default font): the strut font when no font is registered.
+pub const geist_em: EmMetrics = .{ .ascent = 1.005, .descent = 0.295, .gap = 0, .x_height = 0.53 };
+
+/// Strut of a line container (Blink): A, D, G = ascent / descent / line gap of the primary font at
+/// `size`, each rounded to whole px; L = line-height (normal = A + D + G); half-leading
+/// floor((L - (A + D)) / 2) goes above. Returns [strut ascent, strut descent (may be negative),
+/// distance from the baseline to the `vertical-align: middle` line (half the x-height)].
+pub fn strutFrom(m: EmMetrics, size: f32, lh: style.computed.LineHeight) [3]f32 {
+    const a = @round(m.ascent * size);
+    const d = @round(m.descent * size);
+    const g = @round(m.gap * size);
+    const l: f32 = switch (lh) {
+        .normal => a + d + g,
+        .number => |k| @floor(k * size * 64) / 64,
+        .px => |p| @floor(p * 64) / 64,
+    };
+    const asc = a + @floor((l - (a + d)) / 2);
+    return .{ asc, l - asc, m.x_height * size / 2 };
+}
+
+/// Metrics of the primary font of `cs` (first face the font matcher returns), Geist's without fonts.
+fn emMetrics(fonts: *const font.FontCollection, cs: *const CS) EmMetrics {
+    var buf: [4]font.FaceId = undefined;
+    const faces = fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &buf);
+    if (faces.len == 0) return geist_em;
+    const fo = fonts.font(faces[0]);
+    const lm = fo.lineMetrics();
+    const upm: f32 = @floatFromInt(@max(fo.units_per_em, 1));
+    const asc = @as(f32, @floatFromInt(lm.ascent)) / upm;
+    const xh = fo.xHeight();
+    return .{
+        .ascent = asc,
+        .descent = @as(f32, @floatFromInt(lm.descent)) / upm,
+        .gap = @as(f32, @floatFromInt(lm.leading)) / upm,
+        // (Blink's fallback without an OS/2 x-height)
+        .x_height = if (xh > 0) @as(f32, @floatFromInt(xh)) / upm else asc * 0.56,
+    };
+}
+
+/// Layout style of an anonymous line container; `cs` inherits the text properties of its block.
+fn rowStyle(fonts: *const font.FontCollection, cs: *const CS) layout.Style {
+    const rtl = cs.direction == .rtl;
+    const st = strutFrom(emMetrics(fonts, cs), cs.font_size, cs.line_height);
+    return .{
+        .display = .inline_row,
+        .position = .static,
+        .is_inline_content = true,
+        .text_align = switch (cs.text_align) {
+            .center => .center,
+            // (justify: the layout's justification of atomic inlines has no oracle counterpart)
+            .start, .justify => if (rtl) .end else .start,
+            .end => if (rtl) .start else .end,
+            .left => .start,
+            .right => .end,
+        },
+        .strut_ascent = st[0],
+        .strut_descent = st[1],
+        .strut_middle = st[2],
+    };
+}
+
+// ---- tables
+
+/// HTML "rules for parsing non-negative integers", saturating (Blink's ParseHTMLClampedNonNegativeInteger).
+fn parseSpanAttr(v: []const u8) ?u32 {
+    var i: usize = 0;
+    while (i < v.len and (v[i] == ' ' or v[i] == '\t' or v[i] == '\n' or v[i] == '\r' or v[i] == 0x0c)) i += 1;
+    if (i < v.len and v[i] == '+') i += 1;
+    var n: u32 = 0;
+    var digits = false;
+    while (i < v.len and v[i] >= '0' and v[i] <= '9') : (i += 1) {
+        digits = true;
+        n = @min(n *| 10 +| (v[i] - '0'), 1 << 30);
+    }
+    return if (digits) n else null;
+}
+
+/// takumi (`table/parts.rs`): `colspan` (1..1000) / `rowspan` (0..65534, 0 = every remaining row)
+/// attributes of a `td` / `th` element, `span` (1..1000) of a `col` / `colgroup` element.
+fn tableSpans(d: *const dom_mod.Dom, i: u32, st: *layout.Style) void {
+    const tag = d.at(i).tag;
+    const eq = std.ascii.eqlIgnoreCase;
+    if (eq(tag, "td") or eq(tag, "th")) {
+        if (d.attr(i, "colspan")) |v| if (parseSpanAttr(v)) |n| {
+            st.col_span = @intCast(std.math.clamp(n, 1, 1000));
+        };
+        if (d.attr(i, "rowspan")) |v| if (parseSpanAttr(v)) |n| {
+            st.row_span = if (n == 0) 65534 else @intCast(@min(n, 65534));
+        };
+    } else if (eq(tag, "col") or eq(tag, "colgroup")) {
+        if (d.attr(i, "span")) |v| if (parseSpanAttr(v)) |n| {
+            st.col_span = @intCast(std.math.clamp(n, 1, 1000));
+        };
+    }
+}
+
+// ---- named grid lines / areas
+
+/// x == a ++ b
+fn eqlCat(x: []const u8, a: []const u8, b: []const u8) bool {
+    return x.len == a.len + b.len and std.mem.startsWith(u8, x, a) and std.mem.endsWith(u8, x, b);
+}
+
+/// a1 ++ a2 == b1 ++ b2
+fn eqlCat2(a1: []const u8, a2: []const u8, b1: []const u8, b2: []const u8) bool {
+    if (a1.len + a2.len != b1.len + b2.len) return false;
+    var i: usize = 0;
+    while (i < a1.len + a2.len) : (i += 1) {
+        const x = if (i < a1.len) a1[i] else a2[i - a1.len];
+        const y = if (i < b1.len) b1[i] else b2[i - b1.len];
+        if (x != y) return false;
+    }
+    return true;
+}
+
+/// Number of explicit grid lines of an axis (template tracks, an auto-repeat group counted once, or
+/// the rows / columns of grid-template-areas).
+fn explicitLines(c: *const CS, col: bool) i32 {
+    const t = if (col) c.grid_template_columns else c.grid_template_rows;
+    const ar = if (col) c.grid_template_areas.cols else c.grid_template_areas.rows;
+    return @as(i32, @intCast(@max(t.tracks.len, ar) & 0xffff)) + 1;
+}
+
+/// Sorted 1-based lines of an axis named `base ++ suffix`: names in the track list (lines inside an
+/// auto-repeat group counted for one repetition) and the `<area>-start` / `<area>-end` lines that
+/// grid-template-areas defines.
+fn namedLines(c: *const CS, col: bool, base: []const u8, suffix: []const u8, buf: []i32) []i32 {
+    var n: usize = 0;
+    const t = if (col) c.grid_template_columns else c.grid_template_rows;
+    for (t.line_names) |ln| {
+        if (n == buf.len) break;
+        if (!eqlCat(ln.name, base, suffix)) continue;
+        buf[n] = @as(i32, ln.line) + 1 + (if (ln.in_repeat) @as(i32, t.auto_repeat_start) else 0);
+        n += 1;
+    }
+    for (c.grid_template_areas.areas) |ar| {
+        if (n + 2 > buf.len) break;
+        if (eqlCat2(ar.name, "-start", base, suffix)) {
+            buf[n] = @as(i32, if (col) ar.col_start else ar.row_start) + 1;
+            n += 1;
+        }
+        if (eqlCat2(ar.name, "-end", base, suffix)) {
+            buf[n] = @as(i32, if (col) ar.col_end else ar.row_end) + 1;
+            n += 1;
+        }
+    }
+    // sort + dedupe
+    var i: usize = 1;
+    while (i < n) : (i += 1) {
+        const x = buf[i];
+        var j = i;
+        while (j > 0 and buf[j - 1] > x) : (j -= 1) buf[j] = buf[j - 1];
+        buf[j] = x;
+    }
+    var m: usize = 0;
+    for (buf[0..n]) |x| {
+        if (m > 0 and buf[m - 1] == x) continue;
+        buf[m] = x;
+        m += 1;
+    }
+    return buf[0..m];
+}
+
+/// Line of a `[<integer>] <name>` reference (CSS Grid §8.3.1): a lone name first looks for
+/// `<name>-start` / `<name>-end`; the n-th line with the name (negative n counts from the end);
+/// past the named lines the implicit lines count as named, so an unknown name is the first implicit
+/// line after the explicit grid (EMPIRICAL, takumi). null only for n = 0.
+/// (takumi's parser rejects the `<integer> <name>` forms; the style module accepts them, resolved per CSS.)
+fn namedLine(c: *const CS, col: bool, name: []const u8, n: i32, is_end: bool, lines_n: i32) ?i32 {
+    var buf: [64]i32 = undefined;
+    if (n == 1) {
+        const l = namedLines(c, col, name, if (is_end) "-end" else "-start", &buf);
+        if (l.len > 0) return l[0];
+    }
+    const l = namedLines(c, col, name, "", &buf);
+    if (n == 0) return null;
+    const cnt: i32 = @intCast(l.len);
+    if (n > 0) return if (n <= cnt) l[@intCast(n - 1)] else lines_n + (n - cnt);
+    const k = -n;
+    return if (k <= cnt) l[@intCast(cnt - k)] else 1 - (k - cnt);
+}
+
+/// Absolute line number -> layout line (1-based; lines before the first explicit line counted from
+/// the end of the explicit grid).
+fn toLine(v: i32, lines_n: i32) layout.Line {
+    const x = if (v >= 1) v else v - lines_n - 1;
+    return .{ .line = @intCast(std.math.clamp(x, -30000, 30000)) };
+}
+
+/// Resolves the named references of one axis of a grid item (`sref` / `eref` = start / end).
+fn resolveNamed(c: *const CS, col: bool, sref: style.computed.GridLineRef, eref: style.computed.GridLineRef, cur: layout.Placement) layout.Placement {
+    const ln = explicitLines(c, col);
+    var p = cur;
+    if (sref.name.len > 0 and !sref.span) p.start = if (namedLine(c, col, sref.name, sref.n, false, ln)) |v| toLine(v, ln) else .auto;
+    if (eref.name.len > 0 and !eref.span) p.end = if (namedLine(c, col, eref.name, eref.n, true, ln)) |v| toLine(v, ln) else .auto;
+    // `span <name>` is `span 1` in takumi (EMPIRICAL, probe/layout2/gridnames.mjs; CSS counts named lines)
+    if (sref.name.len > 0 and sref.span) p.start = .{ .span = 1 };
+    if (eref.name.len > 0 and eref.span) p.end = if (p.start == .span) .auto else .{ .span = 1 };
+    return p;
+}
+
+/// Named lines / areas of grid item `item` resolved against its container `c`.
+fn gridNames(c: *const CS, item: *const CS, st: *layout.Style) void {
+    const r = item.grid_line_names; // row start, column start, row end, column end
+    if (r[0].name.len > 0 or r[2].name.len > 0) st.grid_row = resolveNamed(c, false, r[0], r[2], st.grid_row);
+    if (r[1].name.len > 0 or r[3].name.len > 0) st.grid_column = resolveNamed(c, true, r[1], r[3], st.grid_column);
 }
 
 fn mapOverflow(o: anytype) layout.style.Overflow {
@@ -2231,7 +2763,7 @@ const TestFrame = struct {
         const a = r.arena.allocator();
         const t = try a.create(TestFrame);
         t.r = r;
-        t.f = .{ .r = r, .a = a, .opts = try r.parseOptions(opts), .tree = layout.Tree.init(a), .ctx = undefined };
+        t.f = .{ .r = r, .a = a, .opts = try r.parseOptions(opts), .tree = LTree.init(a), .ctx = undefined };
         t.f.prepare(kind, src) catch |e| {
             if (e == error.Invalid) std.debug.print("render error: {s}\n", .{r.err});
             return e;
@@ -2558,4 +3090,182 @@ test "renderAnimation: frame schedule, formats, errors; ico output" {
     const ico = try r.render(scene, "{\"width\":8,\"height\":8,\"format\":\"ico\"}");
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 1, 0, 1, 0, 8, 8 }, ico[0..8]);
     try std.testing.expectError(error.Invalid, r.render(scene, "{\"width\":300,\"height\":8,\"format\":\"ico\"}"));
+}
+
+// ---- phase 2 layout integration (tables, floats, inline rows, grid names)
+
+/// Render node of the element with `id` (`.el` set), or none.
+fn nodeOfId(t: *TestFrame, id: []const u8) u32 {
+    for (t.f.nodes.items, 0..) |n, k| {
+        if (n.el != none and std.mem.eql(u8, t.f.dom.at(n.el).id, id)) return @intCast(k);
+    }
+    return none;
+}
+
+fn kindsOf(t: *TestFrame, id: u32, buf: []Kind) []Kind {
+    var n: usize = 0;
+    var c = t.f.nodes.items[id].first_child;
+    while (c != none and n < buf.len) : (c = t.f.nodes.items[c].next) {
+        buf[n] = t.f.nodes.items[c].kind;
+        n += 1;
+    }
+    return buf[0..n];
+}
+
+fn styleOfId(t: *TestFrame, id: []const u8) *const layout.Style {
+    return t.f.tree.style(t.f.nodes.items[nodeOfId(t, id)].lid);
+}
+
+test "layout2: table spans from td/th/col attributes" {
+    if (comptime !config.enable_tables) return error.SkipZigTest;
+    try std.testing.expectEqual(@as(?u32, 3), parseSpanAttr(" +3x"));
+    try std.testing.expectEqual(@as(?u32, null), parseSpanAttr("x3"));
+    try std.testing.expectEqual(@as(?u32, 1 << 30), parseSpanAttr("99999999999999"));
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","style":{"display":"table"},"children":[
+        \\ {"type":"container","tagName":"colgroup","id":"g","style":{"display":"table-column-group"},"attributes":{"span":"0"}},
+        \\ {"type":"container","tagName":"col","id":"col","style":{"display":"table-column"},"attributes":{"span":"2"}},
+        \\ {"type":"container","style":{"display":"table-row"},"children":[
+        \\  {"type":"container","tagName":"td","id":"a","style":{"display":"table-cell"},"attributes":{"colspan":"2","rowspan":"0"}},
+        \\  {"type":"text","tagName":"TH","id":"b","text":"x","style":{"display":"table-cell"},"attributes":{"colspan":"5000","rowspan":"3"}},
+        \\  {"type":"container","tagName":"div","id":"c","style":{"display":"table-cell"},"attributes":{"colspan":"2"}}]}]}
+    , "{\"width\":200,\"height\":100}");
+    defer t.deinit();
+    try std.testing.expectEqual(@as(u16, 1), styleOfId(t, "g").col_span); // clamped to 1
+    try std.testing.expectEqual(@as(u16, 2), styleOfId(t, "col").col_span);
+    try std.testing.expectEqual(layout.Display.table_column, styleOfId(t, "col").display);
+    try std.testing.expect(styleOfId(t, "a").col_span == 2 and styleOfId(t, "a").row_span == 65534); // rowspan=0: all rows
+    try std.testing.expect(styleOfId(t, "b").col_span == 1000 and styleOfId(t, "b").row_span == 3);
+    try std.testing.expectEqual(@as(u16, 1), styleOfId(t, "c").col_span); // only td / th
+    // a text element with a table-cell display holds its text as a child leaf
+    const b = nodeOfId(t, "b");
+    try std.testing.expectEqual(Kind.container, t.f.nodes.items[b].kind);
+    try std.testing.expectEqual(Kind.anon_text, t.f.nodes.items[t.f.nodes.items[b].first_child].kind);
+    try std.testing.expectEqual(layout.Display.table_cell, styleOfId(t, "b").display);
+}
+
+test "layout2: inline-level runs, atomic inlines and anonymous line containers" {
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","style":{"display":"block"},"children":[
+        \\ {"type":"container","id":"txt","style":{"display":"block"},"children":[{"type":"text","text":"a "},{"type":"container","children":[{"type":"text","text":"b"}]}]},
+        \\ {"type":"container","id":"mix","style":{"display":"block","textAlign":"center"},"children":[{"type":"text","text":" a "},
+        \\   {"type":"container","style":{"display":"inline-block","width":10,"height":10}},{"type":"text","text":" "},
+        \\   {"type":"container","style":{"display":"inline-flex","width":10,"height":10}},{"type":"text","text":" b "}]},
+        \\ {"type":"container","id":"blk","style":{"display":"block"},"children":[{"type":"container","style":{"display":"block"}},
+        \\   {"type":"image","src":"x","width":5,"height":5},{"type":"image","src":"x","style":{"float":"left"}}]},
+        \\ {"type":"container","id":"flex","style":{"display":"flex"},"children":[{"type":"container","style":{"display":"inline-block"}},{"type":"text","text":"t"}]}]}
+    , "{\"width\":200,\"height\":100}");
+    defer t.deinit();
+    var buf: [8]Kind = undefined;
+    // text only: one merged paragraph leaf, no line container
+    try std.testing.expectEqualSlices(Kind, &.{.anon_text}, kindsOf(t, nodeOfId(t, "txt"), &buf));
+    // mixed: one line container: text, inline-block, (space), inline-flex, text
+    const mix = nodeOfId(t, "mix");
+    try std.testing.expectEqualSlices(Kind, &.{.anon_box}, kindsOf(t, mix, &buf));
+    const row = t.f.nodes.items[mix].first_child;
+    try std.testing.expectEqualSlices(Kind, &.{ .anon_text, .container, .anon_text, .container, .anon_text }, kindsOf(t, row, &buf));
+    const rst = t.f.tree.style(t.f.nodes.items[row].lid);
+    try std.testing.expectEqual(layout.Display.inline_row, rst.display);
+    try std.testing.expectEqual(layout.TextAlign.center, rst.text_align);
+    try std.testing.expectEqual(layout.Position.static, rst.position);
+    // white space next to an item becomes one no-break space (it keeps its width); the row's edges drop it
+    const sp = try layoutWidth(t, row, 2);
+    const a_w = try layoutWidth(t, row, 0);
+    try std.testing.expect(sp > 3 and sp < 6);
+    try std.testing.expect(a_w > sp);
+    // block + inline image: the image gets its own line container; a floated image stays block-level
+    try std.testing.expectEqualSlices(Kind, &.{ .container, .anon_box, .image }, kindsOf(t, nodeOfId(t, "blk"), &buf));
+    // flex containers blockify everything
+    try std.testing.expectEqualSlices(Kind, &.{ .container, .text }, kindsOf(t, nodeOfId(t, "flex"), &buf));
+    // the root establishes a block formatting context
+    try std.testing.expect(t.f.tree.style(t.f.nodes.items[t.f.root].lid).flow_root);
+}
+
+/// Layout width of the k-th child of render node `id`.
+fn layoutWidth(t: *TestFrame, id: u32, k: usize) !f32 {
+    var c = t.f.nodes.items[id].first_child;
+    var i: usize = 0;
+    while (c != none) : (c = t.f.nodes.items[c].next) {
+        if (i == k) return t.f.tree.layout(t.f.nodes.items[c].lid).w;
+        i += 1;
+    }
+    return error.NoSuchChild;
+}
+
+test "layout2: line container strut (Geist example and font metrics)" {
+    // 16 px Geist: A = 16, D = 5, L = 21 -> strut 16 / 5; middle = x-height / 2
+    const g = strutFrom(geist_em, 16, .normal);
+    try std.testing.expectEqual(@as(f32, 16), g[0]);
+    try std.testing.expectEqual(@as(f32, 5), g[1]);
+    try std.testing.expectApproxEqAbs(@as(f32, 4.24), g[2], 1e-4);
+    // line-height 1.5: L = 24, half-leading floor(3 / 2) = 1 above, 2 below
+    const h = strutFrom(geist_em, 16, .{ .number = 1.5 });
+    try std.testing.expect(h[0] == 17 and h[1] == 7);
+    // a line-height below the content area: negative descent
+    const s = strutFrom(geist_em, 16, .{ .px = 4 });
+    try std.testing.expect(s[0] == 7 and s[1] == -3);
+    // with Inter registered its metrics are used (ascent 0.96875 -> 16, descent 0.2421875 -> 4)
+    const t = try TestFrame.init(.json, "{\"type\":\"container\",\"style\":{\"display\":\"block\",\"fontSize\":16},\"children\":[{\"type\":\"image\",\"src\":\"x\",\"width\":4,\"height\":4}]}", "{\"width\":50,\"height\":50}");
+    defer t.deinit();
+    const row = t.f.nodes.items[t.f.root].first_child;
+    try std.testing.expectEqual(Kind.anon_box, t.f.nodes.items[row].kind);
+    const st = t.f.tree.style(t.f.nodes.items[row].lid);
+    try std.testing.expect(st.strut_ascent == 16 and st.strut_descent == 4);
+    // the line is the strut: image bottom on the baseline
+    const il = t.f.tree.layout(t.f.nodes.items[t.f.nodes.items[row].first_child].lid);
+    try std.testing.expectEqual(@as(f32, 12), il.y);
+    try std.testing.expectEqual(@as(f32, 20), t.f.tree.layout(t.f.nodes.items[row].lid).h);
+}
+
+test "layout2: grid template areas and named lines" {
+    const t = try TestFrame.init(.json,
+        \\{"type":"container","style":{"display":"grid","gridTemplateAreas":"\"h h h\" \"s m m\"","gridTemplateColumns":"[a] 10px [b] 10px [a] 10px [a]"},"children":[
+        \\ {"type":"container","id":"m","style":{"gridArea":"m"}},
+        \\ {"type":"container","id":"h","style":{"gridRow":"h","gridColumn":"h-start / h-end"}},
+        \\ {"type":"container","id":"n","style":{"gridColumn":"2 a / span a"}},
+        \\ {"type":"container","id":"neg","style":{"gridColumnStart":"a -1","gridColumnEnd":"span 2"}},
+        \\ {"type":"container","id":"bk","style":{"gridColumnStart":"span a","gridColumnEnd":"-1"}},
+        \\ {"type":"container","id":"u","style":{"gridColumn":"zzz","gridRow":"1"}}]}
+    , "{\"width\":200,\"height\":100}");
+    defer t.deinit();
+    const S = struct {
+        fn eq(p: layout.Placement, s: layout.Line, e: layout.Line) !void {
+            try std.testing.expectEqual(s, p.start);
+            try std.testing.expectEqual(e, p.end);
+        }
+    };
+    try S.eq(styleOfId(t, "m").grid_row, .{ .line = 2 }, .{ .line = 3 });
+    try S.eq(styleOfId(t, "m").grid_column, .{ .line = 2 }, .{ .line = 4 });
+    try S.eq(styleOfId(t, "h").grid_row, .{ .line = 1 }, .{ .line = 2 });
+    try S.eq(styleOfId(t, "h").grid_column, .{ .line = 1 }, .{ .line = 4 });
+    // second line named a = 3; `span <name>` is span 1 (takumi)
+    try S.eq(styleOfId(t, "n").grid_column, .{ .line = 3 }, .{ .span = 1 });
+    // last line named a = 4
+    try S.eq(styleOfId(t, "neg").grid_column, .{ .line = 4 }, .{ .span = 2 });
+    try S.eq(styleOfId(t, "bk").grid_column, .{ .span = 1 }, .{ .line = -1 });
+    // unknown name: the first implicit line after the explicit grid (4 explicit lines)
+    try S.eq(styleOfId(t, "u").grid_column, .{ .line = 5 }, .{ .line = 5 });
+    // the areas size the explicit grid: two rows although grid-template-rows is none
+    try std.testing.expectEqual(@as(usize, 2), t.f.tree.style(t.f.nodes.items[t.f.root].lid).grid_template_rows.len);
+}
+
+test "layout2: measure() tree shape follows takumi (inline content = the block's runs)" {
+    const gpa = std.testing.allocator;
+    const r = Renderer.create(gpa).?;
+    defer r.destroy();
+    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+    const opts = "{\"width\":200,\"height\":100}";
+    const count = std.mem.count;
+    // block with text only: no child box, two runs (one per source run)
+    var out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"block\"},\"children\":[{\"type\":\"text\",\"text\":\"a \"},{\"type\":\"text\",\"text\":\"b\",\"style\":{\"color\":\"red\"}}]}", opts);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"children\":[],\"runs\":[{") != null);
+    try std.testing.expectEqual(@as(usize, 2), count(u8, out, "{\"x\":"));
+    // text, inline-block, text: runs on the block, the inline-block as its only child
+    out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"block\"},\"children\":[{\"type\":\"text\",\"text\":\"a \"},{\"type\":\"container\",\"style\":{\"display\":\"inline-block\",\"width\":5,\"height\":5}},{\"type\":\"text\",\"text\":\" b\"}]}", opts);
+    try std.testing.expectEqual(@as(usize, 2), count(u8, out, "{\"width\":")); // block + inline-block
+    try std.testing.expectEqual(@as(usize, 2), count(u8, out, "{\"x\":"));
+    // a text element with display: flex reports its anonymous flex item
+    out = try r.measure("{\"type\":\"text\",\"text\":\"hi\",\"style\":{\"display\":\"flex\",\"padding\":4}}", opts);
+    try std.testing.expect(std.mem.startsWith(u8, out, "{\"width\":200,\"height\":"));
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"children\":[{\"width\":") != null);
 }

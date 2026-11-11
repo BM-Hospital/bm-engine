@@ -86,7 +86,7 @@ pub const Dom = struct {
     /// Set by a builder on error.Invalid.
     err_msg: []const u8 = "",
     err_detail: []const u8 = "",
-    /// Maximum nesting accepted by the builders.
+    /// Maximum number of nesting levels accepted by the builders (the root is level 1).
     max_depth: u32 = 128,
 
     fn fail(d: *Dom, msg: []const u8, detail: []const u8) Error {
@@ -124,7 +124,7 @@ pub const Dom = struct {
     }
 
     fn jsonNode(d: *Dom, a: Allocator, v: json.Value, parent: u32, depth: u32) Error!u32 {
-        if (depth > d.max_depth) return d.fail("node tree is nested too deeply", "");
+        if (depth >= d.max_depth) return d.fail("node tree is nested too deeply", "");
         const id = try d.jsonElement(a, v, parent);
         if (d.els.items[id].kind == .container) {
             if (v.get("children")) |c| if (c == .array) {
@@ -218,15 +218,15 @@ pub const Dom = struct {
             d.root = html_el;
             return;
         }
+        // takumi `collapse`: the nodes that will exist (unrendered elements such as <style> and empty
+        // texts vanish first), then white-space-only texts trimmed at both ends
         var kids = doc.root_children;
-        while (kids.len > 0 and blankText(H, kids[0])) kids = kids[1..];
-        while (kids.len > 0 and blankText(H, kids[kids.len - 1])) kids = kids[0 .. kids.len - 1];
-        // count the nodes that will exist (unrendered elements vanish)
+        while (kids.len > 0 and (blankText(H, kids[0]) or vanishes(H, kids[0]))) kids = kids[1..];
+        while (kids.len > 0 and (blankText(H, kids[kids.len - 1]) or vanishes(H, kids[kids.len - 1]))) kids = kids[0 .. kids.len - 1];
         var n: usize = 0;
         var only: ?*const H.Node = null;
         for (kids) |c| {
-            if (c.kind == .element and H.isUnrendered(c.tag)) continue;
-            if (c.kind == .text and c.text.len == 0) continue;
+            if (vanishes(H, c)) continue;
             n += 1;
             only = c;
         }
@@ -241,6 +241,10 @@ pub const Dom = struct {
         for (kids) |c| try d.htmlNode(a, H, c, d.root, 1, false);
     }
 
+    fn vanishes(comptime H: type, n: *const H.Node) bool {
+        return (n.kind == .element and H.isUnrendered(n.tag)) or (n.kind == .text and n.text.len == 0);
+    }
+
     fn blankText(comptime H: type, n: *const H.Node) bool {
         if (n.kind != .text) return false;
         for (n.text) |c| if (c != ' ' and c != '\t' and c != '\n' and c != '\r' and c != 0x0c) return false;
@@ -248,7 +252,7 @@ pub const Dom = struct {
     }
 
     fn htmlNode(d: *Dom, a: Allocator, comptime H: type, n: *const H.Node, parent: u32, depth: u32, disabled_fs: bool) Error!void {
-        if (depth > d.max_depth) return d.fail("node tree is nested too deeply", "");
+        if (depth >= d.max_depth) return d.fail("node tree is nested too deeply", "");
         if (n.kind == .text) {
             if (n.text.len == 0) return;
             _ = try d.add(a, .{ .kind = .text, .run = true, .text = n.text }, parent);

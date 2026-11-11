@@ -38,7 +38,10 @@ pub const Value = union(enum) {
 
 pub const Error = error{ InvalidJson, JsonTooDeep, OutOfMemory };
 
-const max_depth = 256;
+/// Maximum nesting of arrays/objects. A node tree level costs two JSON levels ({..., children: [ ... ]}),
+/// so 1200 covers render.max_node_depth (512) plus the option / animation-scene wrappers. Recursion per
+/// JSON level is value (object/array inlined): ~72 B per level measured in ReleaseSafe; keep it small.
+pub const max_depth = 1200;
 
 pub fn parse(arena: std.mem.Allocator, text: []const u8) Error!Value {
     var p: Parser = .{ .a = arena, .s = text };
