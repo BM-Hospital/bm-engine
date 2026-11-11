@@ -1,0 +1,18 @@
+import { readFileSync } from "node:fs";
+import { ALL_CASES } from "../fixtures/index.mjs";
+import { fontsFor } from "../lib/fonts.mjs";
+const k = ALL_CASES.find((c) => c.id === "card-og");
+const mode = process.argv[2];
+const t0 = performance.now();
+const { Renderer } = await import("../../js/node.mjs");
+const r = new Renderer();
+const t1 = performance.now();
+const fonts = mode.includes("all") ? fontsFor() : [fontsFor()[0]];
+for (const f of fonts) r.registerFont({ name: f.name, data: readFileSync(f.path), weight: f.weight, style: f.style });
+const t2 = performance.now();
+const fmt = mode.includes("raw") ? "raw" : "png";
+r.renderSync(k.node, { width: k.width, height: k.height, images: k.images, format: fmt });
+const t3 = performance.now();
+r.renderSync(k.node, { width: k.width, height: k.height, images: k.images, format: fmt });
+const t4 = performance.now();
+console.log(mode.padEnd(10), "init", (t1 - t0).toFixed(1), "fonts", (t2 - t1).toFixed(1), "first", (t3 - t2).toFixed(1), "second", (t4 - t3).toFixed(1));

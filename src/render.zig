@@ -70,6 +70,8 @@ pub const Options = struct {
 pub const Renderer = struct {
     gpa: Allocator,
     arena: bump.Bump,
+    /// Short-lived scratch (hi-res glyph coverage), rewound after every glyph.
+    scratch: bump.Bump,
     fonts: font.FontCollection = .{},
     font_blobs: std.ArrayList([]u8) = .empty,
     images: std.ArrayList(ImageEntry) = .empty,
@@ -78,6 +80,8 @@ pub const Renderer = struct {
     rast: raster.Rasterizer,
     glyphs: std.AutoHashMapUnmanaged(u64, GlyphMask) = .empty,
     glyph_bytes: usize = 0,
+    /// Canvas pixels, kept between renders (so the per-render arena can be recycled before encoding).
+    canvas: []u8 = &.{},
     result: []const u8 = "",
     err: []const u8 = "",
     err_buf: [256]u8 = undefined,
@@ -87,8 +91,9 @@ pub const Renderer = struct {
 
     pub fn create(gpa: Allocator) ?*Renderer {
         const self = gpa.create(Renderer) catch return null;
-        self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa) };
+        self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .scratch = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa) };
         self.rast.levels16 = true;
+        self.scratch.idle_limit = 255;
         return self;
     }
 
@@ -102,6 +107,8 @@ pub const Renderer = struct {
         self.img_cache.deinit(self.gpa);
         self.glyphs.deinit(self.gpa);
         self.rast.deinit();
+        self.gpa.free(self.canvas);
+        self.scratch.deinit();
         self.arena.deinit();
         self.gpa.destroy(self);
     }
@@ -210,9 +217,19 @@ pub const Renderer = struct {
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = layout.Tree.init(a), .ctx = undefined };
         try f.prepare(node_json);
 
-        var pm = raster.Pixmap.init(a, f.canvas_w, f.canvas_h) catch return error.OutOfMemory;
+        const need = @as(usize, f.canvas_w) * f.canvas_h * 4;
+        if (self.canvas.len != need) {
+            self.gpa.free(self.canvas);
+            self.canvas = &.{};
+            self.canvas = self.gpa.alloc(u8, need) catch return error.OutOfMemory;
+        }
+        @memset(self.canvas, 0);
+        var pm: raster.Pixmap = .{ .width = f.canvas_w, .height = f.canvas_h, .data = self.canvas };
         try paint.paintFrame(&f, &pm);
         unpremultiply(pm.data);
+        // Everything of the layout / paint phase is dead now: recycle the arena so the encoder
+        // reuses the same chunks instead of growing memory further.
+        self.arena.reset();
 
         self.result = switch (opts.format) {
             .raw => pm.data,

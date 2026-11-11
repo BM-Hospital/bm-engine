@@ -1,0 +1,12 @@
+import { readFileSync } from "node:fs";
+import * as bm from "../../js/index.mjs";
+import { ALL_CASES } from "../fixtures/index.mjs";
+import { fontsFor } from "../lib/fonts.mjs";
+bm.initSync(readFileSync(process.env.BM_WASM));
+const k = ALL_CASES.find((c) => c.id === "card-og");
+const r = new bm.Renderer();
+const fonts = process.argv[2] === "all" ? fontsFor() : [fontsFor()[0]];
+for (const f of fonts) r.registerFont({ name: f.name, data: readFileSync(f.path), weight: f.weight, style: f.style });
+const t = performance.now();
+r.renderSync(k.node, { width: k.width, height: k.height, images: k.images, format: "raw" });
+console.log("first", (performance.now() - t).toFixed(1));

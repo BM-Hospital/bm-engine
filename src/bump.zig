@@ -15,6 +15,8 @@ pub const Bump = struct {
     cur: usize = 0,
     /// high-water statistics of the current cycle
     used_this_cycle: usize = 0,
+    /// A chunk untouched for this many consecutive resets is returned to the backing allocator.
+    idle_limit: u8 = 3,
 
     const Chunk = struct {
         mem: []align(16) u8,
@@ -46,7 +48,7 @@ pub const Bump = struct {
             const c = &self.chunks.items[i];
             if (c.used == 0) {
                 c.idle +|= 1;
-                if (c.idle >= 3) {
+                if (c.idle >= self.idle_limit) {
                     self.backing.free(c.mem);
                     _ = self.chunks.orderedRemove(i);
                     continue;

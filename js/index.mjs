@@ -159,21 +159,31 @@ export class Renderer {
   /** Serialises the node tree; binary image sources are moved into wasm and replaced by ids. */
   #prepare(node, options) {
     wasm.bm_clear_images(this.#h);
+    let json;
+    let own = false; // true when we produced the JSON ourselves (so escaping is predictable)
+    if (typeof node === "string") json = node;
+    else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
+    else {
+      own = true;
+      json = JSON.stringify(node, (key, value) => {
+        if (key === "src" && value && typeof value === "object") {
+          const id = "bm-res:" + this.#resSeq++;
+          if (isBinary(value) || ArrayBuffer.isView(value)) this.#putImage(id, value);
+          else if (value.data && value.width) this.#putRgba(id, value);
+          else return value;
+          return id;
+        }
+        return value;
+      });
+    }
+    // Only images the tree actually references are copied into wasm memory.
     const images = options.images;
     const list = Array.isArray(images) ? images : images && images.sources ? images.sources : [];
-    for (const img of list) this.#putImage(img.src, img.data);
-    if (typeof node === "string") return node;
-    if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) return node.json;
-    return JSON.stringify(node, (key, value) => {
-      if (key === "src" && value && typeof value === "object") {
-        const id = "bm-res:" + this.#resSeq++;
-        if (isBinary(value) || ArrayBuffer.isView(value)) this.#putImage(id, value);
-        else if (value.data && value.width) this.#putRgba(id, value);
-        else return value;
-        return id;
-      }
-      return value;
-    });
+    for (const img of list) {
+      const needle = JSON.stringify(String(img.src)).slice(1, -1);
+      if (!own || json.includes(needle)) this.#putImage(img.src, img.data);
+    }
+    return json;
   }
 
   #call(fn, node, options) {

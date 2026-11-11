@@ -27,7 +27,8 @@ export default {
         const data = f.data ?? new Uint8Array(readFileSync(f.path));
         await r.registerFont({ name: f.name, data, weight: f.weight, style: f.style });
       },
-      render: async (node, opts) => new Uint8Array(await r.render(node, opts)),
+      // r.render already returns a fresh Uint8Array copied out of wasm memory (no extra copy here)
+      render: (node, opts) => r.render(node, opts),
       measure: (node, opts) => r.measure?.(node, opts),
       memoryBytes: () => (typeof r.memoryBytes === "function" ? r.memoryBytes() : mod.Renderer.memoryBytes?.()),
       dispose() { try { r.free?.(); } catch {} },

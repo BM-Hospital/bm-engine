@@ -220,14 +220,79 @@ const Painter = struct {
         };
     }
 
+    /// Coverage mask of a (rounded) rect clipped to `window`. Large pixel-aligned shapes are
+    /// assembled from solid spans plus four small corner rasterizations, so neither time nor the
+    /// rasterizer's scratch memory scale with the box area.
+    noinline fn rrectMask(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii, window: IRect) Error!raster.Mask {
+        fast: {
+            if (!ctx.plain() or !(r.w * r.h >= 4096)) break :fast;
+            if (@floor(r.x) != r.x or @floor(r.y) != r.y or @floor(r.w) != r.w or @floor(r.h) != r.h) break :fast;
+            if (@abs(r.x) > 1.0e6 or @abs(r.y) > 1.0e6 or r.w > 1.0e6 or r.h > 1.0e6) break :fast;
+            const rr: Radii = radii orelse .{ .{ 0, 0 }, .{ 0, 0 }, .{ 0, 0 }, .{ 0, 0 } };
+            const ca = @ceil(rr[0][0]);
+            const cb = @ceil(rr[1][0]);
+            const cd = @ceil(rr[2][0]);
+            const cc = @ceil(rr[3][0]);
+            const top = @max(@ceil(rr[0][1]), @ceil(rr[1][1]));
+            const bot = @max(@ceil(rr[2][1]), @ceil(rr[3][1]));
+            if (top + bot > r.h or ca + cb > r.w or cc + cd > r.w) break :fast;
+            const full = toIRect(r);
+            const b = full.intersect(window);
+            if (b.isEmpty()) return raster.Mask.empty;
+            var m = raster.Mask.init(p.a, b) catch return error.OutOfMemory;
+            const itop: i64 = @intFromFloat(top);
+            const ibot: i64 = @intFromFloat(bot);
+            var yy: u32 = 0;
+            while (yy < b.h) : (yy += 1) {
+                const ry: i64 = @as(i64, b.y) + yy - full.y;
+                var xs: i64 = full.x;
+                var xe: i64 = @as(i64, full.x) + full.w;
+                if (ry < itop) {
+                    xs += @intFromFloat(ca);
+                    xe -= @intFromFloat(cb);
+                } else if (ry >= @as(i64, full.h) - ibot) {
+                    xs += @intFromFloat(cc);
+                    xe -= @intFromFloat(cd);
+                }
+                xs = @max(xs, b.x);
+                xe = @min(xe, @as(i64, b.x) + b.w);
+                if (xe > xs) @memset(m.data[@as(usize, yy) * b.w + @as(usize, @intCast(xs - b.x)) ..][0..@intCast(xe - xs)], 255);
+            }
+            if (radii != null) {
+                try p.setRRect(r, radii);
+                const cells = [4]Rect{
+                    .{ .x = r.x, .y = r.y, .w = ca, .h = top },
+                    .{ .x = r.x + r.w - cb, .y = r.y, .w = cb, .h = top },
+                    .{ .x = r.x + r.w - cd, .y = r.y + r.h - bot, .w = cd, .h = bot },
+                    .{ .x = r.x, .y = r.y + r.h - bot, .w = cc, .h = bot },
+                };
+                for (cells) |cell| {
+                    if (!(cell.w > 0) or !(cell.h > 0)) continue;
+                    const cw = toIRect(cell).intersect(b);
+                    if (cw.isEmpty()) continue;
+                    const cm = p.rast().rasterize(p.a, &p.path, Affine.identity, .nonzero, cw) catch return error.OutOfMemory;
+                    const cbd = cm.bounds;
+                    var cy: u32 = 0;
+                    while (cy < cbd.h) : (cy += 1) {
+                        const drow: usize = @intCast(@as(i64, cbd.y) + cy - b.y);
+                        const dcol: usize = @intCast(@as(i64, cbd.x) - b.x);
+                        @memcpy(m.data[drow * b.w + dcol ..][0..cbd.w], cm.data[@as(usize, cy) * cbd.w ..][0..cbd.w]);
+                    }
+                }
+            }
+            return m;
+        }
+        try p.setRRect(r, radii);
+        return p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, window) catch return error.OutOfMemory;
+    }
+
     /// New clip = current clip ∩ (rounded) rect, allocated in the arena.
     noinline fn makeClip(p: *Painter, ctx: *const Ctx, r: Rect, radii: ?Radii) Error!*const ClipMask {
         var c: ClipMask = undefined;
         if (radii == null and ctx.plain()) {
             c = ClipMask.fromRect(toIRect(r).intersect(ctx.dst.bounds()));
         } else {
-            try p.setRRect(r, radii);
-            const m = p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, region(ctx)) catch return error.OutOfMemory;
+            const m = try p.rrectMask(ctx, r, radii, region(ctx));
             c = m.asClip();
         }
         if (ctx.clip) |cc| c = raster.clipIntersect(p.a, cc.*, c) catch return error.OutOfMemory;
@@ -519,8 +584,7 @@ const Painter = struct {
             const reach = raster.blurReach(sigma);
             const visible = region(ctx);
             if (visible.isEmpty()) continue;
-            try p.setRRect(r, radii);
-            var mask = p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, visible.expand(reach)) catch return error.OutOfMemory;
+            var mask = try p.rrectMask(ctx, r, radii, visible.expand(reach));
             if (mask.bounds.isEmpty()) continue;
             raster.blurMaskClipped(p.a, &mask, sigma, visible) catch return error.OutOfMemory;
             if (mask.bounds.isEmpty()) continue;
@@ -536,8 +600,7 @@ const Painter = struct {
                     }
                 }
             } else {
-                try p.setRRect(g.bx, g.outerRadii());
-                const box = p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, mask.bounds) catch return error.OutOfMemory;
+                const box = try p.rrectMask(ctx, g.bx, g.outerRadii(), mask.bounds);
                 const bb = box.bounds;
                 var yy: u32 = 0;
                 while (yy < bb.h) : (yy += 1) {
@@ -584,8 +647,7 @@ const Painter = struct {
             var shape: raster.Mask = raster.Mask.empty;
             if (r.w > 0 and r.h > 0) {
                 const radii: ?Radii = if (prad) |rr| spreadRadii(rr, -sh.spread) else null;
-                try p.setRRect(r, radii);
-                shape = p.rast().rasterize(p.a, &p.path, ctx.tf, .nonzero, within) catch return error.OutOfMemory;
+                shape = try p.rrectMask(ctx, r, radii, within);
             }
             var inv = raster.maskInvertWithin(p.a, &shape, within) catch return error.OutOfMemory;
             raster.blurMaskClipped(p.a, &inv, sigma, pb) catch return error.OutOfMemory;
@@ -699,29 +761,17 @@ const Painter = struct {
     /// fake-bold stroke width, approximated as the per-pixel max over 9 offset copies.
     noinline fn glyphCoverage(p: *Painter, out: std.mem.Allocator, face: font.FaceId, gid: u16, size: f32, ox: f32, oy: f32, synth: u2, tf: Affine, window: IRect) ?raster.Mask {
         if (!p.buildGlyph(face, gid, size, ox, oy, synth, tf)) return null;
-        if (synth & 2 == 0) return p.sampled(out, window);
-        const base = p.sampled(p.a, window) orelse return null;
-        if (base.bounds.isEmpty()) return raster.Mask.empty;
+        if (synth & 2 == 0) return p.sampled(out, window, 0);
         const t = std.math.clamp((size - 9) / 27, 0, 1);
         const rad = size * (1.0 / 24.0 + t * (1.0 / 32.0 - 1.0 / 24.0)) * 0.5;
-        const grow: u32 = @intFromFloat(@ceil(rad * @max(1, Painter.tfScale(tf))) + 1);
-        const win = base.bounds.expand(grow).intersect(window);
-        var acc = raster.Mask.init(out, win) catch return null;
-        const d = rad * 0.70710678;
-        const offs = [8][2]f32{ .{ rad, 0 }, .{ -rad, 0 }, .{ 0, rad }, .{ 0, -rad }, .{ d, d }, .{ -d, d }, .{ d, -d }, .{ -d, -d } };
-        mergeMax(&acc, &base);
-        for (offs) |o| {
-            if (!p.buildGlyph(face, gid, size, ox + o[0], oy + o[1], synth, tf)) continue;
-            const m = p.sampled(p.a, win) orelse continue;
-            mergeMax(&acc, &m);
-        }
-        return acc;
+        return p.sampled(out, window, rad * Painter.tfScale(tf));
     }
 
     /// Rasterizes `p.path` like a 4x4 supersampling scan converter (what tiny-skia / takumi do):
     /// the path is scan-converted at 4x scale, each sub-cell thresholded at half coverage, and
     /// a pixel's coverage is 16 * (number of covered sub-cells), capped at 255.
-    fn sampled(p: *Painter, out: std.mem.Allocator, window: IRect) ?raster.Mask {
+    /// `grow` > 0 (fake bold) dilates the shape by that many px with a disc, in sub-cell space.
+    fn sampled(p: *Painter, out: std.mem.Allocator, window: IRect, grow: f32) ?raster.Mask {
         const r = p.f.r;
         const lim = 1 << 26;
         if (window.w > lim or window.h > lim or @abs(window.x) > lim or @abs(window.y) > lim) return null;
@@ -729,9 +779,11 @@ const Painter = struct {
         const saved = r.rast.levels16;
         r.rast.levels16 = false;
         defer r.rast.levels16 = saved;
-        var hi = r.rast.rasterize(p.a, &p.path, Affine.scale(4, 4), .nonzero, w4) catch return null;
-        defer hi.deinit(p.a);
+        const sa = r.scratch.allocator();
+        defer r.scratch.reset();
+        var hi = r.rast.rasterize(sa, &p.path, Affine.scale(4, 4), .nonzero, w4) catch return null;
         if (hi.bounds.isEmpty()) return raster.Mask.empty;
+        if (grow > 0) hi = dilate(sa, &hi, @min(grow * 4, 64)) orelse return null;
         const x0 = @divFloor(hi.bounds.x, 4);
         const y0 = @divFloor(hi.bounds.y, 4);
         const x1 = @divFloor(hi.bounds.x + @as(i32, @intCast(hi.bounds.w)) + 3, 4);
@@ -748,6 +800,44 @@ const Painter = struct {
         }
         for (m.data) |*v| v.* = @intCast(@min(255, @as(u32, v.*) * 16));
         return m;
+    }
+
+    /// Binary dilation (threshold 128) of an A8 mask with a disc of radius `radius` cells.
+    /// Returns a 0 / 255 mask whose bounds are grown by ceil(radius).
+    fn dilate(a: std.mem.Allocator, src: *const raster.Mask, radius: f32) ?raster.Mask {
+        const rc: u32 = @intFromFloat(@ceil(radius));
+        const sw: usize = src.bounds.w;
+        const sh: usize = src.bounds.h;
+        var dst = raster.Mask.init(a, src.bounds.expand(rc)) catch return null;
+        const dw: usize = dst.bounds.w;
+        const cnt = a.alloc(u32, sw + 1) catch return null;
+        const r2 = radius * radius;
+        var sy: usize = 0;
+        while (sy < sh) : (sy += 1) {
+            const srow = src.data[sy * sw ..][0..sw];
+            cnt[0] = 0;
+            for (srow, 0..) |v, x| cnt[x + 1] = cnt[x] + (v >> 7);
+            if (cnt[sw] == 0) continue;
+            var dyi: i32 = -@as(i32, @intCast(rc));
+            while (dyi <= @as(i32, @intCast(rc))) : (dyi += 1) {
+                const dyf: f32 = @floatFromInt(dyi);
+                const rem = r2 - dyf * dyf;
+                if (rem < 0) continue;
+                const hwid: usize = @intFromFloat(@floor(@sqrt(rem)));
+                const orow_i: usize = @intCast(@as(i64, @intCast(sy)) + dyi + rc);
+                const orow = dst.data[orow_i * dw ..][0..dw];
+                // destination x (in dst coords) is covered if any source cell in [x - rc - hwid, x - rc + hwid] is set
+                var x: usize = 0;
+                while (x < dw) : (x += 1) {
+                    const lo_i: i64 = @as(i64, @intCast(x)) - rc - @as(i64, @intCast(hwid));
+                    const hi_i: i64 = @as(i64, @intCast(x)) - rc + @as(i64, @intCast(hwid)) + 1;
+                    const lo: usize = @intCast(std.math.clamp(lo_i, 0, @as(i64, @intCast(sw))));
+                    const hi: usize = @intCast(std.math.clamp(hi_i, 0, @as(i64, @intCast(sw))));
+                    if (hi > lo and cnt[hi] != cnt[lo]) orow[x] = 255;
+                }
+            }
+        }
+        return dst;
     }
 
     fn mergeMax(acc: *raster.Mask, m: *const raster.Mask) void {
