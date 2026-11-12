@@ -74,7 +74,7 @@ Node trees are interchangeable: `{ type: "container" | "text" | "image", style, 
 className, id, attributes, dir, lang, children / text / src }`, camelCase style keys, numbers as px,
 `{ json }` for JSON text, every JS string treated as HTML. Defaults follow takumi (`display: inline`,
 `box-sizing: border-box`, transparent canvas). A tree serialised from takumi renders unchanged; the
-benchmark compares 200 fixtures between the two engines (see [Benchmark](../benchmark.md)).
+benchmark compares 250 fixtures between the two engines (see [Benchmark](../benchmark.md)).
 
 What bm-engine accepts that only matters when it is missing: features compiled out of a smaller profile
 (HTML, `css`, `tw`, SVG images, WOFF2, ...) throw or are ignored — use the `full` profile while migrating,
@@ -103,8 +103,9 @@ in the same format, so trees built with them should render as is (not tested).
 Pixels match takumi on most fixtures and differ by anti-aliasing noise elsewhere. The cases worth a
 visual check after migrating are listed in
 [Differences from takumi → Rendering differences](../differences-from-takumi.md#rendering-differences):
-gradients, dashed rounded borders, rotated text, `-webkit-text-stroke`, RTL flex containers,
-`image-rendering: pixelated`, some emoji sequences, SVG `<text>`. Encoded files are different bytes
+gradients, dashed rounded borders, rotated text, `-webkit-text-stroke`, `©️` emoji presentation, SVG
+`<text>`, and the cases where bm-engine deliberately follows Chrome (`display: contents`, percentage
+margin / padding on inline boxes, `text-indent` after a block child). Encoded files are different bytes
 (different encoders) even when pixels match — compare decoded pixels, not file hashes.
 
 ## Checklist

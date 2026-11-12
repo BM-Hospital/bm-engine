@@ -66,7 +66,7 @@ The returned tree for this card (copied from the script's output):
 | Field | Meaning |
 |:--|:--|
 | `width`, `height` | the **border box** of the node, in device pixels (1/64 px precision) |
-| `transform` | `[a, b, c, d, e, f]`: a 2D matrix placing the box in the canvas; `e`, `f` are the absolute x / y of the border box's top-left corner |
+| `transform` | `[a, b, c, d, e, f]`: a 2D matrix placing the box in the canvas; `e`, `f` are the absolute x / y of the border box's top-left corner (for a box with a CSS transform, see [Transforms](#transforms)) |
 | `children` | measured child boxes, in tree order |
 | `runs` | the text runs this box lays out: `{ x, y, width, height }` |
 
@@ -111,6 +111,13 @@ const p = renderer.measureSync(paragraph, { width: 300, height: 140 });
 This paragraph produces five runs on three lines: the second line is split into "and per inline", the
 bold "fragment" and the comma. Inline-blocks and images on a line appear as children, with their own
 transforms.
+
+A block inside an inline container (a "span" holding a `display: block` child) splits that inline box
+around the block, as in CSS 2.1 and in browsers. `measure()` reports the split form, like takumi: the
+text before and after the block stays as runs of the block container, and each run of consecutive
+blocks appears as one extra child box, as wide as the container, whose children are the blocks.
+Likewise, when a block container has both text and block-level children, each stretch of text is
+wrapped in an anonymous block that appears in `children` and owns those runs (as in takumi).
 
 ### Drawing an overlay from the measurements
 
@@ -238,30 +245,55 @@ Text does not always scale exactly: line heights come from the font metrics at t
 rounded per size (the body text of the [result section](#the-result) has 20 px lines at ratio 1 and
 39 px lines at ratio 2, not 40). Divide by the ratio to get CSS pixels.
 
-## Transforms are not included
+## Transforms
 
-::: warning 0.1.0 limitation
-`transform` contains only the box position. CSS transforms (`transform`, `translate`, `rotate`, `scale`)
-are **not** applied to the matrix; `position: relative` offsets are, because they are part of layout.
-takumi includes CSS transforms in this matrix.
-:::
+`transform` is the full 2D affine matrix of the box, as in takumi: the layout position, `position:
+relative` offsets and the CSS transforms of the box (`transform`, `translate`, `rotate`, `scale`,
+skews, around its `transform-origin`), composed with the transforms of its ancestors. The numbers are
+the exact `f32` values the engine computes, printed as decimals (so `0.7071067690849304`, not
+`Math.SQRT1_2`):
 
 <!-- @example measure#transforms -->
 ```js
-// transform holds the box position only: CSS transforms (rotate, scale, translate) are not
-// included in the matrix in 0.1.0; position: relative offsets are.
-const moved = renderer.measureSync(
-  { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
-    { type: "container", style: { width: 50, height: 50, transform: "translate(10px, 20px) rotate(45deg)" } },
-    { type: "container", style: { width: 50, height: 50, position: "relative", left: 7, top: 3 } },
-  ] },
-);
-// moved.children[0].transform: [1, 0, 0, 1, 0, 0]
+// transform is the complete 2D matrix of the box: its layout position, position: relative offsets
+// and CSS transforms (translate, rotate, scale, skew around transform-origin), composed with
+// the transforms of its ancestors.
+const shapes = { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#a5b4fc", transform: "translate(10px, 20px) rotate(45deg)" } },
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#fdba74", position: "relative", left: 7, top: 3 } },
+] };
+const moved = renderer.measureSync(shapes);
+// moved.children[0].transform:
+//   [0.7071067690849304, 0.7071067690849304, -0.7071067690849304, 0.7071067690849304, 35, 9.644660949707031]
 // moved.children[1].transform: [1, 0, 0, 1, 57, 3]
 ```
 
-If you need the painted position of a transformed box, apply its transform yourself around its
-`transform-origin` (by default the centre of the border box).
+The matrix maps the border box (from `(0, 0)` to `(width, height)`) to the canvas, so the painted
+corners of a rotated box are one multiplication away. The red dots below are computed from the
+measurement and drawn on top of the same tree:
+
+<!-- @example measure#corners -->
+```js
+// Map the corners of a border box through its matrix to get the painted corners on the canvas.
+const corners = ({ width, height, transform: [a, b, c, d, e, f] }) =>
+  [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => [a * x + c * y + e, b * x + d * y + f]);
+// corners(moved.children[0]): [[35, 9.64], [70.36, 45], [35, 80.36], [-0.36, 45]] (rounded)
+
+// Mark them on the rendered tree with small red dots:
+const dots = moved.children.flatMap(corners).map(([x, y]) => ({
+  type: "container",
+  style: { position: "absolute", left: x - 3, top: y - 3, width: 6, height: 6, borderRadius: 3, backgroundColor: "#dc2626" },
+}));
+const cornersPng = renderer.renderSync(
+  { type: "container", style: { display: "block", position: "relative", width: "100%", height: "100%", backgroundColor: "#fff" }, children: [shapes, ...dots] },
+  { width: 140, height: 90 },
+);
+```
+
+![A square rotated by 45 degrees and a square shifted by position relative, with red dots exactly on all eight corners](/img/guide/measure-corners.png)
+
+`width` and `height` stay the untransformed border-box size; the bounding box of a rotated element is
+the min / max of its four corners.
 
 ## HTML and stylesheets
 

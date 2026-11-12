@@ -253,7 +253,30 @@ Những mục này đã được kiểm tra bằng các lần render thử nhỏ
 | `visibility: collapse` trên một hàng | hàng đó và khoảng trống của nó bị bỏ đi |
 | `thead` / `tfoot` | nhóm header luôn đặt đầu và nhóm footer luôn đặt cuối, bất kể thứ tự trong source |
 | `display: inline-table` | bảng nằm trên dòng giống một inline-block |
-| `direction: rtl` / `dir="rtl"` trên bảng | **chưa được hỗ trợ trong 0.1.0**: cột đầu vẫn ở bên trái (takumi đặt nó bên phải) |
+| `direction: rtl` / `dir="rtl"` trên bảng | cột đầu nằm bên phải ([bên dưới](#rtl-tables)) |
+
+## Bảng RTL {#rtl-tables}
+
+`dir="rtl"` trên `<table>` (hoặc `direction: "rtl"` trên node `display: "table"`) đảo thứ tự cột, như
+trình duyệt và takumi:
+
+<!-- @example tables#rtl -->
+```js
+// dir="rtl" (or direction: rtl) puts the first column on the right. The text inside the cells is
+// still laid out left to right on standard; on full it is right-aligned too (text-align: start).
+const rtlTable = renderer.renderSync(
+  `<div style="padding:16px;background:white;height:100%;font-family:Inter;font-size:15px">
+     <table dir="rtl" style="border-collapse:collapse;width:100%">
+       <tr><th>1st column</th><th>2nd column</th><th>3rd column</th></tr>
+       <tr><td>A</td><td>B</td><td>C</td></tr>
+     </table>
+   </div>
+   <style>th, td { border: 1px solid #94a3b8; padding: 6px 10px; text-align: start } th { background: #e2e8f0 }</style>`,
+  { width: 400, height: 110 },
+);
+```
+
+![Một bảng có cột đầu ở bên phải: 3rd column, 2nd column, 1st column từ trái sang phải](/img/guide/tables-rtl.png)
 
 ## Float
 
@@ -338,12 +361,12 @@ Theo [Hỗ trợ CSS](./css-support.md#layout) và benchmark: bảng tương đ�
 và 339 trên 352 trường hợp oracle layout; float đạt 138 / 138 trường hợp oracle. Các hạn chế đã biết trong
 0.1.0:
 
-- `direction: rtl` trên bảng không đảo thứ tự cột (xem bảng ở trên).
-- Thứ tự vẽ float còn gần đúng: float được vẽ sau (đè lên) toàn bộ nội dung trong luồng của stacking
-  context, trong khi CSS vẽ nội dung inline trong luồng (chữ) lên trên float. Chỉ thấy được khi chữ và
-  float thực sự chồng lên nhau, ví dụ khi dùng margin âm.
-- `line-clamp` và `-webkit-box` cạnh float, và `text-wrap: balance / pretty` cạnh float (quay về cách
-  ngắt dòng tham lam).
+- Thứ tự vẽ float theo CSS 2.1 Phụ lục E trong đầu ra PNG / JPEG / WebP / raw: float được vẽ sau nền
+  của các block trong luồng và trước nội dung inline trong luồng (chữ), nên chữ chồng lên float (ví dụ
+  khi dùng margin âm) được vẽ đè lên trên. `renderSvg` vẫn vẽ float sau toàn bộ nội dung trong luồng.
+- `line-clamp` và `-webkit-box` cạnh float.
+- `text-wrap: balance / pretty` cạnh float dùng được với một float duy nhất ở đầu đoạn; các cách sắp
+  xếp khác quay về cách ngắt dòng tham lam.
 - Bảng không được chia qua nhiều trang (không có đầu ra phân trang).
 
 Xem thêm: [Style → các chế độ layout](./styles.md), [HTML và Tailwind](./html-and-tailwind.md).

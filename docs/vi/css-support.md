@@ -3,7 +3,7 @@
 [English](../en/css-support.md) · [Tiếng Việt](css-support.md)
 
 Trang này cho biết bm-engine 0.1.0 vẽ được những gì, mỗi tính năng cần profile build nào, và đầu ra
-khớp với takumi 2.20 tới mức nào. Cột "Trạng thái" lấy từ benchmark tương đương (200 fixture được cả hai
+khớp với takumi 2.20 tới mức nào. Cột "Trạng thái" lấy từ benchmark tương đương (250 fixture được cả hai
 engine render rồi so từng điểm ảnh, cộng thêm các phép thử oracle theo từng module; xem
 [Benchmark](benchmark.md)): **identical** (trùng từng byte), **equivalent** (tương đương: SSIM ≥ 0.99
 và ≤ 0.5 % điểm ảnh khác — trên thực tế là khác biệt khử răng cưa ở mép cong và mép glyph),
@@ -50,6 +50,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | Block layout, gộp margin (margin collapsing), `flow-root` | core | identical / equivalent |
 | Định dạng inline (dòng chữ, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (inline nguyên tử tham gia ngắt dòng giữa dòng với mọi `vertical-align`; padding / viền / margin ngang của span đẩy chữ; `white-space` theo từng span, `<br>`, strut theo từng hộp; fixture `inline-flow` / `inline-box-model` đạt SSIM ≥ 0.9999); xem [hạn chế đã biết](#các-hạn-chế-đã-biết) |
 | Flexbox (direction, wrap, grow / shrink / basis, `gap`, căn chỉnh kể cả `safe`, `order`, `-webkit-box`) | core | identical (5/5 fixture) |
+| `direction: rtl` / `dir="rtl"` trên các hộp: hàng flex, cột grid, cột bảng và căn chỉnh block được lật ngược | core | equivalent; chữ bên trong chỉ được dàn từ phải sang trái trên `full` (bidi); `justify-self: left / right` chưa được lật |
 | Grid: track, `repeat()` kể cả `auto-fill` / `auto-fit`, `fr`, `minmax()`, tự xếp chỗ, span | core | equivalent (4/4) |
 | Grid: đường lưới đặt tên, `grid-template-areas`, `grid-area` | core | equivalent (3/3) |
 | `position: relative / absolute / fixed`, `inset`, `z-index` | core | identical / equivalent (3/3); `fixed` được định vị theo canvas |
@@ -58,7 +59,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | `overflow: hidden / clip` (kể cả cắt theo góc bo) | core | equivalent |
 | Bảng (`display: table*`, layout auto / fixed, `colspan` / `rowspan` qua HTML, `border-collapse`, `border-spacing`, caption, `empty-cells`) | standard | equivalent (8/8 fixture; 339/352 ca oracle layout) |
 | Float (`float`, `clear`) | standard (cờ `floats`; cả `full`) | equivalent; 138/138 ca oracle layout; chữ chảy quanh float (hộp dòng ngắn lại cạnh float và nở lại bên dưới, float trong nội dung inline, RTL; 7 fixture `float-text` đạt SSIM ≥ 0.9999) |
-| `display: contents` | — | không: được dàn trang và vẽ như `display: block` (phần tử vẫn giữ box, padding và nền của nó) |
+| `display: contents` | core | có, theo Chrome: phần tử không tạo hộp, các con của nó tham gia layout của cha (takumi không hỗ trợ giá trị này: bỏ nó khỏi stylesheet và ném lỗi với inline style) |
 | `display: list-item` | core | layout như block; không có ký hiệu đầu dòng (list marker) |
 | Chế độ viết (`writing-mode`) | — | không: parse được, chỉ layout theo chiều ngang |
 
@@ -121,15 +122,18 @@ Trên `core`, các thuộc tính hiệu ứng cần `standard` trong bảng này
 | Tính năng | Profile tối thiểu | Trạng thái |
 |:--|:--|:--|
 | Ngắt dòng (UAX #14), `white-space` (mọi chế độ), `word-break`, `overflow-wrap`, `tab-size` | core | equivalent; bề rộng và vị trí ngắt dòng khớp takumi (825/825 ca oracle) |
-| `text-align` (kể cả `justify`), `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
-| `text-indent` | — | parse được nhưng không có tác dụng trong 0.1.0 (dòng đầu không thụt vào) |
-| `text-overflow: ellipsis`, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3); giá trị chuỗi tùy ý (`text-overflow: " »"`) được chấp nhận nhưng vẽ như `clip` |
+| `text-align` (kể cả `justify`), `line-height`, `letter-spacing`, `word-spacing` | core | equivalent |
+| `text-transform` | core | equivalent: ánh xạ hoa / thường Unicode đầy đủ (`ß` → `SS`, sigma cuối từ, ligature, digraph titlecase); chưa có: đổi hoa / thường theo `lang` (Thổ Nhĩ Kỳ / Azeri, Hy Lạp, Litva), `full-width`, `full-size-kana` |
+| `text-indent` (độ dài, %, số âm, `each-line`, `hanging`, RTL) | core | equivalent; một khác biệt có chủ ý: takumi thụt cả block ẩn danh không phải đầu tiên (chữ sau một con dạng block), bm-engine và Chrome thì không |
+| `text-overflow: ellipsis` / `clip` / `"<chuỗi>"`, `line-clamp` / `-webkit-line-clamp` (kể cả `<n> "<chuỗi>"`, `none`, `no-ellipsis`) | core | equivalent; dấu cắt dạng chuỗi được shape bằng font của phần tử và font dự phòng, lật ngược trong RTL (chuỗi rỗng cắt mà không có dấu); `overflow` cắt cả glyph của chính phần tử |
 | `text-decoration` (line, style kể cả `wavy`, màu, độ dày), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
 | `-webkit-text-stroke`, `-webkit-text-fill-color` | core | equivalent (nét viền có thể lệch 1 mức); `paint-order` parse được nhưng nét viền luôn vẽ đè lên phần tô, giống takumi 2.20 |
 | Hộp inline có nền / viền / padding, `box-decoration-break` | core | equivalent; padding / viền / margin ngang của span đẩy chữ (mép fragment đầu / cuối, `box-decoration-break: clone`) |
-| `text-wrap: balance` / `pretty` | standard | quyết định ngắt dòng trùng takumi (216/216) |
+| `text-wrap: balance` / `pretty` | standard | quyết định ngắt dòng trùng takumi (216/216); cả khi có hộp inline, inline nguyên tử và cạnh một float đứng đầu |
 | Tự tạo đậm / nghiêng (synthetic) khi thiếu face | core | equivalent |
 | `font-feature-settings`, `font-variant-*`, `font-kerning`, ligature (GSUB 1–8, GPOS 1–9) | core | equivalent |
+| `font-variant-caps` (`small-caps`, `all-small-caps`, `petite-caps`, `all-petite-caps`, `unicase`, `titling-caps`), `font-synthesis-small-caps` | core | dùng feature OpenType của font khi có, nếu không thì tự tạo (chữ hoa ở 70 % cỡ chữ); petite caps và unicase quay về small caps; `font-synthesis-small-caps: none` tắt việc tự tạo |
+| Hộp inline: `margin` / `padding` theo %, `position: relative` | core | phần trăm tính theo containing block, theo Chrome (takumi tính bằng 0); độ dời relative dịch chuyển hộp inline |
 | `hyphens`, `line-break`, `text-align-last` | — | parse được, chưa có tác dụng trong 0.1.0 |
 
 ## Font
@@ -140,7 +144,8 @@ Trên `core`, các thuộc tính hiệu ứng cần `standard` trong bảng này
 | CFF / CFF2 (`.otf`) | standard | bề rộng lệch trong 1/64 px |
 | WOFF / WOFF2 | standard (core: [add-on](profiles-and-size.md#add-on-woff)) | 17/19 font WOFF2 thử nghiệm của takumi giải mã trùng từng byte với bộ giải mã tham chiếu (2 font còn lại khác một bit cờ) |
 | Font biến thiên (`fvar`, `avar`, `gvar`, `HVAR`, `MVAR`), `font-variation-settings`, `font-optical-sizing` | standard | 1 400 phép so bề rộng lệch trong 1/64 px; trên core chỉ vẽ instance mặc định |
-| Font màu: COLR v0 / v1, CBDT, sbix | full | SSIM ≥ 0.991 so với Chrome (takumi không vẽ được COLR v1) |
+| Font màu: COLR v0 / v1 | full | SSIM ≥ 0.991 so với Chrome (takumi không vẽ được COLR v1); `core` / `standard` vẽ outline thường, không màu |
+| Font màu dạng bitmap: CBDT, sbix | standard | vẽ có màu trên `standard` và `full`; `core` không vẽ gì với font chỉ có bitmap |
 | `@font-face` trong stylesheet | — | không được tải: hãy đăng ký font bằng `registerFont` / `fonts` |
 
 ## Màu sắc
@@ -181,6 +186,12 @@ cascade trùng takumi; 4 fixture (1 identical, 3 equivalent).
   `@container`, `@scope`, `@apply`, `@counter-style` và các at-rule khác bị bỏ qua, giống takumi.
 - Khai báo không hợp lệ bị loại bỏ từng cái một (cơ chế phục hồi lỗi của CSS); stylesheet không bao
   giờ làm render ném lỗi.
+- **Thứ tự cascade**, giống takumi: luật trong khối `@layer` có tên < utility Tailwind từ `tw` < luật
+  stylesheet không thuộc layer < inline `style`; với khai báo `!important` thứ tự đảo lại: không thuộc
+  layer < `tw` < layer có tên.
+- Text node không có `tagName` không phải là phần tử đối với pseudo-class cấu trúc và combinator anh em
+  (`:first-child`, `:nth-child()`, `+`, `~`, ...), giống takumi. Text node rỗng hoặc chỉ có khoảng
+  trắng bị bỏ đi, trừ khi đứng sau nội dung inline in-flow (trong flex và grid container thì luôn bị bỏ).
 - Chưa hỗ trợ: `counter()` / `counters()` trong `content`, ký hiệu đầu dòng của danh sách.
 
 ## Tailwind
@@ -202,13 +213,20 @@ nên hỗ trợ đúng những gì takumi hỗ trợ:
 - **Giá trị**: theme mặc định (thang khoảng cách, toàn bộ bảng màu với modifier `/opacity`, cỡ chữ,
   bán kính bo, bóng đổ, breakpoint), giá trị tùy ý (`w-[37px]`, `bg-[#123456]`, dấu gạch dưới thay cho
   dấu cách), tiền tố `!important`.
+- **Biến `@theme` được utility đọc**: màu (kèm `/opacity`), `--spacing` và `--spacing-*`,
+  `--container-*`, `--radius-*`, `--text-*` (kèm biến `--line-height` đi cùng), `--font-*`,
+  `--font-weight-*`, `--tracking-*`, `--leading-*`, `--aspect-*`, `--animate-*`, `--breakpoint-*`.
+- **`animate-*`** (`animate-spin`, `-ping`, `-pulse`, `-bounce`, `-none`, `animate-[...]`, tên trong theme)
+  trên profile `full`, profile có animation.
 - **Variant**: breakpoint `sm` `md` `lg` `xl` `2xl` (min-width so với bề rộng canvas), variant cấu trúc
   `first` `last` `only` `odd` `even` `*-of-type` `empty` `not-*` `nth-*` và `[&:...]`,
   `before:` / `after:`.
 - **Chưa hỗ trợ (giống takumi)**: `hover:`, `focus:`, `dark:`, `group-*:`, `peer-*:`, breakpoint
-  `max-*:`; `z-*`, `order-*`, `skew-*`, `ring-*`, `space-*`, `divide-*`, `place-*`, `cursor-*`;
-  `animate-*` (bị bỏ qua im lặng; hãy dùng thuộc tính `animation` cùng `css`); shorthand `(--var)` và
-  class `[prop:value]`. Class không biết bị bỏ qua im lặng.
+  `max-*:`; `z-*`, `order-*`, `skew-*`, `ring-*`, `space-x-*` / `space-y-*`, `divide-*`, `place-*`,
+  `cursor-*`, `outline-2` đứng một mình, `backdrop-blur` không kèm giá trị, `mask-b-from-50%`; `var()`
+  trong giá trị tùy ý (`bg-[var(--x)]`) và shorthand `(--var)`; class `[prop:value]`; tên v3
+  `bg-gradient-to-*`; thuộc tính `class` của HTML (chỉ `tw` là Tailwind). Class không biết bị bỏ qua im
+  lặng.
 - `style` thắng `tw`; utility có tiền tố `!` thắng khai báo inline thường.
 
 ## Đầu vào HTML
@@ -237,6 +255,8 @@ Trạng thái: 55/58 mẫu cấu trúc cho ra cây trùng takumi; 8 fixture equi
 | Tùy chọn render `keyframes` (dạng cũ của takumi, đã deprecated) | full | có hỗ trợ |
 | `renderAnimation` → WebP / APNG / GIF động | full | số khung và độ trễ trùng takumi |
 | Tên dựng sẵn `spin`, `ping`, `pulse`, `bounce` (keyframes của Tailwind) không cần luật `@keyframes` | full | có hỗ trợ, giống takumi |
+| Utility `animate-*` của Tailwind, biến theme `--animate-*` | full | có hỗ trợ |
+| Độ dài `em` trên phần tử có `font-size` được animate | full | theo cỡ chữ đang animate |
 | Animation trên `::before` / `::after`, custom property được animate | — | không |
 | `transition*` | — | parse được; ảnh tĩnh không có transition |
 | `animation-play-state: paused` | full | bị bỏ qua (vẫn lấy mẫu), giống takumi |
@@ -254,7 +274,7 @@ tính `animation` bị bỏ qua.
 | WebP lossy (VP8; trùng từng bit với libwebp), nguồn GIF / APNG / WebP động | full | trùng các bộ giải mã tham chiếu |
 | Ảnh SVG (markup `<svg>`, `data:image/svg+xml`, nền và mask dạng `url()`) | standard | 397/422 file SVG thử nghiệm của takumi identical hoặc equivalent |
 | Phạm vi SVG | standard | hình cơ bản, path, `use` / `symbol`, gradient, pattern, `clipPath`, `mask`, marker, `<svg>` / `<image>` lồng nhau, `<style>` với selector đơn giản, filter `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. `<text>` được vẽ bằng font đã đăng ký theo mô hình đơn giản (mỗi phần tử một run: `x` / `y`, `font-family`, `font-size`, `font-weight`, `text-anchor`, `fill` màu đặc; nội dung `<tspan>` nối vào run cha với style của cha; chữ tô gradient hoặc chỉ có stroke không được vẽ; xem [Biểu đồ](charts.md#svg-text-hỗ-trợ-những-gì)). Chưa hỗ trợ: `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, filter chiếu sáng, `feTile`, tham chiếu ra ngoài |
-| `image-rendering` | core | parse được; ảnh raster luôn được lấy mẫu lại mượt trong 0.1.0 (`pixelated` chỉ có tác dụng bên trong SVG) |
+| `image-rendering: pixelated` / `crisp-edges` | core | phóng ảnh theo điểm gần nhất cho image node và ảnh nền, trùng takumi (cũng có tác dụng bên trong ảnh SVG) |
 | URL từ xa | — | không bao giờ tải về: truyền byte qua `images` |
 
 ## Chữ phức, bidi, emoji
@@ -264,7 +284,8 @@ tính `animation` bị bỏ qua.
 | Latin, Kirin, Hy Lạp, tiếng Việt (dựng sẵn), ngắt dòng CJK | core | equivalent |
 | Bidi (UAX #9), `direction`, `dir`, cô lập `unicode-bidi` | full | 91 679/91 679 ca kiểm tra chuẩn bidi |
 | Shaping Ả Rập, Hebrew, Devanagari, Bengali, Thái; chuẩn hoá Unicode (tiếng Việt tổ hợp) | full | bề rộng glyph khớp takumi (lệch 0.000 px ở mọi nhóm); các hệ chữ Ấn khác dùng shaper mặc định |
-| Emoji màu (khi đã đăng ký font emoji) | full | SSIM ≥ 0.991; vài chuỗi ZWJ chưa gộp thành một glyph, lựa chọn font emoji có thể khác takumi ở vài ký tự (©️, VS15) |
+| Chuỗi emoji: ZWJ, bộ chỉnh màu da, cờ, cờ dạng tag, keycap, VS15 / VS16 | standard | mỗi chuỗi là một cluster và một glyph (không bao giờ bị tách khi xuống dòng, khi dùng font dự phòng hay khi giãn chữ) |
+| Emoji màu (khi đã đăng ký font emoji) | standard (bitmap: CBDT / sbix), full (thêm COLR) | SSIM ≥ 0.991; cách hiển thị `©️` (U+00A9 + VS16) trong takumi tuỳ ngữ cảnh nên có thể khác |
 
 Trên `core` và `standard`, chữ viết phải-sang-trái và chữ phức được shape bằng shaper OpenType mặc định
 theo thứ tự logic (không sắp xếp lại).
@@ -273,25 +294,24 @@ theo thứ tự logic (không sắp xếp lại).
 
 Tình trạng ở 0.1.0 (xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết trạng thái cuối cùng):
 
-- **Layout inline (hạn chế còn lại)** — hộp inline hướng RTL bao quanh chữ LTR đặt mép start / end sai phía
-  thị giác, và fragment của hộp chưa được tách qua các đoạn bidi bị sắp xếp lại; khoảng trắng treo của RTL +
-  `white-space: pre-wrap`; line-clamp / `-webkit-box` quanh float; block-in-inline (span chứa block) vẫn biến
-  span thành block; thứ tự vẽ float chỉ xấp xỉ (float vẽ sau nội dung in-flow của stacking context);
-  `text-wrap: balance / pretty` quay về ngắt dòng tham lam trong đoạn có hộp inline / inline nguyên tử hoặc
-  cạnh float; padding / margin theo % trên hộp inline được tính bằng 0; chuỗi inline-block lồng nhau giới hạn
-  khoảng 255 cấp (lỗi "nested too deeply" rõ ràng), trong khi lồng thường hỗ trợ 512.
-- **Bảng và RTL** — `dir="rtl"` / `direction: rtl` trên bảng chưa đưa cột đầu tiên sang bên phải ở bản
-  0.1.0 (xem [Bảng](tables.md)).
-- **Pseudo-class cấu trúc trên text node** — `:first-child`, `:last-child`, `:nth-child()` (và các variant
-  Tailwind `first:` / `last:` / `odd:`) khớp với mọi anh em khi các phần tử là `text` node trần; hãy bọc
-  text trong container.
-- **`measure()` và transform** — ma trận `transform` do `measure()` trả về không gồm `transform` /
-  `translate` / `rotate` / `scale` CSS của node (takumi có tính); xem [measure()](measure.md).
-- **Hướng chữ trong flex layout** — `direction: rtl` / `dir: "rtl"` chưa đảo trục chính của hàng flex
-  trong 0.1.0 (takumi có đảo).
-- Chưa hỗ trợ: `display: contents`, ký hiệu đầu dòng và counter, `writing-mode`, transform 3D,
-  `filter: url()` / `clip-path: url()`, cú pháp màu tương đối, `outline-offset` theo %, `@apply`,
-  `animate-*` của Tailwind, animation trên pseudo-element, xuất PDF.
+- **Layout inline (hạn chế còn lại)** — khoảng trắng treo của RTL + `white-space: pre-wrap`; line-clamp /
+  `-webkit-box` quanh float; block nằm trong một hộp inline `position: relative` không bị dời theo; chuỗi
+  inline-block lồng nhau giới hạn khoảng 255 cấp (lỗi "nested too deeply" rõ ràng), trong khi lồng thường
+  hỗ trợ 512.
+- **Thứ tự vẽ** — đầu ra raster vẽ float và hộp được định vị theo thứ tự của CSS 2.1 Phụ lục E (float sau
+  nền của block và trước nội dung inline; hộp định vị sau nội dung in-flow của stacking context của nó);
+  `renderSvg` vẫn dùng thứ tự cũ, xấp xỉ, và `z-index` âm vẫn xấp xỉ ở mức anh em.
+- **RTL** — `justify-self: left / right` chưa được lật dưới `direction: rtl`; trên `core` và `standard`
+  các hộp được lật nhưng chữ bên trong vẫn từ trái sang phải (bidi cần `full`).
+- **Pseudo-class cấu trúc trên text node** — `text` node không có `tagName` không phải là phần tử đối với
+  `:first-child`, `:nth-child()`, combinator anh em hay các variant Tailwind `first:` / `odd:` / ...
+  (giống takumi): nó không được tính là anh em, nên khi có nhiều text node trần cạnh nhau thì node nào cũng
+  khớp `first:`, `last:` và `odd:`. Hãy đặt `tagName` cho node hoặc bọc chữ trong container.
+- **`text-transform`** — chưa đổi hoa / thường theo `lang` (Thổ Nhĩ Kỳ, Azeri, Hy Lạp, Litva), chưa có
+  `full-width` / `full-size-kana`.
+- Chưa hỗ trợ: ký hiệu đầu dòng và counter, `writing-mode`, transform 3D, `filter: url()` /
+  `clip-path: url()`, cú pháp màu tương đối, `outline-offset` theo %, `@apply`, animation trên
+  pseudo-element, xuất PDF.
 - Các sai khác 1 mức còn lại: phần trong của gradient, viền nét đứt trên góc bo, chữ bị xoay,
   `text-stroke`.
 
@@ -388,10 +408,11 @@ Ghi chú:
   `pointerEvents`, `cursor`, `userSelect`, `WebkitUserSelect`, `transitionBehavior`, `maskComposite`,
   `WebkitMaskComposite`.
 - **Parse được nhưng chưa có tác dụng thấy được trong 0.1.0** (xác định bằng cách kiểm tra renderer đọc
-  những giá trị computed nào): `writingMode`, `textIndent`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`,
-  `unicodeBidi`, `fontSynthesis*` (luôn tự tạo đậm / nghiêng), `counterReset` / `counterIncrement` /
-  `counterSet`, `listStyle*` (không có ký hiệu đầu dòng), `transition*`; `imageRendering` chỉ có tác dụng
-  bên trong ảnh SVG.
+  những giá trị computed nào): `writingMode`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`,
+  `unicodeBidi`, `fontSynthesisWeight` / `fontSynthesisStyle` và phần weight / style của `fontSynthesis`
+  (luôn tự tạo đậm / nghiêng; việc tự tạo small caps thì theo `fontSynthesis` / `fontSynthesisSmallCaps`), `counterReset` / `counterIncrement` / `counterSet`,
+  `listStyle*` (không có ký hiệu đầu dòng), `transition*`, `paintOrder` trên chữ (bị bỏ qua giống
+  takumi 2.20).
 - Thuộc tính của một tính năng bị loại khỏi profile đang nạp được chấp nhận và bỏ qua (ví dụ `float`
   trên `core`), trừ các giá trị cần bộ parse không có mặt (hàm màu hiện đại trên `core`), vốn bị coi là
   không hợp lệ.

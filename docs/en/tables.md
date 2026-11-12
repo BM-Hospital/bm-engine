@@ -254,7 +254,30 @@ These were checked with small probe renders while writing this page:
 | `visibility: collapse` on a row | the row and its space are removed |
 | `thead` / `tfoot` | header groups are placed first and footer groups last, whatever the source order |
 | `display: inline-table` | the table sits on a line like an inline-block |
-| `direction: rtl` / `dir="rtl"` on a table | **not honoured in 0.1.0**: the first column stays on the left (takumi starts it on the right) |
+| `direction: rtl` / `dir="rtl"` on a table | the first column is on the right ([below](#rtl-tables)) |
+
+## RTL tables
+
+`dir="rtl"` on a `<table>` (or `direction: "rtl"` on a `display: "table"` node) mirrors the column order,
+as in browsers and takumi:
+
+<!-- @example tables#rtl -->
+```js
+// dir="rtl" (or direction: rtl) puts the first column on the right. The text inside the cells is
+// still laid out left to right on standard; on full it is right-aligned too (text-align: start).
+const rtlTable = renderer.renderSync(
+  `<div style="padding:16px;background:white;height:100%;font-family:Inter;font-size:15px">
+     <table dir="rtl" style="border-collapse:collapse;width:100%">
+       <tr><th>1st column</th><th>2nd column</th><th>3rd column</th></tr>
+       <tr><td>A</td><td>B</td><td>C</td></tr>
+     </table>
+   </div>
+   <style>th, td { border: 1px solid #94a3b8; padding: 6px 10px; text-align: start } th { background: #e2e8f0 }</style>`,
+  { width: 400, height: 110 },
+);
+```
+
+![A table whose first column is on the right: 3rd column, 2nd column, 1st column from left to right](/img/guide/tables-rtl.png)
 
 ## Floats
 
@@ -339,12 +362,13 @@ From [CSS support](./css-support.md#layout) and the benchmark: tables are equiva
 table fixtures and 339 of 352 layout oracle cases; floats on 138 / 138 oracle cases. Known gaps in
 0.1.0:
 
-- `direction: rtl` on a table does not mirror the column order (see the table above).
-- Float paint order is approximate: floats paint after (on top of) all in-flow content of their
-  stacking context, whereas CSS paints in-flow inline content (text) above floats. It only shows when
-  text and a float actually overlap, for example with negative margins.
-- `line-clamp` and `-webkit-box` next to floats, and `text-wrap: balance / pretty` beside floats
-  (falls back to greedy wrapping).
+- Paint order of floats follows CSS 2.1 Appendix E in PNG / JPEG / WebP / raw output: a float paints
+  after the backgrounds of in-flow blocks and before in-flow inline content (text), so text that
+  overlaps a float (for example with negative margins) is drawn on top. `renderSvg` still paints floats
+  after all in-flow content.
+- `line-clamp` and `-webkit-box` next to floats.
+- `text-wrap: balance / pretty` beside floats works for a single float at the start of the paragraph;
+  other arrangements fall back to greedy wrapping.
 - Tables are not split across pages (there is no paged output).
 
 See also: [Styles → layout modes](./styles.md), [HTML and Tailwind](./html-and-tailwind.md).

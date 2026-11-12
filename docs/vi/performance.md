@@ -259,6 +259,15 @@ render 2× (`devicePixelRatio: 2` với canvas gấp đôi) có số điểm ả
 
 ## Song song: worker pool
 
+::: tip Backend native trên Node.js
+Với backend native (được `import "bm-engine"` dùng trên Node.js khi đã cài addon cho nền tảng), các phương
+thức async (`render()`, `measure()`, ...) chạy trên thread pool của libuv và không chặn event loop. Khi đó
+xử lý song song đến từ nhiều instance `Renderer` (mỗi cái chạy một lần gọi một lúc) và kích thước của pool
+đó, `UV_THREADPOOL_SIZE`, thay vì từ worker thread. Xem
+[Native và WebAssembly → Mô hình thread](./native-vs-wasm.md#mô-hình-thread) để biết chi tiết và thông lượng
+đo được. Phần còn lại của mục này áp dụng cho backend wasm.
+:::
+
 Engine chạy đơn luồng và `render` là đồng bộ: một lần render chặn luồng gọi nó. Các phương thức async
 (`render()`, `measure()`, ...) chỉ tồn tại để tương thích API và để giải quyết tuỳ chọn async — chúng không
 đẩy việc sang luồng khác. Để dùng nhiều nhân CPU, hãy chạy một instance bm-engine cho mỗi worker thread. Mỗi

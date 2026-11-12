@@ -223,22 +223,23 @@ if (existsSync(EMOJI)) {
   // #region emoji
   // Noto Color Emoji (CBDT bitmaps, 10 MB; OFL). Registering it is enough: fallback finds it.
   renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoColorEmoji.ttf"));
+  // ZWJ sequences (👩‍💻), skin tones (👍🏽), flags (🇻🇳), keycaps (1️⃣) and VS16 (❤️) are one glyph each
   const emoji = renderer.renderSync(
     { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
-      children: [{ type: "text", text: "Ship it 🚀 🎉 😀 🇻🇳 ❤️ 👩‍💻", style: { fontFamily: "Inter", fontSize: 30 } }] },
+      children: [{ type: "text", text: "Ship it 🚀 🎉 👩‍💻 👍🏽 🇻🇳 1️⃣ ❤️", style: { fontFamily: "Inter", fontSize: 30 } }] },
     { width: 560, height: 64 },
   );
   // #endregion
   save("emoji", emoji);
 
-  // Same on standard (not shown as code): CBDT bitmaps have no outlines, so nothing is drawn.
-  const std = await import("bm-engine/standard");
-  const rs = new std.Renderer();
-  rs.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
-  rs.registerFont(readFileSync(EMOJI));
-  save("emoji-standard", rs.renderSync(
+  // Same on core (not shown as code): CBDT bitmaps have no outlines, so no emoji is drawn.
+  const coreMod = await import("bm-engine/core");
+  const rc = new coreMod.Renderer();
+  rc.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
+  rc.registerFont(readFileSync(EMOJI));
+  save("emoji-core", rc.renderSync(
     { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
-      children: [{ type: "text", text: "Ship it 🚀 🎉 😀 🇻🇳 ❤️ 👩‍💻", style: { fontFamily: "Inter", fontSize: 30 } }] },
+      children: [{ type: "text", text: "Ship it 🚀 🎉 👩‍💻 👍🏽 🇻🇳 1️⃣ ❤️", style: { fontFamily: "Inter", fontSize: 30 } }] },
     { width: 560, height: 64 },
   ));
 } else console.log("skip: emoji example (ref/takumi not present)");

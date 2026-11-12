@@ -74,7 +74,7 @@ Cây node dùng thay cho nhau được: `{ type: "container" | "text" | "image",
 className, id, attributes, dir, lang, children / text / src }`, key style dạng camelCase, số được hiểu là
 px, `{ json }` cho văn bản JSON, mọi chuỗi JS được xem là HTML. Giá trị mặc định theo takumi
 (`display: inline`, `box-sizing: border-box`, canvas trong suốt). Một cây được serialise từ takumi render
-được mà không cần sửa; benchmark so sánh 200 fixture giữa hai engine (xem [Benchmark](../benchmark.md)).
+được mà không cần sửa; benchmark so sánh 250 fixture giữa hai engine (xem [Benchmark](../benchmark.md)).
 
 Điều chỉ quan trọng khi thiếu: các tính năng bị loại khỏi profile nhỏ hơn (HTML, `css`, `tw`, ảnh SVG,
 WOFF2, ...) sẽ ném lỗi hoặc bị bỏ qua — hãy dùng profile `full` trong lúc chuyển đổi, rồi mới thu nhỏ
@@ -103,8 +103,9 @@ cùng định dạng, nên cây dựng bằng chúng hẳn sẽ render được 
 Pixel khớp với takumi ở phần lớn fixture, chỗ còn lại chỉ lệch ở mức nhiễu anti-aliasing. Những trường
 hợp nên kiểm tra bằng mắt sau khi chuyển đổi được liệt kê ở
 [Khác biệt so với takumi → Khác biệt khi render](../differences-from-takumi.md#khác-biệt-khi-render):
-gradient, viền nét đứt bo góc, chữ xoay, `-webkit-text-stroke`, flex container RTL,
-`image-rendering: pixelated`, một số chuỗi emoji, SVG `<text>`. File đã mã hóa là các byte khác nhau
+gradient, viền nét đứt bo góc, chữ xoay, `-webkit-text-stroke`, cách hiển thị emoji `©️`, SVG `<text>`,
+và những trường hợp bm-engine cố ý theo Chrome (`display: contents`, `margin` / `padding` theo % trên
+hộp inline, `text-indent` sau một con dạng block). File đã mã hóa là các byte khác nhau
 (encoder khác nhau) kể cả khi pixel khớp — hãy so sánh pixel sau khi giải mã, đừng so hash file.
 
 ## Checklist

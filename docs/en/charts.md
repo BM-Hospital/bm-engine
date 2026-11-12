@@ -136,8 +136,8 @@ const columnsPng = renderer.renderSync(columns, { width: 600, height: 260 });
 ![Column chart with twelve gradient columns, a y axis and grid lines](/img/guide/charts-columns.png)
 
 ::: tip Paint order of positioned boxes
-bm-engine follows the CSS painting order: absolutely positioned boxes paint **after** non-positioned
-siblings, whatever their order in `children`. Without `position: "relative"` on the columns, the grid
+bm-engine follows the CSS painting order: positioned boxes paint **after** the in-flow content of
+their whole stacking context, whatever their order in `children`. Without `position: "relative"` on the columns, the grid
 lines would be drawn across them. Making the columns positioned too lets document order decide (lines
 first, then columns); `zIndex` works as well.
 :::

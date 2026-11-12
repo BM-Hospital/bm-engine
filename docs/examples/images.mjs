@@ -69,6 +69,28 @@ const sources = renderer.renderSync(
 // #endregion
 save("sources", sources);
 
+// #region pixelated
+// image-rendering: pixelated (or crisp-edges) scales with nearest-neighbour sampling instead of
+// smooth (bilinear) resampling: on image nodes and on background images, on every profile.
+const checker = { width: 4, height: 4, data: pixels };
+const pixelated = renderer.renderSync(
+  {
+    type: "container",
+    style: { display: "flex", gap: 20, padding: 20, width: "100%", height: "100%", backgroundColor: "#f8fafc" },
+    children: [
+      tile("auto (smooth)", { type: "image", src: checker, style: { width: 96, height: 96 } }),
+      tile("pixelated", { type: "image", src: checker, style: { width: 96, height: 96, imageRendering: "pixelated" } }),
+      tile("pixelated background", {
+        type: "container",
+        style: { width: 96, height: 96, backgroundImage: "url(checker)", backgroundSize: "48px 48px", imageRendering: "pixelated" },
+      }),
+    ],
+  },
+  { width: 420, height: 170, images: [{ src: "checker", data: renderer.renderSync({ type: "image", src: checker }, { width: 4, height: 4 }) }] },
+);
+// #endregion
+save("pixelated", pixelated);
+
 // #region fetch
 async function loadImages(urls) {
   return Promise.all(urls.map(async (src) => ({ src, data: new Uint8Array(await (await fetch(src)).arrayBuffer()) })));

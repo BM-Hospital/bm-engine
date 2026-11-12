@@ -19,7 +19,7 @@ Measured against `@takumi-rs/wasm` 2.20.0 on 200 shared fixtures (Node 26, i3-10
 - **Small**: `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB of wasm (180 / 375 / 453 KiB
   brotli), against 4 234.9 KiB for takumi — 9.3× / 4.8× / 3.9× smaller. The module has **no imports**
   (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
-- **Same output**: 74 fixtures byte-identical, 126 equivalent (SSIM ≥ 0.99, differences at
+- **Same output**: 81 fixtures byte-identical, 169 equivalent (SSIM ≥ 0.99, differences at
   anti-aliased edges), 0 close, 0 different, 0 errors. `measure()` layouts match takumi to 0.001 px
   (197/197 non-transform cases).
 - **Fast**: PNG rendering 0.49× takumi's time (geometric mean; faster in 191/191 cases), raw RGBA
@@ -131,15 +131,15 @@ Version 0.1.0. What to know before adopting it:
 - **No network access.** Remote images and `@font-face` URLs are never fetched (`prepare()` does not
   fetch either); pass bytes through `images` and `registerFont`.
 - **No JSX, no `ImageResponse`, no PDF.** Convert JSX with `@takumi-rs/helpers`.
-- **Inline layout is complete for common content** (text flows around floats; atomic inlines and inline
-  span padding take part in line breaking). Remaining gaps: RTL inline boxes around LTR text, line-clamp
-  around floats, block-in-inline, approximate float paint order, `text-wrap: balance` beside floats or
-  atomic inlines, percentage padding on inline boxes (see [CSS support → Known gaps](docs/en/css-support.md#known-gaps)).
-- Not supported: `display: contents`, list markers / counters, `writing-mode`, 3D transforms,
-  `clip-path: url()`, relative colour syntax, Tailwind `animate-*` and interactive variants (as in
-  takumi), `<text>` inside SVG images and some SVG filters.
-- Known differences: `direction: rtl` does not reverse flex rows; `image-rendering: pixelated` is
-  ignored on raster images; `measure()` text runs carry no `text` field.
+- **Inline layout is complete for common content** (text flows around floats; block-in-inline, RTL
+  inline boxes, atomic inlines and inline span padding take part in line breaking). Remaining gaps: RTL +
+  `pre-wrap` hanging spaces, line-clamp around floats, a block inside a relatively positioned inline box
+  (see [CSS support → Known gaps](docs/en/css-support.md#known-gaps)).
+- Not supported: list markers / counters, `writing-mode`, 3D transforms, `clip-path: url()`, relative
+  colour syntax, Tailwind interactive variants and `space-*` (as in takumi), `<text>` inside SVG images and
+  some SVG filters.
+- Known differences: `display: contents`, percentage margin / padding on inline boxes and `text-indent`
+  after a block child follow Chrome rather than takumi; `measure()` text runs carry no `text` field.
 - WebAssembly: single-threaded and synchronous inside one instance; memory grows but never shrinks. Native
   (Node.js): one renderer runs one call at a time, several renderers run in parallel; only the Windows x64
   addon has been executed so far.

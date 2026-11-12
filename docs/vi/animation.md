@@ -81,9 +81,36 @@ Tuỳ chọn cấp cao nhất `keyframes` (đã deprecated; `{ name: { from: {..
 ### Tên dựng sẵn và Tailwind
 
 `spin`, `ping`, `pulse` và `bounce` (keyframes của Tailwind) dùng được mà không cần rule `@keyframes`,
-giống takumi: `animation: "spin 1s linear infinite"` làm phần tử xoay. Còn bản thân các utility Tailwind
-(`tw: "animate-spin"`, `animate-[spin_1s_linear_infinite]`) **không** được hỗ trợ trong bm-engine 0.1.0
-— chúng bị bỏ qua lặng lẽ và không có gì chuyển động. Hãy dùng thuộc tính `animation`.
+giống takumi: `animation: "spin 1s linear infinite"` làm phần tử xoay. Các utility Tailwind cũng dùng
+được: `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`, `animate-none`, giá trị tùy ý như
+`animate-[spin_1s_linear_infinite]`, và tên riêng của bạn từ biến `--animate-*` trong `@theme` (kèm
+`@keyframes` của chúng, đặt trong khối `@theme` hoặc ở đâu đó trong `css`):
+
+<!-- @example animation#tailwind -->
+```js
+// Tailwind's animate-* utilities (full profile): the built-in spin / ping / pulse / bounce, arbitrary
+// values, and your own --animate-* theme variables with their @keyframes.
+const twScene = {
+  type: "container",
+  tw: "flex items-center justify-around w-full h-full bg-slate-100",
+  children: [
+    { type: "container", tw: "w-10 h-10 rounded-md bg-indigo-500 animate-spin" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-sky-500 animate-bounce" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-rose-500 animate-ping" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-amber-500 animate-[spin_2s_linear_infinite_reverse]" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-emerald-500 animate-wiggle" },
+  ],
+};
+const twTheme = `@theme {
+  --animate-wiggle: wiggle 1s ease-in-out infinite;
+  @keyframes wiggle { 0%, 100% { transform: rotate(-15deg) } 50% { transform: rotate(15deg) } }
+}`;
+const twGif = renderer.renderAnimationSync({
+  scenes: [{ node: twScene, durationMs: 1000 }], width: 360, height: 100, fps: 20, format: "gif", css: [twTheme],
+});
+```
+
+![Năm hình được animate bằng class Tailwind: xoay, nảy, ping, xoay ngược và lắc](/img/guide/animation-tailwind.gif)
 
 ## Một khung hình: `timeMs`
 
@@ -322,11 +349,8 @@ const notAnimated = renderer.measureSync(
 console.log(notAnimated.children[0].transform[4]); // 0
 ```
 
-::: warning Độ dài `em` trên chính phần tử được animate
-Khi animate `font-size`, các độ dài `em` **trên cùng phần tử đó** trong 0.1.0 vẫn tính theo cỡ chữ chưa
-animate (chữ và phần tử con thì dùng cỡ đã animate). Hãy đặt `font-size` được animate lên phần tử cha, hoặc
-animate trực tiếp độ dài đó.
-:::
+Khi animate `font-size`, các độ dài `em` trên cùng phần tử đó đi theo cỡ chữ đang animate, như trong
+trình duyệt: `width: "2em"` với `font-size` animate từ 10 px đến 30 px sẽ rộng 40 px ở giữa chừng.
 
 ## Animation trong nguồn HTML
 

@@ -65,7 +65,7 @@ Cây kết quả cho tấm thẻ này (chép từ output của script):
 | Trường | Ý nghĩa |
 |:--|:--|
 | `width`, `height` | **border box** của node, tính bằng pixel thiết bị (độ chính xác 1/64 px) |
-| `transform` | `[a, b, c, d, e, f]`: ma trận 2D đặt hộp vào canvas; `e`, `f` là toạ độ x / y tuyệt đối của góc trên trái border box |
+| `transform` | `[a, b, c, d, e, f]`: ma trận 2D đặt hộp vào canvas; `e`, `f` là toạ độ x / y tuyệt đối của góc trên trái border box (hộp có CSS transform: xem [Transform](#transform)) |
 | `children` | các hộp con đã đo, theo thứ tự trong cây |
 | `runs` | các text run mà hộp này dàn trang: `{ x, y, width, height }` |
 
@@ -109,6 +109,13 @@ const p = renderer.measureSync(paragraph, { width: 300, height: 140 });
 
 Đoạn văn này sinh ra năm run trên ba dòng: dòng thứ hai bị tách thành "and per inline", chữ đậm
 "fragment" và dấu phẩy. Inline-block và ảnh nằm trên dòng thì xuất hiện như các con, với transform riêng.
+
+Một block nằm trong inline container (một "span" chứa con `display: block`) sẽ tách inline box đó ra
+quanh block, như CSS 2.1 và trình duyệt. `measure()` trả về dạng đã tách, giống takumi: chữ trước và sau
+block vẫn là run của block container, còn mỗi nhóm block liên tiếp xuất hiện thành một hộp con thêm vào,
+rộng bằng container, có các con là những block đó. Tương tự, khi một block container có cả chữ lẫn con dạng
+block, mỗi đoạn chữ được bọc trong một block ẩn danh xuất hiện trong `children` và sở hữu các run đó (giống
+takumi).
 
 ### Vẽ lớp phủ từ số đo
 
@@ -236,30 +243,54 @@ Chữ không phải lúc nào cũng nhân đúng tỉ lệ: chiều cao dòng l�
 làm tròn theo từng cỡ (phần thân của [mục kết quả](#kết-quả) có dòng cao 20 px ở tỉ lệ 1 và 39 px ở tỉ lệ
 2, không phải 40). Chia cho tỉ lệ để ra pixel CSS.
 
-## Transform không được tính vào
+## Transform
 
-::: warning Giới hạn của 0.1.0
-`transform` chỉ chứa vị trí của hộp. CSS transform (`transform`, `translate`, `rotate`, `scale`) **không**
-được áp vào ma trận; còn độ dời của `position: relative` thì có, vì nó là một phần của layout. takumi có
-tính CSS transform vào ma trận này.
-:::
+`transform` là ma trận affine 2D đầy đủ của hộp, giống takumi: vị trí layout, độ dời của `position:
+relative` và CSS transform của hộp (`transform`, `translate`, `rotate`, `scale`, skew, quanh
+`transform-origin`), nhân với transform của các tổ tiên. Các số là giá trị `f32` chính xác mà engine
+tính ra, in dạng thập phân (nên là `0.7071067690849304`, không phải `Math.SQRT1_2`):
 
 <!-- @example measure#transforms -->
 ```js
-// transform holds the box position only: CSS transforms (rotate, scale, translate) are not
-// included in the matrix in 0.1.0; position: relative offsets are.
-const moved = renderer.measureSync(
-  { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
-    { type: "container", style: { width: 50, height: 50, transform: "translate(10px, 20px) rotate(45deg)" } },
-    { type: "container", style: { width: 50, height: 50, position: "relative", left: 7, top: 3 } },
-  ] },
-);
-// moved.children[0].transform: [1, 0, 0, 1, 0, 0]
+// transform is the complete 2D matrix of the box: its layout position, position: relative offsets
+// and CSS transforms (translate, rotate, scale, skew around transform-origin), composed with
+// the transforms of its ancestors.
+const shapes = { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#a5b4fc", transform: "translate(10px, 20px) rotate(45deg)" } },
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#fdba74", position: "relative", left: 7, top: 3 } },
+] };
+const moved = renderer.measureSync(shapes);
+// moved.children[0].transform:
+//   [0.7071067690849304, 0.7071067690849304, -0.7071067690849304, 0.7071067690849304, 35, 9.644660949707031]
 // moved.children[1].transform: [1, 0, 0, 1, 57, 3]
 ```
 
-Nếu cần vị trí thực sự được vẽ của một hộp có transform, hãy tự áp transform đó quanh `transform-origin`
-của nó (mặc định là tâm border box).
+Ma trận ánh xạ border box (từ `(0, 0)` đến `(width, height)`) lên canvas, nên các góc thực sự được vẽ
+của một hộp bị xoay chỉ cách một phép nhân. Các chấm đỏ dưới đây được tính từ số đo rồi vẽ đè lên chính
+cây đó:
+
+<!-- @example measure#corners -->
+```js
+// Map the corners of a border box through its matrix to get the painted corners on the canvas.
+const corners = ({ width, height, transform: [a, b, c, d, e, f] }) =>
+  [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => [a * x + c * y + e, b * x + d * y + f]);
+// corners(moved.children[0]): [[35, 9.64], [70.36, 45], [35, 80.36], [-0.36, 45]] (rounded)
+
+// Mark them on the rendered tree with small red dots:
+const dots = moved.children.flatMap(corners).map(([x, y]) => ({
+  type: "container",
+  style: { position: "absolute", left: x - 3, top: y - 3, width: 6, height: 6, borderRadius: 3, backgroundColor: "#dc2626" },
+}));
+const cornersPng = renderer.renderSync(
+  { type: "container", style: { display: "block", position: "relative", width: "100%", height: "100%", backgroundColor: "#fff" }, children: [shapes, ...dots] },
+  { width: 140, height: 90 },
+);
+```
+
+![Một hình vuông xoay 45 độ và một hình vuông dời bằng position relative, với chấm đỏ nằm đúng trên cả tám góc](/img/guide/measure-corners.png)
+
+`width` và `height` vẫn là kích thước border box chưa biến đổi; hộp bao của một phần tử bị xoay là
+min / max của bốn góc.
 
 ## HTML và stylesheet
 

@@ -354,7 +354,7 @@ family đã có sẽ bổ sung face vào family đó. Xem [Tham chiếu API](api
 | OpenType với outline CFF / CFF2 (`.otf`) | không (`unsupported font format`) | có | có |
 | WOFF / WOFF2 | với [add-on WOFF](#woff-trên-core) | có | có |
 | Font biến thiên | đăng ký được, chỉ vẽ ở instance mặc định | có | có |
-| Glyph màu (COLR v0/v1, CBDT, sbix): font emoji | không có màu | không có màu | có |
+| Glyph màu, font emoji: COLR v0/v1 / bitmap CBDT, sbix | không màu / không vẽ | không màu / có | có |
 
 Trên `standard` và `full`, font biến thiên đi theo `font-weight` (`wght`), `font-stretch` (`wdth`),
 `font-optical-sizing` (`opsz`) và `font-variation-settings`.

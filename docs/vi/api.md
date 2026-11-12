@@ -82,7 +82,7 @@ Một object gồm các giá trị boolean mô tả binary đang nạp; tất c�
 | `floats` | float | | ✓ | ✓ |
 | `webpGifDecode` | ảnh nguồn WebP (lossless) và GIF | | ✓ | ✓ |
 | `textWrapBalance` | `text-wrap: balance / pretty` | | ✓ | ✓ |
-| `colorFonts` | glyph màu (COLR v0/v1, CBDT, sbix) | | | ✓ |
+| `colorFonts` | glyph màu COLR v0/v1 (glyph bitmap CBDT / sbix cũng được vẽ có màu trên `standard`) | | | ✓ |
 | `complexText` | bidi, shaping Ả Rập / Hebrew / Ấn Độ / Thái, chuẩn hoá Unicode | | | ✓ |
 | `animation` | CSS animation (`timeMs`), `renderAnimation`, ảnh nguồn động | | | ✓ |
 | `extraCodecs` | giải mã WebP lossy, giải mã và mã hoá GIF / APNG / WebP động, xuất ICO | | | ✓ |
@@ -188,7 +188,8 @@ Trả về một chuỗi tài liệu SVG (cần `features.renderSvg`, tức prof
 `bm-engine: this build has no renderSvg support ...`). Hộp thành `<rect>`/`<path>`, gradient thành
 `<linearGradient>`/`<radialGradient>` (gradient conic thành các hình quạt), đổ bóng thành `<filter>`,
 ảnh được nhúng dưới dạng URL `data:`, chữ thành outline glyph (`<use>` trỏ tới path trong `<defs>`; không
-nhúng font, chữ không chọn/copy được). `format` và `quality` bị bỏ qua.
+nhúng font, chữ không chọn/copy được). `format`, `quality` và `devicePixelRatio` bị bỏ qua (luôn là tỉ lệ 1,
+giống takumi).
 
 ```js
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });

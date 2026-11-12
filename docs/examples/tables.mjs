@@ -66,6 +66,22 @@ const nodeTable = renderer.renderSync(
 // #endregion
 save("node-table", nodeTable);
 
+// #region rtl
+// dir="rtl" (or direction: rtl) puts the first column on the right. The text inside the cells is
+// still laid out left to right on standard; on full it is right-aligned too (text-align: start).
+const rtlTable = renderer.renderSync(
+  `<div style="padding:16px;background:white;height:100%;font-family:Inter;font-size:15px">
+     <table dir="rtl" style="border-collapse:collapse;width:100%">
+       <tr><th>1st column</th><th>2nd column</th><th>3rd column</th></tr>
+       <tr><td>A</td><td>B</td><td>C</td></tr>
+     </table>
+   </div>
+   <style>th, td { border: 1px solid #94a3b8; padding: 6px 10px; text-align: start } th { background: #e2e8f0 }</style>`,
+  { width: 400, height: 110 },
+);
+// #endregion
+save("rtl", rtlTable);
+
 // #region spans
 const spans = renderer.renderSync(
   `<style>

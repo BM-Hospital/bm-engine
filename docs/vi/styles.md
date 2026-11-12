@@ -143,9 +143,12 @@ Tóm tắt những gì engine stylesheet hỗ trợ (danh sách đầy đủ ở
 - Khai báo hay rule hỏng sẽ bị bỏ; stylesheet không bao giờ làm lần render bị ném lỗi.
 
 ::: warning Pseudo-class cấu trúc trên node text
-Ở 0.1.0, `:first-child`, `:last-child`, `:nth-child()` và các variant Tailwind `first:` / `odd:` / ...
-khớp với **mọi** node `text` trần giữa các anh em của nó. Hãy đặt chữ vào trong một `container` khi
-vị trí là quan trọng. Phần tử HTML và node container không bị ảnh hưởng.
+Node `text` không có `tagName` không phải là phần tử đối với `:first-child`, `:nth-child()`, `+` / `~` và
+các variant Tailwind `first:` / `odd:` / ..., giống takumi: nó không được tính vào các anh em, nên khi
+nhiều node text trần đứng cạnh nhau thì **node nào** cũng khớp `first:`, `last:` và `odd:`. Hãy đặt
+`tagName` cho node (`{ type: "text", tagName: "div", ... }`) hoặc đặt chữ vào trong một `container` khi
+vị trí là quan trọng. Node text rỗng hoặc chỉ có khoảng trắng bị bỏ đi (luôn luôn trong flex và grid
+container, ở chỗ khác thì trừ khi có nội dung inline đứng trước), kể cả khi nó có class hay style.
 :::
 
 ### Rule object {#rule-objects}
@@ -218,11 +221,16 @@ const twPng = renderer.renderSync({
 Từ ưu tiên thấp đến cao:
 
 1. `preset` (lớp user-agent; thẻ HTML nhận mặc định của Chromium ở đây)
-2. utility Tailwind từ `tw`
-3. rule stylesheet từ `css` và `<style>` (theo độ đặc hiệu và thứ tự, có tôn trọng `@layer`)
-4. `style` inline
-5. khai báo `!important`, đảo ngược thứ tự như trong CSS (utility có tiền tố `!` như `!w-20` thắng
-   khai báo inline)
+2. rule stylesheet nằm trong khối `@layer` có tên
+3. utility Tailwind từ `tw`
+4. rule stylesheet không thuộc layer từ `css` và `<style>` (theo độ đặc hiệu và thứ tự)
+5. `style` inline
+6. khai báo `!important`, đảo ngược thứ tự như trong CSS: rule `!important` không thuộc layer < utility
+   có tiền tố `!` như `!w-20` < rule `!important` trong layer có tên; tất cả đều thắng khai báo inline
+   thường
+
+Đây là thứ tự của takumi. Nó cũng khớp với Tailwind v4 trên trình duyệt đối với các layer khai báo trước
+`@layer utilities` (như `base`).
 
 <!-- @example styles#precedence -->
 ```js
@@ -231,17 +239,15 @@ const base = { type: "container", className: "box", tw: "block w-20 h-5" };   //
 
 widthWith(base);                                                      // 80  – tw
 widthWith(base, [".box { width: 60px }"]);                            // 60  – a stylesheet rule beats tw
+widthWith(base, ["@layer base { .box { width: 33px } }"]);            // 80  – … unless it sits in a named @layer
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px }"]); // 40  – inline style beats both
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px !important }"]); // 60 – !important wins
 widthWith({ ...base, tw: "block !w-20 h-5", style: { width: 40 } });  // 80  – a !utility beats inline style
+widthWith({ ...base, tw: "block !w-20 h-5" }, [".box { width: 60px !important }"]); // 80 – … and an unlayered !important rule
+widthWith({ ...base, tw: "block !w-20 h-5" }, ["@layer base { .box { width: 33px !important } }"]); // 33 – a layered one wins
 widthWith({ type: "container", preset: { display: "block", width: 30 }, style: { height: 5 } }); // 30 – preset is the lowest layer
 ```
 
-::: info Khác với Tailwind trên trình duyệt
-Ở đây rule của stylesheet thắng utility `tw` ngay cả khi rule nằm trong một `@layer` có tên (đã kiểm
-tra: `@layer base { .x { width: 33px } }` thắng `w-20`). Trên trình duyệt với Tailwind v4, utility sẽ
-thắng rule nằm trong layer. Hãy dùng `style` inline hoặc utility `!` khi cần utility thắng.
-:::
 
 ## Các chế độ layout {#layout-modes}
 
@@ -285,7 +291,33 @@ const flexPng = renderer.renderSync({
 
 ![Một hàng ba box 120px, flex 1, flex 2 phía trên hai hàng viên thuốc màu cam được căn giữa và xuống dòng](/img/guide/styles-flex.png)
 
-`direction: "rtl"` không đảo hàng flex ở 0.1.0 (takumi thì có); hãy dùng `flexDirection: "row-reverse"`.
+### Từ phải sang trái {#right-to-left}
+
+`direction: "rtl"` trong style (hoặc `dir: "rtl"` trên node, `dir="rtl"` trong HTML) lật ngược layout của
+các hộp, như trên trình duyệt: hàng flex bắt đầu từ bên phải, cột grid được xếp từ bên phải và block con
+có bề rộng cố định nằm sát mép phải. Bảng cũng lật cột (xem [Bảng](./tables.md#rtl-tables)). Điều này có
+trên mọi profile; còn dàn *chữ* bên trong từ phải sang trái (bidi) thì cần `full`.
+
+<!-- @example styles#rtl -->
+```js
+// direction: rtl (or dir: "rtl" on the node) mirrors flex rows, grid columns and block alignment
+const steps = (style) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, height: 44, ...style },
+  children: ["first", "second", "third"].map((t, i) => box(t, { width: 110, backgroundColor: ["#0ea5e9", "#6366f1", "#a855f7"][i] })),
+});
+const rtlPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 10, padding: 16, width: "100%", height: "100%", backgroundColor: "#f1f5f9", fontFamily: "Inter" },
+  children: [
+    steps({}),                                     // ltr: first item on the left
+    steps({ direction: "rtl" }),                   // rtl: first item on the right
+    { ...steps({ display: "grid", gridTemplateColumns: "110px 110px 110px" }), dir: "rtl" }, // grid columns too
+  ],
+}, { width: 560, height: 190 });
+```
+
+![Ba hộp first, second, third từ trái sang phải, rồi cũng hàng đó và một grid lật từ phải sang trái](/img/guide/styles-rtl.png)
 
 ### Grid {#grid}
 
@@ -346,6 +378,40 @@ const flowPng = renderer.renderSync({
 ![Tiêu đề và đoạn văn có span hồng in đậm và một viên thuốc xanh inline-block, xuống hai dòng](/img/guide/styles-flow.png)
 
 Layout chữ (xuống dòng, `whiteSpace`, `lineHeight`, dấu ba chấm, ...) có ở [Typography](./typography.md).
+
+Một inline container chứa con dạng block sẽ bị tách quanh con đó, như trên trình duyệt: nội dung inline
+trước block, chính block và nội dung sau nó được xếp lần lượt từ trên xuống, và nền cùng viền của hộp
+inline được vẽ trên từng phần (bỏ mép ở chỗ bị tách).
+
+### `display: contents` {#display-contents}
+
+`display: "contents"` bỏ hộp của chính phần tử: các con của nó được dàn như thể là con của phần tử cha,
+còn padding, viền và nền của nó không được vẽ. Cách này theo Chrome; takumi không hỗ trợ giá trị này (ném
+lỗi với inline style và bỏ qua trong stylesheet).
+
+<!-- @example styles#contents -->
+```js
+// display: contents removes the element's own box: its children take part in the parent's
+// layout (here: they become flex items of the row) and its padding / background are not drawn.
+const pill = (t, color) => box(t, { padding: "8px 14px", backgroundColor: color });
+const group = (display) => ({
+  type: "container",
+  style: { display, gap: 10, padding: 10, backgroundColor: "#fecaca" }, // padding + background of the wrapper
+  children: [pill("B", "#6366f1"), pill("C", "#a855f7")],
+});
+const contentsRow = (display) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, alignItems: "center", padding: 10, backgroundColor: "#e2e8f0" },
+  children: [pill("A", "#0ea5e9"), group(display), pill("D", "#f97316")],
+});
+const contentsPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 12, padding: 16, width: "100%", height: "100%", backgroundColor: "white", fontFamily: "Inter" },
+  children: [contentsRow("flex"), contentsRow("contents")],
+}, { width: 400, height: 150 });
+```
+
+![Hàng trên: A, một khung hồng chứa B và C, rồi D. Hàng dưới: A, B, C và D là các flex item ngang hàng, không còn khung hồng](/img/guide/styles-contents.png)
 
 ### Định vị absolute {#absolute-positioning}
 

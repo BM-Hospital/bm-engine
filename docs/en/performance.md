@@ -262,6 +262,15 @@ render. Limits: 16 384 px per side and 40 megapixels per canvas (`canvas too lar
 
 ## Concurrency: worker pools
 
+::: tip Native backend on Node.js
+With the native backend (used by `import "bm-engine"` on Node.js when the addon for the platform is
+installed), the async methods (`render()`, `measure()`, ...) run on the libuv thread pool and do not block
+the event loop. Parallelism there comes from several `Renderer` instances (one call at a time each) and
+the size of that pool, `UV_THREADPOOL_SIZE`, rather than from worker threads. See
+[Native vs WebAssembly → Threading model](./native-vs-wasm.md#threading-model) for the details and the
+measured throughput. The rest of this section applies to the wasm backend.
+:::
+
 The engine is single-threaded and `render` is synchronous: one render blocks the thread that calls it.
 The async methods (`render()`, `measure()`, ...) only exist for API compatibility and for resolving
 async options — they do not move work off the thread. To use several cores, run one bm-engine instance

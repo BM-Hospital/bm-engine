@@ -143,9 +143,13 @@ What the stylesheet engine supports, in short (full list in
 - A broken declaration or rule is dropped; a stylesheet never makes a render throw.
 
 ::: warning Structural pseudo-classes on text nodes
-In 0.1.0 `:first-child`, `:last-child`, `:nth-child()` and the Tailwind `first:` / `odd:` / ...
-variants match **every** bare `text` node among its siblings. Put the text inside a `container` when
-the position matters. HTML elements and container nodes are not affected.
+A `text` node without a `tagName` is not an element for `:first-child`, `:nth-child()`, `+` / `~` and
+the Tailwind `first:` / `odd:` / ... variants, as in takumi: it is not counted among its siblings, so
+when several bare text nodes sit side by side, **every** one of them matches `first:`, `last:` and
+`odd:`. Give the node a `tagName` (`{ type: "text", tagName: "div", ... }`) or put the text inside a
+`container` when the position matters. Empty or whitespace-only text nodes are dropped (in flex and grid
+containers always, elsewhere unless inline content precedes them), even when they carry a class or a
+style.
 :::
 
 ### Rule objects
@@ -219,11 +223,16 @@ const twPng = renderer.renderSync({
 From lowest to highest priority:
 
 1. `preset` (user-agent layer; HTML tags get Chromium's defaults here)
-2. Tailwind utilities from `tw`
-3. stylesheet rules from `css` and `<style>` (by specificity and order, `@layer` respected)
-4. inline `style`
-5. `!important` declarations, which reverse the order as in CSS (an `!`-prefixed utility such as
-   `!w-20` beats an inline declaration)
+2. stylesheet rules inside named `@layer` blocks
+3. Tailwind utilities from `tw`
+4. unlayered stylesheet rules from `css` and `<style>` (by specificity and order)
+5. inline `style`
+6. `!important` declarations, which reverse the order as in CSS: unlayered `!important` rules <
+   `!`-prefixed utilities such as `!w-20` < `!important` rules in named layers; all of them beat
+   normal inline declarations
+
+This is takumi's order. It also matches Tailwind v4 in a browser for layers declared before
+`@layer utilities` (such as `base`).
 
 <!-- @example styles#precedence -->
 ```js
@@ -232,17 +241,15 @@ const base = { type: "container", className: "box", tw: "block w-20 h-5" };   //
 
 widthWith(base);                                                      // 80  – tw
 widthWith(base, [".box { width: 60px }"]);                            // 60  – a stylesheet rule beats tw
+widthWith(base, ["@layer base { .box { width: 33px } }"]);            // 80  – … unless it sits in a named @layer
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px }"]); // 40  – inline style beats both
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px !important }"]); // 60 – !important wins
 widthWith({ ...base, tw: "block !w-20 h-5", style: { width: 40 } });  // 80  – a !utility beats inline style
+widthWith({ ...base, tw: "block !w-20 h-5" }, [".box { width: 60px !important }"]); // 80 – … and an unlayered !important rule
+widthWith({ ...base, tw: "block !w-20 h-5" }, ["@layer base { .box { width: 33px !important } }"]); // 33 – a layered one wins
 widthWith({ type: "container", preset: { display: "block", width: 30 }, style: { height: 5 } }); // 30 – preset is the lowest layer
 ```
 
-::: info Differs from Tailwind in the browser
-A stylesheet rule wins over a `tw` utility here even when the rule sits inside a named `@layer`
-(checked: `@layer base { .x { width: 33px } }` beats `w-20`). In a browser with Tailwind v4 the utility
-would win over a layered rule. Use inline `style` or an `!` utility when a utility must win.
-:::
 
 ## Layout modes
 
@@ -286,7 +293,34 @@ const flexPng = renderer.renderSync({
 
 ![A row of three boxes 120px, flex 1, flex 2 above two centred wrapped rows of orange pills](/img/guide/styles-flex.png)
 
-`direction: "rtl"` does not reverse a flex row in 0.1.0 (takumi does); use `flexDirection: "row-reverse"`.
+### Right to left {#right-to-left}
+
+`direction: "rtl"` in the style (or `dir: "rtl"` on the node, `dir="rtl"` in HTML) mirrors the layout of
+boxes, as in a browser: a flex row starts at the right, grid columns are placed from the right and
+block children with a fixed width sit at the right edge. Tables mirror their columns too (see
+[Tables](./tables.md#rtl-tables)). This works on every profile; laying out the *text* inside right to
+left (bidi) needs `full`.
+
+<!-- @example styles#rtl -->
+```js
+// direction: rtl (or dir: "rtl" on the node) mirrors flex rows, grid columns and block alignment
+const steps = (style) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, height: 44, ...style },
+  children: ["first", "second", "third"].map((t, i) => box(t, { width: 110, backgroundColor: ["#0ea5e9", "#6366f1", "#a855f7"][i] })),
+});
+const rtlPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 10, padding: 16, width: "100%", height: "100%", backgroundColor: "#f1f5f9", fontFamily: "Inter" },
+  children: [
+    steps({}),                                     // ltr: first item on the left
+    steps({ direction: "rtl" }),                   // rtl: first item on the right
+    { ...steps({ display: "grid", gridTemplateColumns: "110px 110px 110px" }), dir: "rtl" }, // grid columns too
+  ],
+}, { width: 560, height: 190 });
+```
+
+![Three boxes first, second, third from left to right, then the same row and a grid mirrored from right to left](/img/guide/styles-rtl.png)
 
 ### Grid
 
@@ -348,6 +382,40 @@ const flowPng = renderer.renderSync({
 
 Text layout (wrapping, `whiteSpace`, `lineHeight`, ellipsis, ...) is covered in
 [Typography](./typography.md).
+
+An inline container that holds a block-level child is split around it, as in a browser: the inline
+content before the block, the block itself and the content after it are laid out one below the other,
+and the inline box's background and borders are drawn on each part (without the edge where it was split).
+
+### `display: contents` {#display-contents}
+
+`display: "contents"` removes the element's own box: its children are laid out as if they were
+children of its parent, and its padding, border and background are not drawn. This follows Chrome;
+takumi does not support the value (it throws for an inline style and ignores it in stylesheets).
+
+<!-- @example styles#contents -->
+```js
+// display: contents removes the element's own box: its children take part in the parent's
+// layout (here: they become flex items of the row) and its padding / background are not drawn.
+const pill = (t, color) => box(t, { padding: "8px 14px", backgroundColor: color });
+const group = (display) => ({
+  type: "container",
+  style: { display, gap: 10, padding: 10, backgroundColor: "#fecaca" }, // padding + background of the wrapper
+  children: [pill("B", "#6366f1"), pill("C", "#a855f7")],
+});
+const contentsRow = (display) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, alignItems: "center", padding: 10, backgroundColor: "#e2e8f0" },
+  children: [pill("A", "#0ea5e9"), group(display), pill("D", "#f97316")],
+});
+const contentsPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 12, padding: 16, width: "100%", height: "100%", backgroundColor: "white", fontFamily: "Inter" },
+  children: [contentsRow("flex"), contentsRow("contents")],
+}, { width: 400, height: 150 });
+```
+
+![Top row: A, a pink wrapper with B and C, D. Bottom row: A, B, C and D as equal flex items, no pink wrapper](/img/guide/styles-contents.png)
 
 ### Absolute positioning
 

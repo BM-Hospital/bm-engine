@@ -136,8 +136,8 @@ const columnsPng = renderer.renderSync(columns, { width: 600, height: 260 });
 ![Biểu đồ cột với mười hai cột gradient, trục y và đường lưới](/img/guide/charts-columns.png)
 
 ::: tip Thứ tự vẽ của box được định vị
-bm-engine theo đúng thứ tự vẽ của CSS: box định vị tuyệt đối được vẽ **sau** các anh em không định vị,
-bất kể thứ tự trong `children`. Nếu các cột không có `position: "relative"`, đường lưới sẽ bị vẽ đè lên
+bm-engine theo đúng thứ tự vẽ của CSS: box được định vị được vẽ **sau** toàn bộ nội dung trong luồng
+của stacking context chứa nó, bất kể thứ tự trong `children`. Nếu các cột không có `position: "relative"`, đường lưới sẽ bị vẽ đè lên
 chúng. Cho các cột cũng là box định vị thì thứ tự trong tài liệu quyết định (đường trước, cột sau);
 dùng `zIndex` cũng được.
 :::

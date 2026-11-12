@@ -130,7 +130,7 @@ const variantsPng = renderer.renderSync({
     {
       type: "container",
       tw: "flex flex-col",
-      // structural variants: use container rows (on bare text nodes they match every sibling in 0.1.0)
+      // structural variants: use container rows (or a tagName): a bare text node is not an element for them
       children: rows.map((r) => ({
         type: "container",
         tw: "flex px-3 py-1 text-sm bg-slate-100 odd:bg-sky-100 first:rounded-t-lg last:rounded-b-lg last:font-bold",
@@ -187,13 +187,25 @@ save("preflight-off", withoutPreflight);
 save("preflight-on", withPreflight);
 
 // #region theme
-// @theme declares custom properties on :root; read them with var() in CSS or inline styles
+// @theme variables feed the utilities (bg-brand-500, bg-brand-500/15, rounded-card, text-hero,
+// font-display, ...) and are also custom properties on :root, so var() can read them.
+const theme = `@theme {
+  --color-brand-500: #7c3aed;
+  --radius-card: 14px;
+  --text-hero: 28px;
+  --text-hero--line-height: 34px;
+  --font-display: Inter;
+}`;
 const themePng = renderer.renderSync({
   type: "container",
-  tw: "flex items-center justify-center w-full h-full",
-  style: { backgroundColor: "var(--color-brand-500)" },
-  children: [{ type: "text", text: "@theme → var()", tw: "text-2xl font-bold text-white", style: { fontFamily: "Inter" } }],
-}, { width: 300, height: 80, css: ["@theme { --color-brand-500: #7c3aed; }"] });
+  tw: "flex flex-col items-center justify-center gap-2 w-full h-full bg-brand-500/15 font-display",
+  children: [
+    { type: "text", text: "@theme → utilities", tw: "text-hero font-bold text-brand-500" },
+    { type: "container", tw: "flex px-4 py-1 rounded-card bg-brand-500",
+      children: [{ type: "text", text: "rounded-card bg-brand-500", tw: "text-sm text-white" }] },
+    { type: "text", text: "var(--color-brand-500) in a style", tw: "text-sm", style: { color: "var(--color-brand-500)" } },
+  ],
+}, { width: 340, height: 140, css: [theme] });
 // #endregion
 save("theme", themePng);
 
@@ -205,14 +217,16 @@ const px = (tw, css) => {
 px("bg-red-500");                                          // painted
 px("bg-linear-to-r from-red-500 to-blue-500");             // painted
 px("bg-gradient-to-r from-red-500 to-blue-500");           // transparent – Tailwind v3 name, not supported
-px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // transparent – utilities do not read theme tokens
+px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // painted – utilities read @theme variables
 px("bg-[var(--brand)]", [":root { --brand: red }"]);        // transparent – var() inside [...] is not supported
+px("bg-(--brand)", [":root { --brand: red }"]);             // transparent – nor the (--var) shorthand
 px("hover:bg-red-500");                                    // transparent – hover / focus / dark never apply
 // #endregion
 assert.equal(px("bg-red-500"), "painted");
 assert.equal(px("bg-linear-to-r from-red-500 to-blue-500"), "painted");
 assert.equal(px("bg-gradient-to-r from-red-500 to-blue-500"), "transparent");
-assert.equal(px("bg-brand-500", ["@theme { --color-brand-500: red }"]), "transparent");
+assert.equal(px("bg-brand-500", ["@theme { --color-brand-500: red }"]), "painted");
+assert.equal(px("bg-(--brand)", [":root { --brand: red }"]), "transparent");
 assert.equal(px("bg-[var(--brand)]", [":root { --brand: red }"]), "transparent");
 assert.equal(px("hover:bg-red-500"), "transparent");
 

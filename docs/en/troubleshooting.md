@@ -178,9 +178,11 @@ its pixel size (`<img width="1200">`).
 
 ## Emoji are not in colour
 
-Colour emoji need **both** the `full` profile (`features.colorFonts`) and a registered colour emoji
-font (COLR, CBDT or sbix, e.g. Noto Color Emoji). Without the font, emoji show as boxes or as glyphs of
-another font; on `core` / `standard` a colour font is drawn without colour. Registering the font is
+Colour emoji need a registered colour emoji font (COLR, CBDT or sbix, e.g. Noto Color Emoji) and a
+profile that draws it: bitmap fonts (CBDT, sbix — Noto Color Emoji) on `standard` and `full`, COLR fonts
+(`features.colorFonts`) only on `full`. Without the font, emoji show as boxes or as glyphs of another
+font; a COLR font on `core` / `standard` is drawn without colour, and `core` draws nothing for a
+bitmap-only font. Registering the font is
 enough — fallback walks every registered family.
 
 ## A style is ignored
@@ -192,7 +194,8 @@ enough — fallback walks every registered family.
 - A stylesheet or Tailwind declaration with an invalid value is dropped silently. Check it as an inline
   style, which throws on invalid values.
 - Tailwind variants other than breakpoints, structural variants and `before:` / `after:`
-  (`hover:`, `dark:`, `group-*:`) never apply, and `animate-*` is not supported — as in takumi.
+  (`hover:`, `dark:`, `group-*:`) never apply — as in takumi. `animate-*` utilities need the `full`
+  profile.
 - See the list of [parsed-but-not-implemented properties](css-support.md#appendix-supported-property-names).
 
 ## "invalid value for style property"

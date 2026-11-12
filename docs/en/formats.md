@@ -14,7 +14,7 @@ what the benchmark says about speed and file size. Every snippet below is part o
 | `format` | Alpha | `quality` | Profiles | Notes |
 |:--|:-:|:-:|:--|:--|
 | `"png"` (default) | yes | ignored | all | lossless; palette / RGB / RGBA chosen automatically |
-| `"jpeg"` (alias `"jpg"`) | no — transparent becomes **black** | 1–100, default 75 | all | baseline JPEG |
+| `"jpeg"` (alias `"jpg"`) | no — dropped, transparent becomes **black** (same as takumi) | 1–100, default 75 | all | baseline JPEG; give the root an opaque background |
 | `"webp"` | yes | ignored | all | always **lossless** (as in takumi's wasm build); `lossless` is ignored too |
 | `"raw"` | yes | ignored | all | `width × height × 4` bytes of straight (non-premultiplied) RGBA8 |
 | `"ico"` | yes | ignored | `full` | one PNG inside an ICO container, 1–256 px per side |
@@ -141,7 +141,8 @@ const onWhite = renderer.renderSync(
 | ![JPEG with black corners](/img/guide/formats-jpeg-black-corners.jpg) | ![JPEG on a white background](/img/guide/formats-jpeg-on-white.jpg) |
 
 ::: tip
-The JPEG encoder simply drops the alpha channel; it does not blend with any colour. Fully transparent
+The JPEG encoder simply drops the alpha channel; it does not blend with any colour, and there is no
+background option — takumi behaves the same. Fully transparent
 pixels become black, and a semi-transparent pixel keeps its colour at full strength: a canvas filled
 with `rgba(255, 0, 0, 0.5)` comes out solid red, and a soft shadow on a transparent canvas turns into a
 hard-edged block of the shadow colour. Put a solid colour on the root whenever you encode to JPEG.
@@ -262,8 +263,8 @@ The SVG of this example is 7 118 bytes. Things to know:
 
 - **Text is not text.** Glyphs are drawn as outlines; there is no font embedding and the text is not
   selectable or searchable. In exchange, the SVG looks the same without your fonts installed.
-- `format` and `quality` are ignored. `devicePixelRatio` is **not** ignored: the content is scaled like
-  in a bitmap render while the document keeps `width` / `height` of the canvas, so leave it at 1 for SVG.
+- `format`, `quality` and `devicePixelRatio` are ignored: SVG output is always laid out at a device
+  pixel ratio of 1, as in takumi (the document is scalable anyway).
 - In the benchmark both engines' SVG output was rasterised and compared: 175/179 fixtures identical or
   equivalent to takumi's SVG.
 

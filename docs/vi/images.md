@@ -112,9 +112,34 @@ const sources = renderer.renderSync(
 
 ![Cùng một ảnh lấy từ khóa images, từ Buffer và từ data URL, một bàn cờ RGBA thô 4 × 4 và một SVG inline](/img/guide/images-sources.png)
 
-Hãy để ý bàn cờ thô 4 × 4: nó được phóng lên 96 × 96 bằng nội suy mượt (bilinear).
-`image-rendering: pixelated` được parse nhưng chưa có tác dụng với ảnh raster trong 0.1.0, nên engine
-không cho ra kiểu phóng to pixel-art sắc nét; nếu cần, hãy tự phóng to pixel trước.
+Hãy để ý bàn cờ thô 4 × 4: nó được phóng lên 96 × 96 bằng nội suy mượt (bilinear). Muốn phóng to kiểu
+pixel-art sắc nét, hãy đặt `imageRendering: "pixelated"` (hoặc `"crisp-edges"`): ảnh khi đó được phóng
+theo điểm gần nhất (nearest-neighbour), giống hệt takumi. Cách này dùng được cho image node và ảnh nền,
+trên mọi profile:
+
+<!-- @example images#pixelated -->
+```js
+// image-rendering: pixelated (or crisp-edges) scales with nearest-neighbour sampling instead of
+// smooth (bilinear) resampling: on image nodes and on background images, on every profile.
+const checker = { width: 4, height: 4, data: pixels };
+const pixelated = renderer.renderSync(
+  {
+    type: "container",
+    style: { display: "flex", gap: 20, padding: 20, width: "100%", height: "100%", backgroundColor: "#f8fafc" },
+    children: [
+      tile("auto (smooth)", { type: "image", src: checker, style: { width: 96, height: 96 } }),
+      tile("pixelated", { type: "image", src: checker, style: { width: 96, height: 96, imageRendering: "pixelated" } }),
+      tile("pixelated background", {
+        type: "container",
+        style: { width: 96, height: 96, backgroundImage: "url(checker)", backgroundSize: "48px 48px", imageRendering: "pixelated" },
+      }),
+    ],
+  },
+  { width: 420, height: 170, images: [{ src: "checker", data: renderer.renderSync({ type: "image", src: checker }, { width: 4, height: 4 }) }] },
+);
+```
+
+![Bàn cờ 4 × 4 được phóng mượt thành hoa văn nhoè, cũng bàn cờ đó với mép pixel sắc nét, và một nền lát bằng các bàn cờ sắc nét](/img/guide/images-pixelated.png)
 
 ::: warning bm-engine không truy cập mạng
 Một URL trong `src` (hoặc trong `url(...)`) **không bao giờ được tải**, kể cả qua `prepare()` (`prepare`

@@ -6,7 +6,7 @@ titleTemplate: Render HTML + CSS thành ảnh bằng WebAssembly
 hero:
   name: bm-engine
   text: Cây node, HTML và CSS thành PNG, WebP, JPEG, SVG và ảnh động
-  tagline: Bản port takumi sang Zig → WebAssembly, không phụ thuộc. Cùng định dạng node, tệp nhị phân nhỏ hơn 4–9×, render nhanh hơn và kết quả tương đương điểm ảnh trên cả 200 fixture benchmark. Chạy trên Node.js, trình duyệt, Bun, Deno và edge worker.
+  tagline: Bản port takumi sang Zig → WebAssembly, không phụ thuộc. Cùng định dạng node, tệp nhị phân nhỏ hơn 4–9×, render nhanh hơn và kết quả tương đương điểm ảnh trên cả 250 fixture benchmark. Chạy trên Node.js, trình duyệt, Bun, Deno và edge worker.
   actions:
     - theme: brand
       text: Bắt đầu
@@ -31,7 +31,7 @@ features:
     linkText: Benchmark
   - icon: 🎯
     title: Tương đương điểm ảnh với takumi
-    details: "Cả <strong>200</strong> fixture dùng chung đều identical (74) hoặc equivalent (126) với takumi 2.20: 0 close, 0 different, 0 lỗi."
+    details: "Cả <strong>250</strong> fixture dùng chung đều identical (81) hoặc equivalent (169) với takumi 2.20: 0 close, 0 different, 0 lỗi."
     link: /vi/benchmark-report
     linkText: Báo cáo đầy đủ
   - icon: 🌐

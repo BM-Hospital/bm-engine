@@ -121,18 +121,38 @@ renderer.measureSync(box, { width: 300, height: 100, devicePixelRatio: 2 }).widt
 log("dpr", [renderer.measureSync(box, { width: 300, height: 100 }).width, renderer.measureSync(box, { width: 300, height: 100, devicePixelRatio: 2 }).width]);
 
 // #region transforms
-// transform holds the box position only: CSS transforms (rotate, scale, translate) are not
-// included in the matrix in 0.1.0; position: relative offsets are.
-const moved = renderer.measureSync(
-  { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
-    { type: "container", style: { width: 50, height: 50, transform: "translate(10px, 20px) rotate(45deg)" } },
-    { type: "container", style: { width: 50, height: 50, position: "relative", left: 7, top: 3 } },
-  ] },
-);
-// moved.children[0].transform: [1, 0, 0, 1, 0, 0]
+// transform is the complete 2D matrix of the box: its layout position, position: relative offsets
+// and CSS transforms (translate, rotate, scale, skew around transform-origin), composed with
+// the transforms of its ancestors.
+const shapes = { type: "container", style: { display: "flex", width: 300, height: 100 }, children: [
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#a5b4fc", transform: "translate(10px, 20px) rotate(45deg)" } },
+  { type: "container", style: { width: 50, height: 50, backgroundColor: "#fdba74", position: "relative", left: 7, top: 3 } },
+] };
+const moved = renderer.measureSync(shapes);
+// moved.children[0].transform:
+//   [0.7071067690849304, 0.7071067690849304, -0.7071067690849304, 0.7071067690849304, 35, 9.644660949707031]
 // moved.children[1].transform: [1, 0, 0, 1, 57, 3]
 // #endregion
 log("transforms", moved.children.map((c) => c.transform));
+
+// #region corners
+// Map the corners of a border box through its matrix to get the painted corners on the canvas.
+const corners = ({ width, height, transform: [a, b, c, d, e, f] }) =>
+  [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => [a * x + c * y + e, b * x + d * y + f]);
+// corners(moved.children[0]): [[35, 9.64], [70.36, 45], [35, 80.36], [-0.36, 45]] (rounded)
+
+// Mark them on the rendered tree with small red dots:
+const dots = moved.children.flatMap(corners).map(([x, y]) => ({
+  type: "container",
+  style: { position: "absolute", left: x - 3, top: y - 3, width: 6, height: 6, borderRadius: 3, backgroundColor: "#dc2626" },
+}));
+const cornersPng = renderer.renderSync(
+  { type: "container", style: { display: "block", position: "relative", width: "100%", height: "100%", backgroundColor: "#fff" }, children: [shapes, ...dots] },
+  { width: 140, height: 90 },
+);
+// #endregion
+log("corners", moved.children.map(corners));
+save("corners", cornersPng);
 
 // #region html
 // HTML strings and stylesheets measure exactly like they render (standard / full).
