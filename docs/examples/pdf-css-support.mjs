@@ -48,12 +48,12 @@ const clipped = await pdf.render(
    </p>`,
   page,
 );
-// the page shows "A very long produc…"; the marker is drawn but is not text: extracting the text
-// (pdftotext, copy and paste) gives "A very long product", not the "…" and not the cut-off rest
+// the page shows "A very long produc…": the marker is text of its own, so extracting the text (pdftotext,
+// copy and paste) gives what the page shows, the "…" included, and not the cut-off rest
 // #endregion
 const text = pdftotext(clipped);
 if (text !== null) {
-  assert.equal(text.trim(), "A very long product");
+  assert.match(text.trim(), /^A very long produc(\u2026|\.\.\.)$/);
   console.log("text-overflow: extracted ->", JSON.stringify(text.trim()));
 } else console.log("text-overflow: pdftotext not installed, extraction not checked");
 
