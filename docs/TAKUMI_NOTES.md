@@ -171,7 +171,7 @@ grid-template, grid, grid-auto-rows/columns, grid-auto-flow, grid-row/column(-st
 corner-shape / corner-*-shape (superellipse), **outline**, outline-width/style/color, outline-offset.
 
 **Background / mask:** **background** shorthand, **background-color**, **background-image** (url(), `linear-gradient`,
-`radial-gradient`, `conic-gradient`, `repeating-*`, comma list), **background-size** (auto|cover|contain|<l> <l>),
+`radial-gradient`, `conic-gradient`, `repeating-*`, comma list), **background-size** (auto|cover|contain|&lt;l&gt; &lt;l&gt;),
 **background-position**, **background-repeat** (repeat|no-repeat|repeat-x|-y|space|round), background-origin,
 **background-clip** (border-box|padding-box|content-box|text|border-area), background-blend-mode,
 mask, mask-image, mask-position, mask-size, mask-repeat, mask-type.
@@ -185,15 +185,15 @@ offset-path/-distance/-rotate/-anchor/-position/offset, animations (`animation*`
 **Images:** **object-fit** (fill|contain|cover|none|scale-down), **object-position**, image-rendering (I) (auto | smooth,high-quality -> Lanczos3 | pixelated,crisp-edges,optimizeSpeed -> nearest; `mod.rs:1500-1505`).
 
 **Text (all I unless noted):** **color**, **font-family**, **font-size** (keywords, %, em...), **font-weight** (1-1000, bold, bolder, lighter),
-**font-style** (normal|italic|oblique <angle>), font-stretch, **font** shorthand, font-variant(+ -ligatures, -numeric,
+**font-style** (normal|italic|oblique &lt;angle&gt;), font-stretch, **font** shorthand, font-variant(+ -ligatures, -numeric,
 -caps, -east-asian, -position), font-feature-settings, font-variation-settings, font-kerning, font-optical-sizing,
-font-language-override, font-synthesis(-weight/-style/-small-caps), **line-height** (normal|<number>|<length>|%),
+font-language-override, font-synthesis(-weight/-style/-small-caps), **line-height** (normal|&lt;number&gt;|&lt;length&gt;|%),
 **letter-spacing**, word-spacing, **text-align** (start|end|left|right|center|justify), text-align-last, text-justify,
 text-indent, **text-transform**, **text-decoration** (line, style, color, thickness; non-I), text-decoration-skip-ink,
 text-underline-offset/position, text-shadow, **white-space** (shorthand of white-space-collapse + text-wrap-mode),
 text-wrap (text-wrap-mode + text-wrap-style: wrap|nowrap|balance|pretty|stable), **word-break**
 (normal|break-all|keep-all|break-word), **overflow-wrap** (normal|break-word|anywhere), line-break, hyphens,
-hyphenate-character, tab-size, **text-overflow** (non-I: clip|ellipsis|<string>), **line-clamp** / **-webkit-line-clamp**
+hyphenate-character, tab-size, **text-overflow** (non-I: clip|ellipsis|&lt;string&gt;), **line-clamp** / **-webkit-line-clamp**
 (non-I `max-lines` + I `block-ellipsis` + `continue`), text-fit, -webkit-text-stroke(-width/-color),
 -webkit-text-fill-color, direction, unicode-bidi (non-I), list-style(-type/-position/-image), content, counter-*.
 

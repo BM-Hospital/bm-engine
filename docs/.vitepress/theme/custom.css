@@ -1,0 +1,49 @@
+/* bm-engine docs theme tweaks */
+:root {
+  --vp-c-brand-1: #5b4bdb;
+  --vp-c-brand-2: #6f61e6;
+  --vp-c-brand-3: #5b4bdb;
+  --vp-c-brand-soft: rgba(91, 75, 219, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #5b4bdb 20%, #e0569b);
+}
+.dark {
+  --vp-c-brand-1: #a197ff;
+  --vp-c-brand-2: #8b7dff;
+  --vp-c-brand-3: #6f61e6;
+  --vp-c-brand-soft: rgba(139, 125, 255, 0.16);
+  --vp-home-hero-name-background: linear-gradient(120deg, #a197ff 20%, #f07ab5);
+}
+
+/* Wide benchmark tables: scroll inside the table, never widen the page. */
+.vp-doc table { display: block; max-width: 100%; overflow-x: auto; }
+.vp-doc table th, .vp-doc table td { white-space: nowrap; }
+.vp-doc table td:last-child { white-space: normal; min-width: 14em; }
+/* Pages made of wide tables use the full content width (aside disabled via transformPageData). */
+@media (min-width: 960px) {
+  .wide-page .VPDoc:not(.has-sidebar) .container,
+  .wide-page .VPDoc.has-aside .content-container,
+  .wide-page .VPDoc .content-container { max-width: 1100px; }
+  .wide-page .VPDoc.has-sidebar .container { max-width: none; }
+}
+
+/* Playground page: full width, no sidebar / outline, tall iframe. */
+.playground-page .VPDoc .container,
+.playground-page .VPDoc .content,
+.playground-page .VPDoc .content-container { max-width: none !important; }
+@media (min-width: 960px) { .playground-page .VPDoc { padding-left: 32px !important; padding-right: 32px !important; } }
+.playground-page .vp-doc > div > p,
+.playground-page .vp-doc > div > ul,
+.playground-page .vp-doc > div > h1,
+.playground-page .vp-doc > div > h2,
+.playground-page .vp-doc > div > div[class*="language-"] { max-width: 820px; }
+.pg-embed { margin: 16px 0 24px; }
+.pg-embed-bar { display: flex; justify-content: flex-end; font-size: 14px; margin-bottom: 6px; }
+.pg-embed-frame {
+  display: block; width: 100%;
+  height: calc(100vh - var(--vp-nav-height) - 2rem); min-height: 720px;
+  border: 1px solid var(--vp-c-divider); border-radius: 10px; background: var(--vp-c-bg-alt);
+}
+
+/* Home feature cards: keep the numbers readable. */
+.VPFeature .details strong { color: var(--vp-c-text-1); }

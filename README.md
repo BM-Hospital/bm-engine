@@ -99,9 +99,10 @@ loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.m
 - [Benchmark](docs/en/benchmark.md) · [Building from source](docs/en/building-from-source.md) · [Playground](docs/en/playground.md) · [Troubleshooting](docs/en/troubleshooting.md)
 - Developer docs: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (full report, Vietnamese)](docs/BENCHMARK.md)
 
-The repository includes a browser **playground** (`npm run playground`, then open
-`http://127.0.0.1:8080/playground/`) with templates, all three profiles and every output format; see
-[docs/en/playground.md](docs/en/playground.md).
+The documentation is also a VitePress site with the browser **playground** built in (templates, all three
+profiles, every output format): `npm run docs` in a repository checkout, then open `http://localhost:5173/`
+(playground: `/playground`). The playground alone: `npm run playground`, then
+`http://127.0.0.1:8080/docs/playground-app/`; see [docs/en/playground.md](docs/en/playground.md).
 
 ## Status and limitations
 

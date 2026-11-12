@@ -1,0 +1,21 @@
+# Files Vercel does not need to upload for the documentation build (npm ci + npm run docs:build).
+# Needed and therefore NOT ignored: package.json, package-lock.json, vercel.json, docs/ (pages, .vitepress/,
+# playground-app/), js/ (prebuilt *.mjs + *.wasm the playground vendors), assets/fonts/ (playground fonts).
+/ref
+/zig-out
+/.zig-cache
+/node_modules
+/src
+/bench
+/examples
+/scripts
+/build.zig
+/build.zig.zon
+/docs/.vitepress/dist
+/docs/.vitepress/cache
+/docs/public/playground-app
+/docs/public/data
+/docs/playground-app/dist
+/docs/playground-app/screenshots
+*.tmp
+nul

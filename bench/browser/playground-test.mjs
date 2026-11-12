@@ -1,16 +1,21 @@
-// Playground end-to-end test (headless Edge via puppeteer-core).  node bench/browser/playground-test.mjs [--browser=<exe>]
-// Serves the repo root, exercises every profile (core / standard / full), then builds and smoke-tests playground/dist.
+// Playground end-to-end test (headless Edge via puppeteer-core).
+//   node bench/browser/playground-test.mjs [--browser=<exe>] [--skip-docs-build]
+// 1. Serves the repo root (dev layout, docs/playground-app/), exercises every profile (core / standard / full).
+// 2. Builds and smoke-tests the self-contained build (docs/playground-app/dist).
+// 3. Builds the VitePress docs site (npm run docs:build equivalent; --skip-docs-build reuses docs/.vitepress/dist) and
+//    checks the /playground and /vi/playground pages: the embedded app starts on every profile and renders the OG card.
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdtempSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
-import { startServer } from "../../playground/serve.mjs";
+import { startServer } from "../../docs/playground-app/serve.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
-const PG = path.join(ROOT, "playground");
+const PG = path.join(ROOT, "docs", "playground-app");
+const SITE = path.join(ROOT, "docs", ".vitepress", "dist");
 const SHOTS = path.join(PG, "screenshots");
 const OUT = path.join(ROOT, "bench", "out");
 mkdirSync(SHOTS, { recursive: true }); mkdirSync(OUT, { recursive: true });
@@ -278,17 +283,57 @@ async function shots(base) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------------------------- docs site
+/** The playground page of the built docs site: the iframe app starts on every profile and renders the OG card. */
+async function siteSuite(siteBase, lang) {
+  const route = lang === "vi" ? "/vi/playground" : "/playground";
+  const tag = `site${route}`;
+  const sink = [];
+  const R = { templates: {}, extra: {} };
+  results[tag] = R;
+  const ctx = await browser.createBrowserContext();
+  try {
+    const page = await ctx.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    watch(page, tag, sink);
+    const resp = await page.goto(siteBase + route, { waitUntil: "load" });
+    check(resp.status() === 200, `${tag}: HTTP ${resp.status()}`);
+    await page.waitForSelector("iframe.pg-embed-frame", { timeout: 30000 });
+    const box = await page.$eval("iframe.pg-embed-frame", (f) => { const r = f.getBoundingClientRect(); return { w: r.width, h: r.height, src: f.getAttribute("src") }; });
+    R.extra["iframe size"] = `${Math.round(box.w)}x${Math.round(box.h)} (${box.src})`;
+    check(box.w >= 1000 && box.h >= 700, `${tag}: iframe too small ${JSON.stringify(box)}`);
+    check(box.src.includes(`lang=${lang}`), `${tag}: iframe src without lang: ${box.src}`);
+    const frame = await (await page.$("iframe.pg-embed-frame")).contentFrame();
+    for (const profile of ["full", "standard", "core"]) {
+      const cur = await frame.evaluate(() => document.body?.dataset.profile || "");
+      if (cur && cur !== profile) await frame.select("#profile", profile);
+      await frame.waitForFunction((p) => document.body && document.body.dataset.ready === "1" && document.body.dataset.profile === p, { timeout: 60000 }, profile);
+      await settle(frame, 0);
+      await frame.select("#template", "og-card"); await sleep(60);
+      await doRender(frame);
+      const s = await snapshot(frame);
+      const uiLang = await frame.evaluate(() => document.documentElement.lang);
+      const ok = s.status === "ok" && s.imgOk && s.imgW === 1200 && s.imgH === 630 && !s.error && uiLang === lang;
+      R.templates[`og-card (${profile})`] = ok ? `pass (${s.bytes} B, ${s.time}, ui=${uiLang})` : "FAIL";
+      if (!ok) fail(`${tag}: ${profile}: ${JSON.stringify({ ...s, uiLang })}`); else say(`  ok   ${tag} ${profile} og-card ${s.imgW}x${s.imgH}`);
+    }
+  } catch (e) { fail(`${tag}: exception ${e.stack || e}`); }
+  check(sink.length === 0, `${tag}: browser errors:\n  ` + sink.join("\n  "));
+  R.extra["console/page/network errors"] = sink.length ? sink.length + " (see FAIL)" : "none";
+  await ctx.close();
+}
+
 // ---------------------------------------------------------------------------------------------- main
-let browser, server, distServer;
+let browser, server, distServer, siteServer;
 try {
   browser = await puppeteer.launch({ executablePath: exe, headless: true, args: ["--no-first-run", "--no-default-browser-check", "--disable-extensions"] });
   say(`browser: ${await browser.version()}`);
   server = await startServer();
-  const base = `${server.url}/playground/`;
+  const base = `${server.url}/docs/playground-app/`;
   say(`dev server: ${server.url}`);
   // static server sanity: wasm MIME + traversal
   { const r = await fetch(server.url + "/js/bm_engine.wasm"); check(r.headers.get("content-type") === "application/wasm", "wasm content-type " + r.headers.get("content-type"));
-    const t = await fetch(server.url + "/playground/..%2f..%2fpackage.json").catch(() => null); check(!t || t.status >= 400, "directory traversal not blocked"); }
+    const t = await fetch(server.url + "/docs/playground-app/..%2f..%2f..%2fpackage.json").catch(() => null); check(!t || t.status >= 400, "directory traversal not blocked"); }
 
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), base, profile);
   await shots(base);
@@ -301,11 +346,26 @@ try {
   say(`dist server: ${distServer.url}`);
   { const r = await fetch(distServer.url + "/vendor/bm_engine.core.wasm"); check(r.headers.get("content-type") === "application/wasm", "dist wasm type"); }
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), distServer.url + "/", profile, { dist: true });
+
+  // ---- docs site (VitePress build) embedding the playground
+  if (!args["skip-docs-build"] || !existsSync(path.join(SITE, "index.html"))) {
+    const vp = path.join(ROOT, "node_modules", "vitepress", "bin", "vitepress.js");
+    if (!check(existsSync(vp), "vitepress not installed: run npm install in the repository root")) throw new Error("no vitepress");
+    for (const cmd of [[path.join(ROOT, "docs", ".vitepress", "prepare.mjs")], [vp, "build", "docs"]]) {
+      const r = spawnSync(process.execPath, cmd, { cwd: ROOT, encoding: "utf8" });
+      if (!check(r.status === 0, `docs build step failed (${cmd.join(" ")}):\n${r.stdout}\n${r.stderr}`)) throw new Error("docs build failed");
+    }
+    say("\ndocs site built: docs/.vitepress/dist");
+  }
+  siteServer = await startServer({ root: SITE, cleanUrls: true });
+  say(`docs site server: ${siteServer.url}`);
+  { const r = await fetch(siteServer.url + "/playground-app/vendor/bm_engine.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "site wasm " + r.status); }
+  for (const lang of ["en", "vi"]) await siteSuite(siteServer.url, lang);
 } catch (e) {
   fail("fatal: " + (e.stack || e));
 } finally {
   await browser?.close().catch(() => {});
-  await server?.close(); await distServer?.close();
+  await server?.close(); await distServer?.close(); await siteServer?.close();
 }
 
 // ---------------------------------------------------------------------------------------------- report
@@ -318,7 +378,7 @@ for (const [tag, R] of Object.entries(results)) {
   const ex = Object.entries(R.extra);
   if (ex.length) { md.push("| check | result |", "|---|---|", ...ex.map(([k, v]) => `| ${k} | ${v} |`), ""); }
 }
-md.push("## Screenshots", "", "- playground/screenshots/og-card-full.png (1440x900, OG card, full profile)", "- playground/screenshots/vietnamese-full.png", "- playground/screenshots/dark-mode-full.png", "- playground/screenshots/mobile-full.png", "");
+md.push("## Screenshots", "", "- docs/playground-app/screenshots/og-card-full.png (1440x900, OG card, full profile)", "- docs/playground-app/screenshots/vietnamese-full.png", "- docs/playground-app/screenshots/dark-mode-full.png", "- docs/playground-app/screenshots/mobile-full.png", "");
 if (failures.length) md.push("## Failures", "", ...failures.map((f) => "- " + f.replace(/\n/g, "\n  ")), "");
 writeFileSync(path.join(OUT, "PLAYGROUND.md"), md.join("\n"));
 say(failures.length ? `\n${failures.length} FAILURE(S)` : "\nALL PLAYGROUND CHECKS PASSED");

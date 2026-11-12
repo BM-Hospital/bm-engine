@@ -5,3 +5,8 @@ zig-out/
 bench/out/
 *.tmp
 nul
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/public/playground-app/
+docs/public/data/
+.vercel

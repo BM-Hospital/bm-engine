@@ -14,7 +14,7 @@ with Getting started; the API reference and the CSS support matrix are the pages
 | [Differences from takumi](differences-from-takumi.md) | Migration guide, API and rendering differences, takumi behaviours reproduced on purpose |
 | [Benchmark](benchmark.md) | Speed, size, memory and pixel equivalence against takumi 2.20, and how to reproduce |
 | [Building from source](building-from-source.md) | Zig toolchain, build / test / fuzz commands, repository layout, contributing |
-| [Playground](playground.md) | The in-browser playground: run locally, deploy to GitHub Pages |
+| [Playground](playground.md) | The in-browser playground (embedded in the documentation site), running it locally |
 | [Troubleshooting](troubleshooting.md) | Missing text, collapsed containers, profile errors, images, wasm loading, memory, DPR, Vietnamese, emoji |
 
 Developer documents (in the parent folder): [ARCHITECTURE.md](../ARCHITECTURE.md),

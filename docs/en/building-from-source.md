@@ -108,10 +108,25 @@ src/bump.zig, pages.zig  allocators (per-render bump arena, page allocator)
 js/                   ESM wrapper (engine.mjs + entries), typings, prebuilt wasm, build manifest
 scripts/              build.mjs (release build, manifest), pack-test.mjs
 bench/                fixtures shared with takumi, benchmark / equivalence harness, probes, browser test
-playground/           browser playground (see playground.md)
-docs/                 user docs (en/, vi/) and developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK)
+docs/                 user docs (en/, vi/), developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK),
+                      VitePress site config (.vitepress/), browser playground source (playground-app/)
 ref/takumi/           local clone of takumi used as a read-only reference (not in git)
 ```
+
+## Documentation site
+
+`docs/` is also a [VitePress](https://vitepress.dev/) site (config in `docs/.vitepress/`) with the
+playground embedded. It needs Node.js ≥ 18 and `npm install` in the repository root, but not Zig: it uses
+the prebuilt `js/*.wasm`.
+
+```sh
+npm run docs:dev        # = npm run docs; builds the playground into docs/public/playground-app, dev server on :5173
+npm run docs:build      # static site in docs/.vitepress/dist
+npm run docs:preview    # serves the build on :4173
+```
+
+`vercel.json` in the repository root deploys the site to Vercel (import the repository; no settings or
+environment variables needed).
 
 ## Developer documents
 

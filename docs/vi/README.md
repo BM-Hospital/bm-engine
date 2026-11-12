@@ -14,7 +14,7 @@ Tài liệu người dùng cho bm-engine 0.1.0, bản port bộ render ảnh tak
 | [Khác biệt với takumi](differences-from-takumi.md) | Hướng dẫn chuyển đổi, khác biệt API và kết quả render, các hành vi của takumi được giữ nguyên có chủ đích |
 | [Benchmark](benchmark.md) | Tốc độ, kích thước, bộ nhớ và mức tương đương điểm ảnh so với takumi 2.20, cách chạy lại |
 | [Build từ mã nguồn](building-from-source.md) | Bộ công cụ Zig, lệnh build / test / fuzz, cấu trúc repository, đóng góp |
-| [Playground](playground.md) | Playground chạy trên trình duyệt: chạy cục bộ, triển khai lên GitHub Pages |
+| [Playground](playground.md) | Playground chạy trên trình duyệt (nhúng trong trang tài liệu), chạy cục bộ |
 | [Xử lý sự cố](troubleshooting.md) | Mất chữ, khối chứa bị co, lỗi do profile, ảnh, nạp wasm, bộ nhớ, DPR, tiếng Việt, emoji |
 
 Tài liệu cho nhà phát triển (ở thư mục cha): [ARCHITECTURE.md](../ARCHITECTURE.md),

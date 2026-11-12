@@ -1,13 +1,21 @@
+---
+title: Playground
+sidebar: false
+aside: false
+pageClass: playground-page
+---
+
 # Playground
 
 [English](../en/playground.md) · [Tiếng Việt](playground.md)
 
-Repository có kèm một playground tĩnh, không dùng framework (`playground/`: HTML, ES module và CSS thuần;
-không cần bước build khi phát triển và không gọi ra mạng ngoài) để chạy bm-engine ngay trong trình duyệt.
-Dùng nó để thử đầu vào node JSON, HTML và Tailwind, so sánh ba profile và xem layout. Trang này tóm tắt
-[playground/README.md](../../playground/README.md).
+Playground chạy bản build WebAssembly thật của bm-engine ngay trong trình duyệt: thử đầu vào node JSON,
+HTML và Tailwind, so sánh ba profile, xem layout bằng `measure()` và xuất mọi định dạng đầu ra. Không có
+gì được tải lên máy chủ; font và ảnh bạn thêm vào chỉ nằm trong trang.
 
-![Ảnh chụp playground](../../playground/screenshots/og-card-full.png)
+<ClientOnly>
+  <PlaygroundFrame lang="vi" />
+</ClientOnly>
 
 ## Tính năng
 
@@ -26,32 +34,20 @@ lược (ví dụ thẻ Tailwind trên `core`), nên playground là cách nhanh 
 
 ## Chạy cục bộ
 
-Từ một bản checkout của repository có sẵn các binary `js/*.wasm` (đã build sẵn trong repository, hoặc
-chạy `node scripts/build.mjs`):
+Mã nguồn playground nằm ở [docs/playground-app/](../playground-app/README.md) (HTML, ES module và CSS
+thuần, không framework, không gọi mạng ngoài). Từ một bản checkout có sẵn các binary `js/*.wasm` (đã build
+sẵn trong repository, hoặc chạy `node scripts/build.mjs`):
 
 ```sh
-npm run playground                       # = node playground/serve.mjs -> http://127.0.0.1:8080/playground/
-node playground/serve.mjs --port 3000
-node playground/build.mjs && node playground/serve.mjs --dist   # the self-contained build in playground/dist/
+npm run playground          # = node docs/playground-app/serve.mjs -> http://127.0.0.1:8080/docs/playground-app/
+npm run docs:dev            # toàn bộ trang tài liệu, có playground -> http://localhost:5173/vi/playground
 ```
 
-Trang phát triển nạp engine từ `../js/` và font từ `../assets/fonts/`; bản build `dist` chép chúng vào
-`vendor/`. Cả hai cách bố trí được mô tả trong `playground/config.js` (`build.mjs` ghi ra một
-`dist/config.js` khác). Server gửi file `.wasm` với content type `application/wasm`.
+Trang phát triển nạp engine từ `../../js/` và font từ `../../assets/fonts/`; bản build tài liệu
+(`npm run docs:build`) chạy `docs/playground-app/build.mjs` để chép ứng dụng, `js/*.mjs`, các tệp `.wasm`
+và font mặc định vào `docs/public/playground-app/` (`vendor/`), và trang tài liệu nhúng bản đó. Cả hai cách bố
+trí được mô tả trong `config.js`. Ứng dụng nhận `?lang=en|vi` và `?theme=light|dark`.
 
 Kiểm thử tự động: `node bench/browser/playground-test.mjs` (Edge / Chrome headless qua puppeteer-core;
-ghi `playground/screenshots/*.png` và `bench/out/PLAYGROUND.md`). Lần chạy được ghi nhận gần nhất đã đạt
-trên cả ba profile.
-
-## Triển khai lên GitHub Pages
-
-1. `node playground/build.mjs` tạo `playground/dist/` (HTML / JS / CSS, `vendor/` chứa `js/*.mjs`, các
-   file `.wasm` và font mặc định, cùng `.nojekyll`). Các file `js/*.wasm` phải tồn tại sẵn.
-2. Chép `playground/pages.yml.example` thành `.github/workflows/pages.yml`, đặt **Settings → Pages →
-   Source** thành "GitHub Actions" rồi push lên `main`. Workflow chạy `node playground/build.mjs` và
-   xuất bản `playground/dist` bằng `actions/upload-pages-artifact` + `actions/deploy-pages`.
-3. Hoặc tự đẩy nội dung `playground/dist/` lên nhánh `gh-pages`.
-
-`playground/dist` là một trang tĩnh thuần, nên mọi dịch vụ host tĩnh đều dùng được theo cùng cách, miễn
-là phục vụ `.wasm` với content type `application/wasm` (content type khác vẫn chạy, chỉ là không biên
-dịch theo luồng).
+kiểm tra server phát triển trên cả ba profile, bản build độc lập và trang playground của trang tài liệu đã
+build; ghi `bench/out/PLAYGROUND.md`).

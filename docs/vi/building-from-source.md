@@ -108,10 +108,25 @@ src/bump.zig, pages.zig  allocators (per-render bump arena, page allocator)
 js/                   ESM wrapper (engine.mjs + entries), typings, prebuilt wasm, build manifest
 scripts/              build.mjs (release build, manifest), pack-test.mjs
 bench/                fixtures shared with takumi, benchmark / equivalence harness, probes, browser test
-playground/           browser playground (see playground.md)
-docs/                 user docs (en/, vi/) and developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK)
+docs/                 user docs (en/, vi/), developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK),
+                      VitePress site config (.vitepress/), browser playground source (playground-app/)
 ref/takumi/           local clone of takumi used as a read-only reference (not in git)
 ```
+
+## Trang tài liệu
+
+`docs/` đồng thời là một trang [VitePress](https://vitepress.dev/) (cấu hình ở `docs/.vitepress/`) có nhúng
+playground. Cần Node.js ≥ 18 và `npm install` ở thư mục gốc repository, nhưng không cần Zig: trang dùng các
+tệp `js/*.wasm` đã build sẵn.
+
+```sh
+npm run docs:dev        # = npm run docs; build playground vào docs/public/playground-app, server phát triển ở :5173
+npm run docs:build      # trang tĩnh trong docs/.vitepress/dist
+npm run docs:preview    # phục vụ bản build ở :4173
+```
+
+`vercel.json` ở thư mục gốc repository triển khai trang lên Vercel (import repository; không cần thiết lập
+hay biến môi trường nào).
 
 ## Tài liệu cho nhà phát triển
 

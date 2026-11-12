@@ -1,0 +1,44 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vitepress",
+  "installCommand": "npm ci --ignore-scripts --no-audit --no-fund",
+  "buildCommand": "npm run docs:build",
+  "outputDirectory": "docs/.vitepress/dist",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/playground-app/vendor/(.*)\.wasm",
+      "headers": [
+        { "key": "Content-Type", "value": "application/wasm" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
+      ]
+    },
+    {
+      "source": "/playground-app/vendor/(.*)\.mjs",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }]
+    },
+    {
+      "source": "/playground-app/vendor/fonts/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=2592000" }]
+    }
+  ],
+  "redirects": [
+    { "source": "/README", "destination": "/", "permanent": true },
+    { "source": "/en/README", "destination": "/overview", "permanent": true },
+    { "source": "/vi/README", "destination": "/vi/overview", "permanent": true },
+    { "source": "/en", "destination": "/", "permanent": true },
+    { "source": "/en/:path*", "destination": "/:path*", "permanent": true },
+    { "source": "/RESULTS_FULL", "destination": "/results-full", "permanent": true },
+    { "source": "/ARCHITECTURE", "destination": "/dev/architecture", "permanent": true },
+    { "source": "/TAKUMI_NOTES", "destination": "/dev/takumi-notes", "permanent": true },
+    { "source": "/CONVENTIONS", "destination": "/dev/conventions", "permanent": true },
+    { "source": "/playground/", "destination": "/playground", "permanent": false },
+    { "source": "/benchmark-report", "destination": "/benchmark", "permanent": false },
+    { "source": "/vi/results-full", "destination": "/results-full", "permanent": false },
+    { "source": "/vi/dev/:path*", "destination": "/dev/:path*", "permanent": false }
+  ]
+}

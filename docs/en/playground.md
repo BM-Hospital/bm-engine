@@ -1,13 +1,21 @@
+---
+title: Playground
+sidebar: false
+aside: false
+pageClass: playground-page
+---
+
 # Playground
 
 [English](playground.md) · [Tiếng Việt](../vi/playground.md)
 
-The repository contains a static, framework-free playground (`playground/`: plain HTML, ES modules and
-CSS; no build step for development and no external requests) that runs bm-engine in the browser. Use it
-to try node JSON, HTML and Tailwind input, compare the three profiles and inspect layout. This page
-summarises [playground/README.md](../../playground/README.md).
+The playground runs the real bm-engine WebAssembly build in your browser: try node JSON, HTML and
+Tailwind input, compare the three profiles, inspect layout with `measure()` and export every output
+format. Nothing is uploaded; fonts and images you add stay in the page.
 
-![Playground screenshot](../../playground/screenshots/og-card-full.png)
+<ClientOnly>
+  <PlaygroundFrame lang="en" />
+</ClientOnly>
 
 ## Features
 
@@ -27,32 +35,21 @@ profile drops.
 
 ## Run locally
 
-From a repository checkout with the `js/*.wasm` binaries present (prebuilt in the repository, or
-`node scripts/build.mjs`):
+The playground source lives in [docs/playground-app/](../playground-app/README.md) (plain HTML, ES
+modules and CSS, no framework, no external requests). From a repository checkout with the `js/*.wasm`
+binaries present (prebuilt in the repository, or `node scripts/build.mjs`):
 
 ```sh
-npm run playground                       # = node playground/serve.mjs -> http://127.0.0.1:8080/playground/
-node playground/serve.mjs --port 3000
-node playground/build.mjs && node playground/serve.mjs --dist   # the self-contained build in playground/dist/
+npm run playground          # = node docs/playground-app/serve.mjs -> http://127.0.0.1:8080/docs/playground-app/
+npm run docs:dev            # the whole documentation site, playground included -> http://localhost:5173/playground
 ```
 
-The development page loads the engine from `../js/` and fonts from `../assets/fonts/`; the `dist` build
-copies them into `vendor/`. Both layouts are described in `playground/config.js` (`build.mjs` writes a
-different `dist/config.js`). The server sends `.wasm` files as `application/wasm`.
+The development page loads the engine from `../../js/` and fonts from `../../assets/fonts/`; the
+documentation build (`npm run docs:build`) runs `docs/playground-app/build.mjs`, which copies the app,
+`js/*.mjs`, the `.wasm` files and the default fonts into `docs/public/playground-app/` (`vendor/`), and the
+site embeds that copy. Both layouts are described by `config.js`. The app accepts `?lang=en|vi` and
+`?theme=light|dark`.
 
 Automated test: `node bench/browser/playground-test.mjs` (headless Edge / Chrome via puppeteer-core;
-writes `playground/screenshots/*.png` and `bench/out/PLAYGROUND.md`). The last recorded run passed on
-all three profiles.
-
-## Deploy to GitHub Pages
-
-1. `node playground/build.mjs` creates `playground/dist/` (HTML / JS / CSS, `vendor/` with `js/*.mjs`,
-   the `.wasm` files and the default fonts, plus `.nojekyll`). The `js/*.wasm` files must exist.
-2. Copy `playground/pages.yml.example` to `.github/workflows/pages.yml`, set **Settings → Pages →
-   Source** to "GitHub Actions" and push to `main`. The workflow runs `node playground/build.mjs` and
-   publishes `playground/dist` with `actions/upload-pages-artifact` + `actions/deploy-pages`.
-3. Alternatively, publish the contents of `playground/dist/` to a `gh-pages` branch by hand.
-
-`playground/dist` is a plain static site, so any static host works the same way, provided it serves
-`.wasm` with the `application/wasm` content type (other types still work, without streaming
-compilation).
+tests the development server on all three profiles, the self-contained build and the playground page of
+the built documentation site; writes `bench/out/PLAYGROUND.md`).

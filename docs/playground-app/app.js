@@ -394,6 +394,7 @@ function wire() {
   $("profile").addEventListener("change", (e) => switchProfile(e.target.value));
   $("lang").addEventListener("change", (e) => {
     setLang(e.target.value); try { localStorage.setItem("bm-playground-lang", getLang()); } catch { /* ignore */ }
+    const u = new URL(location.href); if (u.searchParams.has("lang")) { u.searchParams.set("lang", getLang()); history.replaceState(null, "", u.href); }
     applyI18n(); fillTemplateSelect(); renderFontList(); renderImageList(); updateVisibility();
     const t = templates.find((x) => x.id === state.template); if (t?.hint) { $("templateHint").hidden = false; $("templateHint").textContent = t.hint[getLang()]; }
     if (engine) $("binInfo").textContent = `${engine.file} - ${fmtBytes(engine.wasmBytes)}`;
@@ -421,9 +422,23 @@ function wire() {
   $("imageInput").addEventListener("change", async (e) => { const fs = [...e.target.files]; e.target.value = ""; await onImageFiles(fs); });
 }
 
+// ?theme=light|dark forces a colour scheme (the docs site passes its own); otherwise prefers-color-scheme applies.
+// An embedding page can also switch it live: postMessage({ type: "bm-playground:theme", theme: "dark" }).
+function setTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+}
+window.addEventListener("message", (e) => {
+  if (e.origin === location.origin && e.data && e.data.type === "bm-playground:theme") setTheme(e.data.theme);
+});
+
 async function main() {
+  const q = new URLSearchParams(location.search);
+  setTheme(q.get("theme"));
+  // ?lang=en|vi (set by the docs site) wins over the stored choice and the browser language.
   let lang = (navigator.language || "").startsWith("vi") ? "vi" : "en";
   try { lang = localStorage.getItem("bm-playground-lang") || lang; } catch { /* ignore */ }
+  if (q.get("lang") === "en" || q.get("lang") === "vi") lang = q.get("lang");
   setLang(lang); $("lang").value = getLang();
   profile = pickProfile(); $("profile").value = profile;
   try { localStorage.setItem("bm-playground-profile", profile); } catch { /* ignore */ }

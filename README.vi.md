@@ -98,9 +98,10 @@ nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles
 - [Benchmark](docs/vi/benchmark.md) · [Build từ mã nguồn](docs/vi/building-from-source.md) · [Playground](docs/vi/playground.md) · [Xử lý sự cố](docs/vi/troubleshooting.md)
 - Tài liệu cho nhà phát triển: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (báo cáo đầy đủ)](docs/BENCHMARK.md)
 
-Repository có kèm một **playground** chạy trên trình duyệt (`npm run playground`, rồi mở
-`http://127.0.0.1:8080/playground/`) với các mẫu có sẵn, cả ba profile và mọi định dạng đầu ra; xem
-[docs/vi/playground.md](docs/vi/playground.md).
+Tài liệu cũng là một trang VitePress có sẵn **playground** chạy trên trình duyệt (các mẫu có sẵn, cả ba
+profile, mọi định dạng đầu ra): chạy `npm run docs` trong bản checkout của repository rồi mở
+`http://localhost:5173/vi/` (playground: `/vi/playground`). Chỉ chạy playground: `npm run playground`, rồi mở
+`http://127.0.0.1:8080/docs/playground-app/`; xem [docs/vi/playground.md](docs/vi/playground.md).
 
 ## Tình trạng và hạn chế
 
