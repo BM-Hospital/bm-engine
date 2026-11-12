@@ -2972,6 +2972,12 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     s.justify_content = alignOf(cs.justify_content);
     s.justify_items = alignOf(cs.justify_items);
     s.justify_self = alignOf(cs.justify_self);
+    if (cs.direction == .rtl) {
+        s.rtl = true;
+        // (`left` / `right` are physical: start is the right edge here)
+        if (cs.justify_content == .left or cs.justify_content == .right) s.justify_content = if (cs.justify_content == .left) .end else .start;
+        if (cs.justify_items == .left or cs.justify_items == .right) s.justify_items = if (cs.justify_items == .left) .end else .start;
+    }
     if (s.display == .grid) {
         template(f, cs.grid_template_columns, &s.grid_template_columns, &s.grid_auto_repeat_columns);
         template(f, cs.grid_template_rows, &s.grid_template_rows, &s.grid_auto_repeat_rows);

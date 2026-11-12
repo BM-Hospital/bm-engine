@@ -182,12 +182,13 @@ noinline fn paintColumns(p: *Painter, ctx: *const Ctx, tg: *const TG, tx: f32, t
         if (!hasBackground(cs)) continue;
         const last = @min(@as(usize, el.start) + el.span - 1, tg.cols.len - 1);
         const first = &tg.cols[el.start];
-        const area: Rect = .{
-            .x = tx + tg.sec_x + first.x - tg.cols[0].x,
+        var area: Rect = .{
+            .x = first.x - tg.cols[0].x,
             .y = ty + y0,
             .w = tg.cols[last].x + tg.cols[last].w - first.x,
             .h = y1 - y0,
         };
+        area.x = tx + tg.sec_x + (if (tg.rtl) tg.sec_w - area.x - area.w else area.x);
         for (tg.cells, 0..) |*cell, ci| {
             if (cell.col < el.start or cell.col >= el.start + el.span) continue;
             if (tg.rows[cell.row].collapsed or !cellVisible(p, tg, ci)) continue;
@@ -330,6 +331,8 @@ const Borders = struct {
     /// columns of the grid (Blink's last_column_index)
     bc: u32,
     dry: bool = true,
+    /// right-to-left table: the inline-start edge of a box is its right border
+    rtl: bool = false,
 
     fn styleOfSide(b: *const Borders, src: u32, s: u3) BStyle {
         return collapsedStyle(b.p.f.nodes.items[src].cs.border_style[s]);
@@ -394,6 +397,9 @@ const Borders = struct {
             if (st[s] != .none) any = true;
         }
         const inner = is_cell and (rs > 1 or cn > 1);
+        // sides at the inline start / end of the box
+        const ss: u3 = if (b.rtl) right else left;
+        const se: u3 = if (b.rtl) left else right;
         if (inner) {
             b.fit(r0 + rs - 1, (c0 + cn) -| 1);
         } else {
@@ -401,7 +407,7 @@ const Borders = struct {
             // only the edges a border fills need to exist
             b.fit(
                 if (st[left] == .none and st[right] == .none and st[bottom] == .none) r0 else r0 + rs - 1,
-                if (st[right] == .none and st[top] == .none and st[bottom] == .none) c0 else (c0 + cn) -| 1,
+                if (st[se] == .none and st[top] == .none and st[bottom] == .none) c0 else (c0 + cn) -| 1,
             );
         }
         if (b.dry) return;
@@ -414,13 +420,13 @@ const Borders = struct {
             const w = b.widthOfSide(src, bottom);
             for (0..cn) |k| b.put(epr * (r0 + rs) + (c0 + k) * 2 + 1, src, bottom, order, st[bottom], w);
         }
-        if (st[left] != .none) {
-            const w = b.widthOfSide(src, left);
-            for (0..rs) |k| b.put(epr * (r0 + k) + c0 * 2, src, left, order, st[left], w);
+        if (st[ss] != .none) {
+            const w = b.widthOfSide(src, ss);
+            for (0..rs) |k| b.put(epr * (r0 + k) + c0 * 2, src, ss, order, st[ss], w);
         }
-        if (st[right] != .none) {
-            const w = b.widthOfSide(src, right);
-            for (0..rs) |k| b.put(epr * (r0 + k) + (c0 + cn) * 2, src, right, order, st[right], w);
+        if (st[se] != .none) {
+            const w = b.widthOfSide(src, se);
+            for (0..rs) |k| b.put(epr * (r0 + k) + (c0 + cn) * 2, src, se, order, st[se], w);
         }
         if (inner) {
             // MarkInnerBordersAsDoNotFill: no part of the table draws inside a spanning cell
@@ -533,7 +539,7 @@ fn roundPx(v: f32) f32 {
 pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y: f32, tg: *const TG) Error!void {
     if (!tg.collapse or tg.n_bcols == 0 or tg.rows.len == 0) return;
     if (p.f.nodes.items[id].cs.visibility != .visible) return;
-    var b: Borders = .{ .p = p, .bc = tg.n_bcols };
+    var b: Borders = .{ .p = p, .bc = tg.n_bcols, .rtl = tg.rtl };
     b.mergeAll(tg, true);
     if (b.epr == 0) return;
     const len = std.math.mul(usize, b.epr, b.erows) catch return;
@@ -607,6 +613,7 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
                 }
                 if (end_wins) bsz += ej else bsz -= ej;
             }
+            if (tg.rtl) is = luRel(tg.sec_w) - is - isz;
             const fx = x + tg.sec_x + @as(f32, @floatFromInt(is)) / 64;
             const fy = y + sec.y + @as(f32, @floatFromInt(bs)) / 64;
             const x1 = roundPx(fx);

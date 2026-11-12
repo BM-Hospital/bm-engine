@@ -394,6 +394,8 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
                 if (cb.margin_auto[0] and has(cb.size[0])) {
                     const free = @max(inner_w - clampO(cb.size[0], cb.min[0], cb.max[0]) - ms, 0);
                     ml = if (cb.margin_auto[2]) t.div(free, 2) else free;
+                } else if (s.rtl and !cb.margin_auto[2] and has(cb.size[0])) {
+                    ml += inner_w - clampO(cb.size[0], cb.min[0], cb.max[0]) - ms;
                 }
                 t.bfc_org = .{ c.org[0] + inset[0] + ml, c.org[1] + y + est };
             }
@@ -423,13 +425,15 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             if (cb.margin_auto[0]) cb.margin[0] = t.div(free_x, n_auto);
             if (cb.margin_auto[2]) cb.margin[2] = t.div(free_x, n_auto);
         }
+        // right-to-left: an over-constrained box keeps its right margin (the left one takes the rest)
+        if (s.rtl and n_auto == 0) fx += band_w - o.size[0] - ms;
         cb.margin[1] = top_set.resolve();
         cb.margin[3] = bottom_set.resolve();
 
         const y_margin: f32 = if (with_first and collapse_top) 0 else c.active.merge(top_set).resolve();
         if (in.layout) {
             const rel: [2]f32 = .{
-                orElse(t.dim(cs.inset.left, inner_w), -orElse(t.dim(cs.inset.right, inner_w), 0)),
+                t.relX(cs, inner_w, s.rtl),
                 orElse(t.dim(cs.inset.top, inner_h), -orElse(t.dim(cs.inset.bottom, inner_h), 0)),
             };
             t.setLayout(ch, .{ inset[0] + fx + cb.margin[0] + rel[0], y + y_margin + rel[1] }, o, cb);
@@ -476,7 +480,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     if (n_abs > 0) {
         c.area = .{ box.border[0], box.border[1], outer_w - box.border[0] - box.border[2], outer_h - box.border[1] - box.border[3] };
         for (abs[0..n_abs]) |a| {
-            c.sp = .{ .rect = .{ inset[0], a.y, inner_w, 0 } };
+            c.sp = .{ .rect = .{ inset[0], a.y, inner_w, 0 }, .al = .{ if (s.rtl) 2 else 0, 0 } };
             try t.placeAbsolute(node, a.node, &c.area, &c.sp);
             t.accumContent(&c.content, a.node);
         }

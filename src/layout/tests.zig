@@ -1016,3 +1016,70 @@ test "quantize64: Blink layout-unit arithmetic" {
     try testing.expectEqual(@as(f32, 33.34375), t3.layout(k3[1]).w);
     try testing.expectEqual(@as(f32, 33.328125), t3.layout(k3[2]).w);
 }
+
+test "rtl: flex / grid containers are laid out in mirrored space" {
+    // row: items start at the right; margins, the container's padding and relative offsets stay physical
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try t.addNode(.{ .size = sz(300, 100), .rtl = true, .padding = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .{ .px = 10 }, .right = .{ .px = 30 } }, .gap = .{ .{ .px = 5 }, .{ .px = 0 } } });
+    const k = try mk(&t, root, &.{
+        .{ .size = sz(50, 20), .margin = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .{ .px = 7 }, .right = .{ .px = 3 } } },
+        .{ .size = sz(40, 20), .inset = .{ .top = .auto, .bottom = .auto, .left = .{ .px = 4 }, .right = .auto } },
+        .{ .size = sz(20, 20), .position = .absolute, .inset = .{ .top = .{ .px = 50 }, .bottom = .auto, .left = .{ .px = 2 }, .right = .auto } },
+        .{ .size = sz(20, 20), .position = .absolute },
+    });
+    try run(&t, root);
+    try expectRect(&t, k[0], 300 - 30 - 3 - 50, 0, 50, 20);
+    try expectRect(&t, k[1], 300 - 30 - 3 - 50 - 7 - 5 - 40 + 4, 0, 40, 20);
+    try expectRect(&t, k[2], 2, 50, 20, 20);
+    // static position: the main-start (right) content edge
+    try expectRect(&t, k[3], 300 - 30 - 20, 0, 20, 20);
+    try testing.expectEqual(@as(f32, 7), t.layout(k[0]).margin.left);
+    try testing.expectEqual(@as(f32, 10), t.layout(root).padding.left);
+
+    // row-reverse in rtl runs left to right again; flex-end is the right edge
+    var t2 = Tree.init(testing.allocator);
+    defer t2.deinit();
+    const r2 = try t2.addNode(.{ .size = sz(300, 100), .rtl = true, .flex_direction = .row_reverse });
+    const k2 = try mk(&t2, r2, &.{ .{ .size = sz(50, 20) }, .{ .size = sz(40, 20) } });
+    try run(&t2, r2);
+    try expectRect(&t2, k2[0], 0, 0, 50, 20);
+    try expectRect(&t2, k2[1], 50, 0, 40, 20);
+
+    // column: the cross axis starts at the right; grid: the first column is the rightmost
+    var t3 = Tree.init(testing.allocator);
+    defer t3.deinit();
+    const cols = [_]L.Track{ L.Track.px(60), L.Track.px(100) };
+    const r3 = try t3.addNode(.{ .size = sz(300, 100), .flex_direction = .column, .rtl = true, .align_items = .flex_start });
+    const k3 = try mk(&t3, r3, &.{ .{ .size = sz(50, 20) }, .{ .display = .grid, .rtl = true, .size = sz(200, 30), .grid_template_columns = &cols } });
+    const g3 = try mk(&t3, k3[1], &.{ .{}, .{}, .{ .position = .static, .display = .block } });
+    // a deferred absolute box (static parent) keeps its physical insets
+    const a3 = try mk(&t3, g3[2], &.{.{ .size = sz(10, 10), .position = .absolute, .inset = .{ .top = .{ .px = 1 }, .bottom = .auto, .left = .{ .px = 2 }, .right = .auto } }});
+    try run(&t3, r3);
+    try expectRect(&t3, k3[0], 250, 0, 50, 20);
+    try expectRect(&t3, k3[1], 100, 20, 200, 30);
+    try expectRect(&t3, g3[0], 140, 0, 60, 15);
+    try expectRect(&t3, g3[1], 40, 0, 100, 15);
+    try testing.expectEqual(@as(f32, 2 - 140), t3.layout(a3[0]).x);
+}
+
+test "rtl: block container aligns over-constrained children and static positions to the right" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try t.addNode(.{ .display = .block, .size = sz(300, 100), .rtl = true });
+    const auto_l: L.Edges(Dim) = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .auto, .right = .{ .px = 0 } };
+    const auto_r: L.Edges(Dim) = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .{ .px = 0 }, .right = .auto };
+    const k = try mk(&t, root, &.{
+        .{ .display = .block, .size = sz(50, 10), .margin = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .{ .px = 0 }, .right = .{ .px = 12 } } },
+        .{ .display = .block, .size = sz(50, 10), .margin = auto_l },
+        .{ .display = .block, .size = sz(50, 10), .margin = auto_r },
+        .{ .display = .block, .size = sz(400, 10) },
+        .{ .display = .block, .size = sz(20, 10), .position = .absolute },
+    });
+    try run(&t, root);
+    try expectRect(&t, k[0], 300 - 12 - 50, 0, 50, 10);
+    try expectRect(&t, k[1], 250, 10, 50, 10);
+    try expectRect(&t, k[2], 0, 20, 50, 10);
+    try expectRect(&t, k[3], -100, 30, 400, 10);
+    try expectRect(&t, k[4], 280, 40, 20, 10);
+}

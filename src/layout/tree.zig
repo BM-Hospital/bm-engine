@@ -380,6 +380,7 @@ pub fn resolveBox(b: *Box, s: *const Style, basis: [2]f32) void {
         b.margin_auto[i] = mar[i] == .auto;
         b.margin[i] = orElse(resolveDim(mar[i], basis[0]), 0);
     }
+    if (s.rtl or s.mirror_out) mirrorBox(b, s);
     b.pb = .{ b.padding[0] + b.padding[2] + b.border[0] + b.border[2], b.padding[1] + b.padding[3] + b.border[1] + b.border[3] };
     const adj: [2]f32 = if (s.box_sizing == .content_box) b.pb else .{ 0, 0 };
     const raw: [3]*const [2]st.Dim = .{ &s.size, &s.min_size, &s.max_size };
@@ -393,6 +394,25 @@ pub fn resolveBox(b: *Box, s: *const Style, basis: [2]f32) void {
         if (!has(b.min[0])) b.min[0] = ratioTransfer(s, b, 0, b.min[1]);
         if (!has(b.max[0])) b.max[0] = ratioTransfer(s, b, 0, b.max[1]);
     }
+}
+
+/// True for a container laid out in mirrored space (see `Style.rtl`).
+pub inline fn mirrors(s: *const Style) bool {
+    return s.rtl and (s.display == .flex or s.display == .grid);
+}
+
+/// Mirrored space: the box of a mirrored container has its left / right padding and border swapped, the
+/// box of one of its children the left / right margins.
+noinline fn mirrorBox(b: *Box, s: *const Style) void {
+    if (mirrors(s)) {
+        std.mem.swap(f32, &b.padding[0], &b.padding[2]);
+        std.mem.swap(f32, &b.border[0], &b.border[2]);
+    }
+    if (s.mirror_out) swapMargins(b);
+}
+pub fn swapMargins(b: *Box) void {
+    std.mem.swap(f32, &b.margin[0], &b.margin[2]);
+    std.mem.swap(bool, &b.margin_auto[0], &b.margin_auto[2]);
 }
 
 /// Size of a container fixed by its styles (taffy "styled_based_known_dimensions").
@@ -451,6 +471,8 @@ pub const StaticPos = struct {
     al: [2]u8 = .{ 0, 0 },
     /// stretch to the rectangle when size is auto and insets are auto (grid areas)
     stretch: [2]bool = .{ false, false },
+    /// (engine) the rectangle is in the mirrored space of its container
+    mirrored: bool = false,
 };
 
 
@@ -552,6 +574,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             while (n[up].parent != no_node) up = n[up].parent;
             if (up == child) return error.InvalidNode;
             n[child].parent = parent;
+            n[child].style.mirror_out = mirrors(&n[parent].style);
             n[child].next_sibling = no_node;
             if (n[parent].last_child == no_node) n[parent].first_child = child else n[n[parent].last_child].next_sibling = child;
             n[parent].last_child = child;
@@ -571,7 +594,11 @@ pub fn TreeWith(comptime cfg: Config) type {
 
         pub fn setStyle(self: *Self, node: NodeId, s: Style) void {
             if (node >= self.nodes.items.len) return;
+            const mo = self.nodes.items[node].style.mirror_out;
             self.nodes.items[node].style = s;
+            self.nodes.items[node].style.mirror_out = mo;
+            var ch = self.nodes.items[node].first_child;
+            while (ch != no_node) : (ch = self.nodes.items[ch].next_sibling) self.nodes.items[ch].style.mirror_out = mirrors(&s);
             self.nodes.items[node].pct = stylePct(&s);
             self.nodes.items[node].plain = stylePlain(&s);
             self.nodes.items[node].ratio = s.aspect_ratio != null;
@@ -848,6 +875,39 @@ pub fn TreeWith(comptime cfg: Config) type {
                 .margin = toEdges(b.margin),
                 .baseline = out.baseline,
             };
+            if (mirrors(&self.nodes.items[node].style)) {
+                // (the box was resolved in the node's mirrored space)
+                const l = &self.layouts.items[node];
+                std.mem.swap(f32, &l.padding.left, &l.padding.right);
+                std.mem.swap(f32, &l.border.left, &l.border.right);
+            }
+        }
+
+        /// Mirrored container `node` (border-box width `w`) has just placed its children in mirrored
+        /// space: converts them to physical coordinates (and the static positions of the absolutely
+        /// positioned children it deferred).
+        noinline fn flipChildren(self: *Self, node: u32, w: f32) void {
+            const ns = self.nodes.items;
+            var ch = ns[node].first_child;
+            while (ch != no_node) : (ch = ns[ch].next_sibling) {
+                const cs = &ns[ch].style;
+                if (cs.display == .none) continue;
+                if (cs.position.isOut()) {
+                    const pi = ns[ch].pending;
+                    if (pi < self.pending.items.len and self.pending.items[pi].node == ch and self.pending.items[pi].parent == node) {
+                        const sp = &self.pending.items[pi].sp;
+                        if (sp.mirrored) {
+                            sp.mirrored = false;
+                            sp.rect[0] = w - sp.rect[0] - sp.rect[2];
+                            sp.al[0] = 2 - @min(sp.al[0], 2);
+                        }
+                        continue;
+                    }
+                }
+                const l = &self.layouts.items[ch];
+                l.x = w - l.x - l.w;
+                std.mem.swap(f32, &l.margin.left, &l.margin.right);
+            }
         }
 
         /// Grow `content` (extent from the container's border-box origin) by a laid-out child.
@@ -888,6 +948,15 @@ pub fn TreeWith(comptime cfg: Config) type {
             in.width_only = axis == 0;
             try self.computeNode(node, in, &self.tmp_out);
             return self.tmp_out.size[axis];
+        }
+        /// Horizontal offset of a relatively positioned box in the space its parent places it in: `left` wins
+        /// over `right`; in an `rtl` block container `right` wins; in mirrored space the two swap roles.
+        pub fn relX(self: *const Self, cs: *const Style, base: f32, rtl: bool) f32 {
+            const l = self.dim(cs.inset.left, base);
+            const r = self.dim(cs.inset.right, base);
+            if (cs.mirror_out) return orElse(r, -orElse(l, 0));
+            if (rtl and has(r)) return -r;
+            return orElse(l, -orElse(r, 0));
         }
         /// Sum of the two margins of `s` along `axis` (auto = 0; percentages against `base`, 0 when indefinite).
         pub fn marginSumOf(self: *const Self, s: *const Style, axis: usize, base: f32) f32 {
@@ -989,6 +1058,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                 .inline_row => if (cfg.inline_row and !cfg.inline_fn) try inline_row.compute(self, node, in, out) else try block.compute(self, node, in, out),
                 .none => out.* = .{ .size = .{ 0, 0 } },
             }
+            if (in.layout and n.style.rtl and !leaf and !as_flow and mirrors(&self.nodes.items[node].style)) self.flipChildren(node, out.size[0]);
 
             if (fctx) return;
             var e: *Entry = &c.final;
@@ -1088,10 +1158,12 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// child's containing block (`position: static`): it is then resolved against the nearest positioned
         /// ancestor (or the viewport) once the whole tree has been laid out.
         pub fn placeAbsolute(self: *Self, container: u32, child: u32, area: *const [4]f32, sp: *const Static) Error!void {
-            if (self.nodes.items[container].style.position != .static and self.nodes.items[child].style.position != .fixed) return self.layoutAbsolute(child, area, sp);
+            const mir = mirrors(&self.nodes.items[container].style);
+            if (self.nodes.items[container].style.position != .static and self.nodes.items[child].style.position != .fixed) return self.layoutAbsolute(child, area, sp, mir);
             self.hide(child);
             self.nodes.items[child].pending = @intCast(self.pending.items.len);
             try self.pending.append(self.alloc, .{ .node = child, .parent = container, .sp = sp.* });
+            self.pending.items[self.pending.items.len - 1].sp.mirrored = mir;
         }
 
         fn flushPending(self: *Self, viewport: [2]f32) Error!void {
@@ -1117,7 +1189,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                     }
                     a = self.nodes.items[a].parent;
                 }
-                try self.layoutAbsolute(e.node, &area, &e.sp);
+                try self.layoutAbsolute(e.node, &area, &e.sp, false);
             }
         }
 
@@ -1125,7 +1197,7 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// border-box origin; normally its padding box).
         const AbsState = struct { b: Box, ins: [4]f32, known: [2]f32, avail: [2]f32, cb: [2]f32, pos: [2]f32, in: In, out: Out };
 
-        pub noinline fn layoutAbsolute(self: *Self, child: u32, area: *const [4]f32, sp: *const Static) Error!void {
+        pub noinline fn layoutAbsolute(self: *Self, child: u32, area: *const [4]f32, sp: *const Static, mirrored: bool) Error!void {
             const mark = self.scratch.mark();
             defer self.scratch.release(mark);
             const c = try self.scratch.create(self.alloc, AbsState);
@@ -1141,6 +1213,10 @@ pub fn TreeWith(comptime cfg: Config) type {
                 const ins_raw = rect(st.Dim, s.inset);
                 for (0..4) |i| ins[i] = self.dim(ins_raw[i], cb[i & 1]);
             }
+            // `mirrored`: `area` and `sp` are in the mirrored space of the child's parent (which flips the
+            // child afterwards); else they are physical and the margin swap of `rbox` is undone
+            if (mirrored) std.mem.swap(f32, &ins[0], &ins[2]);
+            if (s.mirror_out and !mirrored) swapMargins(b);
 
             known.* = .{ clampO(b.size[0], b.min[0], b.max[0]), clampO(b.size[1], b.min[1], b.max[1]) };
             for (0..2) |a| {

@@ -305,7 +305,7 @@ noinline fn setup(t: anytype, c: *S) Error!void {
         if (al == .baseline and (it.box.margin_auto[x] or it.box.margin_auto[x + 2])) al = .start;
         it.al = al;
         it.rel = .{
-            orElse(t.dim(cs.inset.left, pct[0]), -orElse(t.dim(cs.inset.right, pct[0]), 0)),
+            t.relX(cs, pct[0], false),
             orElse(t.dim(cs.inset.top, pct[1]), -orElse(t.dim(cs.inset.bottom, pct[1]), 0)),
         };
         it.grow = @max(cs.flex_grow, 0);
