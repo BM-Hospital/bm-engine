@@ -348,6 +348,11 @@ export function createBinding(defaultWasm, external) {
   class Renderer {
     #h = 0;
     #resSeq = 0;
+    /** `fonts` entries of renders registered so far (takumi dedupes them across calls), by the loader's
+     * bytes / object and its name, weight and style; stale once a font is unregistered or cleared */
+    #fontsSeen = new WeakMap();
+    #fontsByUrl = new Map();
+    #fontsGen = 0;
     /** attachments of the call being prepared: flat [key, bytes, flags, width, height] groups */
     #atts = [];
 
@@ -400,11 +405,13 @@ export function createBinding(defaultWasm, external) {
 
     /** Removes every face of `family` (a name or `{ name }`). Returns true when something was removed. */
     unregisterFont(family) {
+      this.#fontsGen++;
       const name = family && typeof family === "object" ? family.name : family;
       return backend.run(this.#handle(), "unregisterFont", 0, 0, String(name), null, null, false)[0] !== 0;
     }
 
     clearFonts() {
+      this.#fontsGen++;
       backend.run(this.#handle(), "clearFonts", 0, 0, null, null, null, false);
     }
 
@@ -499,7 +506,7 @@ export function createBinding(defaultWasm, external) {
         const loaders = await o.fonts;
         const names = [];
         for (const f of loaders) {
-          const fams = await this.registerFont(f);
+          const fams = await this.#registerOnce(f);
           for (const fam of fams || []) if (!names.includes(fam.name)) names.push(fam.name);
         }
         const { fonts: _f, ...rest } = o;
@@ -507,6 +514,47 @@ export function createBinding(defaultWasm, external) {
       }
       if (o.images) o = { ...o, images: await resolveImages(o.images) };
       return o;
+    }
+
+    /** Registers one `fonts` entry of a render unless this renderer already holds it (a Promise when the entry is lazy). */
+    #registerOnce(f) {
+      let map = this.#fontsByUrl;
+      let obj = null;
+      let sub = "";
+      if (f !== null && typeof f === "object" && !(typeof URL !== "undefined" && f instanceof URL) && typeof f.then !== "function") {
+        obj = isBinary(f) || f.data == null || (typeof f.data !== "object" && typeof f.data !== "function") ? f : f.data;
+        if (obj !== f) sub = JSON.stringify([f.name ?? "", f.weight ?? null, f.style ?? null, f.key ?? null]);
+        map = this.#fontsSeen.get(obj);
+        if (!map) this.#fontsSeen.set(obj, (map = new Map()));
+      } else if (typeof f === "string" || (typeof URL !== "undefined" && f instanceof URL)) sub = String(f);
+      else return this.registerFont(f);
+      const hit = map.get(sub);
+      if (hit && hit.gen === this.#fontsGen) return hit.fams;
+      const gen = this.#fontsGen;
+      const keep = (fams) => { map.set(sub, { gen, fams }); return fams; };
+      const r = this.registerFont(f);
+      return r && typeof r.then === "function" ? r.then(keep) : keep(r);
+    }
+
+    /**
+     * #extras for the sync API: registers `fonts` given as bytes or `{ data: bytes }` (a URL, a promise
+     * or a lazy `data()` loader needs the async API and throws). Lazy images throw later, in #putImages.
+     */
+    #extrasSync(options) {
+      if (!options.fonts) return options;
+      const loaders = options.fonts;
+      if (typeof loaders.then === "function" || !loaders[Symbol.iterator]) throw new TypeError("bm-engine: a fonts promise needs the async API");
+      for (const f of loaders) {
+        const lazy = typeof f === "string" || (typeof URL !== "undefined" && f instanceof URL) || (f && typeof f.then === "function") ||
+          (f && !isBinary(f) && (typeof f.data === "function" || (f.data && typeof f.data.then === "function")));
+        if (lazy) throw new TypeError("bm-engine: fonts[] entries given as a URL, a promise or a lazy data() loader need the async API");
+      }
+      const names = [];
+      for (const f of loaders) {
+        for (const fam of this.#registerOnce(f) || []) if (!names.includes(fam.name)) names.push(fam.name);
+      }
+      const { fonts: _f, ...rest } = options;
+      return options.fontFamilies || names.length === 0 ? rest : { ...rest, fontFamilies: names };
     }
 
     /**
@@ -521,7 +569,8 @@ export function createBinding(defaultWasm, external) {
      * `fontFamilies`, `lang`, `drawDebugBorder` / `dithering` (accepted, ignored).
      */
     renderSync(node, options = {}) {
-      return this.#run(this.#call("render", node, options));
+      [node, options] = unwrap(node, options, "render");
+      return this.#run(this.#call("render", node, this.#extrasSync(options)));
     }
 
     /**
@@ -552,7 +601,8 @@ export function createBinding(defaultWasm, external) {
      * `render_svg` (the full profile); `format` / `quality` are ignored.
      */
     renderSvgSync(node, options = {}) {
-      return this.#run(this.#call("svg", node, options), true);
+      [node, options] = unwrap(node, options, "render");
+      return this.#run(this.#call("svg", node, this.#extrasSync(options)), true);
     }
 
     async renderSvg(node, options = {}) {
@@ -598,7 +648,8 @@ export function createBinding(defaultWasm, external) {
      * `css`, `cssVariables`, `fontFamilies`, `lang`, `images`, `fonts`, `signal`); see js/pdf-types.d.mts.
      */
     renderPdfSync(node, options = {}) {
-      return this.#run(this.#callPdf("render", node, options));
+      [node, options] = unwrap(node, options, "render");
+      return this.#run(this.#callPdf("render", node, this.#extrasSync(options)));
     }
 
     async renderPdf(node, options = {}) {
@@ -608,7 +659,8 @@ export function createBinding(defaultWasm, external) {
 
     /** takumi-pdf `measure`: `{ width, height }` in CSS px, laid out like a header / footer band (see pdf.d.mts). */
     measurePdfSync(node, options = {}) {
-      return JSON.parse(this.#run(this.#callPdf("measure", node, options), true));
+      [node, options] = unwrap(node, options, "render");
+      return JSON.parse(this.#run(this.#callPdf("measure", node, this.#extrasSync(options)), true));
     }
 
     async measurePdf(node, options = {}) {
@@ -618,7 +670,8 @@ export function createBinding(defaultWasm, external) {
 
     /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */
     measureSync(node, options = {}) {
-      return JSON.parse(this.#run(this.#call("measure", node, options), true));
+      [node, options] = unwrap(node, options, "render");
+      return JSON.parse(this.#run(this.#call("measure", node, this.#extrasSync(options)), true));
     }
 
     async measure(node, options = {}) {
@@ -649,7 +702,7 @@ export function createBinding(defaultWasm, external) {
      * Max fps: 50 for gif, 90 for webp / apng.
      */
     renderAnimationSync(options) {
-      return this.#run(this.#animation(options));
+      return this.#run(this.#animation(options && !options[PREPARED] ? this.#extrasSync(options) : options));
     }
 
     /** Validates and serialises one renderAnimation call; returns the job for #run / #runAsync. */

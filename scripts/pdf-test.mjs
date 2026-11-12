@@ -492,7 +492,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
 // ---- module-level API
 {
   const { render, measure, prepare } = pdfMod;
-  isPdf(await render(node, { viewport: { width: 50, height: 50 } }), "module-level render", [37.5, 37.5]);
+  isPdf(await render(sized, { viewport: { width: 50, height: 50 } }), "module-level render", [37.5, 37.5]);
   check((await measure(sized)).height === 30, "module-level measure");
   check((await prepare(html)) instanceof pdfMod.Prepared, "module-level prepare");
 }
@@ -502,7 +502,7 @@ const bad = (opts, re, msg) => rejects(() => r.render(node, opts), re, msg);
 await bad({ size: "tabloid" }, /unknown page size: tabloid/, "unknown page size");
 await bad({ viewport: { width: 600 }, size: "a4" }, /viewport is mutually exclusive with the paged options/, "viewport + size");
 await bad({ viewport: { width: 600 }, pageRanges: [1] }, /mutually exclusive/, "viewport + pageRanges");
-await bad({ viewport: { width: 0 } }, /invalid viewport/, "viewport width 0");
+await bad({ viewport: { width: 0 } }, /Page size must be finite and larger than zero/, "viewport width 0");
 await bad({ pageRanges: [0] }, /Page range is invalid: 0\. Pages are numbered from 1\./, "page range 0");
 await bad({ pageRanges: [{ from: 5, to: 2 }] }, /Page range is invalid: 5-2/, "backwards page range");
 await bad({ viewport: { width: 100, height: 100 }, pageRanges: undefined, backgroundColor: "nope" }, /backgroundColor is not a color: nope/, "bad backgroundColor");
@@ -672,6 +672,147 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
   check(JSON.stringify(boxes) === JSON.stringify([[420, 595], [595, 420], [420, 595]]), `named pages: A5, A5 landscape (named), A5: ${JSON.stringify(boxes)}`);
   const same = await r.render(`<style>@page { size: A5 } .w { page: auto }</style><p>one</p><div class="w">two</div>`);
   check(mediaBoxes(same).length === 1, "named pages: page: auto does not break");
+}
+
+// ---- regressions of known bugs (behaviour checked against the published takumi-pdf 0.20.0)
+{
+  const { inflateSync } = await import("node:zlib");
+  /** The page content streams of the file, inflated, as latin1 text. */
+  const content = (bytes) => {
+    const s = latin1(bytes); const out = [];
+    let at = 0;
+    for (;;) {
+      const i = s.indexOf("stream\n", at); if (i < 0) break;
+      const j = s.indexOf("\nendstream", i); if (j < 0) break;
+      const dict = s.slice(s.lastIndexOf("obj", i), i);
+      if (/FlateDecode/.test(dict) && !/Subtype|Length1|Type\/|XRef|ObjStm/.test(dict)) {
+        try { const t = inflateSync(Buffer.from(bytes.subarray(i + 7, j))).toString("latin1"); if (!t.slice(0, 64).includes("\0")) out.push(t); } catch {}
+      }
+      at = j + 10;
+    }
+    return out.join("\n");
+  };
+  const textOf = (bytes, name) => {
+    const file = path.join(tmp, name + ".pdf");
+    writeFileSync(file, bytes);
+    const t = spawnSync("pdftotext", ["-raw", "-enc", "UTF-8", file, "-"], { encoding: "utf8" });
+    if (t.error && t.error.code === "ENOENT") { pdftotextMissing = true; return null; }
+    return t.stdout.replace(/\s+/g, " ").trim();
+  };
+  const inter = new Uint8Array(readFileSync(path.join(root, "assets", "fonts", "Inter-Regular.ttf")));
+  const vp = { viewport: { width: 320, height: 120 } };
+
+  // 1. no font registered at all: takumi-pdf draws its bundled Geist font, bm-engine bundles none and fails
+  //    the render naming the characters (unless uncoveredText is "blank")
+  const noFont = /No font is registered to draw H \(U\+0048\), e \(U\+0065\), l \(U\+006C\), o \(U\+006F\)\. bm-engine bundles no font/;
+  await rejects(() => new PdfRenderer().render("<p>Hello</p>"), noFont, "no font: PdfRenderer.render fails");
+  await rejects(() => pdfMod.render("<p>Hello</p>"), noFont, "no font: module-level render fails");
+  await rejects(async () => new PdfRenderer().renderSync("<p>Hello</p>"), noFont, "no font: renderSync fails");
+  await rejects(() => new PdfRenderer().measure("<p>Hello</p>"), noFont, "no font: measure fails");
+  await rejects(() => new PdfRenderer().render("<p>x</p>", { footer: "<p>Hello</p>" }), noFont, "no font: text in a band fails");
+  isPdf(await new PdfRenderer().render("<p>Hello</p>", { ...vp, uncoveredText: "blank" }), "no font: uncoveredText blank draws nothing");
+  isPdf(await new PdfRenderer().render(`<div style="width:10px;height:10px;background:red"> </div>`, vp), "no font: a document without text renders");
+
+  // 2. per-call `fonts` on the sync methods (registered as on the async ones; lazy loaders need the async API)
+  {
+    const t = textOf(new PdfRenderer().renderSync("<p>Hello sync</p>", { ...vp, fonts: [inter] }), "sync_fonts");
+    if (t !== null) check(t === "Hello sync", `renderSync fonts option: text drawn (${JSON.stringify(t)})`);
+    check(new PdfRenderer().measureSync("<p>Hello</p>", { fonts: [{ name: "Inter", data: inter }] }).height > 0, "measureSync fonts option: text measured");
+    try { new PdfRenderer().renderSync("<p>x</p>", { fonts: [{ name: "Lazy", data: () => inter }] }); check(false, "renderSync lazy font throws"); }
+    catch (e) { check(/need the async API/.test(e.message), "renderSync lazy font throws: " + e.message); }
+    const img = new fullMod.Renderer();
+    check(img.measureSync("<p>Hello</p>", { width: 200, fonts: [inter] }).height > 0, "image Renderer.measureSync fonts option: text measured");
+    // a render's `fonts` are registered once per renderer, as takumi-pdf dedupes them across calls
+    const once = new PdfRenderer();
+    for (let k = 0; k < 3; k++) await once.render("<p>x</p>", { ...vp, fonts: [inter, { name: "Inter Again", data: inter }] });
+    once.renderSync("<p>x</p>", { ...vp, fonts: [inter] });
+    const faces = once.registerFont(inter).find((fam) => fam.name === "Inter").faces.length;
+    check(faces === 2, `fonts option: registered once across renders (Inter faces after 4 renders + registerFont: ${faces})`);
+  }
+
+  // 3. a content-sized page of no height: takumi-pdf's InvalidPageSize; measure reports the zero size; the
+  //    page is as tall as the root's margin box, unrounded
+  await rejects(() => r.render("<div></div>", { viewport: { width: 300 } }), /^bm-engine: Page size must be finite and larger than zero$/, "empty content, viewport without height");
+  {
+    const m = await r.measure("<div></div>", { viewport: { width: 300 } });
+    check(m.width === 300 && m.height === 0, `measure of empty content: ${JSON.stringify(m)}`);
+    isPdf(await r.render(`<div style="height:10.2px;margin:5px"></div>`, { viewport: { width: 300 } }), "content-sized page keeps the fractional height", [225, 15.140625]);
+  }
+
+  // 4. paint order (CSS 2.1 appendix E, as takumi-pdf: in-flow backgrounds, floats, in-flow content, positioned)
+  {
+    const order = (bytes, needles) => { const c = content(bytes); return needles.map((s) => c.indexOf(s)); };
+    const fl = await r.render(`<div style="width:300px;background:#eee"><p style="margin:0;background:#cfc">Hello text</p><div style="float:left;width:100px;height:40px;margin-top:-30px;background:#f00"></div><div style="position:relative;width:50px;height:20px;background:#00f;margin-top:-10px"></div></div>`, { ...vp, tagged: false });
+    const [bg, flt, txt, pos] = order(fl, ["0.8 1 0.8 rg", "1 0 0 rg", "BT", "0 0 1 rg"]);
+    check(bg >= 0 && bg < flt && flt < txt && txt < pos, `paint order: block background < float < text < positioned (${[bg, flt, txt, pos]})`);
+    const fx = await r.render(`<div style="width:300px"><div style="display:flex"><div style="background:#f00;width:50px;height:20px">A</div></div><div style="background:#00f;height:20px;margin-top:-10px"></div></div>`, { ...vp, tagged: false });
+    const [blue, red] = order(fx, ["0 0 1 rg", "1 0 0 rg"]);
+    check(blue >= 0 && blue < red, "paint order: a flex item paints with the content, after a later block's background");
+    const ib = await r.render(`<p style="margin:0">Hi <span style="display:inline-block;width:40px;height:20px;background:#f00"></span> yo</p><div style="background:#00f;height:20px;margin-top:-10px"></div>`, { ...vp, tagged: false });
+    const [b2, t2, r2] = order(ib, ["0 0 1 rg", "BT", "1 0 0 rg"]);
+    check(b2 >= 0 && b2 < t2 && t2 < r2, "paint order: block background < text < inline-block");
+  }
+
+  // 5. image-rendering: takumi-pdf writes every image without /Interpolate (viewers choose), whatever the value
+  {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8AAQv8ZQASIBQBDzgf5kLRQ3gAAAABJRU5ErkJggg==", "base64");
+    for (const mode of ["auto", "smooth", "pixelated", "crisp-edges"]) {
+      const b = await r.render(`<img src="c.png" style="width:100px;height:100px;image-rendering:${mode}">`, { ...vp, images: [{ src: "c.png", data: png }] });
+      check(/\/Subtype\/Image/.test(latin1(b)) && !/\/Interpolate/.test(latin1(b)), `image-rendering ${mode}: image without /Interpolate`);
+    }
+  }
+
+  // 6. text-overflow markers are text of their own (extractable as the marker), the hidden text is not drawn
+  {
+    const W = (s) => `<div style="padding:4px"><div style="width:120px;white-space:nowrap;overflow:hidden;font-family:Inter;text-overflow:${s}">Hello wonderful world of text</div></div>`;
+    const ir = new PdfRenderer();
+    ir.registerFont({ name: "Inter", data: inter });
+    const t1 = textOf(await ir.render(W("ellipsis"), { viewport: { width: 200, height: 80 } }), "ellipsis");
+    if (t1 !== null) check(/^Hello wonder(…|\.\.\.)$/.test(t1), `text-overflow ellipsis extracts as the marker: ${JSON.stringify(t1)}`);
+    const t2 = textOf(await ir.render(W("'[more]'"), { viewport: { width: 200, height: 80 } }), "custom_marker");
+    if (t2 !== null) check(t2 === "Hello wo[more]", `text-overflow string extracts as the marker: ${JSON.stringify(t2)}`);
+    const clip = content(await ir.render(W("ellipsis"), { viewport: { width: 200, height: 80 }, tagged: false }));
+    check(/re\nW\nn/.test(clip), "an overflow box clips its own text");
+  }
+
+  // 7. long documents: a page draws only what is on it, time and memory grow linearly with the pages
+  {
+    const perPage = (bytes) => {
+      const s = latin1(bytes); const out = []; let at = 0;
+      for (;;) {
+        const i = s.indexOf("stream\n", at); if (i < 0) break;
+        const j = s.indexOf("\nendstream", i); if (j < 0) break;
+        const dict = s.slice(s.lastIndexOf("obj", i), i);
+        if (/FlateDecode/.test(dict) && !/Subtype|Length1|Type\/|XRef|ObjStm/.test(dict)) {
+          try { const t = inflateSync(Buffer.from(bytes.subarray(i + 7, j))).toString("latin1"); if (/ cm[ \n]/.test(t) &&!t.slice(0, 64).includes("\0")) out.push(t); } catch {}
+        }
+        at = j + 10;
+      }
+      return out;
+    };
+    const lr = new PdfRenderer();
+    lr.registerFont({ name: "Inter", data: inter });
+    const rows = Array.from({ length: 70 }, (_, k) => `<tr style="background:${k % 2 ? "#f1f5f9" : "#fff"}"><td>Row ${k}</td><td>Item ${k}</td><td>${k * 3}</td></tr>`).join("");
+    const table = await lr.render(`<style>body{font-family:Inter;font-size:11px} table{width:100%;border-collapse:collapse} td,th{border:1px solid #cbd5e1;padding:4px}</style><table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody>${rows}</tbody></table>`, { size: "a5" });
+    const res = perPage(table).map((t) => (t.match(/ re\n/g) || []).length);
+    check(res.length >= 3 && Math.max(...res) < 450, `a 70-row collapsed table: rectangles per page ${res.join("/")} (takumi-pdf 288/339/326/59; was ~900 a page)`);
+    const sec = (k) => `<section style="break-after:page"><h2>Section ${k + 1}</h2><p>${"Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8)}</p>` +
+      `<table style="width:100%;border-collapse:collapse"><tbody>${Array.from({ length: 14 }, (_, r) => `<tr><td style="border-bottom:1px solid #e2e8f0">Line ${k * 14 + r}</td><td>${r}</td></tr>`).join("")}</tbody></table></section>`;
+    const doc = (n) => `<div style="font-family:Inter;font-size:11px">${Array.from({ length: n }, (_, k) => sec(k)).join("")}</div>`;
+    const footer = `<div style="font:9px Inter;text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`;
+    const t0 = performance.now();
+    const big = await lr.render(doc(500), { size: "a4", margin: 40, footer });
+    const ms = performance.now() - t0;
+    const streams = perPage(big);
+    const ops = streams.map((t) => t.length);
+    check(streams.length === 500 && ms < 60000, `500 pages render (${streams.length} pages in ${Math.round(ms)} ms; was out of memory)`);
+    check(ops.length === 500 && Math.max(...ops) < 3 * Math.min(...ops.slice(0, -1)), `500 pages: each page's content is its own (bytes per page ${Math.min(...ops)}..${Math.max(...ops)})`);
+    const mem = [];
+    const rr = new pdfMod.Renderer();
+    rr.registerFont({ name: "Inter", data: inter });
+    for (let k = 0; k < 3; k++) { await rr.renderPdf(doc(60), { size: "a4", margin: 40, footer }); mem.push(rr.memoryBytes()); }
+    check(mem[2] <= mem[0] * 1.1, `memory plateaus over renders (${mem.map((m) => Math.round(m / 2 ** 20)).join(" / ")} MiB)`);
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });

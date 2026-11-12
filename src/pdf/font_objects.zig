@@ -276,7 +276,34 @@ pub const Uncovered = struct {
         if (u.policy == .placeholder and u.forbidden_by == null) return null;
         var out: std.ArrayList(u8) = .empty;
         try out.appendSlice(a, "No font the text can use draws ");
-        for (u.chars.items, 0..) |cp, i| {
+        try u.appendNamed(a, &out, u.chars.items.len);
+        if (u.policy == .placeholder) {
+            try out.appendSlice(a, ", and ");
+            try out.appendSlice(a, u.forbidden_by.?);
+            try out.appendSlice(a, " forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to \"blank\".");
+            return out.items;
+        }
+        try out.appendSlice(a, ". Check each font's unicodeRange and the font-family stack, or register a font that draws them.");
+        return out.items;
+    }
+
+    /// The error of text met while no font is registered at all (takumi-pdf always has its bundled
+    /// Geist last-resort font; bm-engine bundles none). Names the first characters, null when none
+    /// were met.
+    pub fn noFontMessage(u: *const Uncovered, a: Allocator) !?[]const u8 {
+        if (u.chars.items.len == 0) return null;
+        var out: std.ArrayList(u8) = .empty;
+        try out.appendSlice(a, "No font is registered to draw ");
+        const shown = @min(u.chars.items.len, 8);
+        try u.appendNamed(a, &out, shown);
+        if (shown < u.chars.items.len) try out.appendSlice(a, ", ...");
+        try out.appendSlice(a, ". bm-engine bundles no font: register one with registerFont or the fonts option.");
+        return out.items;
+    }
+
+    /// `c (U+0063), d (U+0064)` for the first `count` recorded characters.
+    fn appendNamed(u: *const Uncovered, a: Allocator, out: *std.ArrayList(u8), count: usize) !void {
+        for (u.chars.items[0..count], 0..) |cp, i| {
             if (i > 0) try out.appendSlice(a, ", ");
             var b: [4]u8 = undefined;
             try out.appendSlice(a, b[0..ttf.encodeUtf8(cp, &b)]);
@@ -294,14 +321,6 @@ pub const Uncovered = struct {
             }
             try out.append(a, ')');
         }
-        if (u.policy == .placeholder) {
-            try out.appendSlice(a, ", and ");
-            try out.appendSlice(a, u.forbidden_by.?);
-            try out.appendSlice(a, " forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to \"blank\".");
-            return out.items;
-        }
-        try out.appendSlice(a, ". Check each font's unicodeRange and the font-family stack, or register a font that draws them.");
-        return out.items;
     }
 };
 

@@ -136,6 +136,7 @@ fn buildFrameEx(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind,
         f.setPaged(ar.width, ar.height);
     }
     try f.prepare(kind, source);
+    try @import("text.zig").requireFont(&f, o.uncovered_text == .blank);
     return f;
 }
 
@@ -191,10 +192,19 @@ fn emit(a: Allocator, input: Input) Error![]const u8 {
             _ = try sel.pushPage(a);
             try finishSelection(r, &sel);
             const w: f32 = @floatFromInt(v.width);
+            // takumi-pdf `SinglePage::compose`: without a height the page is as tall as the root's
+            // margin box reaches, unrounded (an out-of-flow root reaches nothing); a page without
+            // height is `InvalidPageSize`
             const h: f32 = if (v.height) |vh| @floatFromInt(vh) else blk: {
-                const l = f.tree.layout(f.nodes.items[f.root].lid);
-                break :blk @max(1, @ceil(l.h));
+                const rn = f.nodes.items[f.root];
+                if (rn.cs.position == .absolute or rn.cs.position == .fixed) break :blk 0;
+                const l = f.tree.layout(rn.lid);
+                break :blk l.y + l.h + l.margin.bottom;
             };
+            if (!(h > 0) or !std.math.isFinite(h)) {
+                r.setErr("Page size must be finite and larger than zero", "");
+                return error.Invalid;
+            }
             const pages = [_]emitter.PageBox{.{ .width = w, .height = h, .content = .{ .x = 0, .y = 0, .w = w, .h = h }, .background = background }};
             const windows = [_]emitter.Window{.{}};
             return emitter.writeDocument(a, &f, &pages, &windows, policy);
@@ -246,6 +256,12 @@ test "renderPdf: not supported without the flag, a page of the requested size wi
     // content-sized viewport page (no height): the node's height
     const fit = try r.renderPdf(.json, node, "{\"viewport\":{\"width\":100}}");
     try std.testing.expect(std.mem.indexOf(u8, fit, "/MediaBox[0 0 75 30]") != null);
+    // ... unrounded, the root's margin box; none at all is takumi-pdf's InvalidPageSize
+    const frac = try r.renderPdf(.json, "{\"type\":\"container\",\"style\":{\"height\":10.2,\"margin\":5}}", "{\"viewport\":{\"width\":100}}");
+    try std.testing.expect(std.mem.indexOf(u8, frac, "/MediaBox[0 0 75 15.140625]") != null);
+    try std.testing.expectError(error.Invalid, r.renderPdf(.json, "{\"type\":\"container\"}", "{\"viewport\":{\"width\":100}}"));
+    try std.testing.expectEqualStrings("Page size must be finite and larger than zero", r.err);
+    try std.testing.expectEqualStrings("{\"width\":100,\"height\":0}", try r.measurePdf(.json, "{\"type\":\"container\"}", "{\"viewport\":{\"width\":100}}"));
     // measure
     const m = try r.measurePdf(.json, node, "{\"size\":\"letter\"}");
     try std.testing.expectEqualStrings("{\"width\":50,\"height\":40}", m);
@@ -255,6 +271,20 @@ test "renderPdf: not supported without the flag, a page of the requested size wi
     try std.testing.expectError(error.Invalid, r.renderPdf(.json, "{\"type\":\"container\",\"style\":{\"width\":\"banana\"}}", ""));
     try std.testing.expectError(error.Invalid, r.renderPdf(.json, node, "{\"backgroundColor\":\"notacolor\"}"));
     try std.testing.expectEqualStrings("backgroundColor is not a color: notacolor", r.err);
+}
+
+test "renderPdf: text while no font is registered fails, naming it (bm-engine bundles no font)" {
+    if (comptime !config.enable_pdf) return;
+    const r = Renderer.create(std.testing.allocator).?;
+    defer r.destroy();
+    const node = "{\"type\":\"text\",\"text\":\"Hi\"}";
+    const vp = "{\"viewport\":{\"width\":100,\"height\":50}}";
+    try std.testing.expectError(error.Invalid, r.renderPdf(.json, node, vp));
+    try std.testing.expect(std.mem.indexOf(u8, r.err, "No font is registered to draw H (U+0048), i (U+0069). bm-engine bundles no font") != null);
+    try std.testing.expectError(error.Invalid, r.measurePdf(.json, node, ""));
+    // `uncoveredText: "blank"` asked for nothing to be drawn; a tree without text needs no font
+    _ = try r.renderPdf(.json, node, "{\"viewport\":{\"width\":100,\"height\":50},\"uncoveredText\":\"blank\"}");
+    _ = try r.renderPdf(.json, "{\"type\":\"text\",\"text\":\" \\n \"}", vp);
 }
 
 /// Renders `node` (JSON) on a viewport page with uncompressed streams (tests).

@@ -24,6 +24,8 @@ const variations = @import("variations.zig");
 const root_mod = @import("root");
 pub const enable_cff = if (@hasDecl(root_mod, "bm_config")) root_mod.bm_config.enable_cff else true;
 pub const enable_variations = if (@hasDecl(root_mod, "bm_config")) root_mod.bm_config.enable_variable_fonts else true;
+/// PDF output is compiled in (`PathOut.round_points`).
+pub const enable_pdf = if (@hasDecl(root_mod, "bm_config")) root_mod.bm_config.enable_pdf else true;
 
 pub const Error = error{
     /// Recognised but not supported: CFF outlines when CFF support is compiled out, Type 1
@@ -104,6 +106,9 @@ pub const Xf = struct {
 pub const PathOut = struct {
     ctx: *anyopaque,
     emit: *const fn (ctx: *anyopaque, verb: Verb, p: *const [6]f32) void,
+    /// (PDF builds) gvar-varied points rounded to whole font units, as skrifa draws an unscaled
+    /// outline (krilla / takumi-pdf); the raster and SVG paths keep them exact
+    round_points: if (enable_pdf) bool else void = if (enable_pdf) false else {},
 
     pub const Verb = enum(u8) { move, line, quad, cubic, close };
 
@@ -814,8 +819,14 @@ pub const Font = struct {
     /// Like FreeType and skrifa the outline is shifted so that the glyph origin sits at the
     /// first phantom point, i.e. by `lsb - xMin` (0 for nearly every font).
     pub fn outline(f: *const Font, gid: u16, sink: anytype) bool {
+        return f.outlineWith(gid, sink, false);
+    }
+
+    /// `outline`; `round_points` (PDF builds): varied points on whole font units (`PathOut`).
+    pub fn outlineWith(f: *const Font, gid: u16, sink: anytype, comptime round_points: bool) bool {
         if ((enable_cff and f.cff.len != 0) or (enable_variations and f.varied and f.gvar.len != 0)) {
-            const po = PathOut.of(sink);
+            var po = PathOut.of(sink);
+            if (comptime enable_pdf and round_points) po.round_points = true;
             if (f.outlineErased(gid, &po)) |drawn| return drawn;
         }
         var budget: u32 = 256;

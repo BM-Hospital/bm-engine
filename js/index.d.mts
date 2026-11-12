@@ -197,7 +197,7 @@ export type CommonOptions = {
   fontFamilies?: string[];
   /** root language (`:lang()`, OpenType language system) */
   lang?: string;
-  /** FontLoader list registered before rendering (async API only) */
+  /** Fonts registered before rendering, once per renderer (deduped across calls). The sync methods take bytes and `{ data: bytes }` entries; a URL, a promise or a lazy `data()` loader needs the async API. */
   fonts?: FontLoader[] | Promise<FontLoader[]>;
   /** checked before rendering */
   signal?: AbortSignal;

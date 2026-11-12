@@ -45,7 +45,8 @@ pub fn glyphPath(a: Allocator, font: *const ttf.Font, gid: u16, t: Tf, out: *Pat
     out.reset();
     var tmp: Path = .empty;
     var sink: raster.PathSink = .{ .path = if (t.isIdentity()) out else &tmp, .alloc = a };
-    _ = font.outline(gid, &sink);
+    // (varied points on whole font units, as krilla draws them through skrifa)
+    _ = font.outlineWith(gid, &sink, true);
     if (sink.err) return error.OutOfMemory;
     if (!t.isIdentity()) try geom.transformed(a, &tmp, t, out);
     return geom.bounds(out) != null;

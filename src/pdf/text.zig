@@ -680,34 +680,6 @@ fn alphaImage(cx: *sf.Ctx, alpha: []const u8, iw: u32, ih: u32, c: *const Color)
     return eimg.regPixmap(cx, &pm, key, .{ .ctx = c, .apply = silhouettePixel, .key = @as(u32, @bitCast([4]u8{ c.r, c.g, c.b, c.a })) });
 }
 
-/// The bitmap glyph's alpha at its device size (bm-engine's raster placement: scale size/ppem,
-/// offsets rounded), in a buffer padded by `pad` px on every side. Returns the mask and its
-/// top-left relative to the glyph origin.
-fn bitmapAlpha(a: Allocator, font: *const ttf.Font, gid: u16, size: f32, pad: u32) !?struct { data: []u8, w: u32, h: u32, x: f32, y: f32 } {
-    if (comptime !enable_color_fonts) return null;
-    const tables = color_mod.ColorTables.init(font);
-    const bm = tables.bitmap(gid, size) orelse return null;
-    if (bm.format != .png) return null;
-    const sx = if (bm.ppem_x > 0) size / bm.ppem_x else 1;
-    const sy = if (bm.ppem > 0) size / bm.ppem else 1;
-    const left = @round(bm.bearing_x * sx);
-    const top = @round(bm.bearing_y * sy);
-    const iw: u32 = if (bm.width > 0) bm.width else 1;
-    const ih: u32 = if (bm.height > 0) bm.height else 1;
-    const pw: u32 = @intFromFloat(@max(1, @round(@as(f32, @floatFromInt(iw)) * sx)));
-    const ph: u32 = @intFromFloat(@max(1, @round(@as(f32, @floatFromInt(ih)) * sy)));
-    const bw = pw + 2 * pad;
-    const bh = ph + 2 * pad;
-    var pix = try raster.Pixmap.init(a, bw, bh);
-    @memset(pix.data, 0);
-    const fp: f32 = @floatFromInt(pad);
-    const cex = @import("../font/color_example.zig");
-    if (!(try cex.drawBitmapGlyph(a, &pix, bm, size, fp - left, fp + top, null))) return null;
-    const alpha = try a.alloc(u8, @as(usize, bw) * bh);
-    for (alpha, 0..) |*o, i| o.* = pix.data[i * 4 + 3];
-    return .{ .data = alpha, .w = bw, .h = bh, .x = left - fp, .y = -top - fp };
-}
-
 /// takumi `draw_silhouettes` (sharp) for one bitmap glyph: the image's alpha in colour `c`,
 /// drawn under the glyph image's own placement transform.
 fn bitmapSilhouette(s: *sf.Surface, font: *const ttf.Font, gid: u16, size: f32, at: [2]f32, c: Color) !void {
@@ -731,20 +703,53 @@ fn bitmapSilhouette(s: *sf.Surface, font: *const ttf.Font, gid: u16, size: f32, 
     s.pop();
 }
 
-/// takumi `draw_blurred_silhouettes` for one bitmap glyph: its device-size alpha, padded by
-/// 3 sigma and blurred (bm-engine's Gaussian, the raster renderer's text-shadow blur), in `c`.
+/// takumi `draw_blurred_silhouettes` for one bitmap glyph: its alpha at the device size, sampled
+/// nearest-neighbour from the bitmap (takumi `ResolvedBitmapGlyph::write_alpha_mask`), padded by
+/// 3 sigma and blurred as premultiplied RGBA (`blur_rgba`), in `c`.
 fn blurredBitmapSilhouette(s: *sf.Surface, font: *const ttf.Font, gid: u16, size: f32, at: [2]f32, blur: f32, c: Color) !void {
+    if (comptime !enable_color_fonts) return;
     const cx = s.cx;
     const sigma = blur * 0.5;
     const pad: u32 = @intFromFloat(@ceil(3 * sigma));
-    const m = (try bitmapAlpha(cx.a, font, gid, size, pad)) orelse return;
-    var mask: raster.Mask = .{ .bounds = .{ .x = 0, .y = 0, .w = m.w, .h = m.h }, .data = m.data };
-    try raster.blurMaskClipped(cx.a, &mask, sigma, .{ .x = 0, .y = 0, .w = m.w, .h = m.h });
+    const tables = color_mod.ColorTables.init(font);
+    const bm = tables.bitmap(gid, size) orelse return;
+    if (bm.format != .png) return;
+    const codec = @import("../codec/codec.zig");
+    const img = codec.decode(cx.a, bm.data, .{ .max_pixels = 4 << 20 }) catch return;
+    if (img.width == 0 or img.height == 0) return;
+    const sx = if (bm.ppem_x > 0) size / bm.ppem_x else 1;
+    const sy = if (bm.ppem > 0) size / bm.ppem else 1;
+    const left = @round(bm.bearing_x * sx);
+    const top = @round(bm.bearing_y * sy);
+    const iw: u32 = if (bm.width > 0) bm.width else 1;
+    const ih: u32 = if (bm.height > 0) bm.height else 1;
+    const pw: u32 = @intFromFloat(@max(1, @round(@as(f32, @floatFromInt(iw)) * sx)));
+    const ph: u32 = @intFromFloat(@max(1, @round(@as(f32, @floatFromInt(ih)) * sy)));
+    const bw = pw + 2 * pad;
+    const bh = ph + 2 * pad;
+    var pix = try raster.Pixmap.init(cx.a, bw, bh);
+    @memset(pix.data, 0);
+    const same = img.width == pw and img.height == ph;
+    const mx: f32 = @floatFromInt(img.width - 1);
+    const my: f32 = @floatFromInt(img.height - 1);
+    var yy: u32 = 0;
+    while (yy < ph) : (yy += 1) {
+        const src_y: u32 = if (same) yy else @intFromFloat(std.math.clamp(@round((@as(f32, @floatFromInt(yy)) + 0.5) / sy - 0.5), 0, my));
+        var xx: u32 = 0;
+        while (xx < pw) : (xx += 1) {
+            const src_x: u32 = if (same) xx else @intFromFloat(std.math.clamp(@round((@as(f32, @floatFromInt(xx)) + 0.5) / sx - 0.5), 0, mx));
+            pix.data[(@as(usize, yy + pad) * bw + xx + pad) * 4 + 3] = img.data[(@as(usize, src_y) * img.width + src_x) * 4 + 3];
+        }
+    }
+    try raster.blurPixmap(cx.a, &pix, sigma);
+    const alpha = try cx.a.alloc(u8, @as(usize, bw) * bh);
+    for (alpha, 0..) |*o, i| o.* = pix.data[i * 4 + 3];
     const col = try cx.a.create(Color);
     col.* = .{ .r = c.r, .g = c.g, .b = c.b, .a = 255 };
-    const ref = try alphaImage(cx, mask.data, mask.bounds.w, mask.bounds.h, col);
-    s.pushTransform(Tf.translate(at[0] + m.x + @as(f32, @floatFromInt(mask.bounds.x)), at[1] + m.y + @as(f32, @floatFromInt(mask.bounds.y))));
-    s.drawImage(ref, @floatFromInt(mask.bounds.w), @floatFromInt(mask.bounds.h));
+    const ref = try alphaImage(cx, alpha, bw, bh, col);
+    const fp: f32 = @floatFromInt(pad);
+    s.pushTransform(Tf.translate(at[0] + left - fp, at[1] - top - fp));
+    s.drawImage(ref, @floatFromInt(bw), @floatFromInt(bh));
     s.pop();
 }
 
@@ -753,6 +758,40 @@ fn blurredBitmapSilhouette(s: *sf.Surface, font: *const ttf.Font, gid: u16, size
 const rt = @import("../render.zig");
 const font_mod = @import("../font/font.zig");
 const ptext = @import("../paint_text.zig");
+
+/// The outline of `gid` at `sc` px per font unit, in px from the glyph origin with y down (the
+/// skip-ink intercepts of emit_text.zig); false when the glyph has none.
+pub fn glyphOutlinePx(a: Allocator, font: *const ttf.Font, gid: u16, sc: f32, out: *Path) !bool {
+    return type3.glyphPath(a, font, gid, geom.Tf.row(sc, 0, 0, -sc, 0, 0), out);
+}
+
+/// bm-engine bundles no font, while takumi-pdf always has its bundled last-resort font (Geist):
+/// with no font registered at all the text engine shapes nothing, so text would vanish without
+/// a trace. A frame whose paragraphs hold text other than white space then fails the render (or
+/// measure), naming the first characters; `blank` (`uncoveredText: "blank"`) asked for nothing to
+/// be drawn and keeps going.
+pub fn requireFont(f: *const rt.Frame, blank: bool) rt.Error!void {
+    if (blank) return;
+    for (f.r.fonts.faces.items) |fc| if (fc.active) return;
+    var u: Uncovered = .{};
+    for (f.nodes.items) |n| {
+        const p = n.para orelse continue;
+        const t = rt.Frame.paragraphText(p);
+        var i: usize = 0;
+        while (i < t.len) {
+            const d = uni.decodeUtf8(t, i);
+            i += d.len;
+            const cp = d.cp;
+            if (cp <= 0x20 or cp == 0x7f or cp == 0x85 or cp == 0xa0 or (cp >= 0x2000 and cp <= 0x200a) or
+                cp == 0x2028 or cp == 0x2029 or cp == 0x202f or cp == 0x205f or cp == 0x3000 or uni.isZeroWidth(cp)) continue;
+            try u.record(f.a, cp);
+        }
+    }
+    if (try u.noFontMessage(f.a)) |msg| {
+        f.r.setErr("", msg); // (as detail: a prefix is cut at 128 bytes)
+        return error.Invalid;
+    }
+}
 
 /// Which pass of a run the seam draws (takumi: `begin_shadow` / glyphs / `background-clip`
 /// mask).

@@ -405,6 +405,10 @@ pub const Line = struct {
     descent: f32,
     /// Paragraph direction is right-to-left (glyph x positions are visual either way).
     rtl: bool = false,
+    /// (PDF builds) `glyphs[marker0..marker1]` are the line's overflow marker (`text-overflow` /
+    /// line-clamp), drawn in place of the hidden text; none when equal.
+    marker0: if (item_origin_build) u32 else void = if (item_origin_build) 0 else {},
+    marker1: if (item_origin_build) u32 else void = if (item_origin_build) 0 else {},
 };
 
 /// Position of an atomic inline (margin-box top-left) or the static position of an out-of-flow
@@ -2559,8 +2563,12 @@ pub const Paragraph = struct {
                 seg_x0 = x;
             }
             // in a right-to-left paragraph the ellipsis sits at the left (end) edge
+            var mk0: u32 = 0;
+            var mk1: u32 = 0;
             if (li.ellipsis and self.rtl) {
+                mk0 = @intCast(out.items.len);
                 x = self.putEllipsis(out, x, baseline, ell_cluster, li.ell_clamp);
+                mk1 = @intCast(out.items.len);
                 if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, g_start, out.items.len, line_x, x, baseline, lines.items.len);
             }
             var prev_item: u32 = 0xffff_ffff;
@@ -2723,6 +2731,8 @@ pub const Paragraph = struct {
                 const e0 = out.items.len;
                 const ex = x;
                 x = self.putEllipsis(out, x, baseline, ell_cluster, li.ell_clamp);
+                mk0 = @intCast(e0);
+                mk1 = @intCast(out.items.len);
                 if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, e0, out.items.len, ex, x, baseline, lines.items.len);
             }
             lines.appendAssumeCapacity(.{
@@ -2736,6 +2746,8 @@ pub const Paragraph = struct {
                 .ascent = li.ascent,
                 .descent = li.descent,
                 .rtl = self.rtl,
+                .marker0 = if (item_origin_build) mk0 else {},
+                .marker1 = if (item_origin_build) mk1 else {},
             });
             top += li.ascent + li.descent;
         }

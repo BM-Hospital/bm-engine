@@ -801,9 +801,14 @@ noinline fn simpleVar(f: *const Font, gid: u16, g: []const u8, nc: u32, xf_in: X
             xf.ident = false;
         }
     }
+    const round = if (comptime ttf.enable_pdf) out.round_points else false;
     for (0..npts) |i| {
-        const x = @as(f32, @floatFromInt(s.ox[i])) + s.ax[i];
-        const y = @as(f32, @floatFromInt(s.oy[i])) + s.ay[i];
+        var x = @as(f32, @floatFromInt(s.ox[i])) + s.ax[i];
+        var y = @as(f32, @floatFromInt(s.oy[i])) + s.ay[i];
+        if (round) {
+            x = @floor(x + 0.5);
+            y = @floor(y + 0.5);
+        }
         s.ax[i] = if (xf.ident) x else xf.a * x + xf.c * y + xf.e;
         s.ay[i] = if (xf.ident) y else xf.b * x + xf.d * y + xf.f;
     }

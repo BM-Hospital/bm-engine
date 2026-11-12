@@ -178,7 +178,10 @@ assert.equal(count(pdf), 19, "pdf = full + pdf");
 assert.equal(pdf.features.pdf, true); assert.equal(full.features.pdf, false); assert.equal(pdf.profile, "pdf");
 assert.match(import.meta.resolve("bm-engine/pdf"), /\/js\/node-pdf\.mjs$/);
 {
+  // (bm-engine bundles no font: text with none registered fails the render)
+  await assert.rejects(new pdf.PdfRenderer().render(node, { size: "a4" }), /No font is registered to draw b \(U\+0062\)/);
   const rp = new pdf.PdfRenderer();
+  rp.registerFont({ name: "Inter", data: font });
   const bytes = await rp.render(node, { size: "a4" });
   assert.equal(new TextDecoder("latin1").decode(bytes.subarray(0, 5)), "%PDF-");
   assert.deepEqual(await rp.measure({ type: "container", style: { width: 10, height: 5 } }), { width: 10, height: 5 });

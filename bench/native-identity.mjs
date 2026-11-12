@@ -269,6 +269,18 @@ if (!args["no-pdf"]) {
     }
     bothPdf("pdf-doc", "uncovered text (error)", undefined, (r) => r.renderPdfSync("<p style='font-family:Inter'>\u{10FFFD} \u6f22</p>", {}));
     bothPdf("pdf-doc", "blur filter (error)", undefined, (r) => r.renderPdfSync("<p style='filter:blur(2px)'>x</p>", { uncoveredText: "blank" }));
+    // (the fixes of the pdf-bugs branch: no font at all, a content-sized page of no height, paint phases,
+    // overflow markers, image-rendering)
+    compare("pdf-doc", "no font registered (error)", attempt(() => new wpdf.Renderer().renderPdfSync("<p>Hello</p>", {})), attempt(() => new npdf.Renderer().renderPdfSync("<p>Hello</p>", {})));
+    bothPdf("pdf-doc", "content-sized page of no height (error)", undefined, (r) => r.renderPdfSync("<div></div>", { viewport: { width: 300 } }));
+    bothPdf("pdf-doc", "content-sized page, fractional height", undefined, (r) => r.renderPdfSync("<div style='height:10.2px;margin:5px'></div>", { viewport: { width: 300 } }));
+    bothPdf("pdf-doc", "paint phases", undefined, (r) => r.renderPdfSync("<style>body{font-family:Inter}</style><div style='background:#eee'><p style='background:#cfc'>flow text</p>" +
+      "<div style='float:left;width:90px;height:40px;margin-top:-30px;background:#f00'>float</div><div style='overflow:hidden;height:30px'>clipped <span style='display:inline-block;width:20px;height:10px;background:#0f0'></span> text" +
+      "<div style='float:right;width:30px;height:30px;background:#00f'></div></div><div style='display:flex'><div style='background:#ff0'>item</div></div>" +
+      "<div style='position:relative;margin-top:-10px;background:#0ff'>positioned</div></div>", { viewport: { width: 300 }, uncoveredText: "blank" }));
+    bothPdf("pdf-doc", "overflow markers", undefined, (r) => r.renderPdfSync("<style>div{font-family:Inter;width:120px;white-space:nowrap;overflow:hidden}</style><div style='text-overflow:ellipsis'>Hello wonderful world</div>" +
+      "<div style='text-overflow:\"[more]\"'>Hello wonderful world</div><div style='white-space:normal;line-clamp:2'>Hello wonderful world of text that goes on and on</div>", { viewport: { width: 200 }, uncoveredText: "blank" }));
+    bothPdf("pdf-doc", "image-rendering pixelated", undefined, (r) => r.renderPdfSync({ type: "image", src: "pic", style: { width: 64, height: 64, imageRendering: "pixelated" } }, { viewport: { width: 80, height: 80 }, images: [{ src: "pic", data: rendererFor("wasm").renderSync({ type: "container", style: { width: 4, height: 4, backgroundColor: "red" } }, { width: 4, height: 4 }) }] }));
     const small = cases.find((k) => k.id === "card-og") ?? cases[0];
     const png = rendererFor("wasm", small.fonts).renderSync(small.node, { ...renderOpts(small, "png"), width: 120, height: 63 });
     bothPdf("pdf-doc", "images", undefined, (r) => r.renderPdfSync({ type: "container", style: { display: "flex", gap: 8 }, children: [{ type: "image", src: png, style: { width: 140, height: 100 } }, { type: "image", src: "pic", width: 64, height: 64 }] },

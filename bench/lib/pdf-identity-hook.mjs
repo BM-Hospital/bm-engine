@@ -87,8 +87,8 @@ P.clearFonts = function () {
   return orig.clearFonts.call(this);
 };
 P.free = function () {
-  const t = twins.get(this);
-  if (t) t.free();
+  // (a twin made now, for a renderer freed before its first call: later calls fail alike on both)
+  twin(this).free();
   return orig.free.call(this);
 };
 P.prepare = async function (node, options) {

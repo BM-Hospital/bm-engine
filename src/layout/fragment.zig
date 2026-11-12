@@ -393,8 +393,12 @@ fn Engine(comptime T: type) type {
             const s = e.tops.items[page];
             const en = e.tops.items[page + 1];
             e.page = page;
-            e.page_h = en - s;
-            return .{ .start = s, .end = en, .next = en };
+            // takumi `BlockFragmentation::fragmentainer_block_size`: the content breaks at the page
+            // area truncated to the LayoutUnit grid (`LayoutUnit::from_float`, 1/64 px), the pages
+            // stack at their exact size (`PageSizes::top`)
+            const h = @floor((en - s) * 64) / 64;
+            e.page_h = h;
+            return .{ .start = s, .end = s + h, .next = en };
         }
         fn pageAt(e: *Self, y: f32) Error!u32 {
             var p: u32 = 0;

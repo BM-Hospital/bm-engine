@@ -145,7 +145,11 @@ type ConformanceOptions =
 
 export type PdfRenderOptions = (PagedOptions | ViewportOptions) &
   ConformanceOptions & {
-    /** FontLoader list registered before rendering (async API only). */
+    /**
+     * Fonts registered before rendering, once per renderer (deduped across calls, as takumi-pdf). The sync
+     * methods take bytes and `{ data: bytes }` entries; a URL, a promise or a lazy `data()` loader needs the
+     * async API.
+     */
     fonts?: FontLoader[] | Promise<FontLoader[]>;
     /** Pre-fetched images for `src` URLs in the tree (and its bands), e.g. `[{ src: "https://…/logo.png", data: bytes }]`. */
     images?: ImagesInput;

@@ -106,11 +106,20 @@ if (later !== null) assert.equal(later, "Later");
 
 // #region no-fonts
 const empty = new PdfRenderer(); // no font registered at all
-const silent = await empty.render(`<p>Hello</p>`);
-// no error, and the page has no text: register a font (or pass `fonts`) before rendering text
+let noFont;
+try {
+  await empty.render(`<p>Hello</p>`);
+} catch (e) {
+  noFont = e.message;
+}
+// bm-engine: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-engine bundles
+// no font: register one with registerFont or the fonts option.
 // #endregion
-assert.equal(pageCount(silent), 1);
-const t3 = text(silent);
+assert.equal(noFont, "bm-engine: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-engine bundles no font: register one with registerFont or the fonts option.");
+// uncoveredText "blank" asks for nothing to be drawn: the render goes on without text
+const blank = await empty.render(`<p>Hello</p>`, { uncoveredText: "blank" });
+assert.equal(pageCount(blank), 1);
+const t3 = text(blank);
 if (t3 !== null) assert.equal(t3, "");
 empty.free();
 
@@ -118,10 +127,10 @@ empty.free();
 const viaSync = new PdfRenderer().renderSync(`<p style="font-family: Inter">Hello</p>`, {
   fonts: [{ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") }],
 });
-// the sync methods ignore `fonts`: this page has no text. Use registerFont, or the async render.
+// the sync methods register `fonts` given as bytes as well; a URL or a lazy `data()` loader needs the async render
 // #endregion
 const t4 = text(viaSync);
-if (t4 !== null) assert.equal(t4, "");
+if (t4 !== null) assert.equal(t4, "Hello");
 
 // #region renderer-methods
 import { Renderer } from "bm-engine/pdf";
@@ -232,7 +241,7 @@ const ERRORS = [
   [{ landscape: "yes" }, "bm-engine: invalid landscape: expected a boolean"],
   [{ viewport: { width: 300 }, size: "a4" }, "bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)"],
   [{ viewport: { height: 300 } }, "bm-engine: invalid viewport: width is required"],
-  [{ viewport: { width: 0 } }, "bm-engine: invalid viewport: width/height must be > 0"],
+  [{ viewport: { width: 0 } }, "bm-engine: Page size must be finite and larger than zero"],
   [{ header: 5 }, "bm-engine: invalid header: a band is a node, HTML, or false"],
   [{ pages: { middle: {} } }, "bm-engine: unknown page rule: middle"],
   [{ pages: { first: { body: "x" } } }, "bm-engine: unknown field of pages.first: body"],
@@ -271,9 +280,9 @@ try {
 } catch (e) {
   emptyViewport = e.message;
 }
-// bm-engine: invalid viewport: content has zero size and no width/height was given
+// bm-engine: Page size must be finite and larger than zero
 // #endregion
-assert.equal(emptyViewport, "bm-engine: invalid viewport: content has zero size and no width/height was given");
+assert.equal(emptyViewport, "bm-engine: Page size must be finite and larger than zero");
 
 // #region other-builds
 import { Renderer as FullRenderer } from "bm-engine/full";
