@@ -28,7 +28,9 @@
 //!    `Node.table_box`, the table's `Layout.border` / `.padding` report them. While a cell is computed its
 //!    `style.border` temporarily holds the used widths.
 //!  * the table's `Layout` covers its captions too; border and padding belong to the grid box between them
-//!  * not done here: `position: relative` offsets of rows / cells, `empty-cells`, `direction: rtl`, floats
+//!  * `direction: rtl` on the table (the parent, for an anonymous table) runs the columns right to left: the grid
+//!    is built in logical order, cell positions and the left / right borders are converted (`S.rtl`)
+//!  * not done here: `position: relative` offsets of rows / cells, `empty-cells`, floats
 //!    inside anonymous cells, a static-position absolute child of a cell is not moved by `vertical-align`.
 const std = @import("std");
 const st = @import("style.zig");
@@ -308,6 +310,9 @@ const S = struct {
     grid_w: f32,
     sec_w: f32,
     sec_x: f32,
+    /// `direction: rtl` on the table: the columns run right to left (the grid is built in logical order;
+    /// cell positions and the left / right borders are converted)
+    rtl: bool,
     cap_min: f32,
     top_h: f32,
     bot_h: f32,
@@ -392,6 +397,8 @@ pub const Geom = struct {
     grid_h: f32 = 0,
     /// inline offset of the sections in the node's border box, their inline size
     sec_x: f32 = 0,
+    /// right-to-left table: `cols[k].x` is measured from the RIGHT edge of the sections (cells are physical)
+    rtl: bool = false,
     sec_w: f32 = 0,
     cols: []GeomCol = &.{},
     colels: []GeomColEl = &.{},
@@ -425,6 +432,7 @@ noinline fn recordGeom(t: anytype, c: *S) Error!void {
     g.grid_y = c.top_h;
     g.grid_h = c.bottom_y - c.top_h;
     g.sec_x = c.sec_x;
+    g.rtl = c.rtl;
     g.sec_w = c.sec_w;
     g.cols = try geomSlice(t, GeomCol, g.cols, c.n_cols);
     for (g.cols, c.cols[0..c.n_cols]) |*o, *col| o.* = .{ .x = col.off[1] - c.spacing[0], .w = col.w[1], .collapsed = col.collapsed };
@@ -843,9 +851,11 @@ fn markEdges(c: *S, r0: u32, c0: u32, rs: u32, cs_in: u32, s: *const st.Style, i
     if (cs == 0) return;
     const b = s.border;
     const hid = s.border_hidden;
-    const wl: f32 = if (hid.left) -1 else bw(c, b.left);
+    // (inline-start / inline-end edge)
+    var wl: f32 = if (hid.left) -1 else bw(c, b.left);
     const wt: f32 = if (hid.top) -1 else bw(c, b.top);
-    const wr: f32 = if (hid.right) -1 else bw(c, b.right);
+    var wr: f32 = if (hid.right) -1 else bw(c, b.right);
+    if (c.rtl) std.mem.swap(f32, &wl, &wr);
     const wb: f32 = if (hid.bottom) -1 else bw(c, b.bottom);
     const inner = is_cell and (rs > 1 or cs > 1);
     if (inner) {
@@ -907,6 +917,7 @@ fn edgeBorders(c: *const S, row: u32, col: u32, rs: u32, cs: u32) [4]f32 {
         m[3] = @max(m[3], edgeW(c, start + @as(usize, rs) * epr));
     }
     for (&m) |*v| v.* = divI(c.q, v.*, 2);
+    if (c.rtl) std.mem.swap(f32, &m[0], &m[2]);
     return m;
 }
 
@@ -2043,6 +2054,7 @@ noinline fn placeCells(t: anytype, c: *S, height_specified: bool, sv: f32) Error
                 cell.w = spanW(c, cell, 1);
                 cell.h = h;
                 cell.x = (if (cell.col < c.n_cols) c.cols[cell.col].off[1] else 0) - c.spacing[0];
+                if (c.rtl) cell.x = c.sec_w - cell.x - cell.w;
                 const px = sec_pos[0] + cell.x - ox;
                 const py = row_y - oy;
                 if (cell.anon) {
@@ -2185,6 +2197,8 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.node = node;
     c.q = q;
     c.is_table = s.display.isTable();
+    // (the anonymous table around a stray row / row group takes the direction of the node's parent)
+    c.rtl = if (c.is_table) s.rtl else if (t.nodes.items[node].parent != no_node) styleOf(t, t.nodes.items[node].parent).rtl else false;
     c.collapse = s.border_collapse;
     c.fixed = c.is_table and s.table_fixed and s.size[0] != .auto and s.size[0] != .max_content;
     c.did_layout = false;

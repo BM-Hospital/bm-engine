@@ -29,6 +29,10 @@ export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradi
   fixcss, // fix-css
   fixtext, // fix-text
 ].flat();
+// fix-layout fixtures (one contiguous block; ids are prefixed fix-layout-)
+import fixLayout from "./fix-layout.mjs";
+ALL_CASES.push(...fixLayout);
+// end of the fix-layout block
 const ids = new Set();
 for (const k of ALL_CASES) { if (ids.has(k.id)) throw new Error("duplicate fixture id " + k.id); ids.add(k.id); }
 

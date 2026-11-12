@@ -19,4 +19,5 @@ test {
     _ = @import("font/font.zig");
     _ = @import("raster/raster.zig");
     _ = @import("codec/codec.zig");
+    _ = @import("test_layout_fix.zig");
 }

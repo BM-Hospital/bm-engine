@@ -287,6 +287,15 @@ pub const Style = struct {
     /// `caption-side: bottom` (on a table-caption box)
     caption_bottom: bool = false,
 
+    /// `direction: rtl`. A flex / grid container is then laid out in mirrored space (Blink lays out in
+    /// logical coordinates and converts: x = container width - logical x - width): its own left / right
+    /// padding and border and its children's left / right margins and insets swap, and the children are
+    /// flipped once placed. In a block container an over-constrained child is aligned to the right and
+    /// static positions are at the right edge; a table orders its columns right to left.
+    rtl: bool = false,
+    /// (engine, set by `appendChild`) the parent is a mirrored (`rtl` flex / grid) container
+    mirror_out: bool = false,
+
     // inline rows (inline.zig)
     text_align: TextAlign = .start,
     /// strut of the line container: every line is at least this tall around its baseline

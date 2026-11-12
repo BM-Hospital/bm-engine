@@ -363,6 +363,8 @@ pub const ComputedStyle = struct {
     text_transform: TextTransform = .none,
     /// percentage refers to the containing block width
     text_indent: LP = .{},
+    /// `text-indent` keywords: bit 0 = each-line, bit 1 = hanging
+    text_indent_flags: u8 = 0,
     tab_size: TabSize = .{ .number = 8 },
     white_space_collapse: WhiteSpaceCollapse = .collapse,
     text_wrap_mode: TextWrapMode = .wrap,

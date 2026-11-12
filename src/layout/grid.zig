@@ -908,7 +908,7 @@ noinline fn layoutItems(t: anytype, g: *G, node: u32, s: *const st.Style) Error!
             });
         }
         if (!cs.position.isOut()) {
-            pos[0] += orElse(t.dim(cs.inset.left, area[0]), -orElse(t.dim(cs.inset.right, area[0]), 0));
+            pos[0] += t.relX(cs, area[0], false);
             pos[1] += orElse(t.dim(cs.inset.top, area[1]), -orElse(t.dim(cs.inset.bottom, area[1]), 0));
         }
         t.setLayout(it.node, pos.*, o, b);

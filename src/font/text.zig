@@ -140,6 +140,31 @@ pub const InlineBox = struct {
     /// The box paints something (background, border): its fragments are wanted in
     /// `TextLayout.boxes` even when it does not affect the layout.
     decorated: bool = false,
+    /// Margins / padding with a percentage: the parts of the edges ([inline start, inline end]). When
+    /// set, `start` / `end` / `margin_*` are derived from it for the percentage base of the moment
+    /// (`Paragraph.setPercentBase`: the containing block width; 0 in intrinsic sizing).
+    pct: ?EdgeParts = null,
+    /// `position: relative` offset of the box (px, x to the right, y down): its fragments and everything
+    /// inside it are shifted by it after the lines are laid out.
+    rel: [2]f32 = .{ 0, 0 },
+    /// The box continues from / into another paragraph (block-in-inline): its fragments never have the
+    /// start / end edge (pass 0 for that edge).
+    no_start: bool = false,
+    no_end: bool = false,
+    /// `direction: rtl` on the box: its inline-start edge is its right one (`start` / `end` are
+    /// logical). On a line the edges are placed visually (Blink's box fragments): the left edge left of
+    /// the box's leftmost content, the right edge right of its rightmost.
+    rtl: bool = false,
+};
+
+/// The parts of the inline edges of an `InlineBox`, [inline start, inline end]: margin and padding as
+/// px + fraction of the percentage base, border width in px.
+pub const EdgeParts = struct {
+    margin: [2]f32 = .{ 0, 0 },
+    margin_pct: [2]f32 = .{ 0, 0 },
+    padding: [2]f32 = .{ 0, 0 },
+    padding_pct: [2]f32 = .{ 0, 0 },
+    border: [2]f32 = .{ 0, 0 },
 };
 
 pub const LineHeight = union(enum) {
@@ -200,6 +225,14 @@ pub const ParagraphOptions = struct {
     shape_cache: ?*ShapeCache = null,
     /// Inline boxes referenced by `Run.box` (parents before children). Only read during `init`.
     boxes: []const InlineBox = &.{},
+    /// text-indent: `indent` px plus `indent_pct` (a fraction) of the width the lines are broken at (0
+    /// in intrinsic sizing), applied at the inline start of the first line, and of every line after a
+    /// forced break with `indent_each_line`; `indent_hanging` indents the other lines instead. The indent
+    /// is part of the line width (Blink: LineInfo::ComputeWidth).
+    indent: f32 = 0,
+    indent_pct: f32 = 0,
+    indent_each_line: bool = false,
+    indent_hanging: bool = false,
 };
 
 /// Size of an atomic inline: margin-box width, and the margin-box extent above / below its
@@ -345,7 +378,8 @@ pub const BoxFragment = struct {
 
 /// A maximal sequence of glyphs of one run on one line (`glyphs[g0..g1]`), with its exact
 /// horizontal extent and its (possibly shifted) baseline.
-pub const Segment = struct { g0: u32, g1: u32, x0: f32, x1: f32, baseline: f32, line: u32 };
+/// `box`: (internal) innermost inline box of the run, 0 = none.
+pub const Segment = struct { g0: u32, g1: u32, x0: f32, x1: f32, baseline: f32, line: u32, box: u32 = 0 };
 
 pub const Size = struct {
     /// Widest line, ceiled to 1/64 px (what takumi reports as the text box inline size).
@@ -373,6 +407,8 @@ pub const TextLayout = struct {
     objects: []ObjectPos = &.{},
     boxes: []BoxFragment = &.{},
     segments: []Segment = &.{},
+    /// The percentage base the inline box edges were resolved against (`Paragraph.setPercentBase`).
+    pct_base: f32 = 0,
 
     pub fn deinit(self: *TextLayout, alloc: std.mem.Allocator) void {
         alloc.free(self.objects);
@@ -478,6 +514,28 @@ const BoxInfo = struct {
     margin_end: f32 = 0,
     face: FaceId = 0,
     clone: bool = false,
+    rtl: bool = false,
+    no_start: bool = false,
+    no_end: bool = false,
+    rel: [2]f32 = .{ 0, 0 },
+    pct: ?EdgeParts = null,
+
+    /// `start` / `end` / `margin_*` of a box with percentage edges for the base `base` (each part on
+    /// the 1/64 px grid, like the px-only edges).
+    fn resolveEdges(bi: *BoxInfo, base: f32) void {
+        const e = bi.pct orelse return;
+        var m: [2]f32 = undefined;
+        var r: [2]f32 = undefined;
+        for (0..2) |k| {
+            m[k] = @trunc((e.margin[k] + e.margin_pct[k] * base) * 64) / 64;
+            r[k] = m[k] + @trunc(e.border[k] * 64) / 64 + @trunc(@max(e.padding[k] + e.padding_pct[k] * base, 0) * 64) / 64;
+            if (!std.math.isFinite(m[k]) or !std.math.isFinite(r[k])) return;
+        }
+        bi.start = r[0];
+        bi.end = r[1];
+        bi.margin_start = m[0];
+        bi.margin_end = m[1];
+    }
 };
 
 const ObjInfo = struct { box: u32, valign: VerticalAlign };
@@ -581,6 +639,15 @@ pub const Paragraph = struct {
     objs: []ObjInfo = &.{},
     /// Some inline box with edges is `box-decoration-break: clone`.
     has_clone: bool = false,
+    /// `opts.indent` / `opts.indent_pct` is set (text-indent)
+    has_indent: bool = false,
+    /// Some inline box is `direction: rtl` (its edges need visual placement on every line).
+    has_rtl_box: bool = false,
+    /// Some inline box has percentage margins / padding; the base they are resolved for at the moment.
+    has_pct_edges: bool = false,
+    pct_base: f32 = 0,
+    /// Some inline box is relatively positioned (`InlineBox.rel`).
+    has_rel: bool = false,
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -712,6 +779,7 @@ pub const Paragraph = struct {
 
         var p: Paragraph = .{ .alloc = alloc, .opts = opts, .glyphs = &.{}, .metrics = &.{}, .multi_run = b.item > 1, .rtl = rtl_base, .has_bidi = b.any_rtl or rtl_base, .any_wrap = info.any_wrap, .complex = b.cx };
         p.opts.boxes = &.{};
+        p.has_indent = opts.indent != 0 or opts.indent_pct != 0;
         // strut + ellipsis
         const strut_style: ?TextStyle = opts.strut orelse if (runs.len > 0) runs[0].style else null;
         if (strut_style) |st| {
@@ -749,6 +817,9 @@ pub const Paragraph = struct {
         errdefer alloc.free(p.metrics);
         p.objs = try b.objs.toOwnedSlice(alloc);
         p.has_clone = b.cx and b.has_clone;
+        p.has_rtl_box = b.cx and b.has_rtl_box;
+        p.has_pct_edges = b.cx and b.has_pct;
+        p.has_rel = b.cx and b.has_rel;
         p.boxes = b.boxes;
         p.run_box = b.run_box;
         return p;
@@ -767,6 +838,22 @@ pub const Paragraph = struct {
 
     fn wraps(self: *const Paragraph) bool {
         return self.any_wrap;
+    }
+
+    /// Resolves the percentage margins / padding of the inline boxes against `base` (the width of the
+    /// containing block; 0 or a non-finite value = intrinsic sizing, where they are 0) for the measure /
+    /// layout calls that follow. Cheap when nothing changes; a paragraph without such boxes ignores it.
+    pub fn setPercentBase(self: *Paragraph, base: f32) void {
+        if (!self.has_pct_edges) return;
+        const b: f32 = if (std.math.isFinite(base) and base > 0) base else 0;
+        if (b == self.pct_base) return;
+        self.pct_base = b;
+        for (self.boxes) |*bi| bi.resolveEdges(b);
+        for (self.glyphs) |*g| {
+            if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid > Special.close or g.cluster >= self.boxes.len) continue;
+            const bi = &self.boxes[g.cluster];
+            if (bi.pct != null) g.x_advance = if (g.gid == Special.open) bi.start else bi.end;
+        }
     }
 
     const LineInfo = struct {
@@ -798,6 +885,8 @@ pub const Paragraph = struct {
         band_w: f32 = 0,
         /// Flow layout: the line holds nothing but floats / out-of-flow boxes (no line box).
         empty: bool = false,
+        /// text-indent applied to the line (included in the widths)
+        indent: f32 = 0,
     };
 
     const Mode = struct {
@@ -809,6 +898,8 @@ pub const Paragraph = struct {
         strategy: TextWrap = .wrap,
         /// Sizes of the atomic objects (null: they are zero-sized).
         flow: ?*const Flow = null,
+        /// text-indent of the line being broken (set per line by `LineIter`)
+        indent: f32 = 0,
     };
 
     const no_stop: u32 = 0xffff_ffff;
@@ -820,12 +911,23 @@ pub const Paragraph = struct {
     /// reshapes the line end) and a soft-hyphen break must also fit its hyphen.
     /// `stop_at` != `no_stop` forces the line to end exactly before that glyph (score breaker).
     fn nextLine(self: *const Paragraph, start: u32, s_cum: f64, m: Mode, stop_at: u32) LineInfo {
+        var li = self.breakLine(start, s_cum, m, stop_at);
+        if (m.indent != 0) {
+            li.indent = m.indent;
+            li.width += m.indent;
+            li.content_w += m.indent;
+            li.ink_w += m.indent;
+        }
+        return li;
+    }
+
+    fn breakLine(self: *const Paragraph, start: u32, s_cum: f64, m: Mode, stop_at: u32) LineInfo {
         const gs = self.glyphs;
         const n: u32 = @intCast(gs.len);
         const forced = stop_at < n;
         const end_i = if (forced) stop_at else n;
         const wrap = !forced and m.avail != null and self.wraps();
-        var limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) else 0);
+        var limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) else 0) - m.indent;
         var i = start;
         var cum = s_cum;
         // box-decoration-break: clone: the end edges of the open cloned boxes (room reserved at
@@ -910,7 +1012,9 @@ pub const Paragraph = struct {
                 // an inline box edge: spaces before it collapse when the line ends after it, and a
                 // closing edge after such spaces never forces a break (it overhangs)
                 const cc = cum_content + (nc - cum);
-                if (g.gid == Special.close and (sp or oh > 0)) {
+                // (at the end of the paragraph the space before the edge is collapsed away, not hanging:
+                // the edge has to fit)
+                if (g.gid == Special.close and (sp or oh > 0) and !self.endsWithEdges(i + 1)) {
                     oh += nc - cum;
                 } else {
                     oh = 0;
@@ -947,6 +1051,14 @@ pub const Paragraph = struct {
             return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum + clone_end), .last = false, .hyphen = hyphen, .cum = cum }, s_cum);
         }
         return self.fin(.{ .start = start, .end = content_end, .next = n, .width = @floatCast(cum_content - s_cum + clone_end), .last = true, .cum = cum }, s_cum);
+    }
+
+    /// Nothing but closing edges and transparent items from glyph `from` to the paragraph end.
+    fn endsWithEdges(self: *const Paragraph, from: u32) bool {
+        for (self.glyphs[from..]) |g| {
+            if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid == Special.open or g.gid == Special.atomic) return false;
+        }
+        return true;
     }
 
     /// pre-wrap: hanging spaces count in the reported width (as takumi reports them) but only
@@ -1011,17 +1123,50 @@ pub const Paragraph = struct {
         y: f32 = 0,
         cx: ?*Cx = null,
         float_next: u32 = 0,
+        /// text-indent: the resolved amount (NaN = not yet), no line box so far, the previous line
+        /// ended at a forced break
+        indent: f32 = std.math.nan(f32),
+        first_line: bool = true,
+        after_hard: bool = false,
+        /// text-wrap: balance by bisection: the width the lines are broken at (NaN = not balanced)
+        bal_w: f32 = std.math.nan(f32),
+
+        /// text-indent of the next line (`first`: it is the first formatted line).
+        noinline fn indentFor(it: *LineIter, first: bool) f32 {
+            const o = &it.p.opts;
+            if (it.indent != it.indent) {
+                // (a percentage refers to the width the paragraph is broken at; nothing in intrinsic sizing)
+                const base: f32 = if (it.mode.avail) |a| (if (it.mode.clamp or it.cx != null) @max(a, 0) else 0) else 0;
+                const v = o.indent + o.indent_pct * base;
+                it.indent = if (std.math.isFinite(v)) trunc64(v) else 0;
+            }
+            return if ((first or (it.after_hard and o.indent_each_line)) != o.indent_hanging) it.indent else 0;
+        }
+
+        /// Blink's `LineWidths`: the available width of every line when it is known without layout:
+        /// the first `n_ex` lines (beside one float) have `ex` px, the others `def`.
+        const LineW = struct {
+            def: f32,
+            ex: f32 = 0,
+            n_ex: u32 = 0,
+
+            inline fn at(w: LineW, line: u32) f32 {
+                return if (line < w.n_ex) w.ex else w.def;
+            }
+        };
 
         /// Blink's `ScoreLineBreaker` for the paragraph part starting at the current position:
         /// fills `forced` when better break points than the greedy ones are found; `balance`
-        /// falls back to bisecting the available width.
-        noinline fn prepare(it: *LineIter) void {
+        /// falls back to bisecting the available width (`may_bisect`: the part is the whole
+        /// paragraph in one layout opportunity; the result goes to `bal_w`).
+        noinline fn prepare(it: *LineIter, w: LineW, may_bisect: bool) void {
             const p = it.p;
             const balance = it.mode.strategy == .balance;
-            const avail = floor64(@max(it.mode.avail.?, 0));
             const max_lines: u32 = if (balance) max_balance_lines else max_pretty_lines;
             const n: u32 = @intCast(p.glyphs.len);
-            const greedy: Mode = .{ .avail = it.mode.avail, .clamp = false, .emergency = it.mode.emergency };
+            var greedy: Mode = .{ .avail = w.def, .clamp = false, .emergency = it.mode.emergency, .flow = it.mode.flow };
+            const ind_first: f32 = if (p.has_indent) it.indentFor(it.first_line) else 0;
+            const ind_rest: f32 = if (p.has_indent) it.indentFor(false) else 0;
             // greedy pass
             var pos = it.pos;
             var cum = it.cum;
@@ -1029,6 +1174,8 @@ pub const Paragraph = struct {
             var width_sum: f32 = 0;
             var last: LineInfo = undefined;
             while (true) {
+                greedy.avail = w.at(lines);
+                greedy.indent = if (lines == 0) ind_first else ind_rest;
                 last = p.nextLine(pos, cum, greedy, no_stop);
                 lines += 1;
                 width_sum += last.width;
@@ -1041,16 +1188,17 @@ pub const Paragraph = struct {
             if (lines <= 1) return;
             if (!balance) {
                 // worth it only when the greedy last line is short and a single word
-                if (!(last.width < avail / 3.0)) return;
+                if (!(last.width < w.def / 3.0)) return;
                 var k = last.start + 1;
                 while (k < last.end) : (k += 1) {
                     if (p.glyphs[k].flags & ShapedGlyph.BREAK_BEFORE != 0) return;
                 }
             }
-            if (it.score(avail, lines, balance)) return;
-            if (!balance or pos < n or it.pos != 0) return;
+            // (cloned box decorations take scoring away)
+            if (!p.has_clone and it.score(w, lines, balance, ind_first)) return;
+            if (!balance or !may_bisect or pos < n or it.pos != 0) return;
             // bisection: the narrowest width (to 1 px) that keeps the number of lines
-            var upper = avail;
+            var upper = w.def;
             var lower = floor64(width_sum / @as(f32, @floatFromInt(lines)) * 0.8 + 1.0 / 128.0);
             while (lower + 1.0 < upper) {
                 const mid = floor64((upper + lower) * 0.5);
@@ -1060,16 +1208,24 @@ pub const Paragraph = struct {
                 var c2: f64 = 0;
                 var cnt: u32 = 0;
                 while (q < n and cnt <= lines) : (cnt += 1) {
+                    m2.indent = if (cnt == 0) ind_first else ind_rest;
                     const li = p.nextLine(q, c2, m2, no_stop);
                     q = li.next;
                     c2 = li.cum;
                 }
                 if (cnt <= lines) upper = mid else lower = mid;
             }
-            it.mode.avail = upper;
+            it.bal_w = upper;
         }
 
-        fn score(it: *LineIter, avail: f32, greedy_lines: u32, balance: bool) bool {
+        /// Blink's `LineBreakCandidateContext` + `ComputeScores`. Candidates: every break
+        /// opportunity of the part between two sentinels, with the position of the line end when
+        /// the line breaks there (`pos_if`: without trailing spaces) and when it does not
+        /// (`pos_no`). An inline box edge or an atomic inline starts on the layout-unit grid; an
+        /// edge leaves the position-with-a-break where the content before it ended (Blink: "opaque
+        /// items leave the position with a break, as trailing spaces do"), and an opportunity right
+        /// after an edge / atomic inline is a candidate of that item.
+        fn score(it: *LineIter, w: LineW, greedy_lines: u32, balance: bool, first_indent: f32) bool {
             const p = it.p;
             const gs = p.glyphs;
             const n: u32 = @intCast(gs.len);
@@ -1078,10 +1234,9 @@ pub const Paragraph = struct {
             var pos_if: [max_candidates]f32 = undefined;
             var pen: [max_candidates]f32 = undefined;
             const justified = p.opts.text_align == .justify;
-            const wfs = avail * p.strut_size;
+            const wfs = @max(w.def, 0) * p.strut_size;
             const hyphen_penalty: f32 = if (justified) wfs / 2.0 else wfs * 2.0;
             const line_penalty: f32 = if (justified) 0 else hyphen_penalty * 2.0;
-            // candidates: every break opportunity of the part, between two sentinels
             var nc: usize = 1;
             glyph[0] = it.pos;
             pos_no[0] = 0;
@@ -1092,12 +1247,14 @@ pub const Paragraph = struct {
             var cum_content = s_cum;
             var content_end = it.pos;
             var last_hyphen_run = true;
+            // glyph whose break-before opportunity is already a candidate (made by the item before it)
+            var done_at: u32 = no_stop;
             var i = it.pos;
             while (i < n) : (i += 1) {
                 const g = gs[i];
                 if (p.multi_run and i > it.pos and g.item != gs[i - 1].item) cum = s_cum + ceil64d(cum - s_cum);
                 if (g.flags & ShapedGlyph.HARD_BREAK != 0) break;
-                if (i > it.pos and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
+                if (i > it.pos and i != done_at and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
                     if (nc + 1 >= max_candidates) return false;
                     var e = cum_content;
                     var hy = false;
@@ -1113,6 +1270,30 @@ pub const Paragraph = struct {
                     pos_if[nc] = @floatCast(e - s_cum);
                     pen[nc] = if (hy) hyphen_penalty else 0;
                     nc += 1;
+                }
+                if (g.flags & ShapedGlyph.SPECIAL != 0) {
+                    // floats and out-of-flow boxes are transparent
+                    if (g.gid >= Special.float) continue;
+                    const end = s_cum + ceil64d(cum - s_cum) + p.advanceOf(g, @floatCast(cum - s_cum), it.mode.flow);
+                    // a negative size breaks the candidates' monotonic positions
+                    if (end < cum) return false;
+                    cum = end;
+                    if (g.gid == Special.atomic) {
+                        cum_content = end;
+                        content_end = i + 1;
+                    }
+                    var j = i + 1;
+                    while (j < n and gs[j].flags & ShapedGlyph.SPECIAL != 0 and gs[j].gid >= Special.float) j += 1;
+                    if (j < n and gs[j].flags & ShapedGlyph.BREAK_BEFORE != 0 and gs[j].flags & ShapedGlyph.HARD_BREAK == 0) {
+                        if (nc + 1 >= max_candidates) return false;
+                        glyph[nc] = j;
+                        pos_no[nc] = @floatCast(end - s_cum);
+                        pos_if[nc] = @floatCast(cum_content - s_cum);
+                        pen[nc] = 0;
+                        nc += 1;
+                        done_at = j;
+                    }
+                    continue;
                 }
                 const nx = cum + p.advanceOf(g, @floatCast(cum - s_cum), null);
                 cum = nx;
@@ -1142,18 +1323,29 @@ pub const Paragraph = struct {
             sc[0] = 0;
             prev[0] = 0;
             line_ix[0] = 0;
-            const fit = avail + 1.0 / 64.0;
             var active: usize = 0;
             var end: usize = 1;
             while (end < nc) : (end += 1) {
                 const is_last = end == nc - 1;
                 var best: f32 = std.math.floatMax(f32);
                 var best_prev: usize = 0;
-                const start_edge = pos_if[end] - fit;
+                // (the width of the line that would start at a candidate: by its line index, the
+                // first one narrower by its text-indent)
+                var last_line: u8 = line_ix[active];
+                var fit = @max(w.at(last_line) - (if (last_line == 0) first_indent else 0), 0) + 1.0 / 64.0;
+                var start_edge = pos_if[end] - fit;
                 var best_hope: f32 = 0;
-                const first = active;
-                var st: usize = first;
+                var st: usize = active;
                 while (st < end) : (st += 1) {
+                    if (line_ix[st] != last_line) {
+                        last_line = line_ix[st];
+                        const nf = @max(w.at(last_line) - (if (last_line == 0) first_indent else 0), 0) + 1.0 / 64.0;
+                        if (nf != fit) {
+                            fit = nf;
+                            start_edge = pos_if[end] - fit;
+                            best_hope = 0;
+                        }
+                    }
                     if (sc[st] + best_hope >= best) continue;
                     const delta = pos_no[st] - start_edge;
                     var width_score: f32 = 0;
@@ -1188,6 +1380,72 @@ pub const Paragraph = struct {
             return true;
         }
 
+        /// Flow layout: the line widths of the paragraph part at the current position, whose first
+        /// line is at `y` with the free range `band` (its leading floats are placed), and whether a
+        /// balanced paragraph may bisect. Null: the widths are not known without layout (Blink's
+        /// `LineWidths::Set`): more than one exclusion, floats inside the text, atomic inlines,
+        /// shifted boxes or fonts taller than the strut beside a float.
+        noinline fn lineWidths(it: *const LineIter, band: Band, y: f32, may_bisect: *bool) ?LineW {
+            const p = it.p;
+            const flow = it.cx.?.flow;
+            const narrowed = band.next_y == band.next_y;
+            // (Blink: the paragraph has a float anywhere; the other conditions look at the part)
+            var has_float = false;
+            for (p.glyphs[0..it.pos]) |g| {
+                if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid == Special.float) has_float = true;
+            }
+            var late_float = false;
+            var uneven = false;
+            var leading = it.pos == 0;
+            // (a font taller than the strut makes its line taller)
+            const strut_only = p.opts.line_height != .normal;
+            var tall = false;
+            var last_m: u16 = 0xffff;
+            for (p.glyphs[it.pos..]) |g| {
+                if (g.flags & ShapedGlyph.SPECIAL == 0) {
+                    leading = false;
+                    if (g.metric != last_m and g.metric < p.metrics.len) {
+                        last_m = g.metric;
+                        const mt = p.metrics[g.metric];
+                        if (!strut_only and (mt.ascent > p.strut_ascent or mt.descent > p.strut_descent)) tall = true;
+                        // (the strut of the inline box the text is in)
+                        if (mt.run < p.run_box.len and p.run_box[mt.run] < p.boxes.len) {
+                            const bi = p.boxes[p.run_box[mt.run]];
+                            if (bi.ascent > p.strut_ascent or bi.descent > p.strut_descent) tall = true;
+                        }
+                    }
+                    continue;
+                }
+                switch (g.gid) {
+                    Special.float => {
+                        has_float = true;
+                        if (!leading) late_float = true;
+                    },
+                    Special.atomic => {
+                        uneven = true;
+                        leading = false;
+                    },
+                    Special.open => if (g.cluster < p.boxes.len and p.boxes[g.cluster].valign != .baseline) {
+                        uneven = true;
+                    },
+                    else => {},
+                }
+            }
+            const bw = floor64(@max(band.x1 - band.x0, 0));
+            may_bisect.* = !narrowed and !has_float;
+            if (!narrowed and !has_float) return .{ .def = bw };
+            if (late_float or uneven or tall) return null;
+            if (!narrowed) return .{ .def = bw };
+            const bf = flow.band_fn orelse return null;
+            const b2 = bf(flow, band.next_y, 0);
+            if (b2.next_y == b2.next_y or !(b2.x1 >= b2.x0)) return null;
+            const lh = p.strut_ascent + p.strut_descent;
+            if (!(lh > 0) or !(band.next_y > y)) return null;
+            const nl = @ceil((band.next_y - y) / lh);
+            if (!(nl < 64)) return null;
+            return .{ .def = floor64(b2.x1 - b2.x0), .ex = bw, .n_ex = @intFromFloat(nl) };
+        }
+
         fn next(it: *LineIter) ?LineInfo {
             if (it.cx != null) return it.nextFlow();
             const p = it.p;
@@ -1198,7 +1456,10 @@ pub const Paragraph = struct {
             }
             var stop: u32 = no_stop;
             if ((comptime wrap_balance) and it.mode.strategy != .wrap) {
-                if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) it.prepare();
+                if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) {
+                    it.prepare(.{ .def = floor64(@max(it.mode.avail.?, 0)) }, true);
+                    if (it.bal_w == it.bal_w) it.mode.avail = it.bal_w;
+                }
                 if (it.forced_i < it.n_forced) {
                     stop = it.forced[it.forced_i];
                     it.forced_i += 1;
@@ -1206,7 +1467,10 @@ pub const Paragraph = struct {
                     if (stop >= n) stop = no_stop;
                 }
             }
+            if (p.has_indent) it.mode.indent = it.indentFor(it.first_line);
             var li = p.nextLine(it.pos, it.cum, it.mode, stop);
+            it.first_line = false;
+            it.after_hard = li.hard;
             if (li.last) {
                 // paragraph part ended: `pretty` looks at the next part afresh
                 it.n_forced = 0;
@@ -1246,6 +1510,15 @@ pub const Paragraph = struct {
             // the float placed beside this line last, and a break position that is settled
             var beside: u32 = no_stop;
             var stop: u32 = no_stop;
+            // text-wrap: balance / pretty: the break point chosen for this line
+            const scored = (comptime wrap_balance) and it.mode.strategy != .wrap and full != null;
+            var prepared = !scored;
+            if (scored and it.forced_i < it.n_forced) {
+                stop = it.forced[it.forced_i];
+                it.forced_i += 1;
+                if (stop >= n) stop = no_stop;
+                prepared = true;
+            }
             while (true) {
                 band = .{ .x0 = 0, .x1 = @max(full orelse 0, 0) };
                 if (full != null) if (flow.band_fn) |bf| {
@@ -1255,6 +1528,10 @@ pub const Paragraph = struct {
                 };
                 var m = it.mode;
                 if (full != null) m.avail = band.x1 - band.x0;
+                if (m.avail) |a| {
+                    if (it.bal_w < a) m.avail = it.bal_w;
+                }
+                if (p.has_indent) m.indent = it.indentFor(it.first_line);
                 li = p.nextLine(it.pos, it.cum, m, stop);
                 it.clampLine(&li, m.avail);
                 deferred = no_stop;
@@ -1282,7 +1559,7 @@ pub const Paragraph = struct {
                         const g = gs[k];
                         if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid != Special.float) continue;
                         const how: FloatPlace = if (p.leadingAt(it.pos, k)) .leading else .beside;
-                        if (ff(flow, g.cluster, y, p.widthTo(it.pos, k, it.cum, flow), band.x1 - band.x0, how)) {
+                        if (ff(flow, g.cluster, y, p.widthTo(it.pos, k, it.cum, flow) + m.indent, band.x1 - band.x0, how)) {
                             it.float_next = k + 1;
                             placed = true;
                             if (how == .beside and stop == no_stop) beside = k;
@@ -1291,6 +1568,20 @@ pub const Paragraph = struct {
                     }
                     // (bounded: `float_next` grows with every float placed)
                     if (placed) continue;
+                }
+                if ((comptime wrap_balance) and !prepared) {
+                    // the leading floats are placed: the widths of the lines are known now
+                    prepared = true;
+                    if (stop == no_stop and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) {
+                        var may_bisect = false;
+                        // (unknown widths: `pretty` tries again at the next line)
+                        if (it.lineWidths(band, y, &may_bisect)) |lw| it.prepare(lw, may_bisect);
+                        if (it.forced_i < it.n_forced) {
+                            stop = it.forced[it.forced_i];
+                            it.forced_i += 1;
+                            if (stop >= n) stop = no_stop else continue;
+                        } else if (it.bal_w == it.bal_w) continue;
+                    }
                 }
                 // a line without text, atomic inlines, inline edges or a forced break has no line box
                 // (a line broken again starts its fragments again)
@@ -1336,6 +1627,16 @@ pub const Paragraph = struct {
                 }
                 it.float_next = @max(it.float_next, li.next);
             }
+            if (!li.empty) {
+                it.first_line = false;
+                it.after_hard = li.hard;
+            }
+            if (li.last) {
+                // paragraph part ended: `pretty` looks at the next part afresh
+                it.n_forced = 0;
+                it.forced_i = 0;
+                it.suspended = it.mode.strategy == .balance;
+            }
             li.top = y;
             li.band_x = band.x0;
             li.band_w = band.x1 - band.x0;
@@ -1374,7 +1675,8 @@ pub const Paragraph = struct {
                         if (p.rtl and !p.complex and keepEnd(p.glyphs[li.start..li.end])) {
                             // left-to-right text in a right-to-left line keeps its end (Blink
                             // TruncateText: the line and the run directions differ)
-                            var w: f32 = 0;
+                            // (the widths include the line's text-indent, as below)
+                            var w: f32 = li.indent;
                             var k = li.end;
                             while (k > li.start) : (k -= 1) {
                                 const nw = w + p.glyphs[k - 1].x_advance;
@@ -1389,7 +1691,7 @@ pub const Paragraph = struct {
                             li.ell_clamp = clamped;
                             return;
                         }
-                        var w: f32 = 0;
+                        var w: f32 = li.indent;
                         var k = li.start;
                         while (k < li.end) : (k += 1) {
                             const nw = w + p.advanceOf(p.glyphs[k], w, it.mode.flow);
@@ -1499,8 +1801,11 @@ pub const Paragraph = struct {
         line: u32 = 0,
         frag_start: usize = 0,
         oom: bool = false,
+        /// layout only: the visual box fragments of the current line (`visualRanges`)
+        vr: std.ArrayList(VRange) = .empty,
 
         fn deinit(cx: *Cx) void {
+            cx.vr.deinit(cx.alloc);
             cx.dy.deinit(cx.alloc);
             cx.tmp.deinit(cx.alloc);
             cx.pending.deinit(cx.alloc);
@@ -1525,6 +1830,116 @@ pub const Paragraph = struct {
 
     inline fn trunc64(v: f32) f32 {
         return @trunc(v * 64.0) * (1.0 / 64.0);
+    }
+
+    /// A box fragment in visual order: `frag` (index into the fragment list) covers the visual items
+    /// [a, b] of the line; `left` / `right` = the edge (margin + border + padding) placed before `a` /
+    /// after `b`, `left_m` / `right_m` its margin part.
+    const VRange = struct { frag: u32, box: u32, a: u32, b: u32, left: f32 = 0, left_m: f32 = 0, right: f32 = 0, right_m: f32 = 0 };
+
+    fn endsAt(cx: *const Cx, v: u32) bool {
+        for (cx.vr.items) |r| {
+            if (r.b == v) return true;
+        }
+        return false;
+    }
+
+    /// Places the line-right edges of the fragments ending at visual item `v` (inner boxes first).
+    fn edgesAfter(cx: *const Cx, frags: []BoxFragment, v: u32, x_in: f32) f32 {
+        var x = x_in;
+        var k = cx.vr.items.len;
+        while (k > 0) {
+            k -= 1;
+            const r = cx.vr.items[k];
+            if (r.b != v) continue;
+            x += r.right;
+            if (r.frag < frags.len) frags[r.frag].x1 = x - r.right_m;
+        }
+        return x;
+    }
+
+    /// Is visual item `v` of line `li` content of inline box `box` (a glyph that is laid out, an atomic
+    /// inline; with `edges`: an edge marker of the box itself, for a box without content on the line)?
+    fn inBox(self: *const Paragraph, li: *const LineInfo, order: ?[]const u32, v: u32, tail: u32, box: u32, edges: bool) bool {
+        const gi = li.start + (if (order) |o| o[v] else v);
+        const g = self.glyphs[gi];
+        var b: u32 = 0;
+        if (g.flags & ShapedGlyph.SPECIAL != 0) {
+            if (g.gid <= Special.close) return edges and g.cluster == box;
+            if (edges or g.gid != Special.atomic or g.metric >= self.objs.len) return false;
+            b = self.objs[g.metric].box;
+        } else {
+            if (edges or gi >= tail or g.flags & ShapedGlyph.HARD_BREAK != 0 or g.metric >= self.metrics.len) return false;
+            const r = self.metrics[g.metric].run;
+            if (r < self.run_box.len) b = self.run_box[r];
+        }
+        while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) {
+            if (b == box) return true;
+        }
+        return false;
+    }
+
+    /// Blink's box fragments of a line whose items are in visual order (`order`, null = logical): the
+    /// content of a box that is not contiguous after bidi reordering makes one fragment per run of
+    /// items; the box's line-left edge goes to its leftmost fragment, the line-right edge to the
+    /// rightmost (`InlineLayoutStateStack::UpdateAfterReorder`), where line-left is the start edge of
+    /// an ltr box and the end edge of an rtl one. Fills `cx.vr` (sorted by box: outer boxes first) and
+    /// adds the extra fragments to `frags`. Returns false when the line is left to the logical path.
+    noinline fn visualRanges(self: *const Paragraph, cx: *Cx, frags: *std.ArrayList(BoxFragment), alloc: std.mem.Allocator, frag_start: usize, li: *const LineInfo, order: ?[]const u32, tail: u32) !bool {
+        cx.vr.clearRetainingCapacity();
+        const count = li.end - li.start;
+        const n_fr = frags.items.len - frag_start;
+        // (bounded work on hostile input: boxes x items x nesting)
+        if (n_fr == 0 or n_fr > 4096 or @as(u64, n_fr) * count > (1 << 18)) return false;
+        var fi: usize = 0;
+        while (fi < n_fr) : (fi += 1) {
+            const f0 = frags.items[frag_start + fi];
+            const box = f0.box + 1;
+            if (box >= self.boxes.len) continue;
+            const bi = self.boxes[box];
+            const first_r = cx.vr.items.len;
+            var pass: u8 = 0;
+            while (pass < 2 and cx.vr.items.len == first_r) : (pass += 1) {
+                var v: u32 = 0;
+                while (v < count) {
+                    if (!self.inBox(li, order, v, tail, box, pass == 1)) {
+                        v += 1;
+                        continue;
+                    }
+                    const a = v;
+                    while (v < count and self.inBox(li, order, v, tail, box, pass == 1)) v += 1;
+                    var fidx = frag_start + fi;
+                    if (cx.vr.items.len != first_r) {
+                        fidx = frags.items.len;
+                        try frags.append(alloc, f0);
+                    }
+                    try cx.vr.append(cx.alloc, .{ .frag = @intCast(fidx), .box = box, .a = a, .b = v - 1 });
+                }
+            }
+            const rs = cx.vr.items[first_r..];
+            if (rs.len == 0) continue;
+            const l_has = if (bi.rtl) f0.last else f0.first;
+            const r_has = if (bi.rtl) f0.first else f0.last;
+            if (l_has) {
+                rs[0].left = if (bi.rtl) bi.end else bi.start;
+                rs[0].left_m = if (bi.rtl) bi.margin_end else bi.margin_start;
+            }
+            if (r_has) {
+                rs[rs.len - 1].right = if (bi.rtl) bi.start else bi.end;
+                rs[rs.len - 1].right_m = if (bi.rtl) bi.margin_start else bi.margin_end;
+            }
+            for (rs, 0..) |r, k| {
+                const hl = l_has and k == 0;
+                const hr = r_has and k == rs.len - 1;
+                const f = &frags.items[r.frag];
+                f.rtl = bi.rtl;
+                f.first = if (bi.rtl) hr else hl;
+                f.last = if (bi.rtl) hl else hr;
+                f.x0 = std.math.inf(f32);
+                f.x1 = -std.math.inf(f32);
+            }
+        }
+        return cx.vr.items.len != 0;
     }
 
     /// Aligns the pending descendants of stack entry `idx` (`text-top` / `text-bottom` against
@@ -1653,7 +2068,7 @@ pub const Paragraph = struct {
 
     fn openState(self: *const Paragraph, cx: *Cx, box: u32, slot: u32, first_in: bool) void {
         const bi = self.boxes[box];
-        const first = first_in or bi.clone;
+        const first = (first_in and !bi.no_start) or bi.clone;
         cx.push(.{ .box = box, .start = slot, .asc = bi.ascent, .desc = bi.descent, .valign = bi.valign });
         if (cx.frags) |fr| {
             fr.append(cx.frag_alloc, .{ .box = box - 1, .line = cx.line, .x0 = std.math.inf(f32), .x1 = -std.math.inf(f32), .baseline = 0, .first = first, .face = bi.face, .slot = slot }) catch {
@@ -1714,7 +2129,7 @@ pub const Paragraph = struct {
             switch (g.gid) {
                 Special.open => if (g.cluster < self.boxes.len and g.cluster != 0) self.openState(cx, g.cluster, slot, true),
                 Special.close => if (cx.stack.items.len > 1 and top.box == g.cluster) {
-                    markLast(cx, g.cluster);
+                    if (g.cluster < self.boxes.len and !self.boxes[g.cluster].no_end) markLast(cx, g.cluster);
                     self.endBox(cx, slot + 1);
                 },
                 Special.atomic => {
@@ -1744,7 +2159,7 @@ pub const Paragraph = struct {
         return .{
             .avail = avail,
             .emergency = self.opts.overflow_wrap != .normal,
-            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps() and !self.complex) self.opts.text_wrap else .wrap,
+            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps()) self.opts.text_wrap else .wrap,
         };
     }
 
@@ -1780,7 +2195,6 @@ pub const Paragraph = struct {
         defer cx.deinit();
         var m = self.modeFor(max_width);
         m.flow = flow;
-        m.strategy = .wrap;
         var it: LineIter = .{ .p = self, .mode = m, .cx = &cx };
         var s: Size = .{ .width = 0, .height = 0 };
         while (it.next()) |li| {
@@ -1868,7 +2282,6 @@ pub const Paragraph = struct {
         defer cx.deinit();
         var m = self.modeFor(max_width);
         m.flow = flow;
-        m.strategy = .wrap;
         return self.layoutImpl(alloc, m, &cx);
     }
 
@@ -1890,6 +2303,45 @@ pub const Paragraph = struct {
         while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) touchBox(frags, b, @min(xa, xb), @max(xa, xb));
     }
 
+    /// Sum of the `position: relative` offsets of inline box `box_in` and its ancestors.
+    noinline fn relOf(self: *const Paragraph, box_in: u32) [2]f32 {
+        var r: [2]f32 = .{ 0, 0 };
+        var b = box_in;
+        while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) {
+            r[0] += self.boxes[b].rel[0];
+            r[1] += self.boxes[b].rel[1];
+        }
+        return r;
+    }
+
+    /// Relative positioning (after layout, it moves no line): the glyphs, segments, fragments and
+    /// atomic inlines of the boxes with an offset.
+    noinline fn applyRel(self: *const Paragraph, acc: *LayoutAcc, rel_objs: []const [2]f32) void {
+        for (acc.segs.items) |*s| {
+            const r = self.relOf(s.box);
+            if (r[0] == 0 and r[1] == 0) continue;
+            s.x0 += r[0];
+            s.x1 += r[0];
+            s.baseline += r[1];
+            const gl = acc.out.items;
+            for (gl[@min(s.g0, gl.len)..@min(s.g1, gl.len)]) |*g| {
+                g.x += r[0];
+                g.y += r[1];
+            }
+        }
+        for (acc.frags.items) |*f| {
+            const r = self.relOf(f.box +% 1);
+            f.x0 += r[0];
+            f.x1 += r[0];
+            f.baseline += r[1];
+        }
+        for (acc.objects.items, 0..) |*o, k| {
+            if (k >= rel_objs.len) break;
+            o.x += rel_objs[k][0];
+            o.y += rel_objs[k][1];
+        }
+    }
+
     noinline fn pushObj(list: *std.ArrayList(ObjectPos), alloc: std.mem.Allocator, id: u32, x: f32, y: f32, line: usize) !void {
         try list.append(alloc, .{ .id = id, .x = x, .y = y, .line = @intCast(line) });
     }
@@ -1898,7 +2350,7 @@ pub const Paragraph = struct {
     /// the boxes around run `run`.
     noinline fn pushSeg(self: *const Paragraph, list: *std.ArrayList(Segment), alloc: std.mem.Allocator, frags: []BoxFragment, run: u32, g0: usize, g1: usize, x0: f32, x1: f32, baseline: f32, line: usize) !void {
         if (g1 <= g0) return;
-        try list.append(alloc, .{ .g0 = @intCast(g0), .g1 = @intCast(g1), .x0 = x0, .x1 = x1, .baseline = baseline, .line = @intCast(line) });
+        try list.append(alloc, .{ .g0 = @intCast(g0), .g1 = @intCast(g1), .x0 = x0, .x1 = x1, .baseline = baseline, .line = @intCast(line), .box = if (run < self.run_box.len) self.run_box[run] else 0 });
         if (run < self.run_box.len) self.touchChain(frags, self.run_box[run], x0, x1);
     }
 
@@ -1915,6 +2367,8 @@ pub const Paragraph = struct {
         defer alloc.free(levels);
         var acc: LayoutAcc = .{};
         errdefer acc.deinit(alloc);
+        var rel_objs: std.ArrayList([2]f32) = .empty;
+        defer rel_objs.deinit(alloc);
         const lines = &acc.lines;
         const out = &acc.out;
         const objects = &acc.objects;
@@ -1979,6 +2433,8 @@ pub const Paragraph = struct {
             // an overflowing line keeps its start edge: in a right-to-left paragraph it sticks
             // out on the left
             if (free_raw < 0) x = if (self.rtl) free_raw else 0;
+            // (the indent is at the inline start of the line box: on the right in a right-to-left paragraph)
+            if (!self.rtl) x += li.indent;
             if (flow) x += li.band_x;
             const line_x = x;
             const baseline = top + li.ascent;
@@ -1995,6 +2451,13 @@ pub const Paragraph = struct {
                     k -= 1;
                     const g = self.glyphs[li.start + k];
                     lv[k] = g.level;
+                    if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid <= Special.close) {
+                        // inline box edges are opaque to reordering: they take the level after them
+                        // (Blink: the placeholder of an empty box)
+                        lv[k] = if (k + 1 < count) lv[k + 1] else base_level;
+                        if (lv[k] != 0) visual = true;
+                        continue;
+                    }
                     // L1: tabs, and white space before them / at the line end, take the paragraph level
                     if (g.flags & ShapedGlyph.TAB != 0) {
                         lv[k] = base_level;
@@ -2021,7 +2484,11 @@ pub const Paragraph = struct {
                     } else if (q.flags & ShapedGlyph.SPACE == 0) break;
                 }
             }
-            if (cplx and self.has_clone) {
+            // lines with reordered runs or right-to-left boxes: the box edges are placed visually
+            var ve = false;
+            if (cplx and (visual or self.has_rtl_box) and frags.items.len > frag_start)
+                ve = try self.visualRanges(cx_.?, frags, alloc, frag_start, &li, if (visual) order[0..count] else null, tail);
+            if (cplx and self.has_clone and !ve) {
                 // start edges of the cloned boxes continued from the previous line (outer first)
                 const cx = cx_.?;
                 var k: usize = @min(cx.n_cont, cx.tmp.items.len);
@@ -2044,6 +2511,12 @@ pub const Paragraph = struct {
             var prev_item: u32 = 0xffff_ffff;
             var v: usize = 0;
             while (v < count) : (v += 1) {
+                if (ve and v > 0 and endsAt(cx_.?, @intCast(v - 1))) {
+                    // line-right edges of the fragments that ended with the previous item
+                    if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                    seg_run = 0xffff_ffff;
+                    x = edgesAfter(cx_.?, frags.items, @intCast(v - 1), x);
+                }
                 const gi = li.start + (if (visual) order[v] else @as(u32, @intCast(v)));
                 const g = self.glyphs[gi];
                 if (self.multi_run and g.item != prev_item) {
@@ -2056,19 +2529,32 @@ pub const Paragraph = struct {
                     const slot = cx.n_cont + (gi - li.start);
                     if (slot < cx.dy.items.len) dy = cx.dy.items[slot];
                     const run: u32 = if (g.flags & ShapedGlyph.SPECIAL != 0) 0xffff_fffe else if (g.metric < self.metrics.len) self.metrics[g.metric].run else 0;
+                    if (ve) {
+                        // fragments starting at this item: their line-left edges, outer boxes first
+                        var opened = false;
+                        for (cx.vr.items) |r| {
+                            if (r.a != @as(u32, @intCast(v))) continue;
+                            if (!opened and seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                            opened = true;
+                            frags.items[r.frag].x0 = x + r.left_m;
+                            x += r.left;
+                        }
+                        if (opened) seg_run = 0xffff_ffff;
+                    }
                     if (run != seg_run) {
                         // close the open segment
-                        if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                        if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, if (ve) &.{} else frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                         seg_g0 = out.items.len;
                         seg_x0 = x;
                         seg_run = run;
                         seg_dy = dy;
                     }
                     if (g.flags & ShapedGlyph.SPECIAL != 0) {
-                        const adv = self.advanceOf(g, x - line_x, m.flow);
-                        const fr = frags.items[frag_start..];
+                        // (visual placement: the edge markers take no room where they are)
+                        const adv = if (ve and g.gid <= Special.close) 0 else self.advanceOf(g, x - line_x, m.flow);
+                        const fr: []BoxFragment = if (ve) &.{} else frags.items[frag_start..];
                         switch (g.gid) {
-                            Special.open, Special.close => if (g.cluster < self.boxes.len and g.cluster != 0) {
+                            Special.open, Special.close => if (!ve and g.cluster < self.boxes.len and g.cluster != 0) {
                                 const bi = self.boxes[g.cluster];
                                 const is_open = g.gid == Special.open;
                                 const rtl_run = g.level & 1 != 0;
@@ -2084,6 +2570,11 @@ pub const Paragraph = struct {
                                 if (g.cluster < m.flow.?.objects.len) asc = m.flow.?.objects[g.cluster].ascent;
                                 if (!std.math.isFinite(asc)) asc = 0;
                                 try pushObj(objects, alloc, g.cluster, x, baseline + dy - asc, lines.items.len);
+                                if (self.has_rel) {
+                                    // (kept beside the object list: the offset of the boxes around the atomic inline)
+                                    while (rel_objs.items.len < objects.items.len) try rel_objs.append(alloc, .{ 0, 0 });
+                                    rel_objs.items[objects.items.len - 1] = self.relOf(if (g.metric < self.objs.len) self.objs[g.metric].box else 0);
+                                }
                                 if (g.metric < self.objs.len) self.touchChain(fr, self.objs[g.metric].box, x, x + adv);
                             },
                             Special.oof => try pushObj(objects, alloc, g.cluster, x, top, lines.items.len),
@@ -2120,10 +2611,15 @@ pub const Paragraph = struct {
                     x += mt.hyphen_adv - g.kern;
                 }
             }
+            if (ve and count > 0 and endsAt(cx_.?, @intCast(count - 1))) {
+                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                seg_run = 0xffff_ffff;
+                x = edgesAfter(cx_.?, frags.items, @intCast(count - 1), x);
+            }
             if (cplx) {
-                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, if (ve) &.{} else frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                 // end edges of the cloned boxes that continue on the next line (inner first)
-                if (self.has_clone and li.end < self.glyphs.len) {
+                if (self.has_clone and !ve and li.end < self.glyphs.len) {
                     var b = self.boxBefore(li.end);
                     while (b != 0) : (b = self.boxes[b].parent) {
                         const bi = self.boxes[b];
@@ -2156,7 +2652,7 @@ pub const Paragraph = struct {
                 .top = top,
                 .height = li.ascent + li.descent,
                 .x = line_x,
-                .width = if (extra != 0) x - line_x else li.width,
+                .width = if (extra != 0) x - line_x else li.width - li.indent,
                 .glyph_start = @intCast(g_start),
                 .glyph_end = @intCast(out.items.len),
                 .ascent = li.ascent,
@@ -2166,6 +2662,7 @@ pub const Paragraph = struct {
             top += li.ascent + li.descent;
         }
         if (flow and cx_.?.oom) return error.OutOfMemory;
+        if (self.has_rel) self.applyRel(&acc, rel_objs.items);
 
         // paint order: box by box (outer boxes first), each box line by line
         {
@@ -2184,6 +2681,7 @@ pub const Paragraph = struct {
             .exact_width = if (flow) max_w else size.exact_width,
             .lines = &.{},
             .glyphs = &.{},
+            .pct_base = self.pct_base,
         };
         return acc.finish(alloc, &res);
     }
@@ -2601,6 +3099,9 @@ const Builder = struct {
     hang: bool = true,
     nowrap: bool = false,
     has_clone: bool = false,
+    has_rtl_box: bool = false,
+    has_pct: bool = false,
+    has_rel: bool = false,
     base_level: u8 = 0,
 
     /// Resolves `ParagraphOptions.boxes` and decides whether the paragraph needs the inline box
@@ -2632,6 +3133,23 @@ const Builder = struct {
                 bi.margin_end = e[3];
                 bi.clone = s.clone and (e[0] != 0 or e[1] != 0);
                 if (bi.clone) b.has_clone = true;
+            }
+            bi.rtl = s.rtl;
+            bi.no_start = s.no_start;
+            bi.no_end = s.no_end;
+            if (std.math.isFinite(s.rel[0]) and std.math.isFinite(s.rel[1]) and (s.rel[0] != 0 or s.rel[1] != 0)) {
+                bi.rel = s.rel;
+                b.has_rel = true;
+                cx = true;
+            }
+            if (s.rtl) b.has_rtl_box = true;
+            if (s.pct) |ep| {
+                bi.pct = ep;
+                bi.resolveEdges(0);
+                bi.clone = s.clone;
+                if (bi.clone) b.has_clone = true;
+                b.has_pct = true;
+                cx = true;
             }
             ib[k] = bi;
             if (s.decorated or bi.valign != .baseline or bi.start != 0 or bi.end != 0 or bi.normal_lh != ib[0].normal_lh or

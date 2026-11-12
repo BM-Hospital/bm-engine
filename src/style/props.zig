@@ -512,7 +512,7 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .textDecorationLine => &.{fr("text_decoration_line")},
         .textDecorationStyle => &.{fr("text_decoration_style")},
         .textDecorationThickness => &.{fr("text_decoration_thickness")},
-        .textIndent => &.{fr("text_indent")},
+        .textIndent => &.{ fr("text_indent"), fr("text_indent_flags") },
         .textOverflow => &.{ fr("text_overflow"), fr("text_overflow_string") },
         .textShadow => &.{fr("text_shadow")},
         .textTransform => &.{fr("text_transform")},
@@ -3511,9 +3511,10 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         },
         .textIndent => {
             s.text_indent = try lp(cx, l.next());
+            s.text_indent_flags = 0;
             while (!l.atEnd()) {
                 const t = l.next();
-                if (!t.isIdent("hanging") and !t.isIdent("each-line")) return bad;
+                if (t.isIdent("each-line")) s.text_indent_flags |= 1 else if (t.isIdent("hanging")) s.text_indent_flags |= 2 else return bad;
             }
         },
         .tabSize => s.tab_size = try parseTabSize(cx, l.next()),

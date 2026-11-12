@@ -632,3 +632,27 @@ test "table: perf, 60 x 8 cells" {
     // each node: min-content, max-content, measure, final (and a few more for the wrapping rows)
     try testing.expect(computes < 8 * n_nodes);
 }
+
+test "table: rtl orders the columns right to left" {
+    var t = Tree.init(testing.allocator);
+    defer t.deinit();
+    const root = try add(&t, null, .{ .display = .block, .size = .{ px(400), .auto } });
+    const tbl = try add(&t, root, .{ .display = .table, .rtl = true, .border_spacing = .{ 2, 2 }, .padding = .{ .top = .{ .px = 0 }, .bottom = .{ .px = 0 }, .left = .{ .px = 10 }, .right = .{ .px = 0 } } });
+    const row = try add(&t, tbl, .{ .display = .table_row });
+    const a = try add(&t, row, .{ .display = .table_cell });
+    _ = try boxIn(&t, a, 30, 10);
+    const b = try add(&t, row, .{ .display = .table_cell });
+    _ = try boxIn(&t, b, 50, 10);
+    try t.compute(root, .{ .{ .definite = 400 }, .{ .definite = 300 } }, &T.dummy, T.noMeasure, .{});
+    // table: 10 padding + 2 + 50 + 2 + 30 + 2 = 96 wide, at the left of the (ltr) block
+    try expectRect(&t, tbl, 0, 0, 96, 14);
+    // (cells are relative to their row, which starts after the left padding and spacing)
+    try expectRect(&t, a, 52, 0, 30, 10);
+    try expectRect(&t, b, 0, 0, 50, 10);
+    const g = t.tableGeom(tbl).?;
+    try testing.expect(g.rtl);
+    // an rtl block parent puts the shrink-to-fit table at its right edge
+    t.setStyle(root, .{ .display = .block, .size = .{ px(400), .auto }, .rtl = true });
+    try t.compute(root, .{ .{ .definite = 400 }, .{ .definite = 300 } }, &T.dummy, T.noMeasure, .{});
+    try expectRect(&t, tbl, 304, 0, 96, 14);
+}
