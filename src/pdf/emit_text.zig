@@ -236,7 +236,9 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
             .text = if (o.with_paint and !in_marker) para_text else "",
             .baseline = run.baseline,
             .fill = dev.filtered(e.filter, fill_raw),
-            .stroke = if (sw > 0 and scol.a != 0) .{ .width = sw, .color = dev.filtered(e.filter, scol) } else null,
+            // (a transparent stroke keeps its width: `background-clip: text` strokes the background
+            // with it, takumi `background_stroke`; the stroke itself draws nothing, `text_stroke`)
+            .stroke = if (sw > 0) .{ .width = sw, .color = dev.filtered(e.filter, scol) } else null,
             .stroke_first = rcs.paint_order == .stroke,
             .synthetic_bold = if (!colored and rcs.font_weight >= 600 and fc.weight < 600) ptext.emboldenWidth(g0.size) else 0,
             .synthetic_italic = !colored and rcs.font_style != .normal and !fc.italic,
