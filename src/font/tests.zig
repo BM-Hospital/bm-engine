@@ -860,3 +860,27 @@ test "font-variant-caps: OpenType caps or synthesized small caps (Blink rules)" 
         }
     }
 }
+
+test "fuzz: caps synthesis and overflow markers on truncated / corrupted fonts never crash" {
+    var seed: u32 = 12345;
+    var k: usize = 0;
+    while (k < 60) : (k += 1) {
+        const buf = try t.allocator.dupe(u8, noto);
+        defer t.allocator.free(buf);
+        seed = seed *% 1103515245 +% 12345;
+        const len = 12 + (seed >> 8) % @as(u32, @intCast(buf.len - 12));
+        // corrupt a few bytes inside the (likely GSUB-heavy) tail as well
+        var j: usize = 0;
+        while (j < 16) : (j += 1) {
+            seed = seed *% 1103515245 +% 12345;
+            buf[(seed >> 4) % len] = @truncate(seed >> 16);
+        }
+        var fc: font.FontCollection = .{};
+        defer fc.deinit(t.allocator);
+        _ = fc.register(t.allocator, buf[0..len], .{}) catch continue;
+        for ([_]font.Caps{ .small, .all_small, .petite, .unicase, .titling }) |cv| {
+            var l = font.layoutText(t.allocator, &fc, &.{.{ .text = "a\u{df}B \u{1F469}\u{200D}\u{1F4BB} x", .style = .{ .size = 20, .caps = cv } }}, .{ .max_width = 30, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = " \u{bb}x" }) catch continue;
+            l.deinit(t.allocator);
+        }
+    }
+}
