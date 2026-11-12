@@ -68,4 +68,28 @@ const item1 = [
   },
 ];
 
-export default [...item1];
+// ------------------------------------------------------------------------------------- 2. transforms (measure)
+// measure() reports takumi's composed matrix (parent * T(location) * local transform); these are also pixel
+// fixtures. Exact measure JSON: bench/probe/fixcss/measure_cmp.mjs.
+const xbox = (style, children = []) => ({ type: "container", style: { display: "flex", width: 90, height: 60, backgroundColor: "#6366f1", ...style }, children });
+const item2 = [
+  {
+    id: "fix-css-transform-nested", feature: "transform", title: "nested transforms: scale > rotate+translate > child, individual translate / rotate / scale, transform-origin", width: 520, height: 320,
+    node: { type: "container", style: { display: "flex", width: "100%", height: "100%", padding: 40, gap: 60, backgroundColor: "#f8fafc" }, children: [
+      xbox({ transform: "scale(1.4)", padding: 8, backgroundColor: "#cbd5e1" }, [xbox({ width: 40, height: 30, transform: "rotate(90deg) translate(6px, 4px)", backgroundColor: "#f97316" }, [xbox({ width: 12, height: 12, marginLeft: 6, backgroundColor: "#0f172a" })])]),
+      xbox({ translate: "10px 20%", rotate: "-30deg", scale: "1.2 0.8", transformOrigin: "0 0" }),
+      xbox({ transform: "skew(10deg, 5deg) rotate(-37.5deg)", transformOrigin: "25% 80%", backgroundColor: "#22c55e" }),
+    ] },
+  },
+  {
+    id: "fix-css-transform-abs-text", feature: "transform", title: "rotated relative box with a scaled absolute child and skewed text", width: 420, height: 260,
+    node: { type: "container", style: { display: "flex", width: "100%", height: "100%", padding: 50, backgroundColor: "#fff" }, children: [
+      xbox({ position: "relative", width: 200, height: 120, transform: "rotate(8deg)", backgroundColor: "#e0e7ff", flexDirection: "column" }, [
+        { type: "text", text: "Skewed text", style: { fontFamily: "Inter", fontSize: 26, transform: "skewX(-12deg)", color: "#1e1b4b" } },
+        xbox({ position: "absolute", right: 10, bottom: 10, width: 24, height: 24, transform: "scale(1.5) rotate(45deg)", backgroundColor: "#ec4899" }),
+      ]),
+    ] },
+  },
+];
+
+export default [...item1, ...item2];

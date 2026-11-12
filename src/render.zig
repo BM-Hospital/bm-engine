@@ -24,6 +24,7 @@ const twc = @import("tw/tw.zig");
 const html = @import("html/html.zig");
 const animate = @import("animate.zig");
 const svgm = @import("svg/svg.zig");
+const mx = @import("measure_xform.zig");
 
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
@@ -636,7 +637,7 @@ pub const Renderer = struct {
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
         var out: std.ArrayList(u8) = .empty;
-        try f.writeMeasured(&out, f.root, 0, 0);
+        try f.writeMeasured(&out, f.root, .{});
         self.result = out.items;
         return self.result;
     }
@@ -1114,6 +1115,16 @@ pub fn writeJsonString(a: Allocator, out: *std.ArrayList(u8), s: []const u8) Err
         }
     }
     try out.append(a, '"');
+}
+
+/// `,"transform":[a,b,c,d,e,f]` of a measured node (exact f32 values).
+fn writeAffine(a: Allocator, out: *std.ArrayList(u8), t: mx.Affine) Error!void {
+    try out.appendSlice(a, ",\"transform\":[");
+    for ([6]f32{ t.a, t.b, t.c, t.d, t.e, t.f }, 0..) |v, i| {
+        if (i > 0) try out.append(a, ',');
+        try mx.writeExact(a, out, v);
+    }
+    try out.append(a, ']');
 }
 
 /// Decimal printer (up to 6 fraction digits, trailing zeros trimmed) without std.fmt.
@@ -2436,32 +2447,29 @@ pub const Frame = struct {
     /// own `runs` (x / y relative to its content box) with its atomic inline boxes as `children`;
     /// anonymous paragraph leaves / line containers only appear as boxes of their own beside
     /// block-level siblings (takumi's anonymous block wrappers).
-    fn writeMeasured(f: *Frame, out: *std.ArrayList(u8), id: u32, ox: f32, oy: f32) Error!void {
+    /// `pt` = the parent's measured transform (takumi: parent * T(location) * own local transform).
+    fn writeMeasured(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine) Error!void {
         const a = f.a;
         const n = &f.nodes.items[id];
         const l = f.tree.layout(n.lid);
-        const x = ox + l.x;
-        const y = oy + l.y;
+        const t = mx.mul(mx.mul(pt, mx.Affine.translate(l.x, l.y)), mx.local(n.cs, l.w, l.h));
         try out.appendSlice(a, "{\"width\":");
-        try writeNum(a, out, l.w);
+        try mx.writeExact(a, out, l.w);
         try out.appendSlice(a, ",\"height\":");
-        try writeNum(a, out, l.h);
-        try out.appendSlice(a, ",\"transform\":[1,0,0,1,");
-        try writeNum(a, out, x);
-        try out.append(a, ',');
-        try writeNum(a, out, y);
-        try out.appendSlice(a, "],\"children\":[");
+        try mx.writeExact(a, out, l.h);
+        try writeAffine(a, out, t);
+        try out.appendSlice(a, ",\"children\":[");
         // the anonymous child holding all in-flow content, reported as this box's inline content
         var inl = if (n.kind == .container and hasLines(n.cs.display)) f.soleInline(id) else none;
         // (inline content holding out-of-flow boxes is reported as takumi's anonymous block around it)
         if (inl != none and f.hasOutOfFlow(inl)) inl = none;
         var first = true;
-        if (n.kind == .anon_box) try f.writePlaceholders(out, id, x, y, &first);
+        if (n.kind == .anon_box) try f.writePlaceholders(out, id, t, &first);
         if (inl != none and f.nodes.items[inl].kind == .anon_box) {
             const il = f.tree.layout(f.nodes.items[inl].lid);
-            try f.writeChildren(out, inl, x + il.x, y + il.y, none, &first);
+            try f.writeChildren(out, inl, mx.mul(t, mx.Affine.translate(il.x, il.y)), none, &first);
         }
-        try f.writeChildren(out, id, x, y, inl, &first);
+        try f.writeChildren(out, id, t, inl, &first);
         try out.appendSlice(a, "],\"runs\":[");
         first = true;
         const cx = l.border.left + l.padding.left;
@@ -2477,7 +2485,7 @@ pub const Frame = struct {
 
     /// Children of `id` except `skip` (and the inline-level boxes of an inline formatting context
     /// that are on no line, e.g. cut off by a line clamp).
-    fn writeChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, skip: u32, first: *bool) Error!void {
+    fn writeChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine, skip: u32, first: *bool) Error!void {
         const tl: ?*const font.TextLayout = if (f.nodes.items[id].kind == .anon_box) f.nodes.items[id].tl else null;
         var k: u32 = 0;
         var c = f.nodes.items[id].first_child;
@@ -2496,7 +2504,7 @@ pub const Frame = struct {
             }
             if (!first.*) try out.append(f.a, ',');
             first.* = false;
-            try f.writeMeasured(out, c, x, y);
+            try f.writeMeasured(out, c, pt);
         }
     }
 
@@ -2515,7 +2523,7 @@ pub const Frame = struct {
 
     /// takumi reports an empty box at the static position of every out-of-flow box of an inline
     /// formatting context, before its boxes.
-    noinline fn writePlaceholders(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, first: *bool) Error!void {
+    noinline fn writePlaceholders(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine, first: *bool) Error!void {
         const n = &f.nodes.items[id];
         const tl = n.tl orelse return;
         var k: u32 = 0;
@@ -2528,11 +2536,9 @@ pub const Frame = struct {
                 if (o.id != k) continue;
                 if (!first.*) try out.append(f.a, ',');
                 first.* = false;
-                try out.appendSlice(f.a, "{\"width\":0,\"height\":0,\"transform\":[1,0,0,1,");
-                try writeNum(f.a, out, x + o.x);
-                try out.append(f.a, ',');
-                try writeNum(f.a, out, y + o.y);
-                try out.appendSlice(f.a, "],\"children\":[],\"runs\":[]}");
+                try out.appendSlice(f.a, "{\"width\":0,\"height\":0");
+                try writeAffine(f.a, out, mx.mul(pt, mx.Affine.translate(o.x, o.y)));
+                try out.appendSlice(f.a, ",\"children\":[],\"runs\":[]}");
                 break;
             }
         }
@@ -2573,13 +2579,13 @@ pub const Frame = struct {
                 if (!first.*) try out.append(a, ',');
                 first.* = false;
                 try out.appendSlice(a, "{\"x\":");
-                try writeNum(a, out, ox + @min(sg.x0, sg.x1));
+                try mx.writeExact(a, out, ox + @min(sg.x0, sg.x1));
                 try out.appendSlice(a, ",\"y\":");
-                try writeNum(a, out, oy + line.top + (sg.baseline - line.baseline));
+                try mx.writeExact(a, out, oy + line.top + (sg.baseline - line.baseline));
                 try out.appendSlice(a, ",\"width\":");
-                try writeNum(a, out, @abs(sg.x1 - sg.x0));
+                try mx.writeExact(a, out, @abs(sg.x1 - sg.x0));
                 try out.appendSlice(a, ",\"height\":");
-                try writeNum(a, out, line.height);
+                try mx.writeExact(a, out, line.height);
                 try out.append(a, '}');
             }
             return;
@@ -2601,13 +2607,13 @@ pub const Frame = struct {
                 if (!first.*) try out.append(a, ',');
                 first.* = false;
                 try out.appendSlice(a, "{\"x\":");
-                try writeNum(a, out, ox + @min(x0, x1));
+                try mx.writeExact(a, out, ox + @min(x0, x1));
                 try out.appendSlice(a, ",\"y\":");
-                try writeNum(a, out, oy + line.top);
+                try mx.writeExact(a, out, oy + line.top);
                 try out.appendSlice(a, ",\"width\":");
-                try writeNum(a, out, @abs(x1 - x0));
+                try mx.writeExact(a, out, @abs(x1 - x0));
                 try out.appendSlice(a, ",\"height\":");
-                try writeNum(a, out, line.height);
+                try mx.writeExact(a, out, line.height);
                 try out.append(a, '}');
                 if (g >= end) break;
             }

@@ -34,3 +34,18 @@ test "text nodes: untagged text is no sibling for selectors; blank text generate
     out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"block\"},\"children\":[{\"type\":\"text\",\"text\":\"\",\"className\":\"x\"},{\"type\":\"text\",\"text\":\"  \",\"className\":\"x\"}]}", css);
     try expectContains(out, "\"children\":[]");
 }
+
+test "measure(): transforms compose like takumi (exact quarter turns, exact f32 printing)" {
+    const r = try newRenderer();
+    defer r.destroy();
+    const opts = "{\"width\":300,\"height\":300}";
+    var out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"flex\",\"width\":100,\"height\":50,\"transform\":\"translateX(50px) rotate(90deg)\"}}", opts);
+    try expectContains(out, "\"transform\":[0,1,-1,0,125,-25]");
+    // nested: parent scale(2) about its centre, child at (5,5) inside it
+    out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"flex\",\"width\":100,\"height\":50,\"padding\":5,\"transform\":\"scale(2)\"},\"children\":[{\"type\":\"container\",\"style\":{\"width\":10,\"height\":10}}]}", opts);
+    try expectContains(out, "\"transform\":[2,0,0,2,-50,-25]");
+    try expectContains(out, "\"transform\":[2,0,0,2,-40,-15]");
+    // individual properties (rotate 30deg: Rust f32 sin_cos values)
+    out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"flex\",\"width\":100,\"height\":50,\"rotate\":\"30deg\",\"transformOrigin\":\"0 0\"}}", opts);
+    try expectContains(out, "\"transform\":[0.866025388240814208984375,0.5,-0.5,0.866025388240814208984375,0,0]");
+}
