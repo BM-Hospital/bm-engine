@@ -60,3 +60,16 @@ test "renderSvg draws at device pixel ratio 1 whatever the option says (takumi R
     const two = try r.renderSvg(.json, node, "{\"width\":200,\"height\":100,\"devicePixelRatio\":2}");
     try std.testing.expectEqualStrings(one, two);
 }
+
+test "image-rendering pixelated: nearest resize picks floor((out + 0.5) * ratio) (image-rs box kernel, support 0)" {
+    const raster = @import("raster/raster.zig");
+    const gpa = std.testing.allocator;
+    var src = try raster.Pixmap.init(gpa, 5, 1);
+    defer src.deinit(gpa);
+    for (0..5) |i| @memset(src.data[i * 4 ..][0..4], @intCast(10 * (i + 1)));
+    var out = try raster.resampleNearest(gpa, &src, 2, 1);
+    defer out.deinit(gpa);
+    // ratio 2.5: centres 1.25 -> 1, 3.75 -> 3
+    try std.testing.expectEqual(@as(u8, 20), out.data[0]);
+    try std.testing.expectEqual(@as(u8, 40), out.data[4]);
+}

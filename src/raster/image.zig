@@ -331,6 +331,51 @@ pub fn resample(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !P
 
 /// The phase-1 f32 implementation, kept as the reference for tests (never referenced by the
 /// library itself, so it is not linked into the wasm).
+/// Nearest-neighbour draw of `src` stretched over the axis-aligned rect (x, y, w, h), with takumi's
+/// sample arithmetic for pixelated images: canvas -> source = scale(src / size) * T(-x, -y) built
+/// directly (not by inverting), sampled at pixel centres with per-pixel increments.
+pub fn drawPixmapNearestRect(dst: *Pixmap, src: *const Pixmap, x: f32, y: f32, w: f32, h: f32, clip: ?*const ClipMask) void {
+    if (!src.isValid() or src.width == 0 or src.height == 0 or !(w > 0) or !(h > 0)) return;
+    if (src.width > (1 << 24) or src.height > (1 << 24)) return;
+    const a = @as(f32, @floatFromInt(src.width)) / w;
+    const d = @as(f32, @floatFromInt(src.height)) / h;
+    const inv: Affine = .{ .a = a, .d = d, .e = a * -x, .f = d * -y };
+    if (!inv.isFinite()) return;
+    var sh: paint.Shader = undefined;
+    const img_paint: types.Paint = .{ .image = .{ .pixmap = src, .transform = inv, .filter = .nearest, .extend = .pad, .opacity = 1 } };
+    sh.init(&img_paint);
+    if (sh.kind == .none) return;
+    paint.fillRectShader(dst, .{ .x = x, .y = y, .w = w, .h = h }, &sh, clip);
+}
+
+/// Source index of output `out` for takumi's `Pixelated` resize (image-rs box kernel with support 0:
+/// the one texel under the output centre, `floor((out + 0.5) * ratio)`).
+fn nearestIndex(out: u32, ratio: f32, len: u32) u32 {
+    const input = (@as(f32, @floatFromInt(out)) + 0.5) * ratio;
+    return @intFromFloat(clampF(@floor(input), 0, @floatFromInt(len - 1)));
+}
+
+/// Nearest-neighbour resize for `image-rendering: pixelated | crisp-edges` (takumi
+/// `ImageScalingAlgorithm::Pixelated`): every output texel is a copy of one source texel.
+pub fn resampleNearest(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !Pixmap {
+    var out = try Pixmap.init(alloc, new_w, new_h);
+    errdefer out.deinit(alloc);
+    if (new_w == 0 or new_h == 0 or !src.isValid() or src.width == 0 or src.height == 0) return out;
+    if (src.width > (1 << 24) or src.height > (1 << 24) or new_w > (1 << 24) or new_h > (1 << 24)) return error.OutOfMemory;
+    const hratio = @as(f32, @floatFromInt(src.width)) / @as(f32, @floatFromInt(new_w));
+    const vratio = @as(f32, @floatFromInt(src.height)) / @as(f32, @floatFromInt(new_h));
+    const sp: [*]align(1) const u32 = @ptrCast(src.data.ptr);
+    const dp: [*]align(1) u32 = @ptrCast(out.data.ptr);
+    var y: u32 = 0;
+    while (y < new_h) : (y += 1) {
+        const row = sp + @as(usize, nearestIndex(y, vratio, src.height)) * src.width;
+        const drow = dp + @as(usize, y) * new_w;
+        var x: u32 = 0;
+        while (x < new_w) : (x += 1) drow[x] = row[nearestIndex(x, hratio, src.width)];
+    }
+    return out;
+}
+
 pub fn resampleReference(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !Pixmap {
     var out = try Pixmap.init(alloc, new_w, new_h);
     errdefer out.deinit(alloc);

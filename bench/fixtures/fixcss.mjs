@@ -1,6 +1,8 @@
 // fix-css: CSS cascade / Tailwind / output-correctness regressions (structural selectors with text
 // nodes, white-space-only text dropping, transforms in measure, image-rendering, Tailwind theme /
 // space-* / animate-* / arbitrary properties, cascade layers). Every case is checked against takumi.
+import { asset } from "./_h.mjs";
+
 const FONT = "font-family: Inter;";
 
 // ------------------------------------------------------------------------------------- 1. text nodes vs selectors
@@ -92,4 +94,27 @@ const item2 = [
   },
 ];
 
-export default [...item1, ...item2];
+// ------------------------------------------------------------------------------------- 5. image-rendering
+// pixelated / crisp-edges / optimizeSpeed = takumi `ImageScalingAlgorithm::Pixelated`: nearest-neighbour downscale
+// on decode and nearest sampling on draw (img nodes and background images); auto / smooth unchanged.
+const pixImgs = () => [{ src: "img://icon", data: asset("icon.png") }, { src: "img://photo", data: asset("photo.jpg") }, { src: "img://avatar", data: asset("avatar.png") }];
+const irRow = (ir) => ({ type: "container", style: { display: "flex", gap: 10, alignItems: "flex-start" }, children: [
+  { type: "image", src: "img://icon", style: { width: 230, height: 170, imageRendering: ir } },
+  { type: "image", src: "img://photo", style: { width: 120, height: 80, objectFit: "cover", imageRendering: ir } },
+  { type: "container", style: { width: 150, height: 110, backgroundImage: "url(img://avatar)", backgroundSize: "47px 37px", imageRendering: ir } },
+] });
+const item5 = [
+  {
+    id: "fix-css-image-rendering-pixelated", feature: "images", title: "image-rendering: pixelated on an upscaled PNG, a downscaled JPEG and a tiled background image", width: 560, height: 210, images: pixImgs(),
+    node: { type: "container", style: { display: "flex", width: "100%", height: "100%", padding: 12, backgroundColor: "#fff" }, children: [irRow("pixelated")] },
+  },
+  {
+    id: "fix-css-image-rendering-modes", feature: "images", title: "auto vs crisp-edges vs optimizeSpeed (inherited from the parent)", width: 560, height: 600, images: pixImgs(),
+    node: { type: "container", style: { display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 12, gap: 12, backgroundColor: "#f1f5f9" }, children: [
+      irRow("auto"), irRow("crisp-edges"),
+      { type: "container", style: { display: "flex", imageRendering: "optimizeSpeed" }, children: [{ type: "image", src: "img://icon", style: { width: 300, height: 150, objectFit: "contain", objectPosition: "left" } }] },
+    ] },
+  },
+];
+
+export default [...item1, ...item2, ...item5];

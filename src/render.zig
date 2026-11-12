@@ -877,14 +877,23 @@ pub const Renderer = struct {
         return self.resolveSvg(src);
     }
 
-    /// Catmull-Rom downscaled variant of a cached image (cached as well).
-    pub fn resampled(self: *Renderer, src: *const raster.Pixmap, tw: u32, th: u32) *const raster.Pixmap {
+    /// Catmull-Rom (or, `nearest`, nearest-neighbour) downscaled variant of a cached image (cached as well).
+    pub fn resampled(self: *Renderer, src: *const raster.Pixmap, tw: u32, th: u32, nearest: bool) *const raster.Pixmap {
         if (tw == 0 or th == 0 or (tw >= src.width and th >= src.height)) return src;
-        const w = @min(tw, src.width);
-        const h = @min(th, src.height);
-        const key = @as(u64, @intFromPtr(src.data.ptr)) ^ 0x9e3779b97f4a7c15;
+        var w = @min(tw, src.width);
+        var h = @min(th, src.height);
+        if (nearest) {
+            // takumi `DecodeTarget::covering`: one uniform scale covering the box, never upscaling
+            const sw: f32 = @floatFromInt(src.width);
+            const sh: f32 = @floatFromInt(src.height);
+            const s = @min(1.0, @max(@as(f32, @floatFromInt(tw)) / sw, @as(f32, @floatFromInt(th)) / sh));
+            w = @intFromFloat(std.math.clamp(@round(sw * s), 1, sw));
+            h = @intFromFloat(std.math.clamp(@round(sh * s), 1, sh));
+            if (w >= src.width and h >= src.height) return src;
+        }
+        const key = @as(u64, @intFromPtr(src.data.ptr)) ^ @as(u64, if (nearest) 0x51ed270b27a4f1c3 else 0x9e3779b97f4a7c15);
         if (self.cacheLookup(key, w, h)) |pm| return pm;
-        const pm = raster.resample(self.gpa, src, w, h) catch return src;
+        const pm = (if (nearest) raster.resampleNearest(self.gpa, src, w, h) else raster.resample(self.gpa, src, w, h)) catch return src;
         return self.cacheStore(key, w, h, pm) orelse blk: {
             // could not cache: keep it alive in the arena instead
             const a = self.arena.allocator();
