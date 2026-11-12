@@ -209,6 +209,9 @@ pub const Renderer = struct {
     font_evictions: u32 = 0,
     /// Canvas pixels, kept between renders (so the per-render arena can be recycled before encoding).
     canvas: []u8 = &.{},
+    /// Set by a host that wants `format: "raw"` frames painted straight into memory it owns
+    /// (the native addon: the JS ArrayBuffer of the result), instead of copying the canvas out.
+    raw_target: ?RawTarget = null,
     result: []const u8 = "",
     err: []const u8 = "",
     err_buf: [256]u8 = undefined,
@@ -428,7 +431,7 @@ pub const Renderer = struct {
         self.beginCall();
         const a = self.arena.allocator();
         const opts = try self.parseOptions(opts_json);
-        const pm = try self.renderPixels(.{ .kind = kind, .text = source }, opts);
+        const pm = try self.renderPixels(.{ .kind = kind, .text = source }, opts, if (opts.format == .raw) self.raw_target else null);
 
         self.result = switch (opts.format) {
             .raw => pm.data,
@@ -454,6 +457,13 @@ pub const Renderer = struct {
         return self.result;
     }
 
+    /// Where one raw frame is painted instead of the renderer's canvas. `alloc(ctx, len)` is called
+    /// at most once per `renderSource` call with `format: "raw"`, after layout, with the frame's
+    /// byte size; it returns `len` ZERO bytes that stay valid until the host has consumed
+    /// `result` (which is then that memory), or null to fall back to the canvas. The host owns
+    /// the memory, also when the render fails afterwards.
+    pub const RawTarget = struct { ctx: ?*anyopaque, alloc: *const fn (ctx: ?*anyopaque, len: usize) ?[*]u8 };
+
     /// A render source: text (JSON node tree / HTML) or an already parsed JSON node value
     /// (`renderAnimation` scenes; the value must outlive the call).
     pub const Source = struct { kind: SourceKind = .json, text: []const u8 = "", value: ?json.Value = null };
@@ -461,20 +471,28 @@ pub const Renderer = struct {
     /// Lays out and paints one frame into `self.canvas` and un-premultiplies it. The per-render
     /// arena is reset afterwards (everything of the layout / paint phase is dead), so `opts` must
     /// not reference it when the caller still needs them; scalar fields are fine.
-    fn renderPixels(self: *Renderer, src: Source, opts: Options) Error!raster.Pixmap {
+    fn renderPixels(self: *Renderer, src: Source, opts: Options, target: ?RawTarget) Error!raster.Pixmap {
         const a = self.arena.allocator();
         self.time_ms = opts.time_ms;
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined, .pre = src.value };
         try f.prepare(src.kind, src.text);
 
         const need = @as(usize, f.canvas_w) * f.canvas_h * 4;
-        if (self.canvas.len != need) {
-            self.gpa.free(self.canvas);
-            self.canvas = &.{};
-            self.canvas = self.gpa.alloc(u8, need) catch return error.OutOfMemory;
+        var pixels: []u8 = &.{};
+        // a host-provided, already zeroed frame buffer replaces the canvas (see `RawTarget`)
+        if (target) |t| if (need != 0) if (t.alloc(t.ctx, need)) |p| {
+            pixels = p[0..need];
+        };
+        if (pixels.len == 0) {
+            if (self.canvas.len != need) {
+                self.gpa.free(self.canvas);
+                self.canvas = &.{};
+                self.canvas = self.gpa.alloc(u8, need) catch return error.OutOfMemory;
+            }
+            @memset(self.canvas, 0);
+            pixels = self.canvas;
         }
-        @memset(self.canvas, 0);
-        var pm: raster.Pixmap = .{ .width = f.canvas_w, .height = f.canvas_h, .data = self.canvas };
+        var pm: raster.Pixmap = .{ .width = f.canvas_w, .height = f.canvas_h, .data = pixels };
         try paint.paintFrame(&f, &pm);
         unpremultiply(pm.data);
         // Recycle the arena so the encoder reuses the same chunks instead of growing memory.
@@ -592,7 +610,7 @@ pub const Renderer = struct {
             fo.format = .raw;
             // per-frame housekeeping (arena, font frame, glyph / image cache budgets)
             self.beginCall();
-            const pm = try self.renderPixels(scenes[si].src, fo);
+            const pm = try self.renderPixels(scenes[si].src, fo, null);
             if (pm.width != w or pm.height != h) return self.invalid("Animation frames must share the same dimensions");
             const copy = try self.gpa.dupe(u8, pm.data);
             frames.appendAssumeCapacity(.{ .rgba = copy, .delay_ms = @intCast(end - start) });
@@ -971,8 +989,21 @@ pub fn unpremultiply(data: []u8) void {
     var lut: [256]u8 = undefined;
     var lut_a: u32 = 256; // alpha the LUT was built for
     var prev_a: u32 = 256;
+    const V = @Vector(64, u8);
+    const alpha_lanes: V = comptime blk: {
+        var m: [64]u8 = undefined;
+        for (0..64) |k| m[k] = if (k % 4 == 3) 0xff else 0;
+        break :blk m;
+    };
     while (i < n) {
-        // fast skip over fully opaque / fully transparent runs, two pixels at a time
+        // fast skip over fully opaque / fully transparent runs: 16 pixels at a time (a pure
+        // comparison: exactly the pixels the two-pixel loop below would skip as well) ...
+        while (i + 64 <= n) {
+            const al = @as(V, data[i..][0..64].*) & alpha_lanes;
+            if (!(@reduce(.And, al == alpha_lanes) or @reduce(.Or, al) == 0)) break;
+            i += 64;
+        }
+        // ... then two pixels at a time
         while (i + 8 <= n) {
             const two = @as(*align(1) const u64, @ptrCast(data[i..].ptr)).* & 0xFF000000_FF000000;
             if (two != 0xFF000000_FF000000 and two != 0) break;
@@ -1019,6 +1050,44 @@ test "unpremultiply matches the division formula" {
             try std.testing.expectEqual(want, @as(u32, buf[0]));
         }
     }
+}
+
+test "unpremultiply: runs of opaque / transparent / translucent pixels at every alignment" {
+    // premultiplied input (c <= a), runs of random length, every buffer length around the
+    // 64-byte and 8-byte skip loops; reference = the per-pixel formula
+    var buf: [4 * 331]u8 = undefined;
+    var ref: [4 * 331]u8 = undefined;
+    var seed: u64 = 0x9E3779B97F4A7C15;
+    for (0..200) |round| {
+        var px: usize = 0;
+        while (px < 331) {
+            seed = seed *% 6364136223846793005 +% 1442695040888963407;
+            const kind = (seed >> 33) % 4;
+            const len = @min(331 - px, 1 + (seed >> 40) % @as(u64, if (round % 2 == 0) 90 else 5));
+            for (0..len) |_| {
+                seed = seed *% 6364136223846793005 +% 1442695040888963407;
+                const a: u32 = switch (kind) {
+                    0 => 255,
+                    1 => 0,
+                    2 => 128,
+                    else => @truncate(seed >> 44 & 0xff),
+                };
+                inline for (0..3) |k| buf[px * 4 + k] = @intCast((@as(u32, @truncate(seed >> (12 + 8 * k) & 0xff)) * a + 127) / 255);
+                buf[px * 4 + 3] = @intCast(a);
+                px += 1;
+            }
+        }
+        const n = buf.len - 4 * (round % 23);
+        for (0..n / 4) |i| {
+            const a: u32 = buf[i * 4 + 3];
+            inline for (0..3) |k| ref[i * 4 + k] = if (a == 0) 0 else @intCast(@min(255, (@as(u32, buf[i * 4 + k]) * 510 + a) / (2 * a)));
+            ref[i * 4 + 3] = @intCast(a);
+        }
+        unpremultiply(buf[0..n]);
+        try std.testing.expectEqualSlices(u8, ref[0..n], buf[0..n]);
+    }
+    unpremultiply(buf[0..0]);
+    unpremultiply(buf[0..3]);
 }
 
 fn premultiply(data: []u8) void {

@@ -19,6 +19,7 @@ pub const Value = ?*opaque {};
 pub const CallbackInfo = ?*opaque {};
 pub const Deferred = ?*opaque {};
 pub const AsyncWork = ?*opaque {};
+pub const Ref = ?*opaque {};
 
 /// `napi_status` (only the values the addon looks at).
 pub const Status = enum(c_int) { ok = 0, cancelled = 11, _ };
@@ -53,6 +54,9 @@ pub const Api = struct {
     napi_get_element: *const fn (Env, Value, u32, *Value) callconv(.c) Status,
     napi_create_arraybuffer: *const fn (Env, usize, *?[*]u8, *Value) callconv(.c) Status,
     napi_create_typedarray: *const fn (Env, TypedArrayType, usize, Value, usize, *Value) callconv(.c) Status,
+    napi_create_reference: *const fn (Env, Value, u32, *Ref) callconv(.c) Status,
+    napi_delete_reference: *const fn (Env, Ref) callconv(.c) Status,
+    napi_get_reference_value: *const fn (Env, Ref, *Value) callconv(.c) Status,
     napi_create_external: *const fn (Env, ?*anyopaque, ?Finalize, ?*anyopaque, *Value) callconv(.c) Status,
     napi_get_value_external: *const fn (Env, Value, *?*anyopaque) callconv(.c) Status,
     napi_create_error: *const fn (Env, Value, Value, *Value) callconv(.c) Status,

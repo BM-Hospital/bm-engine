@@ -1017,38 +1017,97 @@ pub const Painter = struct {
         return .{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 };
     }
 
-    /// Conservative visual bounds of a subtree whose border box origin is (x, y); null = unknown
-    /// (a descendant is transformed).
-    fn subtreeBounds(p: *Painter, id: u32, x: f32, y: f32, depth: u32) ?Rect {
+    /// `r` grown by `pad` local px on every side, as device-space bounds under `tf`. `smax` = the
+    /// largest stretch of `tf` (>= `tfScale`), so both local ink (text overhang, outlines) and
+    /// device-isotropic ink (blurred shadows: sigma * tfScale) are covered.
+    fn devRectF(tf: *const Affine, smax: f32, r: Rect, pad: f32) Rect {
+        if (tf.isIdentity()) return .{ .x = r.x - pad, .y = r.y - pad, .w = r.w + 2 * pad, .h = r.h + 2 * pad };
+        var x0: f32 = std.math.floatMax(f32);
+        var y0: f32 = x0;
+        var x1: f32 = -x0;
+        var y1: f32 = -x0;
+        const cs = [4]raster.Point{ .{ .x = r.x, .y = r.y }, .{ .x = r.x + r.w, .y = r.y }, .{ .x = r.x + r.w, .y = r.y + r.h }, .{ .x = r.x, .y = r.y + r.h } };
+        for (cs) |c| {
+            const q = tf.apply(c);
+            x0 = @min(x0, q.x);
+            y0 = @min(y0, q.y);
+            x1 = @max(x1, q.x);
+            y1 = @max(y1, q.y);
+        }
+        const e = pad * smax + 1;
+        return .{ .x = x0 - e, .y = y0 - e, .w = x1 - x0 + 2 * e, .h = y1 - y0 + 2 * e };
+    }
+
+    /// Largest singular value of the linear part of `tf` (how much it can stretch a length).
+    fn tfStretch(tf: *const Affine) f32 {
+        if (tf.isTranslateOnly()) return 1;
+        const s = tf.a * tf.a + tf.b * tf.b + tf.c * tf.c + tf.d * tf.d;
+        const det = tf.a * tf.d - tf.b * tf.c;
+        const disc = @sqrt(@max(0, s * s - 4 * det * det));
+        return @sqrt(@max(0, (s + disc) * 0.5));
+    }
+
+    /// How far the filters of `cs` spread ink, in device px at transform scale `scale`.
+    fn filterReach(cs: *const CS, scale: f32) f32 {
+        var reach: f32 = 0;
+        for (cs.filter) |fl| switch (fl) {
+            .blur => |r| reach += @floatFromInt(raster.blurReach(r * scale)),
+            .drop_shadow => |sh| reach += (@ceil(3 * sh.blur) + @max(@abs(sh.x), @abs(sh.y)) + 1) * scale,
+            else => {},
+        };
+        return reach;
+    }
+
+    /// Conservative visual bounds, in device space, of a subtree whose border box origin is (x, y)
+    /// in the space of `tf`; null = unknown. Transformed descendants are followed with their own
+    /// matrix (composed as `paintNode` does), filtered descendants grow by their filters' reach.
+    fn subtreeBounds(p: *Painter, id: u32, x: f32, y: f32, tf: *const Affine, depth: u32) ?Rect {
         const f = p.f;
         const n = &f.nodes.items[id];
         const cs = n.cs;
         const l = f.tree.layout(n.lid);
         if (depth > 600) return null;
-        var r: Rect = .{ .x = x, .y = y, .w = l.w, .h = l.h };
+        const smax = tfStretch(tf);
+        if (!std.math.isFinite(smax)) return null;
+        const box: Rect = .{ .x = x, .y = y, .w = l.w, .h = l.h };
+        var r: Rect = devRectF(tf, smax, box, 0);
         if (n.kind == .anon_text or n.kind == .text or n.para != null) {
             var m = cs.font_size + cs.webkit_text_stroke_width;
             for (cs.text_shadow) |sh| m = @max(m, cs.font_size + @max(@abs(sh.x), @abs(sh.y)) + @ceil(sh.blur * 1.5) + 2);
-            r = .{ .x = r.x - m, .y = r.y - m, .w = r.w + 2 * m, .h = r.h + 2 * m };
+            r = devRectF(tf, smax, box, m);
         }
         if (n.kind == .anon_text) return r;
         if (cs.display == .none) return .{ .x = x, .y = y, .w = 0, .h = 0 };
         for (cs.box_shadow) |sh| {
             if (sh.inset) continue;
             const e = @max(0, sh.spread) + @ceil(sh.blur * 1.5) + 2;
-            r = unionRect(r, .{ .x = x + sh.x - e, .y = y + sh.y - e, .w = l.w + 2 * e, .h = l.h + 2 * e });
+            r = unionRect(r, devRectF(tf, smax, .{ .x = x + sh.x, .y = y + sh.y, .w = l.w, .h = l.h }, e));
         }
         if (cs.outline_style != .none and cs.outline_style != .hidden) {
             const e = @max(0, @abs(cs.outline_offset) + cs.outline_width) + 1;
-            r = unionRect(r, .{ .x = x - e, .y = y - e, .w = l.w + 2 * e, .h = l.h + 2 * e });
+            r = unionRect(r, devRectF(tf, smax, box, e));
         }
         if (cs.overflow_x != .visible and cs.overflow_y != .visible) return r;
         var c = n.first_child;
         while (c != none) : (c = f.nodes.items[c].next) {
             const cn = &f.nodes.items[c];
             const cl = f.tree.layout(cn.lid);
-            if (cn.kind != .anon_text and localTransform(cn.cs, 0, 0, cl.w, cl.h) != null) return null;
-            const cb = p.subtreeBounds(c, x + cl.x, y + cl.y, depth + 1) orelse return null;
+            var ctf = tf;
+            var composed: Affine = undefined;
+            if (cn.kind != .anon_text) {
+                if (localTransform(cn.cs, x + cl.x, y + cl.y, cl.w, cl.h)) |m| {
+                    composed = tf.mul(m);
+                    if (!composed.isFinite()) return null;
+                    if (composed.invert() == null) continue; // not painted (paintNode)
+                    ctf = &composed;
+                }
+            }
+            var cb = p.subtreeBounds(c, x + cl.x, y + cl.y, ctf, depth + 1) orelse return null;
+            if (cn.kind != .anon_text and cn.cs.filter.len > 0 and cb.w > 0 and cb.h > 0) {
+                // a filtered group of its own: its ink spreads by the filters' reach
+                const fr = filterReach(cn.cs, tfScale(ctf.*)) + 2;
+                cb = .{ .x = cb.x - fr, .y = cb.y - fr, .w = cb.w + 2 * fr, .h = cb.h + 2 * fr };
+            }
             r = unionRect(r, cb);
         }
         return r;
@@ -1093,14 +1152,10 @@ pub const Painter = struct {
         const l = f.tree.layout(n.lid);
         const scale = tfScale(ctx.tf);
         var reg = region(ctx);
-        var reach: f32 = 0;
-        for (cs.filter) |fl| switch (fl) {
-            .blur => |r| reach += @floatFromInt(raster.blurReach(r * scale)),
-            .drop_shadow => |sh| reach += (@ceil(3 * sh.blur) + @max(@abs(sh.x), @abs(sh.y)) + 1) * scale,
-            else => {},
-        };
-        if (ctx.plain()) {
-            if (p.subtreeBounds(id, x, y, 0)) |b| reg = reg.intersect(toIRect(b).expand(2 + @as(u32, @intFromFloat(std.math.clamp(reach, 0, 65536)))));
+        const reach = filterReach(cs, scale);
+        if (p.subtreeBounds(id, x, y, &ctx.tf, 0)) |b| {
+            // (a non-finite rect or reach keeps the whole clip region)
+            if (std.math.isFinite(b.x + b.y + b.w + b.h) and std.math.isFinite(reach)) reg = reg.intersect(toIRect(b).expand(2 + @as(u32, @intFromFloat(std.math.clamp(reach, 0, 65536)))));
         }
         if (reg.isEmpty()) return;
         const g = geomOf(cs, l, x, y, ctx);

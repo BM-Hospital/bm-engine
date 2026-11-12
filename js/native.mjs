@@ -169,6 +169,11 @@ export function nativeBackend(addon) {
     if (i === undefined) throw new Error(`bm-engine: ${op} is not supported by this native build`);
     return i;
   };
+  // V8 (Node.js, Deno, Electron) hands out zero-filled ArrayBuffers: raw frames are then painted straight into
+  // the result's buffer without clearing it first. Unknown engines (Bun: JavaScriptCore) keep the explicit clear.
+  try {
+    if (typeof addon.tune === "function" && proc.versions && proc.versions.v8 && !proc.versions.bun) addon.tune(0, 0, 0, 1);
+  } catch {}
   return {
     name: "native",
     /** what init() / initSync() resolve to */

@@ -17,4 +17,5 @@ test {
     _ = @import("font/font.zig");
     _ = @import("raster/raster.zig");
     _ = @import("codec/codec.zig");
+    _ = @import("perf_tests.zig");
 }

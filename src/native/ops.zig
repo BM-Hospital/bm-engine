@@ -67,10 +67,14 @@ pub const Op = struct {
     images: bool = false,
     /// Needs a renderer handle.
     renderer: bool = true,
+    /// `arg1` of an ASYNC call is the expected byte length of a raw (`format: "raw"`) result, 0 =
+    /// unknown: the glue then creates the result's ArrayBuffer before the job starts and the frame
+    /// is painted straight into it (a wrong guess only costs the copy it would have saved).
+    raw_hint: bool = false,
 };
 
 pub const table = [_]Op{
-    .{ .name = "render", .images = true, .run = renderOp },
+    .{ .name = "render", .images = true, .raw_hint = true, .run = renderOp },
     .{ .name = "measure", .images = true, .run = measureOp },
     .{ .name = "svg", .images = true, .run = svgOp },
     .{ .name = "animation", .images = true, .run = animationOp },

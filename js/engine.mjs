@@ -413,7 +413,7 @@ export function createBinding(defaultWasm, external) {
 
     /** Like #run for the async API: off the calling thread when the backend can (native), else the same call. */
     #runAsync(job, text = false) {
-      return backend.runAsync ? backend.runAsync(this.#handle(), job.op, job.kind, 0, job.text, job.opts, job.atts, text) : this.#run(job, text);
+      return backend.runAsync ? backend.runAsync(this.#handle(), job.op, job.kind, job.rawBytes || 0, job.text, job.opts, job.atts, text) : this.#run(job, text);
     }
 
     /** Attaches encoded image bytes to the call being prepared, as the image source `src`. */
@@ -481,7 +481,10 @@ export function createBinding(defaultWasm, external) {
       const [json, kind] = this.#prepareSource(node, options);
       // `images` were attached above; `fonts`/`signal` are JS-side takumi options.
       const { images: _i, fonts: _f, signal: _s, ...rest } = options;
-      return { op: which, kind, text: json, opts: JSON.stringify(rest), atts: this.#atts };
+      // (native async: the byte size of a raw frame whose size is given, so its buffer can be made up front)
+      const { width: w, height: h } = rest;
+      const rawBytes = which === "render" && rest.format === "raw" && Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0 && w * h <= 40e6 ? w * h * 4 : 0;
+      return { op: which, kind, text: json, opts: JSON.stringify(rest), atts: this.#atts, rawBytes };
     }
 
     /** Async option extras (takumi `RenderExtras`): `fonts` loaders and lazy `images`. */
