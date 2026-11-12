@@ -160,6 +160,8 @@ function setVersion(v) {
       lock.packages[""].version = v;
       lock.packages[""].optionalDependencies = { ...rootPkg.optionalDependencies };
     }
+    // entries of an installed older platform package would make `npm ci` reject the lock: drop them
+    for (const k of Object.keys(lock.packages || {})) if (/(^|\/)node_modules\/bm-engine-[^/]+$/.test(k)) delete lock.packages[k];
     writeJson(lf, lock);
   }
   for (const name of Object.keys(PLATFORMS)) {

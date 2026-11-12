@@ -1,0 +1,89 @@
+# Build + test on every push and pull request. TEMPLATE: this workflow has never been executed.
+# Lighter than release.yml: the native addons are cross-compiled and structurally verified for all 8 targets,
+# but executed only on three platforms with the current LTS Node.js, without the long fuzz / perf cases.
+# The committed wasm binaries are tested as they are (not rebuilt); release.yml rebuilds them.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"] # tags run release.yml
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: "0.17.1"
+  # sha256 of zig-x86_64-linux-0.17.1.tar.xz from https://ziglang.org/download/index.json
+  ZIG_SHA256: "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+      - name: Install Zig ${{ env.ZIG_VERSION }} (checksum-verified)
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zig.tar.xz" "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+      - name: Version sync + wasm manifest of the committed binaries
+        run: |
+          node scripts/npm-platform-packages.mjs --check
+          node scripts/build.mjs --verify --allow-placeholders
+      - name: Cross-compile and verify the 8 native addons
+        run: npm run build:native
+      - name: Platform packages
+        run: npm run build:npm
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-dist
+          path: native/dist/
+          if-no-files-found: error
+
+  test:
+    name: test ${{ matrix.target }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64-gnu, runner: ubuntu-24.04 }
+          - { target: darwin-arm64, runner: macos-15 }
+          - { target: win32-x64-msvc, runner: windows-2025 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-dist
+          path: native/dist
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+      - name: Install the bench dependencies
+        working-directory: bench
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: The addon loads (backend = native)
+        run: node --input-type=module -e 'const m = await import("./js/node.mjs"); console.log(process.version, process.platform, process.arch, m.backend); if (m.backend !== "native") process.exit(1)'
+      - name: Byte identity with the wasm build
+        run: node bench/native-identity.mjs --quiet
+      - name: Native tests (without fuzz / perf / cold)
+        run: node bench/native-tests.mjs --only=concurrency,eventloop,free,gc,errors,fallback,workers,libm,stack
+      - name: npm install scenarios
+        run: node scripts/pack-test.mjs --skip-browser
