@@ -383,7 +383,7 @@ fn fi(comptime n: []const u8, comptime i: i8) FieldRef {
 fn fieldsOf(comptime p: Prop) []const FieldRef {
     return switch (p) {
         .WebkitBoxOrient => &.{}, // validated, not stored
-        .WebkitLineClamp, .lineClamp => &.{fr("line_clamp")},
+        .WebkitLineClamp, .lineClamp => &.{ fr("line_clamp"), fr("block_ellipsis"), fr("block_ellipsis_string") },
         .WebkitTextStroke => &.{ fr("webkit_text_stroke_width"), fr("webkit_text_stroke_color") },
         .WebkitTextStrokeColor => &.{fr("webkit_text_stroke_color")},
         .WebkitTextStrokeWidth => &.{fr("webkit_text_stroke_width")},
@@ -2092,6 +2092,45 @@ fn lineClampValue(l: *Lexer) Error!u32 {
     return if (n < 1) 0 else @intCast(n);
 }
 
+/// `line-clamp` (takumi / css-overflow-4): none | [<integer> || auto || <block-ellipsis>] | -webkit-legacy,
+/// <block-ellipsis> = none | no-ellipsis | auto | <string>. `auto` (clamp by block size) and
+/// `-webkit-legacy` are accepted and ignored.
+fn parseLineClamp(s: *S, l: *Lexer) Error!void {
+    s.block_ellipsis = .auto;
+    s.block_ellipsis_string = "";
+    if (l.peek().isIdent("none")) {
+        var probe = l.*;
+        _ = probe.next();
+        if (probe.atEnd()) {
+            _ = l.next();
+            s.line_clamp = 0;
+            return;
+        }
+    }
+    var lines: ?u32 = null;
+    var auto = false;
+    var have_ell = false;
+    while (!l.atEnd()) {
+        const t = l.next();
+        if (t.isIdent("-webkit-legacy")) continue;
+        if (!auto and t.isIdent("auto")) {
+            auto = true;
+        } else if (!have_ell and (t.isIdent("none") or t.isIdent("no-ellipsis"))) {
+            have_ell = true;
+            s.block_ellipsis = .none;
+        } else if (!have_ell and t.kind == .string) {
+            have_ell = true;
+            s.block_ellipsis = .string;
+            s.block_ellipsis_string = t.text;
+        } else if (lines == null) {
+            const n = try need(i32, values.integer(t));
+            lines = if (n < 1) 0 else @intCast(n);
+        } else return bad;
+    }
+    if (lines == null and !auto and !have_ell) return bad;
+    s.line_clamp = lines orelse 0;
+}
+
 fn parseTabSize(cx: *Cx, t: Token) Error!c.TabSize {
     if (t.kind == .number) {
         if (t.num < 0) return bad;
@@ -3484,7 +3523,12 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .textDecorationThickness => s.text_decoration_thickness = try need(?f32, try decoThickness(cx, l.next())),
         .whiteSpace => try parseWhiteSpace(cx, l),
         .textWrap => try parseTextWrap(cx, l),
-        .lineClamp, .WebkitLineClamp => s.line_clamp = try lineClampValue(l),
+        .WebkitLineClamp => {
+            s.line_clamp = try lineClampValue(l);
+            s.block_ellipsis = .auto;
+            s.block_ellipsis_string = "";
+        },
+        .lineClamp => try parseLineClamp(s, l),
         .WebkitTextStroke => try parseStroke(cx, l),
         .WebkitTextStrokeWidth => s.webkit_text_stroke_width = try need(f32, try lineWidth(cx, l.next())),
         .WebkitTextStrokeColor => s.webkit_text_stroke_color = try colorOf(l.next()),

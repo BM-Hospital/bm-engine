@@ -1560,6 +1560,15 @@ test "text properties" {
     try T.expect((try t.one("wordWrap", "break-word")).overflow_wrap == .break_word);
     try T.expect((try t.one("lineClamp", "none")).line_clamp == 0);
     try T.expect((try t.one("lineClamp", "0")).line_clamp == 0);
+    s = try t.one("lineClamp", "2 \" >\"");
+    try T.expect(s.line_clamp == 2 and s.block_ellipsis == .string and std.mem.eql(u8, s.block_ellipsis_string, " >"));
+    s = try t.one("lineClamp", "\"x\" 3");
+    try T.expect(s.line_clamp == 3 and s.block_ellipsis == .string);
+    s = try t.one("lineClamp", "3 no-ellipsis");
+    try T.expect(s.line_clamp == 3 and s.block_ellipsis == .none);
+    try T.expect((try t.one("WebkitLineClamp", "2")).block_ellipsis == .auto);
+    try t.bad("lineClamp", "2 3");
+    try t.bad("WebkitLineClamp", "2 \"x\"");
     s = try t.one("textOverflow", "\"--\"");
     try T.expect(s.text_overflow == .string and std.mem.eql(u8, s.text_overflow_string, "--"));
     try t.bad("textOverflow", "string");

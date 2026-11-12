@@ -392,7 +392,7 @@ test "rtl: justify, ellipsis, clamp, soft hyphen stay sane" {
     try t.expectEqual(@as(usize, 2), lc.lines.len);
     // the ellipsis is the leftmost glyph of the clamped line
     const l2 = lc.lines[1];
-    try t.expectEqual(c.ell_gid, lc.glyphs[l2.glyph_start].gid);
+    try t.expectEqual(c.ell.gid, lc.glyphs[l2.glyph_start].gid);
     try t.expectApproxEqAbs(l2.x, lc.glyphs[l2.glyph_start].x, 0.01);
 }
 

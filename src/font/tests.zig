@@ -755,3 +755,65 @@ test "empty collection and degenerate input" {
     try t.expectEqual(@as(usize, 0), l2.lines.len);
     try t.expectError(error.InvalidFont, fc.register(t.allocator, "nope", .{}));
 }
+
+test "text-overflow: custom marker string, block-ellipsis, rtl truncation side" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16, .user = 7 };
+    const s = "The quick brown fox jumps over the lazy dog";
+    const f = fx.fc.font(0);
+    const raquo = f.glyphIndex(0xBB);
+    const ell = f.glyphIndex(0x2026);
+    {
+        // " »" replaces "…": the line ends with a space + », content + marker fit
+        var l = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = " \u{bb}" });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        const g = l.glyphs[l.lines[0].glyph_end - 1];
+        try t.expectEqual(raquo, g.gid);
+        try t.expectEqual(@as(u32, 7), g.user);
+        try t.expectEqual(f.glyphIndex(' '), l.glyphs[l.lines[0].glyph_end - 2].gid);
+        try t.expect(l.lines[0].width <= 150);
+        for (l.glyphs) |x| try t.expect(x.gid != ell);
+        // CSS escape + forced breaks collapse to one space: "\bb" == "»", "a\n\nb" == "a b"
+        var l2 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "\\bb" });
+        defer l2.deinit(t.allocator);
+        try t.expectEqual(raquo, l2.glyphs[l2.glyphs.len - 1].gid);
+        var l3 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "a\n\n\u{2028}b" });
+        defer l3.deinit(t.allocator);
+        const n = l3.glyphs.len;
+        try t.expectEqual(f.glyphIndex('a'), l3.glyphs[n - 3].gid);
+        try t.expectEqual(f.glyphIndex(' '), l3.glyphs[n - 2].gid);
+        try t.expectEqual(f.glyphIndex('b'), l3.glyphs[n - 1].gid);
+        // empty marker: truncated, nothing appended
+        var l4 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "" });
+        defer l4.deinit(t.allocator);
+        try t.expect(l4.lines[0].width <= 150);
+        for (l4.glyphs) |x| try t.expect(x.gid != ell);
+        // hostile escapes never crash
+        var l5 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "\\0\\110000\\d800\\\xff\xc3\\" });
+        defer l5.deinit(t.allocator);
+    }
+    {
+        // line-clamp uses block-ellipsis, not text-overflow's string (takumi LineTruncator)
+        var l = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .ellipsis = true, .ellipsis_text = "--", .clamp_text = " >" });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(f.glyphIndex('>'), l.glyphs[l.glyphs.len - 1].gid);
+        var l2 = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .ellipsis = true, .ellipsis_text = "--" });
+        defer l2.deinit(t.allocator);
+        try t.expectEqual(ell, l2.glyphs[l2.glyphs.len - 1].gid);
+        var l3 = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .clamp_no_ellipsis = true });
+        defer l3.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l3.lines.len);
+        for (l3.glyphs) |x| try t.expect(x.gid != ell);
+    }
+    {
+        // a left-to-right line in a right-to-left paragraph keeps its end, the marker sits left
+        var l = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .direction = .rtl });
+        defer l.deinit(t.allocator);
+        const gs = l.glyphs[l.lines[0].glyph_start..l.lines[0].glyph_end];
+        try t.expectEqual(ell, gs[0].gid);
+        try t.expectEqual(f.glyphIndex('g'), gs[gs.len - 1].gid);
+        for (gs[1..]) |x| try t.expect(x.x > gs[0].x);
+    }
+}

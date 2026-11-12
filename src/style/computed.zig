@@ -243,6 +243,8 @@ pub const WordBreak = enum(u8) { normal, break_all, keep_all, break_word };
 pub const OverflowWrap = enum(u8) { normal, break_word, anywhere };
 /// `.string` = a custom marker in `text_overflow_string` (raw, escapes not processed).
 pub const TextOverflow = enum(u8) { clip, ellipsis, string };
+/// line-clamp's block-ellipsis: `.string` = the marker in `block_ellipsis_string` (raw, escapes not processed).
+pub const BlockEllipsis = enum(u8) { auto, none, string };
 pub const Direction = enum(u8) { ltr, rtl };
 pub const TabSize = union(enum) { number: f32, px: f32 };
 
@@ -382,6 +384,8 @@ pub const ComputedStyle = struct {
     text_overflow_string: []const u8 = "",
     /// 0 = none
     line_clamp: u32 = 0,
+    block_ellipsis: BlockEllipsis = .auto,
+    block_ellipsis_string: []const u8 = "",
 
     // ================= phase 2 additions =================
     // ---- custom properties (inherited): sorted by name, values already var()-substituted

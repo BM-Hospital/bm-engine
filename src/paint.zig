@@ -1349,14 +1349,17 @@ pub const Painter = struct {
             if (n.kind == .image) try p.paintImage(ctx, n, &g);
         }
         // (an anonymous inline formatting context: its text, then its inline-level boxes)
-        if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
-
-        if (n.first_child == none) return;
+        // (overflow clips the element's own text too, as in takumi: text-overflow: clip)
+        const has_text = n.kind == .text or (n.kind == .anon_box and n.para != null);
+        if (!has_text and n.first_child == none) return;
         var cctx = ctx.*;
         if (cs.overflow_x != .visible or cs.overflow_y != .visible) {
             cctx.clip = try p.makeClip(ctx, g.padRect(), g.padRadii());
             if (cctx.clip.?.bounds.isEmpty()) return;
         }
+        if (has_text) try ptext.paintText(p, &cctx, n, content_x, content_y, content_w);
+
+        if (n.first_child == none) return;
 
         // Paint order: negative z-index, in-flow, positioned / z-index 0, positive z-index.
         var special = false;

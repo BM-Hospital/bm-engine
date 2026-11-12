@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { ROOT_DIR } from "./assets.mjs";
 export const FONT_DIR = path.join(ROOT_DIR, "assets", "fonts");
@@ -14,5 +15,12 @@ export const FONTS = [
   f("Roboto", "Roboto-Bold.ttf", 700),
   f("Roboto", "Roboto-Italic.ttf", 400, "italic"),
 ];
-/** Restrict to a list of family names (case.fonts); undefined = all. */
-export const fontsFor = (families) => (families ? FONTS.filter((x) => families.includes(x.name)) : FONTS);
+/** Optional fonts outside the repo (the takumi clone's test fonts under ref/). Only registered when a case
+ * names them in `fonts`; cases needing one should check `hasOptionalFont` and skip themselves when it is absent. */
+const REF_FONTS = path.join(ROOT_DIR, "ref", "takumi", "assets", "fonts");
+export const OPTIONAL_FONTS = [
+  { name: "Noto Color Emoji", file: "NotoColorEmoji.ttf", path: path.join(REF_FONTS, "noto-sans", "NotoColorEmoji.ttf"), weight: 400, style: "normal" },
+].filter((x) => existsSync(x.path));
+export const hasOptionalFont = (name) => OPTIONAL_FONTS.some((x) => x.name === name);
+/** Restrict to a list of family names (case.fonts); undefined = all (optional fonts only when named). */
+export const fontsFor = (families) => (families ? [...FONTS, ...OPTIONAL_FONTS].filter((x) => families.includes(x.name)) : FONTS);
