@@ -1560,6 +1560,15 @@ test "text properties" {
     try T.expect((try t.one("wordWrap", "break-word")).overflow_wrap == .break_word);
     try T.expect((try t.one("lineClamp", "none")).line_clamp == 0);
     try T.expect((try t.one("lineClamp", "0")).line_clamp == 0);
+    s = try t.one("lineClamp", "2 \" >\"");
+    try T.expect(s.line_clamp == 2 and s.block_ellipsis == .string and std.mem.eql(u8, s.block_ellipsis_string, " >"));
+    s = try t.one("lineClamp", "\"x\" 3");
+    try T.expect(s.line_clamp == 3 and s.block_ellipsis == .string);
+    s = try t.one("lineClamp", "3 no-ellipsis");
+    try T.expect(s.line_clamp == 3 and s.block_ellipsis == .none);
+    try T.expect((try t.one("WebkitLineClamp", "2")).block_ellipsis == .auto);
+    try t.bad("lineClamp", "2 3");
+    try t.bad("WebkitLineClamp", "2 \"x\"");
     s = try t.one("textOverflow", "\"--\"");
     try T.expect(s.text_overflow == .string and std.mem.eql(u8, s.text_overflow_string, "--"));
     try t.bad("textOverflow", "string");
@@ -1937,9 +1946,9 @@ test "text and font extras" {
     try T.expect(s.font_variation_settings.len == 2 and s.font_variation_settings[1].value == 80.5);
     try T.expect(s.font_variant_caps == .small_caps and s.font_variant_numeric.spacing == .tabular and s.font_variant_ligatures.common == .off and s.font_variant_position == .super);
     try T.expect(s.font_kerning == .none and s.font_optical_sizing == .none and s.font_synthesis.weight and !s.font_synthesis.style);
-    // resolved features: variants first, then settings (takumi order)
+    // resolved features: variants first, then settings (takumi order; caps are applied by the text engine)
     const feats = try s.fontFeatures(t.a());
-    const want = [_][]const u8{ "liga", "clig", "tnum", "smcp", "sups", "kern", "liga", "ss01", "cv01" };
+    const want = [_][]const u8{ "liga", "clig", "tnum", "sups", "kern", "liga", "ss01", "cv01" };
     try T.expectEqual(want.len, feats.len);
     for (want, feats) |w, f| try T.expectEqualStrings(w, &f.tag);
     // inherited

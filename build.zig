@@ -18,6 +18,7 @@ const features = [_]Feature{
     .{ .name = "webp_gif_decode", .desc = "WebP (lossless) and GIF image sources", .standard = true },
     .{ .name = "text_wrap_balance", .desc = "text-wrap: balance / pretty (score-based line breaking)", .standard = true },
     .{ .name = "color_fonts", .desc = "colour glyphs (COLR v0/v1, CBDT/sbix PNG), emoji presentation", .standard = false },
+    .{ .name = "bitmap_glyphs", .desc = "colour bitmap glyphs only (CBDT/CBLC, sbix PNG emoji) + emoji presentation; implied by color_fonts", .standard = true },
     .{ .name = "complex_text", .desc = "bidi, Arabic/Hebrew/Indic/Thai shaping, normalisation", .standard = false },
     .{ .name = "animation", .desc = "CSS animations / transitions, renderAnimation, animated image sources", .standard = false },
     .{ .name = "extra_codecs", .desc = "WebP lossy (VP8) decode, animated GIF/APNG/WebP decode + encode, ICO output", .standard = false },

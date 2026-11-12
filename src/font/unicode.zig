@@ -80,6 +80,8 @@ pub fn lbClass(cp: u21) Class {
         0x3100...0xa4cf, 0xac00...0xd7a3, 0xf900...0xfaff, 0xfe30...0xfe4f => .id,
         0xff02...0xff07, 0xff0a, 0xff0b, 0xff0d, 0xff0f...0xff19, 0xff1c...0xff1e, 0xff20...0xff3a, 0xff3c, 0xff3e...0xff5a, 0xff5c, 0xff5e, 0xff66...0xff6f, 0xff71...0xff9d, 0xffa0...0xffef => .id,
         0x1f000...0x1faff, 0x20000...0x3fffd => .id,
+        // emoji-presentation pictographs of the BMP (LineBreak ID / EB, Unicode 16.0 table in ucd.zig)
+        0x231a...0x231b, 0x23f0...0x23f3, 0x2600...0x2603, 0x2614...0x2615, 0x2618, 0x261a...0x261f, 0x2639...0x263b, 0x2668, 0x267f, 0x26bd...0x26c8, 0x26cd, 0x26cf...0x26d1, 0x26d3...0x26d4, 0x26d8...0x26d9, 0x26dc, 0x26df...0x26e1, 0x26ea, 0x26f1...0x26f5, 0x26f7...0x26fa, 0x26fd...0x2704, 0x2708...0x270d, 0x2764 => .id,
         else => .al,
     };
 }
@@ -295,10 +297,37 @@ pub inline fn isShapingControl(cp: u21) bool {
 }
 
 /// Cluster continuation for the simple path (no Unicode tables): combining marks, variation
-/// selectors, emoji modifiers, ZWJ and whatever follows a ZWJ.
+/// selectors, emoji modifiers, tags, ZWJ and a pictograph after an emoji ZWJ (UAX #29 GB9, GB11;
+/// `prev` as returned by `clusterPrev`).
 pub fn isContinuationSimple(prev: u21, cp: u21) bool {
     if (cp < 0x300) return false;
-    return isCombining(cp) or prev == 0x200d or cp == 0x200d or (cp >= 0xfe00 and cp <= 0xfe0f) or (cp >= 0x1f3fb and cp <= 0x1f3ff);
+    return isCombining(cp) or (prev == 0x200d and isPictSimple(cp)) or cp == 0x200d or (cp >= 0xfe00 and cp <= 0xfe0f) or (cp >= 0x1f3fb and cp <= 0x1f3ff) or (cp >= 0xe0020 and cp <= 0xe007f);
+}
+
+/// Extended_Pictographic without tables (simple path): the symbol / pictograph blocks.
+fn isPictSimple(cp: u21) bool {
+    return switch (cp) {
+        0xa9, 0xae, 0x203c, 0x2049, 0x2122, 0x2139, 0x2190...0x21ff, 0x231a...0x23ff, 0x24c2, 0x25aa...0x27bf, 0x2934, 0x2935, 0x2b05...0x2b55, 0x3030, 0x303d, 0x3297, 0x3299 => true,
+        0x1f000...0x1f1e5, 0x1f200...0x1faff, 0x1fc00...0x1fffd => true,
+        else => false,
+    };
+}
+
+/// A ZWJ that does not follow a pictograph (+ extenders): nothing joins after it (GB11).
+pub const lone_zwj: u21 = 0x1f200d;
+
+/// The `prev` to pass to `isContinuation` / `isContinuationSimple` for the character after
+/// `cp`, tracking UAX #29 GB11 (`ExtPict Extend* ZWJ × ExtPict`) in `pict` (start with false).
+pub fn clusterPrev(comptime complex: bool, pict: *bool, cp: u21) u21 {
+    if (cp == 0x200d) {
+        const ok = pict.*;
+        pict.* = false;
+        return if (ok) cp else lone_zwj;
+    }
+    if (if (complex) isExtPict(cp) else isPictSimple(cp)) {
+        pict.* = true;
+    } else if (cp < 0x300 or !(if (complex) isContinuation(0, cp) else isContinuationSimple(0, cp))) pict.* = false;
+    return cp;
 }
 
 // ---- UAX #14, adjacency form -------------------------------------------------------------
@@ -502,4 +531,62 @@ test "break opportunities" {
     try t.expect(canBreak(0, 'a', 'b', .break_all));
     try t.expect(!canBreak(0, 'a', '.', .break_all));
     try t.expect(!canBreak(0, 'e', 0x301, .break_all));
+}
+
+/// Grapheme cluster boundaries as the engine draws them (shaper cluster merging and font
+/// fallback: `isContinuation` / `isContinuationSimple` pairwise, regional indicators in pairs).
+fn engineBreaks(comptime complex: bool, cps: []const u21, out: []bool) void {
+    var ri_run: usize = 0;
+    var prev: u21 = 0;
+    var pict = false;
+    for (cps, 0..) |cp, i| {
+        const ri = cp >= 0x1f1e6 and cp <= 0x1f1ff;
+        if (i == 0) {
+            out[i] = true;
+        } else {
+            const cont = if (complex) isContinuation(prev, cp) else isContinuationSimple(prev, cp);
+            out[i] = !(cont or (ri and ri_run % 2 == 1));
+        }
+        prev = clusterPrev(complex, &pict, cp);
+        ri_run = if (ri) ri_run + 1 else 0;
+    }
+}
+
+test "grapheme clusters: GraphemeBreakTest subset (Unicode 16.0)" {
+    const data = @embedFile("testdata/grapheme_subset.txt");
+    var lines = std.mem.tokenizeScalar(u8, data, '\n');
+    var n_cases: usize = 0;
+    var fails = [2]usize{ 0, 0 };
+    while (lines.next()) |line_raw| {
+        const line = std.mem.trimEnd(u8, line_raw, "\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        var cps: [16]u21 = undefined;
+        var want: [16]bool = undefined;
+        var n: usize = 0;
+        var brk = false;
+        var toks = std.mem.tokenizeScalar(u8, line, ' ');
+        while (toks.next()) |tk| {
+            if (std.mem.eql(u8, tk, "\u{f7}")) {
+                brk = true;
+            } else if (std.mem.eql(u8, tk, "\u{d7}")) {
+                brk = false;
+            } else {
+                cps[n] = try std.fmt.parseInt(u21, tk, 16);
+                want[n] = brk;
+                n += 1;
+            }
+        }
+        n_cases += 1;
+        inline for (.{ true, false }, 0..) |cx, k| {
+            var got: [16]bool = undefined;
+            engineBreaks(cx, cps[0..n], got[0..n]);
+            if (!std.mem.eql(bool, want[0..n], got[0..n])) {
+                fails[k] += 1;
+                std.debug.print("FAIL{d} {s}|", .{ k, line });
+            }
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 88), n_cases);
+    try std.testing.expectEqual(@as(usize, 0), fails[0]);
+    try std.testing.expectEqual(@as(usize, 0), fails[1]);
 }

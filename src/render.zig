@@ -264,7 +264,7 @@ pub const Renderer = struct {
         while (it.next()) |g| self.gpa.free(g.data);
         self.glyphs.clearRetainingCapacity();
         self.glyph_bytes = 0;
-        if (comptime config.enable_color_fonts) {
+        if (comptime config.enable_color_fonts or config.enable_bitmap_glyphs) {
             var ci = self.color_glyphs.valueIterator();
             while (ci.next()) |g| g.pix.deinit(self.gpa);
             self.color_glyphs.clearRetainingCapacity();
@@ -2256,7 +2256,10 @@ pub const Frame = struct {
                 .anywhere => .anywhere,
             },
             .max_lines = if (cs.line_clamp > 0) cs.line_clamp else null,
-            .ellipsis = cs.text_overflow == .ellipsis and clip,
+            .ellipsis = cs.text_overflow != .clip and clip,
+            .ellipsis_text = if (cs.text_overflow == .string) cs.text_overflow_string else null,
+            .clamp_text = if (cs.block_ellipsis == .string) cs.block_ellipsis_string else null,
+            .clamp_no_ellipsis = cs.block_ellipsis == .none,
             .strut = textStyle(cs, 0),
             .direction = if (cs.direction == .rtl) .rtl else .ltr,
             .lang = f.cur_lang,
@@ -2269,7 +2272,7 @@ pub const Frame = struct {
             .boxes = try f.paragraphBoxes(),
         };
         const p = try f.a.create(font.Paragraph);
-        p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
+        p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts or config.enable_bitmap_glyphs }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
         return p;
     }
 
@@ -2777,6 +2780,9 @@ pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
         .user = user,
         .stretch = cs.font_stretch,
         .optical_sizing = cs.font_optical_sizing != .none,
+        // (same member order: normal, small, all-small, petite, all-petite, unicase, titling)
+        .caps = @enumFromInt(@intFromEnum(cs.font_variant_caps)),
+        .synth_small_caps = cs.font_synthesis.small_caps,
     };
     // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
     const V = @typeInfo(@TypeOf(ts.variations)).pointer.child;
@@ -2820,65 +2826,83 @@ fn decodeCp(s: []const u8, i: *usize) u21 {
     return cp;
 }
 
-fn caseMap(cp: u21, upper: bool) u21 {
-    if (cp < 0x80) {
-        if (upper and cp >= 'a' and cp <= 'z') return cp - 32;
-        if (!upper and cp >= 'A' and cp <= 'Z') return cp + 32;
-        return cp;
+/// Greek final-sigma context helpers (Unicode 3.13 Final_Sigma, approximated: cased = has a
+/// case mapping, case-ignorable = apostrophes and combining marks).
+fn isCased(cp: u21) bool {
+    return font.case.upperSimple(cp) != cp or font.case.lower(cp) != cp;
+}
+fn isCaseIgnorable(cp: u21) bool {
+    return cp == 0x27 or cp == 0x2019 or cp == 0xB7 or (cp >= 0x300 and cp <= 0x36F);
+}
+fn nextCased(text: []const u8, from: usize) bool {
+    var i = from;
+    while (i < text.len) {
+        const cp = decodeCp(text, &i);
+        if (!isCaseIgnorable(cp)) return isCased(cp);
     }
-    // Latin-1 Supplement
-    if (cp >= 0xC0 and cp <= 0xDE and cp != 0xD7) return if (upper) cp else cp + 32;
-    if (cp >= 0xE0 and cp <= 0xFE and cp != 0xF7) return if (upper) cp - 32 else cp;
-    if (cp == 0xFF) return if (upper) 0x178 else cp;
-    // Latin Extended-A (pairs, with the well-known irregular ranges) and Extended Additional (Vietnamese)
-    const paired_even = (cp >= 0x100 and cp <= 0x137 and cp != 0x130 and cp != 0x131) or (cp >= 0x14A and cp <= 0x177) or (cp >= 0x1E00 and cp <= 0x1E95) or (cp >= 0x1EA0 and cp <= 0x1EFF) or (cp >= 0x1A0 and cp <= 0x1A5) or (cp >= 0x1AF and cp <= 0x1B0 and false);
-    if (paired_even) {
-        const is_lower = cp & 1 == 1;
-        if (upper and is_lower) return cp - 1;
-        if (!upper and !is_lower) return cp + 1;
-        return cp;
-    }
-    const paired_odd = (cp >= 0x139 and cp <= 0x148) or (cp >= 0x179 and cp <= 0x17E);
-    if (paired_odd) {
-        const is_lower = cp & 1 == 0;
-        if (upper and is_lower) return cp - 1;
-        if (!upper and !is_lower) return cp + 1;
-        return cp;
-    }
-    // Ư ư
-    if (cp == 0x1AF and !upper) return 0x1B0;
-    if (cp == 0x1B0 and upper) return 0x1AF;
-    // Greek / Cyrillic basics
-    if (cp >= 0x391 and cp <= 0x3A9 and cp != 0x3A2) return if (upper) cp else cp + 32;
-    if (cp >= 0x3B1 and cp <= 0x3C9 and cp != 0x3C2) return if (upper) cp - 32 else cp;
-    if (cp >= 0x410 and cp <= 0x42F) return if (upper) cp else cp + 32;
-    if (cp >= 0x430 and cp <= 0x44F) return if (upper) cp - 32 else cp;
-    return cp;
+    return false;
 }
 
+/// Titlecase for capitalize: uppercase, except the Latin digraphs (DŽ/Dž/dž -> Dž, ...).
+fn titleCase(cp: u21) u21 {
+    return switch (cp) {
+        0x1C4...0x1C6 => 0x1C5,
+        0x1C7...0x1C9 => 0x1C8,
+        0x1CA...0x1CC => 0x1CB,
+        0x1F1...0x1F3 => 0x1F2,
+        else => font.case.upperSimple(cp),
+    };
+}
+
+/// text-transform without a language (takumi with no `lang`): full uppercase (SpecialCasing
+/// expansions: ß -> SS, ﬁ -> FI, ...), simple lowercase with the final-sigma rule and
+/// U+0130 -> i + U+0307; capitalize = titlecase of a word start (a character not preceded by a
+/// letter / digit, nor by an apostrophe, period, colon or middle dot between letters: UAX #29 approximated).
 fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
     if (tt == .none) return text;
     var out: std.ArrayList(u8) = .empty;
     try out.ensureTotalCapacity(a, text.len + 8);
     var i: usize = 0;
     var word_start = true;
+    var prev_cased = false;
+    var prev: u21 = 0;
+    var prev2: u21 = 0;
     while (i < text.len) {
         const cp = decodeCp(text, &i);
-        const is_space = cp == ' ' or cp == '\n' or cp == '\t' or cp == 0xA0;
-        const m: u21 = switch (tt) {
-            .uppercase => caseMap(cp, true),
-            .lowercase => caseMap(cp, false),
-            .capitalize => if (word_start) caseMap(cp, true) else cp,
-            else => cp,
-        };
-        word_start = is_space;
-        if (tt == .uppercase and cp == 0xDF) {
-            try out.appendSlice(a, "SS");
-            continue;
+        var m: [3]u21 = .{ cp, 0, 0 };
+        var n: usize = 1;
+        switch (tt) {
+            .uppercase => n = font.case.upper(cp, &m),
+            .lowercase => {
+                m[0] = font.case.lower(cp);
+                if (cp == 0x3A3 and prev_cased and !nextCased(text, i)) m[0] = 0x3C2;
+                if (cp == 0x130) {
+                    m = .{ 'i', 0x307, 0 };
+                    n = 2;
+                }
+            },
+            .capitalize => {
+                const wordy = struct {
+                    fn f(c: u21) bool {
+                        // letters and digits (non-ASCII: anything outside the punctuation / symbol blocks)
+                        if (isCased(c) or (c >= 0x30 and c <= 0x39)) return true;
+                        return c >= 0xC0 and c != 0xD7 and c != 0xF7 and !(c >= 0x2000 and c <= 0x2BFF) and !(c >= 0x3000 and c <= 0x303F) and !(c >= 0xFE10 and c <= 0xFE6F) and !(c >= 0xFF00 and c <= 0xFF20);
+                    }
+                }.f;
+                const mid = prev == 0x27 or prev == 0x2019 or prev == 0x2E or prev == 0x3A or prev == 0xB7;
+                word_start = !(wordy(prev) or (mid and wordy(prev2)));
+                if (word_start) m[0] = titleCase(cp);
+            },
+            else => {},
         }
-        var buf: [4]u8 = undefined;
-        const len = json.encodeUtf8(m, &buf);
-        try out.appendSlice(a, buf[0..len]);
+        if (!isCaseIgnorable(cp)) prev_cased = isCased(cp);
+        prev2 = prev;
+        prev = cp;
+        for (m[0..n]) |c| {
+            var buf: [4]u8 = undefined;
+            const len = json.encodeUtf8(c, &buf);
+            try out.appendSlice(a, buf[0..len]);
+        }
     }
     return out.items;
 }

@@ -13,6 +13,9 @@ pub const enable_woff: bool = opts.woff;
 pub const enable_variable_fonts: bool = opts.variable_fonts;
 pub const enable_cff: bool = opts.cff;
 pub const enable_color_fonts: bool = opts.color_fonts;
+/// Colour bitmap glyphs (CBDT/CBLC, sbix) and emoji-presentation font choice without COLR
+/// (standard). Not a separate `bm_features()` bit.
+pub const enable_bitmap_glyphs: bool = opts.color_fonts or opts.bitmap_glyphs;
 pub const enable_complex_text: bool = opts.complex_text;
 pub const enable_animation: bool = opts.animation;
 pub const enable_extra_codecs: bool = opts.extra_codecs;

@@ -243,6 +243,8 @@ pub const WordBreak = enum(u8) { normal, break_all, keep_all, break_word };
 pub const OverflowWrap = enum(u8) { normal, break_word, anywhere };
 /// `.string` = a custom marker in `text_overflow_string` (raw, escapes not processed).
 pub const TextOverflow = enum(u8) { clip, ellipsis, string };
+/// line-clamp's block-ellipsis: `.string` = the marker in `block_ellipsis_string` (raw, escapes not processed).
+pub const BlockEllipsis = enum(u8) { auto, none, string };
 pub const Direction = enum(u8) { ltr, rtl };
 pub const TabSize = union(enum) { number: f32, px: f32 };
 
@@ -382,6 +384,8 @@ pub const ComputedStyle = struct {
     text_overflow_string: []const u8 = "",
     /// 0 = none
     line_clamp: u32 = 0,
+    block_ellipsis: BlockEllipsis = .auto,
+    block_ellipsis_string: []const u8 = "",
 
     // ================= phase 2 additions =================
     // ---- custom properties (inherited): sorted by name, values already var()-substituted
@@ -565,21 +569,8 @@ pub const ComputedStyle = struct {
             .normal => {},
         }
         if (ea.ruby) add(&buf, &n, "ruby");
-        switch (s.font_variant_caps) {
-            .normal => {},
-            .small_caps => add(&buf, &n, "smcp"),
-            .all_small_caps => {
-                add(&buf, &n, "c2sc");
-                add(&buf, &n, "smcp");
-            },
-            .petite_caps => add(&buf, &n, "pcap"),
-            .all_petite_caps => {
-                add(&buf, &n, "c2pc");
-                add(&buf, &n, "pcap");
-            },
-            .unicase => add(&buf, &n, "unic"),
-            .titling_caps => add(&buf, &n, "titl"),
-        }
+        // (font-variant-caps is not a feature list here: the text engine applies the caps
+        // features per face and synthesizes small caps, see font TextStyle.caps)
         switch (s.font_variant_position) {
             .sub => add(&buf, &n, "subs"),
             .super => add(&buf, &n, "sups"),

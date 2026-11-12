@@ -22,10 +22,12 @@ import anim from "./anim.mjs";
 import layout2 from "./layout2.mjs";
 import layout3 from "./layout3.mjs";
 import fixcss from "./fixcss.mjs"; // fix-css
+import fixtext from "./fixtext.mjs"; // fix-text
 
 /** All cases: { id, feature, title, width, height, node (object, or HTML string), images?, fonts?, notes?, opts? (extra render options, e.g. css) } */
 export const ALL_CASES = [colors, flex, sizing, absolute, borders, radius, gradients, radial, shadow, opacity, overflow, transform, text, images, grid, cards, stress, gaps, paintfx, frontend, anim, layout2, layout3,
   fixcss, // fix-css
+  fixtext, // fix-text
 ].flat();
 const ids = new Set();
 for (const k of ALL_CASES) { if (ids.has(k.id)) throw new Error("duplicate fixture id " + k.id); ids.add(k.id); }

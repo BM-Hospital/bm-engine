@@ -755,3 +755,132 @@ test "empty collection and degenerate input" {
     try t.expectEqual(@as(usize, 0), l2.lines.len);
     try t.expectError(error.InvalidFont, fc.register(t.allocator, "nope", .{}));
 }
+
+test "text-overflow: custom marker string, block-ellipsis, rtl truncation side" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16, .user = 7 };
+    const s = "The quick brown fox jumps over the lazy dog";
+    const f = fx.fc.font(0);
+    const raquo = f.glyphIndex(0xBB);
+    const ell = f.glyphIndex(0x2026);
+    {
+        // " »" replaces "…": the line ends with a space + », content + marker fit
+        var l = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = " \u{bb}" });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        const g = l.glyphs[l.lines[0].glyph_end - 1];
+        try t.expectEqual(raquo, g.gid);
+        try t.expectEqual(@as(u32, 7), g.user);
+        try t.expectEqual(f.glyphIndex(' '), l.glyphs[l.lines[0].glyph_end - 2].gid);
+        try t.expect(l.lines[0].width <= 150);
+        for (l.glyphs) |x| try t.expect(x.gid != ell);
+        // CSS escape + forced breaks collapse to one space: "\bb" == "»", "a\n\nb" == "a b"
+        var l2 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "\\bb" });
+        defer l2.deinit(t.allocator);
+        try t.expectEqual(raquo, l2.glyphs[l2.glyphs.len - 1].gid);
+        var l3 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "a\n\n\u{2028}b" });
+        defer l3.deinit(t.allocator);
+        const n = l3.glyphs.len;
+        try t.expectEqual(f.glyphIndex('a'), l3.glyphs[n - 3].gid);
+        try t.expectEqual(f.glyphIndex(' '), l3.glyphs[n - 2].gid);
+        try t.expectEqual(f.glyphIndex('b'), l3.glyphs[n - 1].gid);
+        // empty marker: truncated, nothing appended
+        var l4 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "" });
+        defer l4.deinit(t.allocator);
+        try t.expect(l4.lines[0].width <= 150);
+        for (l4.glyphs) |x| try t.expect(x.gid != ell);
+        // hostile escapes never crash
+        var l5 = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = "\\0\\110000\\d800\\\xff\xc3\\" });
+        defer l5.deinit(t.allocator);
+    }
+    {
+        // line-clamp uses block-ellipsis, not text-overflow's string (takumi LineTruncator)
+        var l = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .ellipsis = true, .ellipsis_text = "--", .clamp_text = " >" });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(f.glyphIndex('>'), l.glyphs[l.glyphs.len - 1].gid);
+        var l2 = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .ellipsis = true, .ellipsis_text = "--" });
+        defer l2.deinit(t.allocator);
+        try t.expectEqual(ell, l2.glyphs[l2.glyphs.len - 1].gid);
+        var l3 = try fx.lay(s, st, .{ .max_width = 150, .max_lines = 1, .clamp_no_ellipsis = true });
+        defer l3.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l3.lines.len);
+        for (l3.glyphs) |x| try t.expect(x.gid != ell);
+    }
+    {
+        // a left-to-right line in a right-to-left paragraph keeps its end, the marker sits left
+        var l = try fx.lay(s, st, .{ .max_width = 150, .white_space = .nowrap, .ellipsis = true, .direction = .rtl });
+        defer l.deinit(t.allocator);
+        const gs = l.glyphs[l.lines[0].glyph_start..l.lines[0].glyph_end];
+        try t.expectEqual(ell, gs[0].gid);
+        try t.expectEqual(f.glyphIndex('g'), gs[gs.len - 1].gid);
+        for (gs[1..]) |x| try t.expect(x.x > gs[0].x);
+    }
+}
+
+test "font-variant-caps: OpenType caps or synthesized small caps (Blink rules)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const f = fx.fc.font(0); // Inter: no smcp
+    {
+        var l = try fx.lay("a\u{df}B", .{ .families = inter_fam, .size = 20, .caps = .small }, .{});
+        defer l.deinit(t.allocator);
+        // a -> A at round(20 * 0.7) = 14, ß -> SS at 14, B unchanged at 20
+        try t.expectEqual(@as(usize, 4), l.glyphs.len);
+        try t.expectEqual(f.glyphIndex('A'), l.glyphs[0].gid);
+        try t.expectEqual(@as(f32, 14), l.glyphs[0].size);
+        try t.expectEqual(f.glyphIndex('S'), l.glyphs[1].gid);
+        try t.expectEqual(f.glyphIndex('S'), l.glyphs[2].gid);
+        try t.expectEqual(l.glyphs[1].cluster, l.glyphs[2].cluster);
+        try t.expectEqual(f.glyphIndex('B'), l.glyphs[3].gid);
+        try t.expectEqual(@as(f32, 20), l.glyphs[3].size);
+    }
+    {
+        // font-synthesis-small-caps: none leaves the text alone
+        var l = try fx.lay("aB", .{ .families = inter_fam, .size = 20, .caps = .small, .synth_small_caps = false }, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(f.glyphIndex('a'), l.glyphs[0].gid);
+        try t.expectEqual(@as(f32, 20), l.glyphs[0].size);
+    }
+    {
+        // all-small-caps also shrinks capitals
+        var l = try fx.lay("aB", .{ .families = inter_fam, .size = 20, .caps = .all_small }, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(f32, 14), l.glyphs[1].size);
+    }
+    {
+        // Noto Sans has smcp: its own small-cap glyphs, full size; petite-caps falls back to smcp
+        var plain = try fx.lay("a", .{ .families = noto_fam, .size = 20 }, .{});
+        defer plain.deinit(t.allocator);
+        for ([_]font.Caps{ .small, .petite }) |cv| {
+            var l = try fx.lay("a", .{ .families = noto_fam, .size = 20, .caps = cv }, .{});
+            defer l.deinit(t.allocator);
+            try t.expect(l.glyphs[0].gid != plain.glyphs[0].gid);
+            try t.expectEqual(@as(f32, 20), l.glyphs[0].size);
+        }
+    }
+}
+
+test "fuzz: caps synthesis and overflow markers on truncated / corrupted fonts never crash" {
+    var seed: u32 = 12345;
+    var k: usize = 0;
+    while (k < 60) : (k += 1) {
+        const buf = try t.allocator.dupe(u8, noto);
+        defer t.allocator.free(buf);
+        seed = seed *% 1103515245 +% 12345;
+        const len = 12 + (seed >> 8) % @as(u32, @intCast(buf.len - 12));
+        // corrupt a few bytes inside the (likely GSUB-heavy) tail as well
+        var j: usize = 0;
+        while (j < 16) : (j += 1) {
+            seed = seed *% 1103515245 +% 12345;
+            buf[(seed >> 4) % len] = @truncate(seed >> 16);
+        }
+        var fc: font.FontCollection = .{};
+        defer fc.deinit(t.allocator);
+        _ = fc.register(t.allocator, buf[0..len], .{}) catch continue;
+        for ([_]font.Caps{ .small, .all_small, .petite, .unicase, .titling }) |cv| {
+            var l = font.layoutText(t.allocator, &fc, &.{.{ .text = "a\u{df}B \u{1F469}\u{200D}\u{1F4BB} x", .style = .{ .size = 20, .caps = cv } }}, .{ .max_width = 30, .white_space = .nowrap, .ellipsis = true, .ellipsis_text = " \u{bb}x" }) catch continue;
+            l.deinit(t.allocator);
+        }
+    }
+}

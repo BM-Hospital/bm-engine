@@ -25,6 +25,7 @@ const ot = @import("ot.zig");
 const shp = @import("shape.zig");
 const bidi = @import("bidi.zig");
 const color = @import("color.zig");
+const case = @import("case.zig");
 const Font = ttf.Font;
 const FaceId = coll.FaceId;
 const FontCollection = coll.FontCollection;
@@ -50,7 +51,14 @@ pub const TextStyle = struct {
     /// font-feature-settings / font-variant-* of this run, applied after
     /// `ParagraphOptions.features` (together at most 32 entries).
     features: []const shp.FeatureSetting = &.{},
+    /// font-variant-caps: the caps features go before `features`; a face without them gets
+    /// Blink's fallback (petite -> small caps) or synthesized small caps (see `Builder.flushCaps`).
+    caps: Caps = .normal,
+    /// font-synthesis-small-caps: auto (false = none: no synthesized small caps).
+    synth_small_caps: bool = true,
 };
+
+pub const Caps = enum(u3) { normal, small, all_small, petite, all_petite, unicase, titling };
 
 /// Fallback chain for a style (variable-font instances included).
 fn matchStyle(fonts: *const FontCollection, st: TextStyle, out: []FaceId) []FaceId {
@@ -162,6 +170,16 @@ pub const ParagraphOptions = struct {
     /// text-overflow: ellipsis — "…" on the last allowed line when clamped, and on any line that
     /// still overflows `max_width` (nowrap / unbreakable content).
     ellipsis: bool = false,
+    /// text-overflow: <string> — the marker that replaces "…" on an overflowing line (raw CSS
+    /// string contents: escapes are processed, forced line breaks become one space). Shaped
+    /// with `strut`, fallback fonts and the paragraph direction (takumi `LineTruncator`).
+    /// null = "…" (or "..." when the font has no U+2026). Not used on a line-clamp line.
+    ellipsis_text: ?[]const u8 = null,
+    /// line-clamp's block-ellipsis: null = auto ("…"), otherwise the marker string (raw CSS
+    /// string contents, as `ellipsis_text`).
+    clamp_text: ?[]const u8 = null,
+    /// line-clamp's block-ellipsis is `none`: a clamped line gets no marker.
+    clamp_no_ellipsis: bool = false,
     /// Style of the containing block (Blink's "strut": its font metrics take part in every line
     /// box, and it is the font the ellipsis is shaped with). Defaults to the first run's style.
     strut: ?TextStyle = null,
@@ -507,6 +525,26 @@ pub fn shape(alloc: std.mem.Allocator, fonts: *const FontCollection, text: []con
     return alloc.dupe(ShapedGlyph, p.glyphs[0..n]);
 }
 
+/// An overflow marker: one glyph `count` times (the default "…" / "..."), or a shaped string.
+pub const Marker = struct {
+    on: bool = false,
+    face: FaceId = 0,
+    gid: u16 = 0,
+    count: u8 = 0,
+    adv: f32 = 0,
+    size: f32 = 0,
+    user: u32 = 0,
+    /// Shaped custom string (x from the marker start, y from the baseline; visual order).
+    /// Non-empty overrides face / gid / count.
+    glyphs: []PositionedGlyph = &.{},
+    /// Advance width of the whole marker.
+    w: f32 = 0,
+
+    fn len(m: *const Marker) usize {
+        return if (m.glyphs.len > 0) m.glyphs.len else m.count;
+    }
+};
+
 /// A paragraph shaped once; line breaking for different widths is cheap (`measure` allocates
 /// nothing, `layout` allocates only the result).
 pub const Paragraph = struct {
@@ -519,12 +557,9 @@ pub const Paragraph = struct {
     strut_ascent: f32 = 0,
     strut_descent: f32 = 0,
     strut_size: f32 = 16,
-    ell_face: FaceId = 0,
-    ell_gid: u16 = 0,
-    ell_count: u8 = 0,
-    ell_adv: f32 = 0,
-    ell_size: f32 = 0,
-    ell_user: u32 = 0,
+    /// text-overflow marker / line-clamp marker
+    ell: Marker = .{},
+    clamp_ell: Marker = .{},
     /// More than one inline item (style run or bidi run).
     multi_run: bool = false,
     /// Paragraph direction is right-to-left.
@@ -580,6 +615,59 @@ pub const Paragraph = struct {
     /// `init` with the optional machinery selected at compile time: code and tables of a
     /// feature that is off are not referenced, so they do not reach the binary.
     pub fn initWith(comptime feat: Features, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
+        var p = try initCore(feat, alloc, fonts, runs, opts);
+        if (opts.ellipsis_text == null and opts.clamp_text == null and !opts.clamp_no_ellipsis) return p;
+        errdefer p.deinit();
+        if (opts.clamp_no_ellipsis) {
+            p.clamp_ell = .{};
+        } else if (opts.clamp_text) |t| {
+            if (p.ell.on and opts.max_lines != null) p.clamp_ell = try shapeMarker(feat, alloc, fonts, runs, opts, t);
+        }
+        if (opts.ellipsis_text) |t| {
+            if (p.ell.on and opts.ellipsis) p.ell = try shapeMarker(feat, alloc, fonts, runs, opts, t);
+        }
+        return p;
+    }
+
+    /// Shapes a custom overflow marker (takumi `LineTruncator::setup_ellipsis`): the string in
+    /// the block's style and the paragraph direction, laid out on one line.
+    noinline fn shapeMarker(comptime feat: Features, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions, raw: []const u8) !Marker {
+        const st: TextStyle = opts.strut orelse if (runs.len > 0) runs[0].style else .{};
+        const text = try markerText(alloc, raw);
+        defer alloc.free(text);
+        var mk: Marker = .{ .on = true, .size = st.size, .user = st.user };
+        if (text.len == 0) return mk;
+        // (the block options, minus everything about lines: one unwrapped, preserved line)
+        var so = opts;
+        so.max_width = null;
+        so.text_align = .left;
+        so.white_space = .pre;
+        so.max_lines = null;
+        so.ellipsis = false;
+        so.ellipsis_text = null;
+        so.clamp_text = null;
+        so.strut = st;
+        so.text_wrap = .wrap;
+        so.boxes = &.{};
+        var sub = try initCore(feat, alloc, fonts, &.{.{ .text = text, .style = st }}, so);
+        defer sub.deinit();
+        var tl = try sub.layout(alloc, null);
+        defer tl.deinit(alloc);
+        if (tl.lines.len == 0) return mk;
+        const ln = tl.lines[0];
+        if (ln.glyph_end <= ln.glyph_start or ln.glyph_end > tl.glyphs.len) return mk;
+        const gl = try alloc.alloc(PositionedGlyph, ln.glyph_end - ln.glyph_start);
+        for (gl, tl.glyphs[ln.glyph_start..ln.glyph_end]) |*o, g| {
+            o.* = g;
+            o.x = g.x - ln.x;
+            o.y = g.y - ln.baseline;
+        }
+        mk.glyphs = gl;
+        mk.w = ln.width;
+        return mk;
+    }
+
+    noinline fn initCore(comptime feat: Features, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
         const complex = feat.complex;
         var total: usize = 0;
         for (runs) |r| total += r.text.len;
@@ -636,19 +724,17 @@ pub const Paragraph = struct {
                 p.strut_descent = m[1];
                 if (opts.ellipsis or opts.max_lines != null) {
                     var cp: u21 = 0x2026;
-                    p.ell_count = 1;
+                    var count: u8 = 1;
                     var pick = pickFace(fonts, faces, cp);
                     if (pick.gid == 0) {
                         cp = '.';
-                        p.ell_count = 3;
+                        count = 3;
                         pick = pickFace(fonts, faces, cp);
                     }
                     const f = fonts.font(pick.face);
-                    p.ell_face = pick.face;
-                    p.ell_gid = pick.gid;
-                    p.ell_size = st.size;
-                    p.ell_user = st.user;
-                    p.ell_adv = scaleAdvance(f.advanceWidth(pick.gid), @as(f64, st.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em)));
+                    const adv = scaleAdvance(f.advanceWidth(pick.gid), @as(f64, st.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em)));
+                    p.ell = .{ .on = true, .face = pick.face, .gid = pick.gid, .count = count, .size = st.size, .user = st.user, .adv = adv, .w = adv * @as(f32, @floatFromInt(count)) };
+                    p.clamp_ell = p.ell;
                 }
             }
         }
@@ -669,6 +755,8 @@ pub const Paragraph = struct {
     }
 
     pub fn deinit(self: *Paragraph) void {
+        if (self.clamp_ell.glyphs.len > 0) self.alloc.free(self.clamp_ell.glyphs);
+        if (self.ell.glyphs.len > 0) self.alloc.free(self.ell.glyphs);
         self.alloc.free(self.glyphs);
         self.alloc.free(self.metrics);
         self.alloc.free(self.objs);
@@ -696,6 +784,8 @@ pub const Paragraph = struct {
         /// Broken at a soft hyphen: a visible hyphen follows the content.
         hyphen: bool = false,
         ellipsis: bool = false,
+        /// The ellipsis is the line-clamp marker (`clamp_ell`), not the text-overflow one.
+        ell_clamp: bool = false,
         /// Paragraph-cumulative advance at `next`.
         cum: f64 = 0,
         ascent: f32 = 0,
@@ -1256,19 +1346,49 @@ pub const Paragraph = struct {
             return li;
         }
 
+        /// The line's content is all left-to-right glyphs (even bidi levels), without tabs.
+        fn keepEnd(gs: []const ShapedGlyph) bool {
+            if (gs.len == 0) return false;
+            for (gs) |g| {
+                if (g.level & 1 != 0 or g.flags & (ShapedGlyph.TAB | ShapedGlyph.SPECIAL) != 0) return false;
+            }
+            return true;
+        }
+
         /// text-overflow / line-clamp: truncates `li` (line number `it.index + 1`) so that its
         /// content and the ellipsis fit `avail_w`.
         fn clampLine(it: *const LineIter, li: *LineInfo, avail_w: ?f32) void {
             const p = it.p;
             const n: u32 = @intCast(p.glyphs.len);
             const index = if (it.cx != null) it.index + 1 else it.index;
-            if (it.mode.clamp and p.ell_count != 0) {
-                const clamped = if (p.opts.max_lines) |ml| index >= ml and li.next < n else false;
-                const ell_w = p.ell_adv * @as(f32, @floatFromInt(p.ell_count));
+            if (it.mode.clamp and p.ell.on) {
+                var clamped = if (p.opts.max_lines) |ml| index >= ml and li.next < n else false;
+                // block-ellipsis: none — the clamp line gets no marker
+                if (clamped and !p.clamp_ell.on) clamped = false;
+                const ell_w = if (clamped) p.clamp_ell.w else p.ell.w;
+                li.ell_clamp = clamped;
                 if (avail_w) |a| {
                     const avail = floor64(@max(a, 0));
                     if ((p.opts.ellipsis and ceil64(li.width) > avail) or (clamped and ceil64(li.width + ell_w) > avail)) {
                         // truncate so that content + ellipsis fits
+                        if (p.rtl and !p.complex and keepEnd(p.glyphs[li.start..li.end])) {
+                            // left-to-right text in a right-to-left line keeps its end (Blink
+                            // TruncateText: the line and the run directions differ)
+                            var w: f32 = 0;
+                            var k = li.end;
+                            while (k > li.start) : (k -= 1) {
+                                const nw = w + p.glyphs[k - 1].x_advance;
+                                if (ceil64(nw + ell_w) > avail) break;
+                                w = nw;
+                            }
+                            while (k < li.end and p.glyphs[k].flags & ShapedGlyph.NO_SPLIT != 0) : (k += 1) w -= p.glyphs[k].x_advance;
+                            li.start = k;
+                            li.width = w + ell_w;
+                            li.content_w = li.width;
+                            li.ellipsis = true;
+                            li.ell_clamp = clamped;
+                            return;
+                        }
                         var w: f32 = 0;
                         var k = li.start;
                         while (k < li.end) : (k += 1) {
@@ -1801,7 +1921,7 @@ pub const Paragraph = struct {
         const frags = &acc.frags;
         const segs = &acc.segs;
         if (!flow) try lines.ensureTotalCapacityPrecise(alloc, size.line_count);
-        try out.ensureTotalCapacity(alloc, self.glyphs.len + (if (flow) 8 else @as(usize, size.line_count) * (@as(usize, self.ell_count) + 1)));
+        try out.ensureTotalCapacity(alloc, self.glyphs.len + (if (flow) 8 else @as(usize, size.line_count) * (@max(self.ell.len(), self.clamp_ell.len()) + 1)));
         const cplx = flow and self.complex;
         if (flow) {
             cx_.?.frags = if (cplx) frags else null;
@@ -1832,7 +1952,7 @@ pub const Paragraph = struct {
                     continue;
                 }
                 try lines.ensureUnusedCapacity(alloc, 1);
-                try out.ensureUnusedCapacity(alloc, (li.end - li.start) + @as(usize, self.ell_count) + 2);
+                try out.ensureUnusedCapacity(alloc, (li.end - li.start) + @max(self.ell.len(), self.clamp_ell.len()) + 2);
                 top = li.top;
                 if (m.avail != null) container = li.band_w;
                 max_w = @max(max_w, li.width);
@@ -1918,7 +2038,7 @@ pub const Paragraph = struct {
             }
             // in a right-to-left paragraph the ellipsis sits at the left (end) edge
             if (li.ellipsis and self.rtl) {
-                x = self.putEllipsis(out, x, baseline, ell_cluster);
+                x = self.putEllipsis(out, x, baseline, ell_cluster, li.ell_clamp);
                 if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, g_start, out.items.len, line_x, x, baseline, lines.items.len);
             }
             var prev_item: u32 = 0xffff_ffff;
@@ -2028,7 +2148,7 @@ pub const Paragraph = struct {
             if (li.ellipsis and !self.rtl) {
                 const e0 = out.items.len;
                 const ex = x;
-                x = self.putEllipsis(out, x, baseline, ell_cluster);
+                x = self.putEllipsis(out, x, baseline, ell_cluster, li.ell_clamp);
                 if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, e0, out.items.len, ex, x, baseline, lines.items.len);
             }
             lines.appendAssumeCapacity(.{
@@ -2100,12 +2220,23 @@ pub const Paragraph = struct {
         }
     };
 
-    fn putEllipsis(self: *const Paragraph, out: *std.ArrayList(PositionedGlyph), x_in: f32, baseline: f32, cluster: u32) f32 {
+    noinline fn putEllipsis(self: *const Paragraph, out: *std.ArrayList(PositionedGlyph), x_in: f32, baseline: f32, cluster: u32, clamp: bool) f32 {
+        const mk = if (clamp) &self.clamp_ell else &self.ell;
+        if (mk.glyphs.len > 0) {
+            for (mk.glyphs) |g| {
+                var o = g;
+                o.x = x_in + g.x;
+                o.y = baseline + g.y;
+                o.cluster = cluster;
+                out.appendAssumeCapacity(o);
+            }
+            return x_in + mk.w;
+        }
         var x = x_in;
         var k: u8 = 0;
-        while (k < self.ell_count) : (k += 1) {
-            out.appendAssumeCapacity(.{ .face = self.ell_face, .gid = self.ell_gid, .x = x, .y = baseline, .size = self.ell_size, .user = self.ell_user, .cluster = cluster, .bidi_level = @intFromBool(self.rtl) });
-            x += self.ell_adv;
+        while (k < mk.count) : (k += 1) {
+            out.appendAssumeCapacity(.{ .face = mk.face, .gid = mk.gid, .x = x, .y = baseline, .size = mk.size, .user = mk.user, .cluster = cluster, .bidi_level = @intFromBool(self.rtl) });
+            x += mk.adv;
         }
         return x;
     }
@@ -2124,6 +2255,84 @@ pub fn layoutText(alloc: std.mem.Allocator, fonts: *const FontCollection, runs: 
 }
 
 // ------------------------------------------------------------------ internals
+
+/// Text of a custom overflow marker from raw CSS string contents: CSS escapes processed
+/// (`\` + 1-6 hex digits + one optional whitespace, `\` + char, escaped newline dropped), every
+/// run of forced line breaks replaced by one space (Blink `SuppressLineBreaks`). Invalid UTF-8
+/// bytes become U+FFFD.
+fn markerText(alloc: std.mem.Allocator, raw: []const u8) ![]u8 {
+    // worst case: "\0" (2 bytes) -> U+FFFD (3 bytes); a stray byte -> U+FFFD (3 bytes)
+    const out = try alloc.alloc(u8, raw.len * 3 + 4);
+    defer alloc.free(out);
+    var n: usize = 0;
+    var i: usize = 0;
+    var after_break = false;
+    while (i < raw.len) {
+        var cp: u21 = 0xFFFD;
+        if (raw[i] == '\\' and i + 1 < raw.len) {
+            i += 1;
+            var v: u32 = 0;
+            var digits: usize = 0;
+            while (digits < 6 and i < raw.len and std.ascii.isHex(raw[i])) : (digits += 1) {
+                v = v * 16 + (std.fmt.charToDigit(raw[i], 16) catch 0);
+                i += 1;
+            }
+            if (digits > 0) {
+                if (i < raw.len and (raw[i] == ' ' or raw[i] == '\t' or raw[i] == '\n')) i += 1;
+                if (v != 0 and v <= 0x10FFFF and !(v >= 0xD800 and v <= 0xDFFF)) cp = @intCast(v);
+            } else if (raw[i] == '\n') {
+                i += 1;
+                continue;
+            } else cp = decodeAt(raw, &i);
+        } else cp = decodeAt(raw, &i);
+        const forced = switch (cp) {
+            '\n', 0x0B, 0x0C, 0x85, 0x2028, 0x2029 => true,
+            else => false,
+        };
+        if (forced) {
+            if (!after_break) {
+                out[n] = ' ';
+                n += 1;
+            }
+            after_break = true;
+            continue;
+        }
+        after_break = false;
+        n += encodeUtf8(cp, out[n..][0..4]);
+    }
+    return alloc.dupe(u8, out[0..n]);
+}
+
+/// UTF-8 encoding of a scalar value (surrogates never reach here: decoders yield U+FFFD).
+fn encodeUtf8(cp: u21, out: *[4]u8) usize {
+    if (cp < 0x80) {
+        out[0] = @intCast(cp);
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = @intCast(0xC0 | (cp >> 6));
+        out[1] = @intCast(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = @intCast(0xE0 | (cp >> 12));
+        out[1] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = @intCast(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = @intCast(0xF0 | (cp >> 18));
+    out[1] = @intCast(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = @intCast(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+/// One UTF-8 character of `s` at `i.*` (U+FFFD for a malformed sequence); advances `i`.
+fn decodeAt(s: []const u8, i: *usize) u21 {
+    const d = uni.decodeUtf8(s, i.*);
+    i.* += d.len;
+    return d.cp;
+}
 
 const hard_break_cp: u21 = '\n';
 
@@ -2366,6 +2575,8 @@ const Builder = struct {
     /// Running starter of the current cluster (for composition-aware font fallback).
     starter: u21 = 0,
     prev_cp: u21 = 0,
+    /// GB11 state for `prev_cp` (see `unicode.clusterPrev`)
+    prev_pict: bool = false,
     /// Inline item counter (style run x bidi run).
     item: u16 = 0,
     /// Features of the current style run (`ParagraphOptions.features` + `TextStyle.features`).
@@ -2487,7 +2698,7 @@ const Builder = struct {
 
     fn metricFor(b: *Builder, run: u16, face: FaceId, style: TextStyle) !u16 {
         for (b.metrics.items, 0..) |m, i| {
-            if (m.run == run and m.face == face) return @intCast(i);
+            if (m.run == run and m.face == face and m.size == style.size) return @intCast(i);
         }
         if (b.metrics.items.len >= 0xffff) return error.OutOfMemory;
         const f = b.fonts.font(face);
@@ -2655,7 +2866,7 @@ const Builder = struct {
                     b.starter = c.cp;
                 }
             }
-            b.prev_cp = c.cp;
+            b.prev_cp = uni.clusterPrev(complex, &b.prev_pict, c.cp);
             var metric = primary_metric;
             if (face != faces[0]) metric = try b.metricFor(c.run, face, style);
             // script: strong characters decide, the rest follow
@@ -2723,6 +2934,154 @@ const Builder = struct {
     /// Shapes the pending segment and appends its glyphs: advances, kerning, spacing, flags.
     fn flush(b: *Builder, comptime complex: bool, style: TextStyle) !void {
         if (b.buf.g().len == 0) return;
+        if (style.caps != .normal) return b.flushCaps(complex, style);
+        return b.shapeOut(complex, style, b.feats[0..b.n_feats], style.size, b.seg_metric);
+    }
+
+    const CapsSupport = enum { full, fallback, none };
+    const CapsSynth = enum { none, lower, upper, both };
+    const CaseRun = enum { upper_needed, same };
+
+    fn hasFeat(comptime complex: bool, f: *const Font, script: u8, comptime t: *const [4]u8) bool {
+        return shp.hasGsubFeature(complex, f, script, ot.tag(t));
+    }
+
+    /// font-variant-caps on the pending segment: Blink's HarfBuzzShaper::ShapeSegment caps
+    /// handling (OpenTypeCapsSupport, SmallCapsIterator). A face with the caps feature gets it as
+    /// is; otherwise the text is split into runs of characters that change when uppercased and the
+    /// rest, and a run that needs synthesis is uppercased (lowercased for unicase) and shaped at
+    /// round(size * 0.7) (Blink SimpleFontData::SmallCapsFontData).
+    noinline fn flushCaps(b: *Builder, comptime complex: bool, style: TextStyle) !void {
+        const f = b.fonts.font(b.seg_face);
+        const sc = b.seg_script;
+        var support: CapsSupport = .full;
+        var synth: CapsSynth = .none;
+        switch (style.caps) {
+            .normal => {},
+            .small => if (!hasFeat(complex, f, sc, "smcp")) {
+                support = .none;
+                synth = .lower;
+            },
+            .all_small => if (!(hasFeat(complex, f, sc, "smcp") and hasFeat(complex, f, sc, "c2sc"))) {
+                support = .none;
+                synth = .both;
+            },
+            .petite => if (!hasFeat(complex, f, sc, "pcap")) {
+                if (hasFeat(complex, f, sc, "smcp")) {
+                    support = .fallback;
+                } else {
+                    support = .none;
+                    synth = .lower;
+                }
+            },
+            .all_petite => if (!(hasFeat(complex, f, sc, "pcap") and hasFeat(complex, f, sc, "c2pc"))) {
+                if (hasFeat(complex, f, sc, "smcp") and hasFeat(complex, f, sc, "c2sc")) {
+                    support = .fallback;
+                } else {
+                    support = .none;
+                    synth = .both;
+                }
+            },
+            .unicase => if (!hasFeat(complex, f, sc, "unic")) {
+                support = if (hasFeat(complex, f, sc, "smcp")) .fallback else .none;
+                synth = .upper;
+            },
+            .titling => if (!hasFeat(complex, f, sc, "titl")) {
+                support = .none;
+            },
+        }
+        const split = support != .full and style.caps != .titling and style.synth_small_caps and b.seg_level & 1 == 0;
+        if (!split) return b.shapeCaps(complex, style, support, synth, .same, false);
+        // split the segment at case changes (combining marks follow their base)
+        const saved = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
+        defer b.alloc.free(saved);
+        const n = saved.len;
+        var i: usize = 0;
+        while (i < n) {
+            var kind: ?CaseRun = null;
+            var j = i;
+            while (j < n) : (j += 1) {
+                const cp = saved[j].cp;
+                if (kind != null and uni.isCombining(cp)) continue;
+                const k: CaseRun = if (case.changesWhenUppercased(cp)) .upper_needed else .same;
+                if (kind == null) {
+                    kind = k;
+                } else if (k != kind.?) break;
+            }
+            b.buf.list.clearRetainingCapacity();
+            try b.buf.list.appendSlice(b.alloc, saved[i..j]);
+            try b.shapeCaps(complex, style, support, synth, kind orelse .same, true);
+            i = j;
+        }
+    }
+
+    /// Shapes the pending buffer as one case run of flushCaps.
+    fn shapeCaps(b: *Builder, comptime complex: bool, style: TextStyle, support: CapsSupport, synth: CapsSynth, run_case: CaseRun, allowed: bool) !void {
+        // case change (OpenTypeCapsSupport::NeedsCaseChange)
+        const to_upper = allowed and support == .none and run_case == .upper_needed and (synth == .lower or synth == .both);
+        const to_lower = allowed and support == .fallback and run_case == .same and (synth == .both or synth == .upper);
+        if (to_upper or to_lower) {
+            const src = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
+            defer b.alloc.free(src);
+            b.buf.list.clearRetainingCapacity();
+            for (src) |gl| {
+                var m: [3]u21 = undefined;
+                var k: usize = 1;
+                if (to_upper) {
+                    k = case.upper(gl.cp, &m);
+                } else m[0] = case.lower(gl.cp);
+                for (m[0..k]) |cp| try b.buf.list.append(b.alloc, .{ .cp = cp, .cluster = gl.cluster, .gid = if (cp == gl.cp) gl.gid else 0 });
+            }
+        }
+        // synthetic font (NeedsSyntheticFont)
+        const synthetic = allowed and support == .none and switch (run_case) {
+            .upper_needed => synth == .lower or synth == .both,
+            .same => synth == .upper or synth == .both,
+        };
+        // caps features (FontFeatureToUse), before the run's own features
+        var fbuf: [36]shp.FeatureSetting = undefined;
+        var nf: usize = 0;
+        const caps: Caps = switch (support) {
+            .full => style.caps,
+            .none => .normal,
+            .fallback => switch (style.caps) {
+                .all_petite => .all_small,
+                .petite => .small,
+                .unicase => if (run_case == .same) .small else .normal,
+                else => .normal,
+            },
+        };
+        const tags: []const *const [4]u8 = switch (caps) {
+            .normal => &.{},
+            .small => &.{"smcp"},
+            .all_small => &.{ "c2sc", "smcp" },
+            .petite => &.{"pcap"},
+            .all_petite => &.{ "c2pc", "pcap" },
+            .unicase => &.{"unic"},
+            .titling => &.{"titl"},
+        };
+        for (tags) |t| {
+            fbuf[nf] = .{ .tag = t.*, .value = 1 };
+            nf += 1;
+        }
+        for (b.feats[0..b.n_feats]) |ft| {
+            fbuf[nf] = ft;
+            nf += 1;
+        }
+        var size = style.size;
+        var metric = b.seg_metric;
+        if (synthetic) {
+            size = @round(style.size * 0.7);
+            var st = style;
+            st.size = size;
+            const run = if (b.seg_metric < b.metrics.items.len) b.metrics.items[b.seg_metric].run else 0;
+            metric = try b.metricFor(run, b.seg_face, st);
+        }
+        return b.shapeOut(complex, style, fbuf[0..nf], size, metric);
+    }
+
+    /// Shapes the pending buffer with features at size and appends its glyphs (spacing from style).
+    fn shapeOut(b: *Builder, comptime complex: bool, style: TextStyle, features: []const shp.FeatureSetting, size: f32, metric: u16) !void {
         const f = b.fonts.font(b.seg_face);
         const rtl = b.seg_level & 1 != 0;
         try shp.shape(complex, b.cache, f, &b.buf, .{
@@ -2730,12 +3089,12 @@ const Builder = struct {
             .rtl = rtl,
             .lang = b.opts.lang,
             .spaced = style.letter_spacing != 0,
-            .features = b.feats[0..b.n_feats],
+            .features = features,
         });
         const gs = b.buf.g();
         defer b.buf.list.clearRetainingCapacity();
         try b.glyphs.ensureUnusedCapacity(b.alloc, gs.len);
-        const scale = @as(f64, style.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em));
+        const scale = @as(f64, size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em));
         const hang = b.hang;
         const spacing: f32 = if (complex and shp.isCursiveScript(b.seg_script)) 0 else style.letter_spacing;
         for (gs, 0..) |g, j| {
@@ -2765,7 +3124,7 @@ const Builder = struct {
                 .x_offset = if (g.x_off != 0) scaleAdvance(g.x_off, scale) else 0,
                 .y_offset = if (g.y_off != 0) scaleAdvance(g.y_off, scale) else 0,
                 .kern = kern,
-                .metric = b.seg_metric,
+                .metric = metric,
                 .flags = flags,
                 .level = b.seg_level,
                 .item = b.item,

@@ -92,6 +92,13 @@ pub fn isCursiveScript(script: u8) bool {
     };
 }
 
+/// The face's GSUB lists feature `t` for `script` (default language system; DFLT / latn fallback).
+pub fn hasGsubFeature(comptime complex: bool, font: *const Font, script: u8, t: u32) bool {
+    var tags: [3]u32 = undefined;
+    const n = scriptTags(complex, script, &tags);
+    return ot.langSysHasFeature(font.gsub, tags[0..n], t);
+}
+
 fn scriptTags(comptime complex: bool, script: u8, out: *[3]u32) usize {
     if (!complex) {
         out[0] = switch (script) {
@@ -408,6 +415,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
     // Unicode properties and grapheme clusters
     {
         var prev: u21 = 0;
+        var pict = false;
         var prev_cluster: u32 = 0;
         var ri_open = false;
         for (b.g(), 0..) |*gl, i| {
@@ -431,7 +439,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
             } else ri_open = false;
             if (i != 0 and gl.uprops & Glyph.U_CONTINUATION != 0) gl.cluster = prev_cluster;
             prev_cluster = gl.cluster;
-            prev = gl.cp;
+            prev = uni.clusterPrev(complex, &pict, gl.cp);
             gl.mask = ot.global_mask;
         }
     }

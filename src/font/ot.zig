@@ -708,6 +708,15 @@ fn findFeature(ls: LangSys, t: u32) ?[]const u8 {
     return null;
 }
 
+/// The default language system of the first of `script_tags`, DFLT, dflt, latn that the table has
+/// lists feature `t` (Blink `OpenTypeCapsSupport::SupportsOpenTypeFeature`).
+pub fn langSysHasFeature(table: []const u8, script_tags: []const u32, t: u32) bool {
+    var tp: TablePlan = .{};
+    const ls = selectLangSys(table, script_tags, 0, &tp);
+    if (ls.t.len < 6) return false;
+    return findFeature(ls, t) != null;
+}
+
 const Merged = struct { tag: u32, flags: u8, stage: u8, value: u16, mask: u32 = 0, found: bool = false };
 
 /// Compiles a plan. `feats` are processed in order; a later entry with the same tag overrides
@@ -1328,9 +1337,13 @@ const Ctx = struct {
                 var pos: [max_context]u32 = undefined;
                 // fast reject on the second component (HarfBuzz does the same): valid when
                 // the next glyph is one no ligature could skip over
+                // (HarfBuzz matches "always" here: a skippable-maybe glyph such as ZWJ, which
+                // a ligature may list as a component, stops the fast path)
                 var second: u32 = 0x1_0000;
-                if (c.next(c.idx, c.props)) |j| {
-                    if (c.maySkip(&gs[j], c.props, false) == .no) second = gs[j].gid;
+                {
+                    var j = c.idx + 1;
+                    while (j < gs.len and c.maySkip(&gs[j], c.props, false) == .yes) j += 1;
+                    if (j < gs.len and c.maySkip(&gs[j], c.props, false) == .no) second = gs[j].gid;
                 }
                 var k: u32 = 0;
                 while (k < nl) : (k += 1) {
