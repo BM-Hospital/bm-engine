@@ -4,7 +4,7 @@
 
 Tài liệu của takumi được chia thành ba phần — **Image**, **PDF** và **Paint** — vì takumi cung cấp ba
 loại đầu ra, dưới dạng ba package riêng, cùng dựa trên một layout engine. bm-engine port hai loại đầu:
-Image, và PDF trong profile `pdf` riêng ([Đầu ra PDF](pdf.md)). Trang này giải thích mỗi đầu ra của takumi dùng
+Image, và PDF trong profile `pdf` riêng ([Đầu ra PDF](pdf/index.md)). Trang này giải thích mỗi đầu ra của takumi dùng
 để làm gì, bm-engine hiện đáp ứng tới đâu, và làm sao tiến gần tới Paint bằng bm-engine kết hợp với công cụ khác.
 
 ::: info Trạng thái kiểm chứng
@@ -37,7 +37,7 @@ phản ánh phần port PDF được thêm sau engine ảnh 0.1.0.
 | Package npm | `takumi-js`, `@takumi-rs/wasm`, `@takumi-rs/core` | `takumi-pdf` | `takumi-paint` |
 | Bạn nhận được | byte ảnh đã mã hóa (hoặc một chuỗi SVG, hoặc một animation) | một file PDF | một cây object JavaScript để bạn tự vẽ |
 | Công dụng điển hình | thẻ Open Graph, thumbnail, ảnh mạng xã hội | hóa đơn, báo cáo, vé, chứng nhận | slide chỉnh sửa được (PPTX), vẽ bằng Canvas / Skia / API native, renderer tự viết |
-| bm-engine | **đã port** (raster, SVG, animation) | **đã port** thành profile `pdf`, với [hạn chế đã biết](pdf.md#hạn-chế-đã-biết) | **không có** (chỉ có `measure()`) |
+| bm-engine | **đã port** (raster, SVG, animation) | **đã port** thành profile `pdf`, với [hạn chế đã biết](pdf/differences-from-takumi.md#hạn-chế-đã-biết) | **không có** (chỉ có `measure()`) |
 
 ### Image
 
@@ -74,7 +74,7 @@ Layout mà không raster hóa: `paint()` trả về một **paint tree** — m�
 | Đầu ra raster (PNG, JPEG, WebP, RGBA thô, ICO) | có — `render` / `renderSync`, `renderAsDataUrl` |
 | Đầu ra SVG | có — `renderSvg` / `renderSvgSync` (profile `full`); chữ thành đường viền glyph, ảnh nhúng dạng URL `data:` |
 | Đầu ra động | có — `renderAnimation` (`full`): WebP động, APNG, GIF |
-| Đầu ra PDF | **có** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): đầu ra nhiều trang với chữ thật và font con, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ và PDF/A. Không có trong `core`, `standard` hay `full`; trên Node.js nó chạy trên addon native khi đã cài. Xem [Đầu ra PDF](pdf.md) |
+| Đầu ra PDF | **có** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): đầu ra nhiều trang với chữ thật và font con, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ và PDF/A. Không có trong `core`, `standard` hay `full`; trên Node.js nó chạy trên addon native khi đã cài. Xem [Đầu ra PDF](pdf/index.md) |
 | Phân trang / fragmentation qua nhiều trang | **có, trong profile `pdf`** — nội dung chảy qua nhiều trang, với `break-*`, `orphans` / `widows`, header bảng lặp lại và `@page`. Render ảnh vẫn là một canvas mỗi lần |
 | Paint tree | **không** — không có API nào trả về lệnh vẽ, màu, gradient hay glyph |
 | Box layout | có — `measure()` trả về cây box: `width` / `height` của border box, một `transform` 2D (vị trí tuyệt đối), `children`, và `runs` của các dòng chữ (`x`, `y`, `width`, `height`; không có chữ, không có font, không có vị trí glyph) |
@@ -85,7 +85,7 @@ Mục đầu trỏ tới đầu ra PDF có sẵn; các mục còn lại kết h�
 
 ### Tạo PDF từ đầu ra của bm-engine
 
-Hãy dùng profile `pdf`: [Đầu ra PDF](pdf.md). Nếu không nạp được nó (ví dụ bạn phải ở lại `core`, `standard` hay
+Hãy dùng profile `pdf`: [Đầu ra PDF](pdf/index.md). Nếu không nạp được nó (ví dụ bạn phải ở lại `core`, `standard` hay
 `full`), các cách cũ hơn sau đây vẫn dùng được:
 
 
@@ -120,7 +120,7 @@ function walk(n, m, draw) {
 Lưu ý, xuất phát từ định dạng đầu ra của measure: node text nằm trong một block flow không có mục riêng
 (các dòng của nó xuất hiện dưới dạng `runs` của box chứa nó), nên việc ghép con đã measure với con trong
 cây nguồn cần cẩn thận; run không mang chữ hay font; màu, gradient và viền là bất cứ gì bạn đặt trong
-`style`, không phải giá trị đã resolve. Trang [Measure](./measure.md) mô tả chính xác đầu ra. Muốn vẽ mọi
+`style`, không phải giá trị đã resolve. Trang [Measure](./image/measure.md) mô tả chính xác đầu ra. Muốn vẽ mọi
 thứ chính xác tới từng pixel, hãy render bằng bm-engine rồi vẽ ảnh đó.
 
 ## Nên dùng gì

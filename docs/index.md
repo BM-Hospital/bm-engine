@@ -9,14 +9,17 @@ hero:
   tagline: A dependency-free Zig → WebAssembly port of takumi. Same node format, 4–9× smaller binaries, faster rendering, and pixel-equivalent output on all 250 benchmark fixtures. Runs in Node.js, browsers, Bun, Deno and edge workers.
   actions:
     - theme: brand
-      text: Get started
+      text: Image docs
+      link: /image/
+    - theme: brand
+      text: PDF docs
+      link: /pdf/
+    - theme: alt
+      text: Install
       link: /getting-started
     - theme: alt
       text: Playground
-      link: /playground
-    - theme: alt
-      text: Benchmark
-      link: /benchmark
+      link: /image/playground
 
 features:
   - icon: 📦
@@ -42,16 +45,16 @@ features:
   - icon: 🧩
     title: Three profiles
     details: "<code>core</code>: node trees, block / flex / grid layout, gradients, shadows, filters. <code>standard</code>: + stylesheets, HTML, Tailwind, SVG images, tables, floats. <code>full</code>: + emoji, complex scripts, animations, <code>renderSvg</code>. Optional 84.2 KiB WOFF add-on for <code>core</code>."
-    link: /css-support
+    link: /image/css-support
     linkText: CSS and feature support
   - icon: 📄
     title: Paged PDF output
-    details: "A separate <code>pdf</code> profile (about 1.5 MB) ports <code>takumi-pdf</code>: selectable text with subset fonts, pagination, headers and footers, links, bookmarks, attachments, tagged PDF and PDF/A."
-    link: /pdf
+    details: "A separate <code>pdf</code> profile (1.5 MB) ports <code>takumi-pdf</code>: selectable text with subset fonts, pagination, headers and footers, links, bookmarks, attachments, tagged PDF and PDF/A."
+    link: /pdf/
     linkText: PDF output
   - icon: 🧪
     title: Try it in the browser
     details: "The playground runs the real engine in your browser: every profile, node JSON / HTML / Tailwind input and every output format."
-    link: /playground
+    link: /image/playground
     linkText: Open the playground
 ---

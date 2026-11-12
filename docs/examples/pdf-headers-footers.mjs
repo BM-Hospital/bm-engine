@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/pdf-headers-footers.md. Run: node docs/examples/run-all.mjs pdf-headers-footers
+// Examples for docs/{en,vi}/pdf/headers-footers.md. Run: node docs/examples/run-all.mjs pdf-headers-footers
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";

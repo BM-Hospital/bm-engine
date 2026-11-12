@@ -16,7 +16,7 @@ How the platform packages are built and published: [Publishing](./publishing.md)
 | Browsers, Web Workers | wasm (the only option) | `bm-engine` resolves to the wasm build there |
 | Cloudflare Workers, Vercel / Netlify Edge, Deno Deploy and other edge runtimes | wasm (the only option) | same import |
 | Node.js, but you want wasm anyway (for example to reproduce a browser render bit for bit, or on a host whose addon has not been tested yet) | wasm | `import ... from "bm-engine/full"` or `BM_ENGINE_BACKEND=wasm` |
-| Node.js, Bun, Deno, and you want PDF output | **native**, with an automatic fallback to the wasm `pdf` profile | `import { PdfRenderer, backend } from "bm-engine/pdf"`; see [PDF output](./pdf.md#native-backend-on-nodejs) |
+| Node.js, Bun, Deno, and you want PDF output | **native**, with an automatic fallback to the wasm `pdf` profile | `import { PdfRenderer, backend } from "bm-engine/pdf"`; see [PDF output](./pdf/native-and-wasm.md#native-backend-on-nodejs) |
 | Node.js, and you want an error rather than a silent fallback | native | `import ... from "bm-engine/native"` or `BM_ENGINE_BACKEND=native` |
 
 The fallback is silent: if no addon is installed for the platform, if the CPU is older than x86-64-v2
@@ -111,7 +111,7 @@ export function renderPng(node, options) {
   `worker_threads` too, but on the native backend a pool of renderers in one thread does the same job without
   workers.
 - With the **wasm** backend, async methods run on the main thread; parallelism needs a `worker_threads`
-  pool with one engine instance per worker ([recipe](./recipes.md#worker-threads-pool)). This is also what
+  pool with one engine instance per worker ([recipe](./image/recipes.md#worker-threads-pool)). This is also what
   the benchmark measures for bm-wasm and takumi-wasm.
 
 ### Throughput under concurrency

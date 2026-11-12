@@ -3,7 +3,7 @@
 // 1. Serves the repo root (dev layout, docs/playground-app/), exercises every profile (core / standard / full).
 // 2. Builds and smoke-tests the self-contained build (docs/playground-app/dist).
 // 3. Builds the VitePress docs site (npm run docs:build equivalent; --skip-docs-build reuses docs/.vitepress/dist) and
-//    checks the /playground and /vi/playground pages: the embedded app starts on every profile and renders the OG card.
+//    checks the /image/playground and /vi/image/playground pages: the embedded app starts on every profile and renders the OG card.
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdtempSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -286,7 +286,7 @@ async function shots(base) {
 // ---------------------------------------------------------------------------------------------- docs site
 /** The playground page of the built docs site: the iframe app starts on every profile and renders the OG card. */
 async function siteSuite(siteBase, lang) {
-  const route = lang === "vi" ? "/vi/playground" : "/playground";
+  const route = lang === "vi" ? "/vi/image/playground" : "/image/playground";
   const tag = `site${route}`;
   const sink = [];
   const R = { templates: {}, extra: {} };

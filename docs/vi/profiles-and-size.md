@@ -76,7 +76,7 @@ Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 vớ
 ### Profile `pdf`
 
 `bm_engine.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
-các thuộc tính CSS paged-media ([Đầu ra PDF](pdf.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-engine/pdf` trên Node.js (addon là
+các thuộc tính CSS paged-media ([Đầu ra PDF](pdf/index.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-engine/pdf` trên Node.js (addon là
 tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó thêm khoảng 0.4 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
 tính năng của `core`, `standard` hay `full`.
 
@@ -169,7 +169,7 @@ Các cờ: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects
 WOFF / WOFF2 thành TTF / OTF trước khi giao cho bất kỳ entry nào. Font sau khi chuyển trùng từng byte với
 kết quả của bộ giải mã tích hợp. Add-on hữu ích trên `core` khi font của bạn ở dạng WOFF2 (ví dụ lấy từ
 Google Fonts); trên `standard` / `full` thì không cần. Xem
-[Bắt đầu](getting-started.md#woff-trên-core).
+[Bắt đầu](image/index.md#woff-trên-core).
 
 ## Vì sao không có add-on tải lười nào khác
 

@@ -133,7 +133,7 @@ BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not 
 - **A bundled server cannot find the wasm file**: `bm-engine: cannot find bm_engine.wasm (...)`. A bundler
   moved the Node entry away from its package and `node_modules` is not there at run time. Keep the package
   external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), or set
-  `BM_WASM=/path/to/bm_engine.wasm`. See [Next.js](frameworks/nextjs.md) for deployments.
+  `BM_WASM=/path/to/bm_engine.wasm`. See [Next.js](image/frameworks/nextjs.md) for deployments.
 
 ## Memory keeps growing
 
@@ -196,7 +196,7 @@ enough — fallback walks every registered family.
 - Tailwind variants other than breakpoints, structural variants and `before:` / `after:`
   (`hover:`, `dark:`, `group-*:`) never apply — as in takumi. `animate-*` utilities need the `full`
   profile.
-- See the list of [parsed-but-not-implemented properties](css-support.md#appendix-supported-property-names).
+- See the list of [parsed-but-not-implemented properties](image/css-support.md#appendix-supported-property-names).
 
 ## "invalid value for style property"
 

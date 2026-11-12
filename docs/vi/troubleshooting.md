@@ -133,7 +133,7 @@ BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not 
 - **Server đã bundle không tìm thấy file wasm**: `bm-engine: cannot find bm_engine.wasm (...)`. Bundler đã
   chuyển điểm vào Node ra khỏi package của nó và lúc chạy không có `node_modules`. Hãy để package ở dạng
   external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), hoặc đặt
-  `BM_WASM=/path/to/bm_engine.wasm`. Xem [Next.js](frameworks/nextjs.md) về deploy.
+  `BM_WASM=/path/to/bm_engine.wasm`. Xem [Next.js](image/frameworks/nextjs.md) về deploy.
 
 ## Bộ nhớ tăng mãi
 
@@ -196,7 +196,7 @@ duyệt mọi family đã đăng ký.
   style inline, vốn ném lỗi với giá trị không hợp lệ.
 - Các variant Tailwind ngoài breakpoint, variant cấu trúc và `before:` / `after:` (`hover:`, `dark:`,
   `group-*:`) không bao giờ được áp dụng — giống takumi. Utility `animate-*` cần profile `full`.
-- Xem danh sách [thuộc tính parse được nhưng chưa cài đặt](css-support.md#phụ-lục-danh-sách-thuộc-tính-được-hỗ-trợ).
+- Xem danh sách [thuộc tính parse được nhưng chưa cài đặt](image/css-support.md#phụ-lục-danh-sách-thuộc-tính-được-hỗ-trợ).
 
 ## "invalid value for style property"
 

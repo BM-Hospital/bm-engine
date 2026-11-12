@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/fonts.md. Run: node docs/examples/run-all.mjs fonts
+// Examples for docs/{en,vi}/image/fonts.md. Run: node docs/examples/run-all.mjs fonts
 import { saver, expectThrow } from "./_lib.mjs";
 import { existsSync } from "node:fs";
 import http from "node:http";

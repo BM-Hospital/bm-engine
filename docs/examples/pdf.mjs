@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/pdf.md. Run: node docs/examples/run-all.mjs pdf
+// Examples for docs/{en,vi}/pdf/index.md. Run: node docs/examples/run-all.mjs pdf
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 

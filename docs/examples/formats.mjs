@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/formats.md. Regions are copied into the pages by sync-docs.mjs.
+// Examples for docs/{en,vi}/image/formats.md. Regions are copied into the pages by sync-docs.mjs.
 import { saver } from "./_lib.mjs";
 const save = saver("formats");
 

@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/templates.md
+// Examples for docs/{en,vi}/image/templates.md
 import { saver } from "./_lib.mjs";
 const save = saver("templates");
 

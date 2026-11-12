@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/measure.md. Run: node docs/examples/run-all.mjs measure
+// Examples for docs/{en,vi}/image/measure.md. Run: node docs/examples/run-all.mjs measure
 import { saver } from "./_lib.mjs";
 const save = saver("measure");
 const log = (label, value) => console.log(label, JSON.stringify(value));

@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/performance.md. Regions are copied into the pages by sync-docs.mjs.
+// Examples for docs/{en,vi}/image/performance.md. Regions are copied into the pages by sync-docs.mjs.
 // Timings printed here are for checking the examples only; the docs quote docs/en/benchmark.md instead.
 import { saver } from "./_lib.mjs";
 const save = saver("performance");

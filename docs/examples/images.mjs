@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/images.md. Run: node docs/examples/run-all.mjs images
+// Examples for docs/{en,vi}/image/images.md. Run: node docs/examples/run-all.mjs images
 import { saver } from "./_lib.mjs";
 import assert from "node:assert/strict";
 import * as core from "bm-engine/core";

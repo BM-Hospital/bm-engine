@@ -2,8 +2,8 @@
 
 A static, framework-free playground (plain HTML + ES modules + CSS, no build step, no external requests) for
 the bm-engine WebAssembly renderer. It is published as part of the documentation site: the **Playground**
-page ([docs/en/playground.md](../en/playground.md), [docs/vi/playground.md](../vi/playground.md); `/playground`
-and `/vi/playground` on the site) embeds a self-contained build of this folder.
+page ([docs/en/image/playground.md](../en/image/playground.md), [docs/vi/image/playground.md](../vi/image/playground.md); `/image/playground`
+and `/vi/image/playground` on the site) embeds a self-contained build of this folder.
 
 ```
 npm run playground                                   # dev server, repo root: http://127.0.0.1:8080/docs/playground-app/

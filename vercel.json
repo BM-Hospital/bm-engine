@@ -11,14 +11,14 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     },
     {
-      "source": "/playground-app/vendor/(.*)\.wasm",
+      "source": "/playground-app/vendor/(.*)\\.wasm",
       "headers": [
         { "key": "Content-Type", "value": "application/wasm" },
         { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
       ]
     },
     {
-      "source": "/playground-app/vendor/(.*)\.mjs",
+      "source": "/playground-app/vendor/(.*)\\.mjs",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }]
     },
     {
@@ -36,9 +36,24 @@
     { "source": "/ARCHITECTURE", "destination": "/dev/architecture", "permanent": true },
     { "source": "/TAKUMI_NOTES", "destination": "/dev/takumi-notes", "permanent": true },
     { "source": "/CONVENTIONS", "destination": "/dev/conventions", "permanent": true },
-    { "source": "/playground/", "destination": "/playground", "permanent": false },
+    { "source": "/playground/", "destination": "/image/playground", "permanent": true },
     { "source": "/benchmark-report", "destination": "/benchmark", "permanent": false },
     { "source": "/vi/results-full", "destination": "/results-full", "permanent": false },
-    { "source": "/vi/dev/:path*", "destination": "/dev/:path*", "permanent": false }
+    { "source": "/vi/NATIVE", "destination": "/NATIVE", "permanent": false },
+    { "source": "/vi/dev/:path*", "destination": "/dev/:path*", "permanent": false },
+    { "source": "/:page(concepts|styles|html-and-tailwind|fonts|typography|images|tables|charts|effects|formats|animation|performance|measure|templates|recipes|css-support|api|playground|differences-from-takumi)", "destination": "/image/:page", "permanent": true },
+    { "source": "/:dir(frameworks|migration)/:path*", "destination": "/image/:dir/:path*", "permanent": true },
+    { "source": "/pdf-pagination", "destination": "/pdf/pagination", "permanent": true },
+    { "source": "/pdf-headers-footers", "destination": "/pdf/headers-footers", "permanent": true },
+    { "source": "/pdf-links-metadata", "destination": "/pdf/links-metadata", "permanent": true },
+    { "source": "/pdf-fonts", "destination": "/pdf/fonts", "permanent": true },
+    { "source": "/pdf-accessibility", "destination": "/pdf/accessibility", "permanent": true },
+    { "source": "/vi/:page(concepts|styles|html-and-tailwind|fonts|typography|images|tables|charts|effects|formats|animation|performance|measure|templates|recipes|css-support|api|playground|differences-from-takumi)", "destination": "/vi/image/:page", "permanent": true },
+    { "source": "/vi/:dir(frameworks|migration)/:path*", "destination": "/vi/image/:dir/:path*", "permanent": true },
+    { "source": "/vi/pdf-pagination", "destination": "/vi/pdf/pagination", "permanent": true },
+    { "source": "/vi/pdf-headers-footers", "destination": "/vi/pdf/headers-footers", "permanent": true },
+    { "source": "/vi/pdf-links-metadata", "destination": "/vi/pdf/links-metadata", "permanent": true },
+    { "source": "/vi/pdf-fonts", "destination": "/vi/pdf/fonts", "permanent": true },
+    { "source": "/vi/pdf-accessibility", "destination": "/vi/pdf/accessibility", "permanent": true }
   ]
 }

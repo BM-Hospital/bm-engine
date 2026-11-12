@@ -907,7 +907,7 @@ cache glyph) trong cùng bộ nhớ tuyến tính — cần một dynamic linker
 
 ## Chưa port / còn khác takumi sau giai đoạn 2
 
-- **PDF: không có trong các profile `core` / `standard` / `full` và không nằm trong benchmark này.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust. Sau giai đoạn đo này, bm-engine đã thêm nó thành profile `pdf` riêng (`bm-engine/pdf`; xem [Đầu ra PDF](en/pdf.md) và [bản tiếng Việt](vi/pdf.md)). Các con số speed / size / SSIM trong báo cáo này chỉ nói về đầu ra ảnh; đầu ra PDF chưa được benchmark về tốc độ và kích thước.
+- **PDF: không có trong các profile `core` / `standard` / `full` và không nằm trong benchmark này.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust. Sau giai đoạn đo này, bm-engine đã thêm nó thành profile `pdf` riêng (`bm-engine/pdf`; xem [Đầu ra PDF](en/pdf/index.md) và [bản tiếng Việt](vi/pdf/index.md)). Các con số speed / size / SSIM trong báo cáo này chỉ nói về đầu ra ảnh; đầu ra PDF chưa được benchmark về tốc độ và kích thước.
 - **Dòng inline:** float + chữ và chữ trong dòng hỗn hợp đã xong ở giai đoạn 3; các khoảng trống còn lại nằm trong mục "Giai đoạn 3" ở đầu file.
 - **Shaping:** Indic chỉ kiểm chứng Devanagari + Bengali (các hệ khác dùng shaper mặc định); chuỗi emoji ZWJ có ca chưa gộp thành một glyph; ưu tiên font emoji khác takumi ở vài ca (©️, VS15).
 - **SVG:** `<text>` chỉ qua hook; thiếu feTurbulence/feImage/feMorphology/feConvolveMatrix/feDisplacementMap/lighting/feTile; bảng SVG trong font chưa vẽ.

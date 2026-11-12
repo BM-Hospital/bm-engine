@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/tables.md. Run: node docs/examples/run-all.mjs tables
+// Examples for docs/{en,vi}/image/tables.md. Run: node docs/examples/run-all.mjs tables
 import { saver } from "./_lib.mjs";
 import assert from "node:assert/strict";
 import * as core from "bm-engine/core";

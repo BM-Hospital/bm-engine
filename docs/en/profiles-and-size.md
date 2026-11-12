@@ -75,7 +75,7 @@ Native addons from `native/dist/manifest.json` (built 2026-11-12 with Zig 0.17.1
 ### The `pdf` profile
 
 `bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
-CSS paged-media properties ([PDF output](pdf.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
+CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
 Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.4 MB to `full`. It is not part of the table below because `pdf` is
 not a feature of `core`, `standard` or `full`.
 
@@ -170,7 +170,7 @@ as a separate module. `loadWoff()` from `bm-engine/woff` installs it, after whic
 converts WOFF / WOFF2 to TTF / OTF before handing it to any entry. The converted font is byte-identical
 to what the built-in decoder produces. It is useful on `core` when your fonts come as WOFF2 (for
 example from Google Fonts); on `standard` / `full` it is not needed. See
-[Getting started](getting-started.md#woff-on-core).
+[Getting started](image/index.md#woff-on-core).
 
 ## Why there are no other lazy add-ons
 

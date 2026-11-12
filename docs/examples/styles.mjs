@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/styles.md. Run: node docs/examples/run-all.mjs styles
+// Examples for docs/{en,vi}/image/styles.md. Run: node docs/examples/run-all.mjs styles
 import { saver, expectThrow } from "./_lib.mjs";
 import assert from "node:assert/strict";
 const save = saver("styles");

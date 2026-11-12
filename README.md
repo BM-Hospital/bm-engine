@@ -115,7 +115,7 @@ writeFileSync("report.pdf", bytes);
 ```
 
 Content flows across pages; headers, footers, page counters, links, bookmarks, metadata, attachments, tagged
-PDF (PDF/UA) and PDF/A are supported. See [PDF output](docs/en/pdf.md). On Node.js `bm-engine/pdf` uses the native
+PDF (PDF/UA) and PDF/A are supported. See [PDF output](docs/en/pdf/index.md). On Node.js `bm-engine/pdf` uses the native
 addon when it is installed (same bytes, faster, async off the main thread) and the wasm `pdf` profile otherwise.
 
 ## Profiles
@@ -125,25 +125,25 @@ addon when it is installed (same bytes, faster, async off the main thread) and t
 | `core` | `bm-engine/core` | 487.6 / 194.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
 | `standard` | `bm-engine/standard` | 934.4 / 398.0 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
 | `full` | `bm-engine` (Node), `bm-engine/full` | 1 141.5 / 469.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
-| `pdf` | `bm-engine/pdf` | about 1.5 MB raw | `full` + PDF output: pagination, headers / footers, links, bookmarks, metadata, attachments, tagged PDF, PDF/A. See [PDF output](docs/en/pdf.md) |
+| `pdf` | `bm-engine/pdf` | about 1.5 MB raw | `full` + PDF output: pagination, headers / footers, links, bookmarks, metadata, attachments, tagged PDF, PDF/A. See [PDF output](docs/en/pdf/index.md) |
 
 An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the
 loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.md).
 
 ## Documentation
 
-- [Getting started](docs/en/getting-started.md): install, Node / browser / bundlers / Workers, profiles, fonts, images, formats
-- [API reference](docs/en/api.md): `init`, `Renderer`, node format, options, errors, limits, memory
-- [CSS and feature support](docs/en/css-support.md): the feature matrix and every supported property
-- [PDF output](docs/en/pdf.md): pages, [pagination](docs/en/pdf-pagination.md), [headers and footers](docs/en/pdf-headers-footers.md), [links and metadata](docs/en/pdf-links-metadata.md), [fonts](docs/en/pdf-fonts.md), [PDF/UA and PDF/A](docs/en/pdf-accessibility.md)
-- [Profiles and size](docs/en/profiles-and-size.md) · [Differences from takumi / migration](docs/en/differences-from-takumi.md)
-- [Benchmark](docs/en/benchmark.md) · [Building from source](docs/en/building-from-source.md) · [Playground](docs/en/playground.md) · [Troubleshooting](docs/en/troubleshooting.md)
+- [Getting started](docs/en/getting-started.md): install, native addon / WebAssembly, entry points, bundlers / Workers, profiles
+- Image: [quick start](docs/en/image/index.md) (Node / browser, fonts, images, formats) · [API reference](docs/en/image/api.md): `init`, `Renderer`, node format, options, errors, limits, memory
+- [CSS and feature support](docs/en/image/css-support.md): the feature matrix and every supported property
+- PDF: [quick start](docs/en/pdf/index.md), [API reference](docs/en/pdf/api.md), [recipes](docs/en/pdf/recipes.md), [pagination](docs/en/pdf/pagination.md), [headers and footers](docs/en/pdf/headers-footers.md), [links and metadata](docs/en/pdf/links-metadata.md), [fonts](docs/en/pdf/fonts.md), [PDF/UA and PDF/A](docs/en/pdf/accessibility.md)
+- [Profiles and size](docs/en/profiles-and-size.md) · [Differences from takumi / migration](docs/en/image/differences-from-takumi.md)
+- [Benchmark](docs/en/benchmark.md) · [Building from source](docs/en/building-from-source.md) · [Playground](docs/en/image/playground.md) · [Troubleshooting](docs/en/troubleshooting.md)
 - Developer docs: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (full report, Vietnamese)](docs/BENCHMARK.md)
 
 The documentation is also a VitePress site with the browser **playground** built in (templates, all three
 profiles, every output format): `npm run docs` in a repository checkout, then open `http://localhost:5173/`
-(playground: `/playground`). The playground alone: `npm run playground`, then
-`http://127.0.0.1:8080/docs/playground-app/`; see [docs/en/playground.md](docs/en/playground.md).
+(playground: `/image/playground`). The playground alone: `npm run playground`, then
+`http://127.0.0.1:8080/docs/playground-app/`; see [docs/en/image/playground.md](docs/en/image/playground.md).
 
 ## Status and limitations
 
@@ -155,11 +155,11 @@ Version 0.1.0. What to know before adopting it:
 - **No JSX, no `ImageResponse`.** Convert JSX with `@takumi-rs/helpers`.
 - **PDF is a separate entry** (`bm-engine/pdf`: the wasm `pdf` profile, about 1.5 MB raw, or the native addon on Node.js) and a port of `takumi-pdf` with known
   differences: content is laid out once at one width (a named page of another width is not re-flowed), `list-style-image` is not supported, PDF/A is checked but not certified, and there is no `needs`
-  pass (see [PDF output → Known limitations](docs/en/pdf.md#known-limitations)).
+  pass (see [PDF output → Known limitations](docs/en/pdf/differences-from-takumi.md#known-limitations)).
 - **Inline layout is complete for common content** (text flows around floats; block-in-inline, RTL
   inline boxes, atomic inlines and inline span padding take part in line breaking). Remaining gaps: RTL +
   `pre-wrap` hanging spaces, line-clamp around floats, a block inside a relatively positioned inline box
-  (see [CSS support → Known gaps](docs/en/css-support.md#known-gaps)).
+  (see [CSS support → Known gaps](docs/en/image/css-support.md#known-gaps)).
 - Not supported: list markers / counters, `writing-mode`, 3D transforms, `clip-path: url()`, relative
   colour syntax, Tailwind interactive variants and `space-*` (as in takumi), `<text>` inside SVG images and
   some SVG filters.
@@ -169,8 +169,8 @@ Version 0.1.0. What to know before adopting it:
   (Node.js): one renderer runs one call at a time, several renderers run in parallel; only the Windows x64
   addon has been executed so far.
 
-Full list: [CSS support → Known gaps](docs/en/css-support.md#known-gaps) and
-[Differences from takumi](docs/en/differences-from-takumi.md).
+Full list: [CSS support → Known gaps](docs/en/image/css-support.md#known-gaps) and
+[Differences from takumi](docs/en/image/differences-from-takumi.md).
 
 ## License and attribution
 

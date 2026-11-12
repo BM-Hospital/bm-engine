@@ -9,14 +9,17 @@ hero:
   tagline: Bản port takumi sang Zig → WebAssembly, không phụ thuộc. Cùng định dạng node, tệp nhị phân nhỏ hơn 4–9×, render nhanh hơn và kết quả tương đương điểm ảnh trên cả 250 fixture benchmark. Chạy trên Node.js, trình duyệt, Bun, Deno và edge worker.
   actions:
     - theme: brand
-      text: Bắt đầu
+      text: Tài liệu Ảnh
+      link: /vi/image/
+    - theme: brand
+      text: Tài liệu PDF
+      link: /vi/pdf/
+    - theme: alt
+      text: Cài đặt
       link: /vi/getting-started
     - theme: alt
       text: Playground
-      link: /vi/playground
-    - theme: alt
-      text: Benchmark
-      link: /vi/benchmark
+      link: /vi/image/playground
 
 features:
   - icon: 📦
@@ -42,16 +45,16 @@ features:
   - icon: 🧩
     title: Ba profile
     details: "<code>core</code>: cây node, layout block / flex / grid, gradient, bóng đổ, filter. <code>standard</code>: + stylesheet, HTML, Tailwind, ảnh SVG, bảng, float. <code>full</code>: + emoji, chữ phức tạp, animation, <code>renderSvg</code>. Add-on WOFF 84.2 KiB tuỳ chọn cho <code>core</code>."
-    link: /vi/css-support
+    link: /vi/image/css-support
     linkText: Hỗ trợ CSS và tính năng
   - icon: 📄
     title: Đầu ra PDF nhiều trang
     details: "Một profile <code>pdf</code> riêng (khoảng 1.5 MB) port <code>takumi-pdf</code>: chữ bôi chọn được với font con, phân trang, header và footer, liên kết, bookmark, tệp đính kèm, PDF có thẻ và PDF/A."
-    link: /vi/pdf
+    link: /vi/pdf/
     linkText: Đầu ra PDF
   - icon: 🧪
     title: Thử ngay trên trình duyệt
     details: "Playground chạy engine thật ngay trong trình duyệt: mọi profile, đầu vào node JSON / HTML / Tailwind và mọi định dạng đầu ra."
-    link: /vi/playground
+    link: /vi/image/playground
     linkText: Mở playground
 ---

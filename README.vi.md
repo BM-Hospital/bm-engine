@@ -114,7 +114,7 @@ writeFileSync("report.pdf", bytes);
 ```
 
 Nội dung chảy qua nhiều trang; hỗ trợ header, footer, bộ đếm trang, liên kết, bookmark, metadata, tệp đính
-kèm, PDF có thẻ (PDF/UA) và PDF/A. Xem [Đầu ra PDF](docs/vi/pdf.md). Trên Node.js, `bm-engine/pdf` dùng addon native
+kèm, PDF có thẻ (PDF/UA) và PDF/A. Xem [Đầu ra PDF](docs/vi/pdf/index.md). Trên Node.js, `bm-engine/pdf` dùng addon native
 khi đã cài (cùng byte, nhanh hơn, async chạy ngoài main thread), nếu không thì dùng profile wasm `pdf`.
 
 ## Các profile
@@ -124,25 +124,25 @@ khi đã cài (cùng byte, nhanh hơn, async chạy ngoài main thread), nếu k
 | `core` | `bm-engine/core` | 487.6 / 194.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
 | `standard` | `bm-engine/standard` | 934.4 / 398.0 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
 | `full` | `bm-engine` (Node), `bm-engine/full` | 1 141.5 / 469.8 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
-| `pdf` | `bm-engine/pdf` | khoảng 1.5 MB thô | `full` + đầu ra PDF: phân trang, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ, PDF/A. Xem [Đầu ra PDF](docs/vi/pdf.md) |
+| `pdf` | `bm-engine/pdf` | khoảng 1.5 MB thô | `full` + đầu ra PDF: phân trang, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ, PDF/A. Xem [Đầu ra PDF](docs/vi/pdf/index.md) |
 
 Một add-on 84 KiB (`bm-engine/woff`) giúp `core` đọc được WOFF / WOFF2. `features` cho biết binary đang
 nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles-and-size.md).
 
 ## Tài liệu
 
-- [Bắt đầu](docs/vi/getting-started.md): cài đặt, Node / trình duyệt / bundler / Workers, profile, font, ảnh, định dạng
-- [Tham chiếu API](docs/vi/api.md): `init`, `Renderer`, định dạng node, tùy chọn, lỗi, giới hạn, bộ nhớ
-- [Hỗ trợ CSS và tính năng](docs/vi/css-support.md): ma trận tính năng và mọi thuộc tính được hỗ trợ
-- [Đầu ra PDF](docs/vi/pdf.md): trang, [phân trang](docs/vi/pdf-pagination.md), [header và footer](docs/vi/pdf-headers-footers.md), [liên kết và metadata](docs/vi/pdf-links-metadata.md), [font](docs/vi/pdf-fonts.md), [PDF/UA và PDF/A](docs/vi/pdf-accessibility.md)
-- [Profile và kích thước](docs/vi/profiles-and-size.md) · [Khác biệt với takumi / chuyển đổi](docs/vi/differences-from-takumi.md)
-- [Benchmark](docs/vi/benchmark.md) · [Build từ mã nguồn](docs/vi/building-from-source.md) · [Playground](docs/vi/playground.md) · [Xử lý sự cố](docs/vi/troubleshooting.md)
+- [Bắt đầu](docs/vi/getting-started.md): cài đặt, addon native / WebAssembly, điểm vào, bundler / Workers, profile
+- Ảnh: [bắt đầu nhanh](docs/vi/image/index.md) (Node / trình duyệt, font, ảnh, định dạng) · [Tham chiếu API](docs/vi/image/api.md): `init`, `Renderer`, định dạng node, tùy chọn, lỗi, giới hạn, bộ nhớ
+- [Hỗ trợ CSS và tính năng](docs/vi/image/css-support.md): ma trận tính năng và mọi thuộc tính được hỗ trợ
+- PDF: [bắt đầu nhanh](docs/vi/pdf/index.md), [tham chiếu API](docs/vi/pdf/api.md), [công thức](docs/vi/pdf/recipes.md), [phân trang](docs/vi/pdf/pagination.md), [header và footer](docs/vi/pdf/headers-footers.md), [liên kết và metadata](docs/vi/pdf/links-metadata.md), [font](docs/vi/pdf/fonts.md), [PDF/UA và PDF/A](docs/vi/pdf/accessibility.md)
+- [Profile và kích thước](docs/vi/profiles-and-size.md) · [Khác biệt với takumi / chuyển đổi](docs/vi/image/differences-from-takumi.md)
+- [Benchmark](docs/vi/benchmark.md) · [Build từ mã nguồn](docs/vi/building-from-source.md) · [Playground](docs/vi/image/playground.md) · [Xử lý sự cố](docs/vi/troubleshooting.md)
 - Tài liệu cho nhà phát triển: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (báo cáo đầy đủ)](docs/BENCHMARK.md)
 
 Tài liệu cũng là một trang VitePress có sẵn **playground** chạy trên trình duyệt (các mẫu có sẵn, cả ba
 profile, mọi định dạng đầu ra): chạy `npm run docs` trong bản checkout của repository rồi mở
-`http://localhost:5173/vi/` (playground: `/vi/playground`). Chỉ chạy playground: `npm run playground`, rồi mở
-`http://127.0.0.1:8080/docs/playground-app/`; xem [docs/vi/playground.md](docs/vi/playground.md).
+`http://localhost:5173/vi/` (playground: `/vi/image/playground`). Chỉ chạy playground: `npm run playground`, rồi mở
+`http://127.0.0.1:8080/docs/playground-app/`; xem [docs/vi/image/playground.md](docs/vi/image/playground.md).
 
 ## Tình trạng và hạn chế
 
@@ -155,11 +155,11 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
   `@takumi-rs/helpers`.
 - **PDF là một entry riêng** (`bm-engine/pdf`: profile wasm `pdf`, khoảng 1.5 MB thô, hoặc addon native trên Node.js) và là bản port của `takumi-pdf` với một số
   khác biệt đã biết: nội dung chỉ được dàn một lần ở một chiều rộng (trang có tên với chiều rộng khác không được dàn lại), `list-style-image` không được hỗ trợ, PDF/A được kiểm tra nhưng chưa được chứng nhận, và không có
-  bước `needs` (xem [Đầu ra PDF → Hạn chế đã biết](docs/vi/pdf.md#hạn-chế-đã-biết)).
+  bước `needs` (xem [Đầu ra PDF → Hạn chế đã biết](docs/vi/pdf/differences-from-takumi.md#hạn-chế-đã-biết)).
 - **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; block-in-inline, hộp inline
   RTL, inline nguyên tử và padding của span inline tham gia ngắt dòng). Còn lại: khoảng trắng treo của RTL +
   `pre-wrap`, line-clamp quanh float, block nằm trong hộp inline `position: relative` (xem
-  [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết)).
+  [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/image/css-support.md#các-hạn-chế-đã-biết)).
 - Chưa hỗ trợ: list marker / counter, `writing-mode`, transform 3D, `clip-path: url()`, cú pháp màu tương
   đối, các variant tương tác và `space-*` của Tailwind (giống takumi), `<text>` bên trong ảnh SVG và một số
   filter SVG.
@@ -169,8 +169,8 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
   (Node.js): một renderer chạy một lệnh tại một thời điểm, nhiều renderer chạy song song; tới nay mới chỉ
   addon Windows x64 được chạy thật.
 
-Danh sách đầy đủ: [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết) và
-[Khác biệt với takumi](docs/vi/differences-from-takumi.md).
+Danh sách đầy đủ: [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/image/css-support.md#các-hạn-chế-đã-biết) và
+[Khác biệt với takumi](docs/vi/image/differences-from-takumi.md).
 
 ## Giấy phép và ghi công
 

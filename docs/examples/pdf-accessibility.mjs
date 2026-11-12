@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/pdf-accessibility.md. Run: node docs/examples/run-all.mjs pdf-accessibility
+// Examples for docs/{en,vi}/pdf/accessibility.md. Run: node docs/examples/run-all.mjs pdf-accessibility
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";

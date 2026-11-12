@@ -146,7 +146,7 @@ The stages, in the order a document passes through them:
 
 The code is a port of `takumi-pdf` and the krilla, `pdf-writer`, `xmp-writer` and `subsetter` crates it builds on;
 the file headers in `src/pdf/` name the Rust files each follows. Licences: [THIRD-PARTY-NOTICES](../THIRD-PARTY-NOTICES.md).
-User documentation: [PDF output](en/pdf.md). Checks: `node scripts/pdf-test.mjs` (API, options, text extraction with
+User documentation: [PDF output](en/pdf/index.md). Checks: `node scripts/pdf-test.mjs` (API, options, text extraction with
 `pdftotext`) and `node scripts/pdf-compare.mjs` (operator-level comparison with takumi-pdf's golden PDFs).
 
 ## wasm ABI (stable surface used by js/engine.mjs)

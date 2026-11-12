@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/charts.md
+// Examples for docs/{en,vi}/image/charts.md
 import { saver, expectThrow } from "./_lib.mjs";
 const save = saver("charts");
 

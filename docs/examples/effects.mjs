@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/effects.md. Run: node docs/examples/run-all.mjs effects
+// Examples for docs/{en,vi}/image/effects.md. Run: node docs/examples/run-all.mjs effects
 import { saver, expectThrow } from "./_lib.mjs";
 import * as core from "bm-engine/core";
 const save = saver("effects");

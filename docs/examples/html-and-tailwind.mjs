@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/html-and-tailwind.md. Run: node docs/examples/run-all.mjs html-and-tailwind
+// Examples for docs/{en,vi}/image/html-and-tailwind.md. Run: node docs/examples/run-all.mjs html-and-tailwind
 import { saver, expectThrow } from "./_lib.mjs";
 import assert from "node:assert/strict";
 const save = saver("html-and-tailwind");

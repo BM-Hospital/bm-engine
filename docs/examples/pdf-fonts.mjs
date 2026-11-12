@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/pdf-fonts.md. Run: node docs/examples/run-all.mjs pdf-fonts
+// Examples for docs/{en,vi}/pdf/fonts.md. Run: node docs/examples/run-all.mjs pdf-fonts
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 

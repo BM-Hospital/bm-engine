@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/animation.md. Regions are copied into the pages by sync-docs.mjs.
+// Examples for docs/{en,vi}/image/animation.md. Regions are copied into the pages by sync-docs.mjs.
 import { saver } from "./_lib.mjs";
 const save = saver("animation");
 

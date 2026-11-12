@@ -2,8 +2,10 @@
 // this config maps them onto clean routes:
 //   docs/index.md, docs/vi/index.md        -> /, /vi/                    (home pages, hero)
 //   docs/en/README.md, docs/vi/README.md   -> /overview, /vi/overview    (doc index)
-//   docs/en/<page>.md                      -> /<page>
-//   docs/vi/<page>.md                      -> /vi/<page>
+//   docs/en/<page>.md                      -> /<page>            (shared, product-neutral pages)
+//   docs/en/image/<page>.md, pdf/<page>.md -> /image/<page>, /pdf/<page>   (the two products, each with its own sidebar)
+//   docs/vi/<path>.md                      -> /vi/<path>
+// Old URLs (before the Image / PDF split) are redirected: see redirects.mjs.
 //   docs/BENCHMARK.md (Vietnamese report)  -> /vi/benchmark-report
 //   docs/RESULTS_FULL.md                   -> /results-full
 //   docs/ARCHITECTURE.md, TAKUMI_NOTES.md, CONVENTIONS.md -> /dev/architecture, /dev/takumi-notes, /dev/conventions
@@ -78,6 +80,9 @@ function siteLinks(md: any) {
         return r ? r + m[2] : BLOB + "docs/" + target + m[2];
       }
       if (DATA_FILES.has(target)) return "/data/" + target + m[2];
+      // other files and folders under docs/ that are not pages (docs/examples/...): link to them on GitHub
+      const abs = path.join(SRC, target);
+      if (!target.startsWith("public/") && existsSync(abs)) return (statSync(abs).isDirectory() ? TREE : BLOB) + "docs/" + target.replace(/\/$/, "") + m[2];
       return href;
     };
     const walk = (tokens: any[]) => {
@@ -94,93 +99,112 @@ function siteLinks(md: any) {
 const githubSlug = (s: string) => s.trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu, "").replace(/ /g, "-");
 
 // ---------------------------------------------------------------------------------------------- navigation
+// Two products, each with its own sidebar (Image: /image/..., PDF: /pdf/...), plus product-neutral pages at the top
+// level (/getting-started, /benchmark, /dev/..., ...) that appear in BOTH sidebars under "Package". A shared page has
+// one URL; which product sidebar it shows follows the product the reader chose last (theme/product.ts).
 const devItems = [
   { text: "Architecture", link: "/dev/architecture" },
   { text: "takumi semantics notes", link: "/dev/takumi-notes" },
   { text: "Engineering conventions", link: "/dev/conventions" },
 ];
 // [slug, English title, Vietnamese title]; a group is [English title, Vietnamese title, pages, collapsed?].
+// Slugs are relative to the locale root ("image/fonts" -> /image/fonts, /vi/image/fonts); "vi:x" is a page that
+// exists in Vietnamese only, "/x" a page that exists in one (English) version for both locales.
 type P = [string, string, string];
-const GROUPS: [string, string, P[], boolean?][] = [
+type G = [string, string, P[], boolean?];
+const PACKAGE: G = ["Package (shared)", "Gói (dùng chung)", [
+  ["overview", "Overview", "Tổng quan"],
+  ["getting-started", "Install & entry points", "Cài đặt và điểm vào"],
+  ["native-vs-wasm", "Native vs WebAssembly", "Native và WebAssembly"],
+  ["profiles-and-size", "Profiles & size", "Profile và kích thước"],
+  ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
+  ["benchmark", "Benchmark summary", "Benchmark (tóm tắt)"],
+  ["vi:benchmark-report", "", "Benchmark — báo cáo đầy đủ"],
+  ["/results-full", "Per-fixture results", "Kết quả từng fixture"],
+  ["troubleshooting", "Troubleshooting", "Xử lý sự cố"],
+  ["building-from-source", "Building from source", "Build từ mã nguồn"],
+  ["publishing", "Publishing (maintainers)", "Phát hành (maintainer)"],
+]];
+const IMAGE_GROUPS: G[] = [
   ["Get started", "Bắt đầu", [
-    ["overview", "Overview", "Tổng quan"],
-    ["getting-started", "Getting started", "Bắt đầu nhanh"],
-    ["concepts", "Concepts", "Khái niệm"],
-    ["playground", "Playground", "Playground"],
+    ["image/", "Image quick start", "Bắt đầu nhanh"],
+    ["image/concepts", "Concepts", "Khái niệm"],
+    ["image/playground", "Playground", "Playground"],
   ]],
   ["Content", "Nội dung", [
-    ["styles", "Styles & layout", "Style và layout"],
-    ["html-and-tailwind", "HTML & Tailwind", "HTML và Tailwind"],
-    ["fonts", "Fonts", "Font"],
-    ["typography", "Typography", "Typography"],
-    ["images", "Images", "Hình ảnh"],
-    ["tables", "Tables & floats", "Bảng và float"],
-    ["charts", "Charts", "Biểu đồ"],
-    ["effects", "Effects", "Hiệu ứng"],
+    ["image/styles", "Styles & layout", "Style và layout"],
+    ["image/html-and-tailwind", "HTML & Tailwind", "HTML và Tailwind"],
+    ["image/fonts", "Fonts", "Font"],
+    ["image/typography", "Typography", "Typography"],
+    ["image/images", "Images", "Hình ảnh"],
+    ["image/tables", "Tables & floats", "Bảng và float"],
+    ["image/charts", "Charts", "Biểu đồ"],
+    ["image/effects", "Effects", "Hiệu ứng"],
   ]],
   ["Rendering", "Render", [
-    ["formats", "Output formats", "Định dạng đầu ra"],
-    ["animation", "Animation", "Hoạt ảnh"],
-    ["performance", "Performance", "Hiệu năng"],
-    ["profiles-and-size", "Profiles & size", "Profile và kích thước"],
-    ["native-vs-wasm", "Native vs WebAssembly", "Native và WebAssembly"],
-    ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
-  ]],
-  ["PDF", "PDF", [
-    ["pdf", "PDF output", "Đầu ra PDF"],
-    ["pdf-pagination", "Pagination", "Phân trang"],
-    ["pdf-headers-footers", "Headers, footers, counters", "Header, footer, bộ đếm trang"],
-    ["pdf-links-metadata", "Links, bookmarks, metadata", "Liên kết, bookmark, metadata"],
-    ["pdf-fonts", "Fonts in PDF", "Font trong PDF"],
-    ["pdf-accessibility", "Accessibility & archival", "Khả năng truy cập và lưu trữ"],
+    ["image/formats", "Output formats", "Định dạng đầu ra"],
+    ["image/animation", "Animation", "Hoạt ảnh"],
+    ["image/performance", "Performance", "Hiệu năng"],
   ]],
   ["Frameworks", "Framework", [
-    ["frameworks/", "Overview", "Tổng quan"],
-    ["frameworks/nextjs", "Next.js", "Next.js"],
-    ["frameworks/nuxt-nitro", "Nuxt & Nitro", "Nuxt và Nitro"],
-    ["frameworks/nuxt", "Nuxt", "Nuxt"],
-    ["frameworks/nitro", "Nitro / h3", "Nitro / h3"],
-    ["frameworks/sveltekit", "SvelteKit", "SvelteKit"],
-    ["frameworks/astro", "Astro", "Astro"],
-    ["frameworks/tanstack-start", "TanStack Start", "TanStack Start"],
-    ["frameworks/hono-express", "Hono, Express, node:http", "Hono, Express, node:http"],
-    ["frameworks/cloudflare-workers", "Cloudflare Workers", "Cloudflare Workers"],
-    ["frameworks/deno-bun", "Deno & Bun", "Deno và Bun"],
-    ["frameworks/vite-browser", "Vite & browsers", "Vite và trình duyệt"],
+    ["image/frameworks/", "Overview", "Tổng quan"],
+    ["image/frameworks/nextjs", "Next.js", "Next.js"],
+    ["image/frameworks/nuxt-nitro", "Nuxt & Nitro", "Nuxt và Nitro"],
+    ["image/frameworks/sveltekit", "SvelteKit", "SvelteKit"],
+    ["image/frameworks/astro", "Astro", "Astro"],
+    ["image/frameworks/tanstack-start", "TanStack Start", "TanStack Start"],
+    ["image/frameworks/hono-express", "Hono, Express, node:http", "Hono, Express, node:http"],
+    ["image/frameworks/cloudflare-workers", "Cloudflare Workers", "Cloudflare Workers"],
+    ["image/frameworks/deno-bun", "Deno & Bun", "Deno và Bun"],
+    ["image/frameworks/vite-browser", "Vite & browsers", "Vite và trình duyệt"],
   ], true],
   ["Reference", "Tham chiếu", [
-    ["api", "API reference", "Tham chiếu API"],
-    ["measure", "measure()", "measure()"],
-    ["css-support", "CSS & feature support", "Hỗ trợ CSS và tính năng"],
-    ["recipes", "Recipes", "Công thức"],
-    ["templates", "Templates", "Mẫu dựng sẵn"],
+    ["image/api", "API reference", "Tham chiếu API"],
+    ["image/measure", "measure()", "measure()"],
+    ["image/css-support", "CSS & feature support", "Hỗ trợ CSS và tính năng"],
+    ["image/recipes", "Recipes", "Công thức"],
+    ["image/templates", "Templates", "Mẫu dựng sẵn"],
   ]],
   ["Migration", "Chuyển đổi", [
-    ["migration/from-takumi", "From takumi", "Từ takumi"],
-    ["migration/from-satori", "From Satori", "Từ Satori"],
-    ["differences-from-takumi", "Differences from takumi", "Khác biệt với takumi"],
-  ]],
-  ["Benchmark", "Benchmark", [
-    ["benchmark", "Benchmark summary", "Benchmark (tóm tắt)"],
-    ["vi:benchmark-report", "", "Benchmark — báo cáo đầy đủ"],
-    ["/results-full", "Per-fixture results", "Kết quả từng fixture"],
-  ]],
-  ["Help", "Trợ giúp", [
-    ["troubleshooting", "Troubleshooting", "Xử lý sự cố"],
-    ["building-from-source", "Building from source", "Build từ mã nguồn"],
-    ["publishing", "Publishing (maintainers)", "Phát hành (maintainer)"],
+    ["image/migration/from-takumi", "From takumi", "Từ takumi"],
+    ["image/migration/from-satori", "From Satori", "Từ Satori"],
+    ["image/differences-from-takumi", "Differences from takumi", "Khác biệt với takumi"],
   ]],
 ];
+const PDF_GROUPS: G[] = [
+  ["Get started", "Bắt đầu", [
+    ["pdf/", "PDF quick start", "Bắt đầu nhanh"],
+    ["pdf/page-size-and-viewport", "Page size, margins, viewport", "Khổ giấy, lề, viewport"],
+    ["pdf/native-and-wasm", "Native & WebAssembly", "Native và WebAssembly"],
+  ]],
+  ["Guides", "Hướng dẫn", [
+    ["pdf/pagination", "Pagination", "Phân trang"],
+    ["pdf/headers-footers", "Headers, footers, counters", "Header, footer, bộ đếm trang"],
+    ["pdf/links-metadata", "Links, metadata, attachments", "Liên kết, metadata, tệp đính kèm"],
+    ["pdf/fonts", "Fonts in PDF", "Font trong PDF"],
+    ["pdf/accessibility", "Accessibility, PDF/UA, PDF/A", "Truy cập, PDF/UA, PDF/A"],
+  ]],
+  ["Use cases", "Ứng dụng", [
+    ["pdf/recipes", "Recipes: invoice, report, ticket", "Công thức: hoá đơn, báo cáo, vé"],
+    ["pdf/frameworks", "Serving PDFs from a framework", "Trả PDF từ framework"],
+  ]],
+  ["Reference", "Tham chiếu", [
+    ["pdf/api", "PDF API reference", "Tham chiếu API PDF"],
+    ["pdf/css-support", "CSS in PDF", "CSS trong PDF"],
+    ["pdf/differences-from-takumi", "Differences from takumi-pdf", "Khác biệt với takumi-pdf"],
+  ]],
+];
+/** Source file (under docs/en or docs/vi) of a sidebar slug. */
+const fileOf = (slug: string) => slug === "overview" ? "README.md" : slug.endsWith("/") ? slug + "index.md" : slug + ".md";
 /** Pages that do not exist (yet) are left out, so the sidebar never links to a 404. */
-function sidebar(vi: boolean): DefaultTheme.SidebarItem[] {
+function sidebar(groups: G[], vi: boolean): DefaultTheme.SidebarItem[] {
   const out: DefaultTheme.SidebarItem[] = [];
-  for (const [en, viT, pages, collapsed] of GROUPS) {
+  for (const [en, viT, pages, collapsed] of [...groups, PACKAGE]) {
     const items: DefaultTheme.SidebarItem[] = [];
     for (const [slug, tEn, tVi] of pages) {
       if (slug.startsWith("/")) { items.push({ text: vi ? tVi : tEn, link: slug }); continue; }
       if (slug.startsWith("vi:")) { if (vi) items.push({ text: tVi, link: "/vi/" + slug.slice(3) }); continue; }
-      const file = slug === "overview" ? "README.md" : slug.endsWith("/") ? slug + "index.md" : slug + ".md";
-      if (!existsSync(path.join(SRC, vi ? "vi" : "en", file))) continue;
+      if (!existsSync(path.join(SRC, vi ? "vi" : "en", fileOf(slug)))) continue;
       items.push({ text: vi ? tVi : tEn, link: (vi ? "/vi/" : "/") + slug });
     }
     if (items.length) out.push({ text: vi ? viT : en, items, ...(collapsed ? { collapsed: false } : {}) });
@@ -188,11 +212,23 @@ function sidebar(vi: boolean): DefaultTheme.SidebarItem[] {
   out.push({ text: vi ? "Cho nhà phát triển (tiếng Anh)" : "Developer", collapsed: true, items: devItems });
   return out;
 }
-const sidebarEn = sidebar(false);
-const sidebarVi = sidebar(true);
+/** Multi-sidebar of one locale. Shared pages (everything outside /image/ and /pdf/) get the Image sidebar on the
+ *  server; on the client they switch to the remembered product's sidebar (theme/product.ts). */
+function sidebars(vi: boolean): DefaultTheme.SidebarMulti {
+  const p = vi ? "/vi/" : "/";
+  const image = sidebar(IMAGE_GROUPS, vi), pdf = sidebar(PDF_GROUPS, vi);
+  return { [p + "image/"]: image, [p + "pdf/"]: pdf, [p]: image };
+}
 
 /** Pages whose wide tables need the full width (no outline column). */
-const WIDE = new Set(["results-full.md", "vi/benchmark-report.md", "benchmark.md", "vi/benchmark.md", "profiles-and-size.md", "vi/profiles-and-size.md", "css-support.md", "vi/css-support.md", "native-vs-wasm.md", "vi/native-vs-wasm.md"]);
+const WIDE = new Set(["results-full.md", "vi/benchmark-report.md", "benchmark.md", "vi/benchmark.md", "profiles-and-size.md",
+  "vi/profiles-and-size.md", "image/css-support.md", "vi/image/css-support.md", "native-vs-wasm.md", "vi/native-vs-wasm.md"]);
+
+/** Product a page belongs to, from its (rewritten) relative path; null for shared pages. */
+const productOf = (rel: string): "image" | "pdf" | null => {
+  const m = /^(?:vi\/|en\/)?(image|pdf)\//.exec(rel); // en/... when given the source path (search index)
+  return m ? (m[1] as "image" | "pdf") : null;
+};
 
 export default defineConfig({
   title: "bm-engine",
@@ -221,6 +257,13 @@ export default defineConfig({
     logo: "/favicon.svg",
     socialLinks: [{ icon: "github", link: REPO }],
     search: { provider: "local", options: {
+      // Results name the product of a page ("PDF › Fonts in PDF"): the h1 of product pages gets a prefix in the index.
+      _render(src: string, env: any, md: any) {
+        const html = md.render(src, env);
+        if (env.frontmatter?.search === false) return "";
+        const p = productOf(env.relativePath ?? "");
+        return p ? html.replace(/(<h1[^>]*>)/, `$1${p === "pdf" ? "PDF" : "Image"} › `) : html;
+      },
       locales: { vi: { translations: {
         button: { buttonText: "Tìm kiếm", buttonAriaLabel: "Tìm kiếm" },
         modal: { noResultsText: "Không có kết quả cho", resetButtonTitle: "Xoá", footer: { selectText: "chọn", navigateText: "di chuyển", closeText: "đóng" } },
@@ -234,13 +277,18 @@ export default defineConfig({
       lang: "en",
       themeConfig: {
         nav: [
-          { text: "Guide", link: "/getting-started", activeMatch: "^/(?!api$|benchmark|results-full|playground|frameworks|dev/)[a-z]" },
-          { text: "Frameworks", link: "/frameworks/", activeMatch: "^/frameworks/" },
-          { text: "API", link: "/api" },
+          { text: "Image", link: "/image/", activeMatch: "^/image/(?!playground)" },
+          { text: "PDF", link: "/pdf/", activeMatch: "^/pdf/" },
+          { text: "Install", link: "/getting-started", activeMatch: "^/(getting-started|overview|native-vs-wasm|profiles-and-size|outputs-compared|troubleshooting|building-from-source|publishing)" },
           { text: "Benchmark", link: "/benchmark", activeMatch: "^/(benchmark|results-full)" },
-          { text: "Playground", link: "/playground" },
+          { text: "Playground", link: "/image/playground", activeMatch: "^/image/playground" },
         ],
-        sidebar: { "/": sidebarEn },
+        sidebar: sidebars(false),
+        products: {
+          label: "Choose a product",
+          image: { title: "Image", description: "PNG, JPEG, WebP, SVG, animations" },
+          pdf: { title: "PDF", description: "Paged documents" },
+        },
         outline: { level: [2, 3], label: "On this page" },
         footer: { message: "Released under the MIT or Apache-2.0 license.", copyright: "bm-engine is a Zig port of takumi." },
       },
@@ -253,13 +301,18 @@ export default defineConfig({
       description: "Render cây node kiểu JSX / HTML + CSS thành PNG, JPEG, WebP, SVG và ảnh động bằng một engine WebAssembly không phụ thuộc (bản port takumi sang Zig).",
       themeConfig: {
         nav: [
-          { text: "Hướng dẫn", link: "/vi/getting-started", activeMatch: "^/vi/(?!api$|benchmark|results-full|playground|frameworks|dev/)[a-z]" },
-          { text: "Framework", link: "/vi/frameworks/", activeMatch: "^/vi/frameworks/" },
-          { text: "API", link: "/vi/api" },
+          { text: "Ảnh", link: "/vi/image/", activeMatch: "^/vi/image/(?!playground)" },
+          { text: "PDF", link: "/vi/pdf/", activeMatch: "^/vi/pdf/" },
+          { text: "Cài đặt", link: "/vi/getting-started", activeMatch: "^/vi/(getting-started|overview|native-vs-wasm|profiles-and-size|outputs-compared|troubleshooting|building-from-source|publishing)" },
           { text: "Benchmark", link: "/vi/benchmark", activeMatch: "^/vi/benchmark" },
-          { text: "Playground", link: "/vi/playground" },
+          { text: "Playground", link: "/vi/image/playground", activeMatch: "^/vi/image/playground" },
         ],
-        sidebar: { "/vi/": sidebarVi },
+        sidebar: sidebars(true),
+        products: {
+          label: "Chọn sản phẩm",
+          image: { title: "Ảnh", description: "PNG, JPEG, WebP, SVG, ảnh động" },
+          pdf: { title: "PDF", description: "Tài liệu phân trang" },
+        },
         outline: { level: [2, 3], label: "Trên trang này" },
         docFooter: { prev: "Trang trước", next: "Trang sau" },
         darkModeSwitchLabel: "Giao diện",

@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/typography.md. Run: node docs/examples/run-all.mjs typography
+// Examples for docs/{en,vi}/image/typography.md. Run: node docs/examples/run-all.mjs typography
 import { saver } from "./_lib.mjs";
 import { existsSync } from "node:fs";
 const save = saver("typography");

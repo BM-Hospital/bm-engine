@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/concepts.md. Run: node docs/examples/run-all.mjs concepts
+// Examples for docs/{en,vi}/image/concepts.md. Run: node docs/examples/run-all.mjs concepts
 import { saver, expectThrow } from "./_lib.mjs";
 import assert from "node:assert/strict";
 const save = saver("concepts");

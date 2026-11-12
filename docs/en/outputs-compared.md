@@ -4,7 +4,7 @@
 
 takumi's documentation is split into three sections — **Image**, **PDF** and **Paint** — because takumi
 ships three outputs, as three separate packages, on top of one layout engine. bm-engine ports the first
-two: Image, and PDF in its separate `pdf` profile ([PDF output](pdf.md)). This page explains what each
+two: Image, and PDF in its separate `pdf` profile ([PDF output](pdf/index.md)). This page explains what each
 takumi output is for, what bm-engine covers today, and how to get close to Paint with bm-engine plus
 other tools.
 
@@ -38,7 +38,7 @@ row reflects the PDF port added after the 0.1.0 image engine.
 | npm package | `takumi-js`, `@takumi-rs/wasm`, `@takumi-rs/core` | `takumi-pdf` | `takumi-paint` |
 | You get | encoded image bytes (or an SVG string, or an animation) | a PDF file | a JavaScript object tree you draw yourself |
 | Typical use | Open Graph cards, thumbnails, social images | invoices, reports, tickets, certificates | editable slides (PPTX), Canvas / Skia / native drawing, custom renderers |
-| bm-engine | **ported** (raster, SVG, animation) | **ported** as the `pdf` profile, with [known limitations](pdf.md#known-limitations) | **not available** (only `measure()`) |
+| bm-engine | **ported** (raster, SVG, animation) | **ported** as the `pdf` profile, with [known limitations](pdf/differences-from-takumi.md#known-limitations) | **not available** (only `measure()`) |
 
 ### Image
 
@@ -75,7 +75,7 @@ Checked in the bm-engine 0.1.0 sources and typings:
 | Raster output (PNG, JPEG, WebP, raw RGBA, ICO) | yes — `render` / `renderSync`, `renderAsDataUrl` |
 | SVG output | yes — `renderSvg` / `renderSvgSync` (`full` profile); text as glyph outlines, images embedded as `data:` URLs |
 | Animated output | yes — `renderAnimation` (`full`): animated WebP, APNG, GIF |
-| PDF output | **yes** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): paged output with real text and subset fonts, headers / footers, links, bookmarks, metadata, attachments, tagged PDF and PDF/A. Not in `core`, `standard` or `full`; on Node.js it runs on the native addon when installed. See [PDF output](pdf.md) |
+| PDF output | **yes** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): paged output with real text and subset fonts, headers / footers, links, bookmarks, metadata, attachments, tagged PDF and PDF/A. Not in `core`, `standard` or `full`; on Node.js it runs on the native addon when installed. See [PDF output](pdf/index.md) |
 | Pagination / fragmentation across pages | **yes, in the `pdf` profile** — content flows across pages, with `break-*`, `orphans` / `widows`, repeated table headers and `@page`. The image render is still one canvas per render |
 | Paint tree | **no** — there is no API that returns drawing commands, colours, gradients or glyphs |
 | Layout boxes | yes — `measure()` returns the box tree: border-box `width` / `height`, a 2D `transform` (absolute position), `children`, and text line `runs` (`x`, `y`, `width`, `height`; no text, no font, no glyph positions) |
@@ -86,7 +86,7 @@ The first entry points at the built-in PDF output; the rest combine bm-engine wi
 
 ### A PDF from bm-engine output
 
-Use the `pdf` profile: [PDF output](pdf.md). If you cannot load it (for example you must stay on `core`,
+Use the `pdf` profile: [PDF output](pdf/index.md). If you cannot load it (for example you must stay on `core`,
 `standard` or `full`), these older routes still work:
 
 - **One image per page.** Render each page as PNG at print resolution (an A4 page at 150 dpi is
@@ -120,7 +120,7 @@ box at x = 40, 200 × 60) and one draw call per text line (`docs/examples/framew
 Caveats, from the measure output format: text nodes inside a block flow do not get their own entry (their
 lines appear as `runs` of the containing box), so pairing measured children with source children needs
 care; runs carry no text or font; colours, gradients and borders are whatever you put in `style`, not
-resolved values. The [Measure](./measure.md) page documents the output precisely. For pixel-exact drawing
+resolved values. The [Measure](./image/measure.md) page documents the output precisely. For pixel-exact drawing
 of everything, render with bm-engine and draw the image.
 
 ## Which to use

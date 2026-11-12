@@ -16,7 +16,7 @@ các gói theo nền tảng: [Phát hành](./publishing.md).
 | Trình duyệt, Web Worker | wasm (lựa chọn duy nhất) | `bm-engine` trỏ tới bản wasm ở đó |
 | Cloudflare Workers, Vercel / Netlify Edge, Deno Deploy và các runtime edge khác | wasm (lựa chọn duy nhất) | cùng câu import |
 | Node.js nhưng vẫn muốn wasm (ví dụ để tái tạo đúng từng bit ảnh render trong trình duyệt, hoặc trên nền tảng mà addon chưa được kiểm thử) | wasm | `import ... from "bm-engine/full"` hoặc `BM_ENGINE_BACKEND=wasm` |
-| Node.js, Bun, Deno và bạn muốn đầu ra PDF | **native**, tự động quay về profile wasm `pdf` | `import { PdfRenderer, backend } from "bm-engine/pdf"`; xem [Đầu ra PDF](./pdf.md#backend-native-trên-nodejs) |
+| Node.js, Bun, Deno và bạn muốn đầu ra PDF | **native**, tự động quay về profile wasm `pdf` | `import { PdfRenderer, backend } from "bm-engine/pdf"`; xem [Đầu ra PDF](./pdf/native-and-wasm.md#backend-native-trên-nodejs) |
 | Node.js và muốn báo lỗi thay vì lặng lẽ quay về wasm | native | `import ... from "bm-engine/native"` hoặc `BM_ENGINE_BACKEND=native` |
 
 Việc quay về wasm diễn ra im lặng: nếu không có addon cho nền tảng, nếu CPU cũ hơn x86-64-v2 (SSE4.2), hoặc nếu
@@ -108,7 +108,7 @@ export function renderPng(node, options) {
   bao giờ phải chờ nhau. Addon cũng nạp được trong `worker_threads`, nhưng với backend native thì một nhóm renderer
   trong một thread đã làm được việc đó mà không cần worker.
 - Với backend **wasm**, các hàm async chạy trên main thread; muốn song song cần một pool `worker_threads`, mỗi worker
-  một instance engine ([công thức](./recipes.md#pool-worker-threads)). Benchmark cũng đo bm-wasm và takumi-wasm theo cách này.
+  một instance engine ([công thức](./image/recipes.md#pool-worker-threads)). Benchmark cũng đo bm-wasm và takumi-wasm theo cách này.
 
 ### Thông lượng khi chạy đồng thời
 

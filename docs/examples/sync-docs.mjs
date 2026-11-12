@@ -1,9 +1,9 @@
 // Copies code regions of docs/examples/<page>.mjs into the guide pages, so the code shown in the docs is
-// exactly the code that runs. In docs/{en,vi}/*.md, a fenced block preceded by
+// exactly the code that runs. In docs/{en,vi}/**/*.md (any folder: image/, pdf/, ...), a fenced block preceded by
 //   <!-- @example effects#gradients -->
 // is replaced by the lines between `// #region gradients` and `// #endregion` in docs/examples/effects.mjs.
-// Usage: node docs/examples/sync-docs.mjs [--check] [page ...]
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+// Usage: node docs/examples/sync-docs.mjs [--check] [example ...]   (only the pages that use those example scripts)
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,12 +38,20 @@ function dedent(lines) {
 }
 
 let changed = 0, problems = 0, blocks = 0;
+/** Markdown files under dir as relative paths ("api.md", "image/fonts.md", "pdf/index.md"). */
+function pages(dir, rel = "") {
+  return readdirSync(join(dir, rel)).flatMap((f) => {
+    const r = rel ? rel + "/" + f : f;
+    return statSync(join(dir, r)).isDirectory() ? pages(dir, r) : f.endsWith(".md") ? [r] : [];
+  });
+}
 for (const lang of ["en", "vi"]) {
   const dir = join(docs, lang);
-  for (const f of readdirSync(dir).filter((f) => f.endsWith(".md"))) {
-    if (only.length && !only.includes(f.replace(/\.md$/, ""))) continue;
+  for (const f of pages(dir)) {
     const path = join(dir, f);
     const src = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+    // `only` names example scripts: process the pages that use one of them, wherever they live
+    if (only.length && !only.some((p) => src.includes(`<!-- @example ${p}#`))) continue;
     const out = src.replace(/<!-- @example ([\w-]+)#([\w-]+) -->\n(\s*\n)*(```[^\n]*)\n((?:(?!```)[^\n]*\n)*)```/g,
       (m, page, region, _blank, fence, body) => {
         blocks++;

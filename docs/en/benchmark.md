@@ -205,8 +205,8 @@ PNG / WebP / JPEG decodes correct, 0 console errors, streaming compile + instant
 
 ## Remaining gaps
 
-See [CSS support → Known gaps](css-support.md#known-gaps) and
-[Differences from takumi](differences-from-takumi.md). The two layout gaps that were open in phase 2 are done in phase 3: text flows around floats, and atomic inlines
+See [CSS support → Known gaps](image/css-support.md#known-gaps) and
+[Differences from takumi](image/differences-from-takumi.md). The two layout gaps that were open in phase 2 are done in phase 3: text flows around floats, and atomic inlines
 (`inline-block` / `inline-flex` / `inline-grid` / inline images, all `vertical-align` values), inline span
 padding / border / margin, per-span `white-space`, `<br>` and per-box struts take part in real inline formatting.
 New fixtures `float-text` (7), `inline-flow` (5) and `inline-box-model` (4) are all equivalent to takumi (SSIM ≥ 0.9999),

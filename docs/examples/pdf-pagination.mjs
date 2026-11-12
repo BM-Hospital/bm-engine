@@ -1,4 +1,4 @@
-// Examples for docs/{en,vi}/pdf-pagination.md. Run: node docs/examples/run-all.mjs pdf-pagination
+// Examples for docs/{en,vi}/pdf/pagination.md. Run: node docs/examples/run-all.mjs pdf-pagination
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
