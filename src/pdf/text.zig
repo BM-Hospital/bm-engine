@@ -754,6 +754,12 @@ const rt = @import("../render.zig");
 const font_mod = @import("../font/font.zig");
 const ptext = @import("../paint_text.zig");
 
+/// The outline of `gid` at `sc` px per font unit, in px from the glyph origin with y down (the
+/// skip-ink intercepts of emit_text.zig); false when the glyph has none.
+pub fn glyphOutlinePx(a: Allocator, font: *const ttf.Font, gid: u16, sc: f32, out: *Path) !bool {
+    return type3.glyphPath(a, font, gid, geom.Tf.row(sc, 0, 0, -sc, 0, 0), out);
+}
+
 /// bm-engine bundles no font, while takumi-pdf always has its bundled last-resort font (Geist):
 /// with no font registered at all the text engine shapes nothing, so text would vanish without
 /// a trace. A frame whose paragraphs hold text other than white space then fails the render (or

@@ -501,9 +501,11 @@ fn paintRunDecos(e: *Emitter, sh: ?ShadowPass, tl: *const font.TextLayout, x: f3
     }
 }
 
-/// Ink intercepts of the run's glyphs with the decoration band (painter `skipInk`).
+/// Ink intercepts of the run's glyphs with the decoration band (takumi `skip_ink_ranges`: each glyph's
+/// outline flattened, nonzero-filled spans along 9 scanlines across the band inset by 0.5 px, dilated
+/// by the thickness up to 13 px), each cut snapped to whole device pixels (CSS px) as Blink's
+/// `ClipOut` (takumi `DecorationLine::device_pixel_x`).
 fn skipInk(e: *Emitter, tl: *const font.TextLayout, x: f32, y: f32, run: *const RunSeg, top: f32, thickness: f32, st: style.computed.DecorationStyle, underline: bool, out: *[32]Span) usize {
-    const pctx = e.ctx();
     var b0 = @floor(top + 0.5);
     var b1 = b0 + thickness;
     if (st == .double) {
@@ -517,51 +519,165 @@ fn skipInk(e: *Emitter, tl: *const font.TextLayout, x: f32, y: f32, run: *const 
     }
     b0 += 0.5;
     b1 -= 0.5;
-    // (takumi `skip_ink_ranges`: nothing to skip when the band is no taller than the 2 x 0.5 px
-    // inset, i.e. a decoration up to 1 px thick)
+    // (nothing to skip when the band is no taller than the 2 x 0.5 px inset, i.e. a decoration up to
+    // 1 px thick)
     if (!(b1 - b0 > 0)) return 0;
-    const r0: i64 = @intFromFloat(std.math.clamp(@floor(b0), -1.0e6, 1.0e6));
-    const r1: i64 = @intFromFloat(std.math.clamp(@ceil(b1), -1.0e6, 1.0e6));
     const grow = @min(thickness, 13);
-    var nc: usize = 0;
+    var spans: std.ArrayList(Span) = .empty;
+    var path: Path = .empty;
     for (tl.glyphs[run.g0..run.g1]) |*g| {
         const sy = synthOf(e, run.rcs, g);
         if (sy.colored) continue;
-        const m = ptext.glyphPassMask(&e.p, &pctx, g, x + g.x, y + g.y, sy.italic, .fill, 0) orelse continue;
-        const mb = m.bounds;
-        var lo: i64 = std.math.maxInt(i64);
-        var hi: i64 = std.math.minInt(i64);
-        const row_end = @min(r1, mb.bottom());
-        var xx: u32 = 0;
-        while (xx < mb.w) : (xx += 1) {
-            var ink = false;
-            var row = @max(r0, @as(i64, mb.y));
-            while (row < row_end) : (row += 1) {
-                if (m.data[@as(usize, @intCast(row - mb.y)) * mb.w + xx] != 0) {
-                    ink = true;
-                    break;
-                }
-            }
-            const col: i64 = @as(i64, mb.x) + xx;
-            if (ink) {
-                if (lo > hi) lo = col;
-                hi = col;
-            }
-            if ((!ink or xx + 1 == mb.w) and lo <= hi) {
-                const a = @floor(@as(f32, @floatFromInt(lo)) - grow + 0.5);
-                const b = @floor(@as(f32, @floatFromInt(hi + 1)) + grow + 0.5);
-                if (nc > 0 and a <= out[nc - 1].b) {
-                    out[nc - 1].b = @max(out[nc - 1].b, b);
-                } else if (nc < out.len) {
-                    out[nc] = .{ .a = a, .b = b };
-                    nc += 1;
-                }
-                lo = std.math.maxInt(i64);
-                hi = std.math.minInt(i64);
-            }
-        }
+        const fnt = e.f.r.fonts.font(g.face);
+        const sc = g.size / @as(f32, @floatFromInt(@max(1, fnt.units_per_em)));
+        // (glyph space: px from the origin, y down)
+        const drawn = text.glyphOutlinePx(e.a, fnt, g.gid, sc, &path) catch return 0;
+        if (!drawn) continue;
+        const ox = x + g.x;
+        const oy = y + g.y;
+        const n0 = spans.items.len;
+        intercepts(e.a, &path, b0 - oy, b1 - oy, &spans) catch return 0;
+        for (spans.items[n0..]) |*sp| sp.* = .{ .a = ox + sp.a - grow, .b = ox + sp.b + grow };
+    }
+    mergeSpans(spans.items);
+    // whole device pixels: the page transform back in CSS px (takumi `TextDevice::transform`:
+    // `scale(1 / 0.75) * page_transform`), unrotated and unskewed only
+    const m = e.s.bd().ctmRoot();
+    const k: f32 = 1.0 / 0.75;
+    const da = k * m.sx;
+    const dx = k * m.tx;
+    var nc: usize = 0;
+    for (spans.items) |sp| {
+        if (sp.a > sp.b) continue;
+        if (nc >= out.len) break;
+        out[nc] = if (m.ky == 0 and m.kx == 0 and da != 0) .{ .a = (@floor(da * sp.a + dx + 0.5) - dx) / da, .b = (@floor(da * sp.b + dx + 0.5) - dx) / da } else sp;
+        nc += 1;
     }
     return nc;
+}
+
+/// takumi `text_intercepts`: the x spans `path` fills (nonzero winding) along 9 scanlines from
+/// `top` to `bottom`, appended to `out` (unmerged).
+fn intercepts(a: std.mem.Allocator, path: *const Path, top: f32, bottom: f32, out: *std.ArrayList(Span)) !void {
+    if (!(bottom > top)) return;
+    // takumi `reaches_band`: any point, control points included, in the band
+    var lo = std.math.inf(f32);
+    var hi = -std.math.inf(f32);
+    for (path.points.items) |pt| {
+        lo = @min(lo, pt.y);
+        hi = @max(hi, pt.y);
+    }
+    if (!(hi >= top and lo <= bottom)) return;
+    // takumi `flatten`: straight edges, curves in 16 steps, every contour closed
+    const Edge = struct { ax: f32, ay: f32, bx: f32, by: f32 };
+    var edges: std.ArrayList(Edge) = .empty;
+    const pts = path.points.items;
+    var k: usize = 0;
+    var sx: f32 = 0;
+    var sy: f32 = 0;
+    var cx: f32 = 0;
+    var cy: f32 = 0;
+    for (path.verbs.items) |v| switch (v) {
+        .move => {
+            if (cx != sx or cy != sy) try edges.append(a, .{ .ax = cx, .ay = cy, .bx = sx, .by = sy });
+            sx = pts[k].x;
+            sy = pts[k].y;
+            cx = sx;
+            cy = sy;
+            k += 1;
+        },
+        .line => {
+            try edges.append(a, .{ .ax = cx, .ay = cy, .bx = pts[k].x, .by = pts[k].y });
+            cx = pts[k].x;
+            cy = pts[k].y;
+            k += 1;
+        },
+        .quad, .cubic => {
+            const cubic = v == .cubic;
+            const c1 = pts[k];
+            const c2 = if (cubic) pts[k + 1] else pts[k];
+            const to = if (cubic) pts[k + 2] else pts[k + 1];
+            k += if (cubic) 3 else 2;
+            var step: u32 = 1;
+            while (step <= 16) : (step += 1) {
+                const t = @as(f32, @floatFromInt(step)) / 16.0;
+                const inv = 1.0 - t;
+                var nx: f32 = undefined;
+                var ny: f32 = undefined;
+                if (cubic) {
+                    const w0 = inv * inv * inv;
+                    const w1 = 3.0 * inv * inv * t;
+                    const w2 = 3.0 * inv * t * t;
+                    const w3 = t * t * t;
+                    nx = w0 * cx + w1 * c1.x + w2 * c2.x + w3 * to.x;
+                    ny = w0 * cy + w1 * c1.y + w2 * c2.y + w3 * to.y;
+                } else {
+                    nx = inv * inv * cx + 2.0 * inv * t * c1.x + t * t * to.x;
+                    ny = inv * inv * cy + 2.0 * inv * t * c1.y + t * t * to.y;
+                }
+                try edges.append(a, .{ .ax = cx, .ay = cy, .bx = nx, .by = ny });
+                cx = nx;
+                cy = ny;
+            }
+        },
+        .close => {
+            try edges.append(a, .{ .ax = cx, .ay = cy, .bx = sx, .by = sy });
+            cx = sx;
+            cy = sy;
+        },
+    };
+    if (cx != sx or cy != sy) try edges.append(a, .{ .ax = cx, .ay = cy, .bx = sx, .by = sy });
+    // takumi `filled_at` on each scanline
+    const Cross = struct { x: f32, w: i32 };
+    var cr: std.ArrayList(Cross) = .empty;
+    var step: u32 = 0;
+    while (step <= 8) : (step += 1) {
+        const yy = top + (bottom - top) * @as(f32, @floatFromInt(step)) / 8.0;
+        cr.clearRetainingCapacity();
+        for (edges.items) |ed| {
+            // (half-open in y: a vertex two segments share counts once)
+            const w: i32 = if (ed.ay <= yy and ed.by > yy) 1 else if (ed.by <= yy and ed.ay > yy) -1 else continue;
+            try cr.append(a, .{ .x = ed.ax + (ed.bx - ed.ax) * (yy - ed.ay) / (ed.by - ed.ay), .w = w });
+        }
+        // (stable insertion sort by x, as takumi's stable `sort_by_key`)
+        var i: usize = 1;
+        while (i < cr.items.len) : (i += 1) {
+            const it = cr.items[i];
+            var j = i;
+            while (j > 0 and cr.items[j - 1].x > it.x) : (j -= 1) cr.items[j] = cr.items[j - 1];
+            cr.items[j] = it;
+        }
+        var wind: i32 = 0;
+        var entered: f32 = 0;
+        for (cr.items) |c| {
+            const was = wind != 0;
+            wind += c.w;
+            if (!was and wind != 0) entered = c.x else if (was and wind == 0) try out.append(a, .{ .a = entered, .b = c.x });
+        }
+    }
+}
+
+/// takumi `merge`: sorted by start (stably), touching spans unioned; the merged spans are compacted
+/// to the front and the rest marked empty (`a > b`).
+fn mergeSpans(sp: []Span) void {
+    var i: usize = 1;
+    while (i < sp.len) : (i += 1) {
+        const it = sp[i];
+        var j = i;
+        while (j > 0 and sp[j - 1].a > it.a) : (j -= 1) sp[j] = sp[j - 1];
+        sp[j] = it;
+    }
+    if (sp.len < 2) return;
+    var n: usize = 0;
+    for (sp[1..]) |s| {
+        if (s.a <= sp[n].b) {
+            sp[n].b = @max(sp[n].b, s.b);
+        } else {
+            n += 1;
+            sp[n] = s;
+        }
+    }
+    for (sp[n + 1 ..]) |*s| s.* = .{ .a = 1, .b = 0 };
 }
 
 // ---- inline box decorations (painter `paintInlineBoxes`)
