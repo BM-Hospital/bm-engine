@@ -21,6 +21,35 @@ available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1
 The JavaScript wrapper is a few KiB of dependency-free ESM and the same for every profile. The binaries
 import nothing from the host.
 
+### Native addon (Node.js)
+
+On Node.js, `bm-engine` uses a native addon when one is installed for the platform (an optional dependency,
+one per platform; npm downloads only the matching one). The addon always has the `full` feature set; the
+profiles above apply to the wasm build only. Each addon is larger than the `full` wasm because it is compiled
+for speed (ReleaseFast) rather than size, and the wasm build stays in the main package as the fallback.
+Which backend to use and how they compare: [Native vs WebAssembly](./native-vs-wasm.md).
+
+<!-- native-bench:sizes -->
+| File | Target | KiB | gzip -9 KiB | brotli KiB | Status |
+|:--|--:|--:|--:|--:|--:|
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 010 | 1 077 | 880 | executed (this benchmark) |
+| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 1 570 | 954 | 743 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 1 901 | 1 041 | 856 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 1 900 | 1 041 | 856 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 1 571 | 955 | 743 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 1 571 | 955 | 742 | cross-compiled, structurally verified, never executed |
+| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 1 901 | 1 040 | 855 | cross-compiled, structurally verified, never executed |
+| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 1 594 | 929 | 712 | cross-compiled, structurally verified, never executed |
+| bm wasm `core` | wasm32 | 454 | 212 | 180 |  |
+| bm wasm `standard` | wasm32 | 878 | 435 | 374 |  |
+| bm wasm `full` | wasm32 | 1 100 | 538 | 453 |  |
+| bm wasm `WOFF add-on` | wasm32 | 84.2 | 67.7 | 65.5 |  |
+| takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
+| takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
+
+Native addons from `native/dist/manifest.json` (built 2026-11-12 with Zig 0.17.1, ReleaseFast). Each user downloads one addon (the optional package for their platform) plus the wasm fallback that ships in the main package.
+<!-- /native-bench:sizes -->
+
 ## What each profile contains
 
 | Feature (`features` key) | core | standard | full |

@@ -10,6 +10,45 @@ cases, raw rendering in 171/191; cold start is 2.5× faster; the binaries are 4�
 still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Per-fixture numbers:
 [RESULTS_FULL.md](../RESULTS_FULL.md) and [results.json](../results.json).
 
+## Native Node.js addon (phase 4)
+
+Since phase 4, `bm-engine` on Node.js runs as a native addon when one is installed for the platform, with the
+wasm build as an automatic fallback. The four builds — bm-native, bm-wasm (`full`), takumi-native
+(`@takumi-rs/core`) and takumi-wasm — were measured together on the same 200 fixtures. The tables below are
+generated from [results-native.json](../results-native.json) by `node bench/run-native.mjs`; the guide
+page is [Native vs WebAssembly](native-vs-wasm.md) and the full tables (per category, per fixture, method,
+noise record) are in [docs/BENCHMARK.md](../BENCHMARK.md#giai-đoạn-4--native-nodejs). The rest of this page
+is the phase-3 wasm report.
+
+<!-- native-bench:highlights -->
+- **bm-native vs bm-wasm (sync):** raw 0.76× the wasm time [0.77× / 0.75× / 0.80×] (faster on 192/200 fixtures), PNG 0.67× [0.68× / 0.67× / 0.68×] (faster on 200/200).
+- **bm-native vs takumi-native, both async:** raw 0.89× [0.90× / 0.88× / 0.95×] (bm faster on 136/200, per fixture 0.22×–2.78×), PNG 0.68× [0.67× / 0.65× / 0.66×] (bm faster on 170/200, per fixture 0.28×–2.21×). With bm's sync API: raw 0.69×, PNG 0.66×. Below 1× = bm-native takes less time; in brackets the same ratio in each pass.
+- **CPU time per image (both async):** PNG 3.29 ms bm-native vs 5.28 ms takumi-native (1.11 vs 1.45 cores busy during a render); raw 2.25 vs 2.30 ms. takumi-native runs parts of one render (PNG deflate segments, blur, WebP, animation frames) on its own rayon thread pool; bm renders one image on one thread (bm-native sync: 0.88 cores for PNG).
+- **takumi's own two builds:** takumi-native takes 0.69× the time of takumi-wasm for raw and 0.48× for PNG.
+- **Identity:** bm-native and bm-wasm produced the same bytes in 1457/1457 comparisons over 200 fixtures (586 MB; 0 mismatches).
+- **Noise:** the absolute raw / PNG geomeans moved by up to 40.1 % between passes (the load from other processes changed during the run), while the engine-to-engine ratios, measured interleaved inside each pass, moved by at most 17.9 %. Read the ratios; treat absolute milliseconds as ±20.1 %.
+<!-- /native-bench:highlights -->
+
+<!-- native-bench:summary -->
+| Metric | bm-native | bm-wasm | takumi-native | takumi-wasm |
+|:--|--:|--:|--:|--:|
+| raw RGBA, geomean ms — sync API | 0.96 ±7.00 % ⚠ | 1.26 ±5.20 % ⚠ | no sync API | — |
+| raw RGBA, geomean ms — async API | 1.25 ±20.1 % ⚠ | — | 1.40 ±15.3 % ⚠ | 2.02 ±6.45 % ⚠ |
+| PNG, geomean ms — sync API | 1.80 ±5.85 % ⚠ | 2.67 ±5.50 % ⚠ | no sync API | — |
+| PNG, geomean ms — async API | 1.83 ±11.8 % ⚠ | — | 2.71 ±11.1 % ⚠ | 5.63 ±5.45 % ⚠ |
+| CPU time per PNG render, mean ms (cores used) | 2.46 (0.88 cores) | 3.19 (0.78 cores) | 5.28 (1.45 cores) | 7.29 (0.85 cores) |
+| PNG file size, geomean vs takumi | 0.78× | 0.78× | 1.00× | 1.00× |
+| Cold start over empty Node, median / p95 ms | 28.6 / 75.5 | 96.5 / 139 | 60.2 / 83.8 | 238 / 282 |
+| RSS after 1 → 10 suite passes, MiB | 91.9 → 93.4 | 126 → 126 | 147 → 160 | 132 → 161 |
+| Peak RSS, one 4000×4000 PNG, MiB | 146 | 149 | 137 | 151 |
+| Event loop: max 1 ms-timer delay, heavy 2400×2400 render, ms | 299 (sync) · 3.90 (async) | 700 (sync) · 604 (async) | 15.3 (async) | 1 095 (async) |
+| Event loop: same, 60-frame animation, ms | 5 376 (sync) · 6.50 (async) | 10 866 (sync) · 9 086 (async) | 30.1 (async) | 2 563 (async) |
+| Throughput, og card PNG, 4 concurrent, images/s (best config) | 177 (many K=4, UV 4) ⚠ | 119 (pool K=8) ⚠ | 170 (many K=2, UV 4) ⚠ | 78.5 (pool K=4) ⚠ |
+| Throughput, 8 concurrent, images/s (best config) | 247 (many K=8, UV 8) ⚠ | 157 (pool K=8) ⚠ | 200 (one, UV 8) ⚠ | 88.9 (pool K=8) ⚠ |
+
+Geomeans over the 200 fixtures every engine rendered; ± = half the range of the 3 passes' geomeans relative to their median; ⚠ = more than 10 % range. Cold start: median / p95 of 30 fresh processes minus the empty-Node median. Event-loop, memory and throughput are single runs; on the throughput rows ⚠ = other processes used more than one core on average during that stage.
+<!-- /native-bench:summary -->
+
 ## Conditions
 
 - Intel Core i3-10100 @ 3.6 GHz (8 threads), 7.8 GB RAM, Windows 11, Node 26.13.0, 2026-11-12.

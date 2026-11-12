@@ -133,6 +133,10 @@ function tpBest(res, engine, n) {
 const elRun = (res, engine, api, job) => res.eventloop?.runs?.find((r) => r.engine === engine && r.api === api && r.job === job);
 
 // ------------------------------------------------------------------------------------------------ blocks
+const busyWarn = (load, lang) => (load?.otherCores > 1
+  ? L(lang, ` ⚠ Other processes used about ${num(load.otherCores, lang)} of the machine's cores on average during this stage, so these figures (scaling above all) understate what an idle machine gives; re-run on a quiet machine before quoting them.`,
+    ` ⚠ Trong lúc đo, các tiến trình khác dùng trung bình khoảng ${num(load.otherCores, lang)} lõi của máy, nên các số này (nhất là mức mở rộng) thấp hơn những gì một máy rảnh cho; hãy chạy lại trên máy rảnh trước khi trích dẫn.`)
+  : "");
 const B = {};
 B.env = (res, lang) => {
   const m = res.meta, e = m.engines;
@@ -156,7 +160,7 @@ B.summary = (res, lang) => {
   const mem = (n) => { const m = res.memory?.engines?.[n]?.suite; return m?.passes ? `${num(m.passes[0].rssMiB, lang)} → ${num(m.passes.at(-1).rssMiB, lang)}` : "—"; };
   const peak = (n) => { const m = res.memory?.engines?.[n]?.large; return m?.after ? num(m.after.maxRssMiB, lang) : "—"; };
   const el = (n, job) => { const a = elRun(res, n, "async", job), y = elRun(res, n, "sync", job); const f = (r) => (r ? ms(r.maxDelayMs, lang) : null); return [y && `${f(y)} (sync)`, a && `${f(a)} (async)`].filter(Boolean).join(" · ") || "—"; };
-  const tp = (n, c) => { const b = tpBest(res, n, c); return b ? `${num(b.ips, lang)} (${b.label})` : "—"; };
+  const tp = (n, c) => { const b = tpBest(res, n, c); return b ? `${num(b.ips, lang)} (${b.label})${res.throughput?.load?.otherCores > 1 ? " ⚠" : ""}` : "—"; };
   const cpuPng = (v) => { const c = s?.cpu?.[v]?.png; return c ? `${ms(c.cpuMsPerRender, lang)} (${num(c.cores, lang)} ${L(lang, "cores", "lõi")})` : "—"; };
   const pngBytes = () => { const fx = s?.fixtures ?? []; const r = (v) => geomean(fx.filter((f) => f.perf[v]?.png?.bytes && f.perf["takumi-wasm:async"]?.png?.bytes).map((f) => f.perf[v].png.bytes / f.perf["takumi-wasm:async"].png.bytes)); return [r("bm-native:sync"), r("bm-wasm:sync"), r("takumi-native:async"), 1]; };
   const pb = pngBytes();
@@ -176,8 +180,8 @@ B.summary = (res, lang) => {
     [L(lang, "Throughput, 8 concurrent, images/s (best config)", "Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất)"), tp("bm-native", 8), tp("bm-wasm", 8), tp("takumi-native", 8), tp("takumi-wasm", 8)],
   ];
   const note = L(lang,
-    `Geomeans over the ${s?.fixturesTimed?.raw ?? "?"} fixtures every engine rendered; ± = half the range of the ${s?.passes?.length ?? "?"} passes' geomeans relative to their median; ⚠ = more than ${NOISE_LIMIT} % range. Cold start: median / p95 of ${res.cold?.runs ?? "?"} fresh processes minus the empty-Node median. Event-loop, memory and throughput are single runs.`,
-    `Geomean trên ${s?.fixturesTimed?.raw ?? "?"} fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của ${s?.passes?.length ?? "?"} lượt so với median của chúng; ⚠ = chênh quá ${NOISE_LIMIT} %. Cold start: median / p95 của ${res.cold?.runs ?? "?"} tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo.`);
+    `Geomeans over the ${s?.fixturesTimed?.raw ?? "?"} fixtures every engine rendered; ± = half the range of the ${s?.passes?.length ?? "?"} passes' geomeans relative to their median; ⚠ = more than ${NOISE_LIMIT} % range. Cold start: median / p95 of ${res.cold?.runs ?? "?"} fresh processes minus the empty-Node median. Event-loop, memory and throughput are single runs; on the throughput rows ⚠ = other processes used more than one core on average during that stage.`,
+    `Geomean trên ${s?.fixturesTimed?.raw ?? "?"} fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của ${s?.passes?.length ?? "?"} lượt so với median của chúng; ⚠ = chênh quá ${NOISE_LIMIT} %. Cold start: median / p95 của ${res.cold?.runs ?? "?"} tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo; ở các dòng thông lượng ⚠ = tiến trình khác dùng trung bình hơn một lõi trong lúc đo.`);
   return table([L(lang, "Metric", "Chỉ số"), "bm-native", "bm-wasm", "takumi-native", "takumi-wasm"], rows) + "\n\n" + note;
 };
 
@@ -309,8 +313,8 @@ B.cold = (res, lang) => {
   if (!c) return "";
   const rows = ["none", ...ENGINES].map((n) => { const e = c.engines[n]; return e?.error ? [n, "error: " + e.error, "", "", "", "", "", ""] : [n === "none" ? L(lang, "empty Node (baseline)", "Node rỗng (mốc)") : n, ms(e.wallMedianMs, lang), ms(e.wallP95Ms, lang), n === "none" ? "0" : ms(e.overNodeMedianMs, lang), n === "none" ? "0" : ms(e.overNodeP95Ms, lang), n === "none" ? "—" : ms(e.importMs, lang), n === "none" ? "—" : ms(e.fontMs, lang), n === "none" ? "—" : ms(e.firstRenderMs, lang)]; });
   return table([L(lang, "Engine", "Engine"), L(lang, "wall median", "thực median"), "wall p95", L(lang, "over Node, median", "hơn Node, median"), L(lang, "over Node, p95", "hơn Node, p95"), "import", "registerFont", L(lang, "first PNG", "PNG đầu tiên")], rows) + "\n\n" +
-    L(lang, `ms. ${c.runs} runs per engine, engines interleaved; ${c.what}. The import / registerFont / first-PNG columns are medians measured inside the child. CPU busy during the stage: ${num(c.load?.meanBusyPct, lang)} % mean (other processes ≈ ${num(c.load?.otherCores, lang)} cores).`,
-      `ms. ${c.runs} lần mỗi engine, xen kẽ các engine; spawn node → import engine như người dùng → registerFont(Inter Regular) → PNG og card 1200×630 → thoát; thời gian thực = đồng hồ của tiến trình cha từ spawn tới khi thoát. Các cột import / registerFont / PNG đầu tiên là median đo bên trong tiến trình con. CPU bận trong lúc đo: trung bình ${num(c.load?.meanBusyPct, lang)} % (tiến trình khác ≈ ${num(c.load?.otherCores, lang)} lõi).`);
+    L(lang, `ms. ${c.runs} runs per engine, engines interleaved; ${c.what}. The import / registerFont / first-PNG columns are medians measured inside the child. CPU busy during the stage: ${num(c.load?.meanBusyPct, lang)} % mean (other processes ≈ ${num(c.load?.otherCores, lang)} cores).${busyWarn(c.load, lang)}`,
+      `ms. ${c.runs} lần mỗi engine, xen kẽ các engine; spawn node → import engine như người dùng → registerFont(Inter Regular) → PNG og card 1200×630 → thoát; thời gian thực = đồng hồ của tiến trình cha từ spawn tới khi thoát. Các cột import / registerFont / PNG đầu tiên là median đo bên trong tiến trình con. CPU bận trong lúc đo: trung bình ${num(c.load?.meanBusyPct, lang)} % (tiến trình khác ≈ ${num(c.load?.otherCores, lang)} lõi).${busyWarn(c.load, lang)}`);
 };
 
 B.memory = (res, lang) => {
@@ -333,8 +337,8 @@ B.eventloop = (res, lang) => {
   if (!e) return "";
   const rows = e.runs.map((r) => r.unsupported ? [r.job, r.engine, r.api, L(lang, "not supported", "không hỗ trợ"), "", "", "", ""] : [r.job, r.engine, r.api === "async" && r.engine.endsWith("wasm") ? L(lang, "async (runs on the main thread)", "async (chạy trên main thread)") : r.api, ms(r.ms, lang), ms(r.cpuMs, lang), ms(r.maxDelayMs, lang), ms(r.p99DelayMs, lang), String(r.ticks)]);
   return table([L(lang, "Job", "Việc"), "Engine", "API", L(lang, "job ms", "ms của việc"), "CPU ms", L(lang, "max timer delay ms", "trễ timer lớn nhất ms"), L(lang, "p99 delay ms", "trễ p99 ms"), L(lang, "timer ticks", "số lần timer chạy")], rows) + "\n\n" +
-    L(lang, `heavy = ${e.jobs.heavy}; anim = ${e.jobs.anim}. A 1 ms \`setInterval\` records the gap between its ticks while the call runs. A setImmediate chain keeps the loop from sleeping, because an idle Node loop on Windows wakes on the 15.6 ms system clock and the timer would otherwise never show less than ~16 ms. A call that blocks the loop shows one tick whose delay is the whole call.`,
-      `heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, cứ ba thẻ có một thẻ \`filter: blur(6px)\`, chữ; anim = renderAnimation: 60 khung (2 s ở 30 fps) WebP lossless 800×420, 12 hình tròn có bóng, mờ, xoay (cảnh tĩnh). Một \`setInterval\` 1 ms ghi khoảng cách giữa các lần chạy trong lúc lời gọi chạy. Một chuỗi setImmediate giữ cho vòng lặp không ngủ, vì vòng lặp Node rảnh trên Windows thức theo đồng hồ hệ thống 15,6 ms và timer sẽ không bao giờ cho thấy dưới ~16 ms. Lời gọi chặn vòng lặp cho thấy một lần chạy có độ trễ bằng cả lời gọi.`);
+    L(lang, `heavy = ${e.jobs.heavy}; anim = ${e.jobs.anim}. A 1 ms \`setInterval\` records the gap between its ticks while the call runs. A setImmediate chain keeps the loop from sleeping, because an idle Node loop on Windows wakes on the 15.6 ms system clock and the timer would otherwise never show less than ~16 ms. A call that blocks the loop shows one tick whose delay is the whole call. CPU ms is the whole process during the call, including the setImmediate chain on the main thread (about one core whenever the loop is free).${busyWarn(e.load, lang)}`,
+      `heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, cứ ba thẻ có một thẻ \`filter: blur(6px)\`, chữ; anim = renderAnimation: 60 khung (2 s ở 30 fps) WebP lossless 800×420, 12 hình tròn có bóng, mờ, xoay (cảnh tĩnh). Một \`setInterval\` 1 ms ghi khoảng cách giữa các lần chạy trong lúc lời gọi chạy. Một chuỗi setImmediate giữ cho vòng lặp không ngủ, vì vòng lặp Node rảnh trên Windows thức theo đồng hồ hệ thống 15,6 ms và timer sẽ không bao giờ cho thấy dưới ~16 ms. Lời gọi chặn vòng lặp cho thấy một lần chạy có độ trễ bằng cả lời gọi. CPU ms là của cả tiến trình trong lúc gọi, kể cả chuỗi setImmediate trên main thread (khoảng một lõi mỗi khi vòng lặp rảnh).${busyWarn(e.load, lang)}`);
 };
 
 B.throughput = (res, lang) => {
@@ -356,8 +360,8 @@ B.throughput = (res, lang) => {
   })]);
   const seqRows = t.runs.filter((r) => r.mode === "seq").map((r) => [r.engine, label(r), r.engine.endsWith("native") ? String(r.uv) : "—", ...Ns.map((n) => (n === 1 ? num(r.results?.[0]?.ips, lang) : ""))]);
   return table([L(lang, "Engine", "Engine"), L(lang, "Setup", "Cách chạy"), "UV_THREADPOOL_SIZE", ...Ns.map((n) => `N=${n}`)], [...seqRows, ...rows]) + "\n\n" +
-    L(lang, `Images per second; in brackets the speed-up over the same engine's sequential single-client rate (first rows) and the scaling efficiency = speed-up / min(N, threads that can render different images at once, ${t.cpus} logical CPUs); a bm renderer counts as 1, K renderers as min(K, UV_THREADPOOL_SIZE), takumi-native's renderer as UV_THREADPOOL_SIZE, a worker pool as K. ${t.workload}; ${t.msPerPoint} ms per point after a warm-up. CPU busy during the stage: ${num(t.load?.meanBusyPct, lang)} % mean (other processes ≈ ${num(t.load?.otherCores, lang)} cores).`,
-      `Ảnh mỗi giây; trong ngoặc là mức tăng so với tốc độ tuần tự một client của cùng engine (các dòng đầu) và hiệu suất mở rộng = mức tăng / min(N, số thread có thể render các ảnh khác nhau cùng lúc, ${t.cpus} CPU logic); một renderer bm tính là 1, K renderer là min(K, UV_THREADPOOL_SIZE), renderer của takumi-native là UV_THREADPOOL_SIZE, pool worker là K. og card 1200×630 PNG, vòng kín: N client, mỗi client luôn có một yêu cầu đang chạy; ${t.msPerPoint} ms mỗi điểm sau khi khởi động. CPU bận trong lúc đo: trung bình ${num(t.load?.meanBusyPct, lang)} % (tiến trình khác ≈ ${num(t.load?.otherCores, lang)} lõi).`);
+    L(lang, `Images per second; in brackets the speed-up over the same engine's sequential single-client rate (first rows) and the scaling efficiency = speed-up / min(N, threads that can render different images at once, ${t.cpus} logical CPUs); a bm renderer counts as 1, K renderers as min(K, UV_THREADPOOL_SIZE), takumi-native's renderer as UV_THREADPOOL_SIZE, a worker pool as K. ${t.workload}; ${t.msPerPoint} ms per point after a warm-up. CPU busy during the stage: ${num(t.load?.meanBusyPct, lang)} % mean (other processes ≈ ${num(t.load?.otherCores, lang)} cores).${busyWarn(t.load, lang)}`,
+      `Ảnh mỗi giây; trong ngoặc là mức tăng so với tốc độ tuần tự một client của cùng engine (các dòng đầu) và hiệu suất mở rộng = mức tăng / min(N, số thread có thể render các ảnh khác nhau cùng lúc, ${t.cpus} CPU logic); một renderer bm tính là 1, K renderer là min(K, UV_THREADPOOL_SIZE), renderer của takumi-native là UV_THREADPOOL_SIZE, pool worker là K. og card 1200×630 PNG, vòng kín: N client, mỗi client luôn có một yêu cầu đang chạy; ${t.msPerPoint} ms mỗi điểm sau khi khởi động. CPU bận trong lúc đo: trung bình ${num(t.load?.meanBusyPct, lang)} % (tiến trình khác ≈ ${num(t.load?.otherCores, lang)} lõi).${busyWarn(t.load, lang)}`);
 };
 
 B.sizes = (res, lang) => {

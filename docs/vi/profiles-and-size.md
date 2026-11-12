@@ -21,6 +21,35 @@ add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 
 Lớp bọc JavaScript chỉ vài KiB ESM không phụ thuộc gì và giống nhau cho mọi profile. Các binary không
 import gì từ môi trường chạy.
 
+### Addon native (Node.js)
+
+Trên Node.js, `bm-engine` dùng addon native khi có addon cho nền tảng đang chạy (một optional dependency cho mỗi
+nền tảng; npm chỉ tải gói khớp với máy). Addon luôn có tập tính năng `full`; các profile ở trên chỉ áp dụng cho bản
+wasm. Mỗi addon lớn hơn bản wasm `full` vì được biên dịch để chạy nhanh (ReleaseFast) chứ không phải để nhỏ, và bản
+wasm vẫn nằm trong gói chính để làm phương án dự phòng. Nên dùng backend nào và so sánh hai backend:
+[Native so với WebAssembly](./native-vs-wasm.md).
+
+<!-- native-bench:sizes -->
+| File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
+|:--|--:|--:|--:|--:|--:|
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 010 | 1 077 | 880 | đã chạy (benchmark này) |
+| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 1 570 | 954 | 743 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 1 901 | 1 041 | 856 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 1 900 | 1 041 | 856 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 1 571 | 955 | 743 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 1 571 | 955 | 742 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 1 901 | 1 040 | 855 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 1 594 | 929 | 712 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| bm wasm `core` | wasm32 | 454 | 212 | 180 |  |
+| bm wasm `standard` | wasm32 | 878 | 435 | 374 |  |
+| bm wasm `full` | wasm32 | 1 100 | 538 | 453 |  |
+| bm wasm `add-on WOFF` | wasm32 | 84.2 | 67.7 | 65.5 |  |
+| takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
+| takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
+
+Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 với Zig 0.17.1, ReleaseFast). Mỗi người dùng chỉ tải một addon (gói optional cho nền tảng của họ) cộng với bản wasm dự phòng nằm trong gói chính.
+<!-- /native-bench:sizes -->
+
 ## Mỗi profile gồm những gì
 
 | Tính năng (khoá trong `features`) | core | standard | full |
