@@ -6,6 +6,9 @@
 //!   * sigma > 135: the buffer is shrunk bilinearly (halving steps, Skia's
 //!     `FilterResult::Builder::blur` rule), blurred with sigma 135 and scaled back (`blurRescaled`).
 //! Separable, horizontal then vertical; pixels outside the buffer are transparent.
+//! One 1-D pass is defined by `columnPass` (vectorised across adjacent columns). The horizontal
+//! pass of RGBA buffers runs along each row instead (`boxRows4`, `gaussRows4`: the same integer /
+//! f32 operations per sample in the same order, so the same bytes); masks transpose strips of rows.
 const std = @import("std");
 const types = @import("types.zig");
 const IRect = types.IRect;
@@ -81,6 +84,18 @@ pub fn blurReach(sigma: f32) u32 {
     return @intCast(p.border);
 }
 
+/// `v` (a weighted sum of samples in [0, 1]) as a byte: v * 255 + 0.5, clamped, truncated.
+inline fn gaussByte(v: @Vector(4, f32)) @Vector(4, u8) {
+    const VF4 = @Vector(4, f32);
+    const t = v * @as(VF4, @splat(255.0)) + @as(VF4, @splat(0.5));
+    // NaN-safe clamp to [0, 255]
+    const hi: VF4 = @splat(255.0);
+    const c = @select(f32, t > @as(VF4, @splat(0)), @select(f32, t < hi, t, hi), @as(VF4, @splat(0)));
+    // float -> int via the 2^23 trick (vector trunc_sat is very slow in V8); c is in [0, 255]
+    const iv: @Vector(4, u32) = @bitCast(@floor(c) + @as(VF4, @splat(8388608.0)));
+    return @truncate(iv);
+}
+
 const Scratch = struct {
     // three-box
     sum0: [BAND]u32 = undefined,
@@ -93,7 +108,6 @@ const Scratch = struct {
     third: []u32 = &.{},
     // gaussian
     ring: []f32 = &.{},
-    sums: [BAND]f32 = undefined,
 
     /// In-place init (the struct is several KB; avoids a by-value template copy).
     fn init(s: *Scratch, alloc: Allocator, pass: *const Pass) !void {
@@ -127,9 +141,10 @@ fn columnPass(pass: *const Pass, s: *Scratch, base: [*]u8, rows: usize, row_stri
     const border = pass.border;
     if (pass.gaussian) {
         const window = pass.window;
-        // lanes are padded to a multiple of 8 so every loop is a fixed-width SIMD loop
-        const cs = (channels + 7) & ~@as(usize, 7);
+        // lanes are padded to a multiple of 32 so every loop is a fixed-width SIMD loop
+        const cs = (channels + 31) & ~@as(usize, 31);
         const VF8 = @Vector(8, f32);
+        const VF4 = @Vector(4, f32);
         var inb: [BAND]u8 = undefined;
         var outb: [BAND]u8 = undefined;
         @memset(inb[0..cs], 0);
@@ -149,30 +164,19 @@ fn columnPass(pass: *const Pass, s: *Scratch, base: [*]u8, rows: usize, row_stri
             }
             next = if (next + 1 == window) 0 else next + 1;
             if (index < border) continue;
-            const sums = s.sums[0..cs];
-            @memset(sums, 0);
-            for (pass.kernel[0..window], 0..) |weight, offset| {
-                var slot = next + offset;
-                if (slot >= window) slot -= window;
-                const samples = s.ring[slot * cs ..][0..cs];
-                const wv: VF8 = @splat(weight);
-                k = 0;
-                while (k < cs) : (k += 8) {
-                    const acc: VF8 = sums[k..][0..8].*;
-                    const smp: VF8 = samples[k..][0..8].*;
-                    sums[k..][0..8].* = acc + smp * wv;
-                }
-            }
+            // 32 lanes at a time with the sums in registers: per lane the taps are added in
+            // kernel order, starting from 0 (the order the result is defined by)
             k = 0;
-            while (k < cs) : (k += 8) {
-                const v: VF8 = sums[k..][0..8].*;
-                const t = v * @as(VF8, @splat(255.0)) + @as(VF8, @splat(0.5));
-                // NaN-safe clamp to [0, 255]
-                const hi: VF8 = @splat(255.0);
-                const c = @select(f32, t > @as(VF8, @splat(0)), @select(f32, t < hi, t, hi), @as(VF8, @splat(0)));
-                // float -> int via the 2^23 trick (vector trunc_sat is very slow in V8); c is in [0, 255]
-                const iv: @Vector(8, u32) = @bitCast(@floor(c) + @as(VF8, @splat(8388608.0)));
-                outb[k..][0..8].* = @as(@Vector(8, u8), @truncate(iv));
+            while (k < cs) : (k += 32) {
+                var acc: [8]VF4 = @splat(@splat(0));
+                for (pass.kernel[0..window], 0..) |weight, offset| {
+                    var slot = next + offset;
+                    if (slot >= window) slot -= window;
+                    const samples = s.ring[slot * cs + k ..][0..32];
+                    const wv: VF4 = @splat(weight);
+                    inline for (0..8) |q| acc[q] += @as(VF4, samples[q * 4 ..][0..4].*) * wv;
+                }
+                inline for (0..8) |q| outb[k + q * 4 ..][0..4].* = gaussByte(acc[q]);
             }
             @memcpy((base + (index - border) * row_stride)[0..channels], outb[0..channels]);
         }
@@ -241,6 +245,84 @@ fn columnPass(pass: *const Pass, s: *Scratch, base: [*]u8, rows: usize, row_stri
         }
         slot = if (slot + 1 == p) 0 else slot + 1;
         last_slot = if (last_slot + 1 == last) 0 else last_slot + 1;
+    }
+}
+
+/// Horizontal three-box pass over RGBA rows, in place: `columnPass` along a row with the four
+/// channels of a pixel as one vector and the running sums in registers. The ring of entering
+/// samples is the row itself (the output lags the input by `border` > window - 1 pixels, so a
+/// sample is still unmodified when it leaves the window). Same integer arithmetic, same bytes.
+fn boxRows4(alloc: Allocator, pass: *const Pass, data: []u8, width: usize, height: usize) Allocator.Error!void {
+    const V = @Vector(4, u32);
+    const W = @Vector(4, u64);
+    const border = pass.border;
+    const p = pass.window - 1;
+    const last = if (pass.window % 2 == 0) p + 1 else p;
+    const second = try alloc.alloc(V, p);
+    defer alloc.free(second);
+    const third = try alloc.alloc(V, last);
+    defer alloc.free(third);
+    const zero: V = @splat(0);
+    const factor: W = @splat(pass.factor);
+    const bias: W = @splat(pass.bias);
+    for (0..height) |y| {
+        const row = data[y * width * 4 ..][0 .. width * 4];
+        var s0: V = zero;
+        var s1: V = zero;
+        var s2: V = @splat(pass.seed);
+        @memset(second, zero);
+        @memset(third, zero);
+        var slot: usize = 0;
+        var last_slot: usize = 0;
+        for (0..width + border) |index| {
+            const lead: V = if (index < width) @as(@Vector(4, u8), row[index * 4 ..][0..4].*) else zero;
+            s0 +%= lead;
+            s1 +%= s0;
+            s2 +%= s1;
+            const out: @Vector(4, u8) = @truncate((@as(W, s2) * factor + bias) >> @splat(32));
+            s2 -%= third[last_slot];
+            third[last_slot] = s1;
+            s1 -%= second[slot];
+            second[slot] = s0;
+            if (index >= p and index - p < width) s0 -%= @as(V, @as(@Vector(4, u8), row[(index - p) * 4 ..][0..4].*));
+            if (index >= border) row[(index - border) * 4 ..][0..4].* = out;
+            slot = if (slot + 1 == p) 0 else slot + 1;
+            last_slot = if (last_slot + 1 == last) 0 else last_slot + 1;
+        }
+    }
+}
+
+/// Horizontal Gaussian pass over RGBA rows, in place: per sample the taps are added in kernel
+/// order starting from 0, exactly as `columnPass` does (samples outside the row are 0).
+fn gaussRows4(alloc: Allocator, pass: *const Pass, data: []u8, width: usize, height: usize) Allocator.Error!void {
+    const VF4 = @Vector(4, f32);
+    const border = pass.border;
+    const window = pass.window;
+    // [border zeros][the row / 255][border zeros][8 pixels of slack for the block loop]
+    const fin = try alloc.alloc(f32, (width + 2 * border + 8) * 4);
+    defer alloc.free(fin);
+    @memset(fin, 0);
+    const mid = fin[border * 4 ..][0 .. width * 4];
+    for (0..height) |y| {
+        const row = data[y * width * 4 ..][0 .. width * 4];
+        for (0..width) |x| {
+            const ints: @Vector(4, i32) = @as(@Vector(4, u8), row[x * 4 ..][0..4].*);
+            mid[x * 4 ..][0..4].* = @as(VF4, @floatFromInt(ints)) * @as(VF4, @splat(1.0 / 255.0));
+        }
+        var x: usize = 0;
+        while (x < width) : (x += 8) {
+            var acc: [8]VF4 = @splat(@splat(0));
+            for (pass.kernel[0..window], 0..) |weight, offset| {
+                const samples = fin[(x + offset) * 4 ..][0..32];
+                const wv: VF4 = @splat(weight);
+                inline for (0..8) |q| acc[q] += @as(VF4, samples[q * 4 ..][0..4].*) * wv;
+            }
+            if (x + 8 <= width) {
+                inline for (0..8) |q| row[(x + q) * 4 ..][0..4].* = gaussByte(acc[q]);
+            } else {
+                for (0..width - x) |q| row[(x + q) * 4 ..][0..4].* = gaussByte(acc[q]);
+            }
+        }
     }
 }
 
@@ -357,6 +439,61 @@ fn blurRescaled(alloc: Allocator, data: []u8, width: usize, height: usize, compt
     }
 }
 
+/// Horizontal pass of any channel count: the rows blur as the columns of a transposed strip.
+fn rowsByStrips(alloc: Allocator, pass: *const Pass, s: *Scratch, data: []u8, width: usize, height: usize, comptime n: usize) Allocator.Error!void {
+    const row_bytes = width * n;
+    const strip = try alloc.alloc(u8, ROW_STRIP * row_bytes);
+    defer alloc.free(strip);
+    var y0: usize = 0;
+    while (y0 < height) : (y0 += ROW_STRIP) {
+        const lanes = @min(ROW_STRIP, height - y0);
+        const cw = lanes * n; // bytes per transposed row
+        for (0..lanes) |lane| {
+            const row = data[(y0 + lane) * row_bytes ..][0..row_bytes];
+            for (0..width) |col| {
+                inline for (0..n) |ch| strip[col * cw + lane * n + ch] = row[col * n + ch];
+            }
+        }
+        columnPass(pass, s, strip.ptr, width, cw, cw);
+        for (0..lanes) |lane| {
+            const row = data[(y0 + lane) * row_bytes ..][0..row_bytes];
+            for (0..width) |col| {
+                inline for (0..n) |ch| row[col * n + ch] = strip[col * cw + lane * n + ch];
+            }
+        }
+    }
+}
+
+test "RGBA row passes give the bytes of the transposed-strip column pass" {
+    const A = std.testing.allocator;
+    const sizes = [_][2]usize{ .{ 1, 1 }, .{ 2, 3 }, .{ 7, 2 }, .{ 8, 1 }, .{ 9, 5 }, .{ 33, 4 }, .{ 131, 3 }, .{ 300, 2 }, .{ 700, 1 } };
+    const sigmas = [_]f32{ 0.04, 0.3, 0.9, 1.5, 1.99, 2.0, 2.3, 2.6, 3.1, 4.4, 8, 20, 77, 135 };
+    var seed: u64 = 99;
+    for (sizes) |sz| for (sigmas) |sigma| for ([_]Rounding{ .rgba, .alpha }) |rounding| for (0..3) |kind| {
+        const pass = Pass.init(sigma, rounding) orelse continue;
+        const len = sz[0] * sz[1] * 4;
+        const a = try A.alloc(u8, len);
+        defer A.free(a);
+        const b = try A.alloc(u8, len);
+        defer A.free(b);
+        for (a, 0..) |*v, i| {
+            seed = seed *% 6364136223846793005 +% 1442695040888963407;
+            v.* = switch (kind) {
+                0 => @truncate(seed >> 40),
+                1 => if ((i / 44) % 3 == 0) 0 else 255,
+                else => 255,
+            };
+        }
+        @memcpy(b, a);
+        var s: Scratch = undefined;
+        try s.init(A, &pass);
+        defer s.deinit(A);
+        try rowsByStrips(A, &pass, &s, a, sz[0], sz[1], 4);
+        if (pass.gaussian) try gaussRows4(A, &pass, b, sz[0], sz[1]) else try boxRows4(A, &pass, b, sz[0], sz[1]);
+        try std.testing.expectEqualSlices(u8, a, b);
+    };
+}
+
 /// Blurs a `width` x `height` buffer of `n`-channel pixels in place.
 fn blurBuffer(alloc: Allocator, data: []u8, width: usize, height: usize, comptime n: usize, sigma: f32, rounding: Rounding) Allocator.Error!void {
     if (width == 0 or height == 0 or data.len < width * height * n) return;
@@ -369,29 +506,10 @@ fn blurBuffer(alloc: Allocator, data: []u8, width: usize, height: usize, comptim
     defer s.deinit(alloc);
     const row_bytes = width * n;
 
-    // Horizontal: rows blur as the columns of a transposed strip.
-    {
-        const strip = try alloc.alloc(u8, ROW_STRIP * row_bytes);
-        defer alloc.free(strip);
-        var y0: usize = 0;
-        while (y0 < height) : (y0 += ROW_STRIP) {
-            const lanes = @min(ROW_STRIP, height - y0);
-            const cw = lanes * n; // bytes per transposed row
-            for (0..lanes) |lane| {
-                const row = data[(y0 + lane) * row_bytes ..][0..row_bytes];
-                for (0..width) |col| {
-                    inline for (0..n) |ch| strip[col * cw + lane * n + ch] = row[col * n + ch];
-                }
-            }
-            columnPass(&pass, &s, strip.ptr, width, cw, cw);
-            for (0..lanes) |lane| {
-                const row = data[(y0 + lane) * row_bytes ..][0..row_bytes];
-                for (0..width) |col| {
-                    inline for (0..n) |ch| row[col * n + ch] = strip[col * cw + lane * n + ch];
-                }
-            }
-        }
-    }
+    // Horizontal. RGBA: along each row; masks: rows blur as the columns of a transposed strip.
+    if (n == 4) {
+        if (pass.gaussian) try gaussRows4(alloc, &pass, data, width, height) else try boxRows4(alloc, &pass, data, width, height);
+    } else try rowsByStrips(alloc, &pass, &s, data, width, height, n);
     // Vertical, in bands of adjacent channels.
     var b0: usize = 0;
     while (b0 < row_bytes) : (b0 += BAND) {

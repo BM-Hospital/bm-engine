@@ -989,25 +989,20 @@ pub fn unpremultiply(data: []u8) void {
     var lut: [256]u8 = undefined;
     var lut_a: u32 = 256; // alpha the LUT was built for
     var prev_a: u32 = 256;
-    const V = @Vector(64, u8);
-    const alpha_lanes: V = comptime blk: {
-        var m: [64]u8 = undefined;
-        for (0..64) |k| m[k] = if (k % 4 == 3) 0xff else 0;
-        break :blk m;
-    };
+    const alphas: u64 = 0xFF000000_FF000000;
     while (i < n) {
-        // fast skip over fully opaque / fully transparent runs: 16 pixels at a time (a pure
-        // comparison: exactly the pixels the two-pixel loop below would skip as well) ...
-        while (i + 64 <= n) {
-            const al = @as(V, data[i..][0..64].*) & alpha_lanes;
-            if (!(@reduce(.And, al == alpha_lanes) or @reduce(.Or, al) == 0)) break;
-            i += 64;
-        }
-        // ... then two pixels at a time
+        // fast skip over fully opaque / fully transparent runs, two pixels at a time
         while (i + 8 <= n) {
-            const two = @as(*align(1) const u64, @ptrCast(data[i..].ptr)).* & 0xFF000000_FF000000;
-            if (two != 0xFF000000_FF000000 and two != 0) break;
+            const two = @as(*align(1) const u64, @ptrCast(data[i..].ptr)).* & alphas;
+            if (two != alphas and two != 0) break;
             i += 8;
+            // inside a run: eight pixels at a time (a pure comparison of pixels this loop
+            // would skip pair by pair; plain 64-bit words, so wasm and native do the same)
+            while (i + 32 <= n) {
+                const q: [*]align(1) const u64 = @ptrCast(data[i..].ptr);
+                if ((q[0] & q[1] & q[2] & q[3] & alphas) != alphas and ((q[0] | q[1] | q[2] | q[3]) & alphas) != 0) break;
+                i += 32;
+            }
         }
         if (i >= n) break;
         const a: u32 = data[i + 3];

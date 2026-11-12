@@ -6,7 +6,7 @@
 //   node native-tests.mjs --only=a,b      some cases        (--list prints the names)
 //   node native-tests.mjs --case=<name>   one case in this process (what the children run)
 //
-// Cases: concurrency, eventloop, free, gc, errors, fallback, workers, stack, fuzz-tree, fuzz-inline, fuzz-table,
+// Cases: concurrency, eventloop, free, gc, errors, raw, fallback, workers, stack, fuzz-tree, fuzz-inline, fuzz-table,
 // fuzz-diff, perf, cold. Byte identity on the fixtures is bench/native-identity.mjs.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -251,6 +251,84 @@ CASES.errors = async () => {
 };
 
 // ---- d. fallback ------------------------------------------------------------------------------------------
+CASES.raw = async () => {
+  // format "raw" never copies the canvas out natively: the frame is painted into the result's ArrayBuffer
+  // (sync), into an ArrayBuffer made before the job is queued (async, size known from width x height), or
+  // into process memory copied once (async with a derived size, sync on a helper thread). Every path must
+  // return the wasm bytes in a fresh, ordinary (resizable-free, transferable) Uint8Array.
+  const { wasm, native, addon, ALL_CASES, renderOpts, withFonts } = await load();
+  const wr = withFonts(wasm), nr = withFonts(native);
+  const node = (extra) => ({ type: "container", style: { display: "flex", width: "100%", height: "100%", backgroundImage: "linear-gradient(90deg, rgba(255,0,0,.4), #00f)", ...extra },
+    children: [{ type: "text", text: "raw frame", style: { fontFamily: "Inter", fontSize: 24, color: "#fff", opacity: 0.7 } }] });
+  const sizes = [[1, 1], [3, 1], [1, 5], [64, 64], [333, 77], [1200, 630]];
+  const eq = (a, b) => a.length === b.length && Buffer.compare(Buffer.from(a.buffer, a.byteOffset, a.byteLength), Buffer.from(b.buffer, b.byteOffset, b.byteLength)) === 0;
+  const plain = (v) => v instanceof Uint8Array && v.byteOffset === 0 && v.buffer.byteLength === v.length && !(v.buffer instanceof SharedArrayBuffer);
+  for (const zeroed of [1, 2]) for (const mode of [1, 2]) {
+    // zeroed 2: ArrayBuffers are not trusted to be zero-filled (what a non-V8 host gets); mode 2: sync calls on a helper thread
+    addon.tune(mode, 0, 0, zeroed);
+    const tag = `zeroed=${zeroed} mode=${mode}`;
+    for (const [w, h] of sizes) {
+      const o = { width: w, height: h, format: "raw" };
+      const want = wr.renderSync(node(), o);
+      const s = nr.renderSync(node(), o), a = await nr.render(node(), o);
+      check(want.length === w * h * 4 && eq(want, s) && plain(s), `${tag}: sync raw ${w}x${h} equals wasm`);
+      check(eq(want, a) && plain(a), `${tag}: async raw ${w}x${h} equals wasm`);
+      check(s.buffer !== a.buffer, `${tag}: results own their buffers`);
+    }
+    // derived height (no size hint), a transparent canvas, and a size that the hint gets wrong on purpose
+    const auto = { width: 300, format: "raw" };
+    const col = { type: "container", style: { width: 300, height: 123, backgroundColor: "rgba(0,128,0,.5)" } };
+    check(eq(wr.renderSync(col, auto), nr.renderSync(col, auto)) && eq(wr.renderSync(col, auto), await nr.render(col, auto)), `${tag}: raw with a derived height equals wasm`);
+    const clear = { type: "container", style: { width: "100%", height: "100%" } };
+    const z = nr.renderSync(clear, { width: 257, height: 33, format: "raw" }), za = await nr.render(clear, { width: 257, height: 33, format: "raw" });
+    check(z.every((b) => b === 0) && za.every((b) => b === 0), `${tag}: an empty frame is all zero`);
+    // the size hint of the internal interface (arg1 of an async render): right, wrong, absent, and with an encoded format
+    const h = addon.create();
+    const box = JSON.stringify({ type: "container", style: { width: "100%", height: "100%", backgroundColor: "rgba(10,200,30,.5)" } });
+    const ref10 = wr.renderSync({ json: box }, { width: 10, height: 10, format: "raw" });
+    for (const hint of [400, 12345, 4, 0]) {
+      const got = await addon.runAsync(h, addon.ops.render, 0, hint, box, JSON.stringify({ width: 10, height: 10, format: "raw" }), null);
+      check(eq(got, ref10) && plain(got), `${tag}: async raw with size hint ${hint} equals wasm`);
+    }
+    const png = await addon.runAsync(h, addon.ops.render, 0, 400, box, JSON.stringify({ width: 10, height: 10, format: "png" }), null);
+    check(eq(png, wr.renderSync({ json: box }, { width: 10, height: 10, format: "png" })), `${tag}: a size hint on a PNG render is ignored`);
+    const bad = await addon.runAsync(h, addon.ops.render, 0, 400, "{", JSON.stringify({ width: 10, height: 10, format: "raw" }), null).then(() => "resolved", (e) => String(e.message));
+    check(bad !== "resolved", `${tag}: a failing hinted render rejects (${bad})`);
+    addon.destroy(h);
+  }
+  addon.tune(1, 0, 0, 1);
+  // failures after the buffer was handed out, and a failure before layout
+  for (const [name, n, o] of [["canvas too large", node(), { width: 100000, height: 100000, format: "raw" }], ["invalid node", { json: "{" }, { width: 10, height: 10, format: "raw" }]]) {
+    const w = outcome(() => wr.renderSync(n, o)), s = outcome(() => nr.renderSync(n, o));
+    let a;
+    try { await nr.render(n, o); a = { ok: "?" }; } catch (e) { a = { error: String(e && e.message) }; }
+    check(same(w, s) && same(w, a), `raw error "${name}": wasm ${JSON.stringify(w)} sync ${JSON.stringify(s)} async ${JSON.stringify(a)}`);
+  }
+  // many frames in flight on one renderer and on several: every result is its own frame
+  const k = ALL_CASES.find((c) => c.id === "card-og");
+  const ko = renderOpts(k, "raw");
+  const kr = withFonts(native, k.fonts), kw = withFonts(wasm, k.fonts);
+  const ref = kw.renderSync(k.node, ko);
+  const many = await Promise.all(Array.from({ length: 24 }, (_, i) => (i % 3 === 0 ? withFonts(native, k.fonts) : kr).render(k.node, ko)));
+  check(many.every((m) => eq(m, ref)), "24 concurrent async raw frames equal wasm");
+  check(new Set(many.map((m) => m.buffer)).size === many.length, "24 concurrent frames use 24 buffers");
+  // results are ordinary buffers: transferable to a worker, and writable without affecting later renders
+  const first = kr.renderSync(k.node, ko);
+  first.fill(7);
+  check(eq(kr.renderSync(k.node, ko), ref), "scribbling over a result does not affect the next render");
+  const moved = structuredClone(first, { transfer: [first.buffer] });
+  check(moved.length === ref.length && first.length === 0, "a raw result can be transferred");
+  const am = await kr.render(k.node, ko);
+  const moved2 = structuredClone(am, { transfer: [am.buffer] });
+  check(eq(moved2, ref) && am.length === 0, "an async raw result can be transferred");
+  // memory: nothing of the addon stays allocated for results
+  const before = addon.memoryBytes();
+  for (let i = 0; i < 50; i++) { kr.renderSync(k.node, ko); await kr.render(k.node, ko); }
+  const after = addon.memoryBytes();
+  check(after <= before + (1 << 20), `native memory after 100 raw frames: ${before} -> ${after} bytes`);
+  notes.raw = { nativeBytesBefore: before, nativeBytesAfter: after };
+};
+
 CASES.fallback = async () => {
   const probe = `const m = await import(${JSON.stringify(href("js", "node.mjs"))}); const r = new m.Renderer();` +
     `const o = await r.render({type:"container",style:{width:40,height:20,backgroundColor:"teal"}},{format:"png"});` +
