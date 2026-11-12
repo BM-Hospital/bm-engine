@@ -266,13 +266,28 @@ pub const Painter = struct {
     layer_depth: usize = 0,
     /// table parts by render node id (allocated when the first table is painted; paint_table.zig)
     tparts: []ptable.Part = &.{},
-    /// Floats met while painting in-flow content: they are painted after the in-flow boxes of their
-    /// stacking context (CSS 2.1 appendix E: block backgrounds, then floats), so a later block whose
-    /// box extends under a float does not cover it. `float_now`: the float being painted from the queue.
-    float_q: std.ArrayList(QueuedFloat) = .empty,
+    /// Paint order inside a stacking context (CSS 2.1 appendix E): the backgrounds / borders of the
+    /// in-flow block-level boxes in tree order, then the floats, then the inline content (text, inline
+    /// box decorations, atomic inlines), then the positioned descendants and z-index 0 stacking contexts
+    /// in tree order, then the positive z-indexes. The in-flow walk paints the first layer and queues the
+    /// rest (with the origin and clip / transform context they were met in):
+    ///  * `float_q` and `text_q` are flushed at the end of every box that is painted atomically (the
+    ///    root, a float, an atomic inline, a flex / grid item, a positioned box or stacking context);
+    ///  * `pos_q` at the end of a positioned box or stacking context (its own positioned descendants
+    ///    follow it in tree order), `zpos_q` (sorted by z-index) at the end of a stacking context.
+    /// Negative z-indexes are painted before the in-flow siblings of their parent (an approximation of
+    /// "before the in-flow content of the stacking context"). `float_now` / `pos_now`: the box being
+    /// painted from a queue.
+    float_q: std.ArrayList(Queued) = .empty,
+    text_q: std.ArrayList(Queued) = .empty,
+    pos_q: std.ArrayList(Queued) = .empty,
+    zpos_q: std.ArrayList(Queued) = .empty,
     float_now: u32 = none,
+    pos_now: u32 = none,
 
-    const QueuedFloat = struct { id: u32, ox: f32, oy: f32, ctx: Ctx, depth: u32 };
+    /// `text`: the inline content of paragraph node `id` whose box origin is (ox, oy); else the node
+    /// `id` as a whole, with its parent's origin.
+    const Queued = struct { id: u32, ox: f32, oy: f32, ctx: Ctx, depth: u32, z: i32 = 0, text: bool = false };
 
     pub fn rast(p: *Painter) *raster.Rasterizer {
         return &p.f.r.rast;
@@ -1065,6 +1080,15 @@ pub const Painter = struct {
             try p.float_q.append(p.a, .{ .id = id, .ox = ox, .oy = oy, .ctx = ctx_in.*, .depth = depth });
             return;
         }
+        if (n.kind != .anon_text and id != p.pos_now and id != f.root and stacks(cs)) {
+            // positioned boxes and stacking contexts: after the in-flow content of the stacking context
+            const z: i64 = cs.z_index orelse 0;
+            if (z >= 0) {
+                const q: Queued = .{ .id = id, .ox = ox, .oy = oy, .ctx = ctx_in.*, .depth = depth, .z = @intCast(std.math.clamp(z, 0, 0x7fffffff)) };
+                try (if (z > 0) &p.zpos_q else &p.pos_q).append(p.a, q);
+                return;
+            }
+        }
         const l = f.tree.layout(n.lid);
         var x = ox + l.x;
         var y = oy + l.y;
@@ -1318,14 +1342,11 @@ pub const Painter = struct {
         const n = &f.nodes.items[id];
         const cs = n.cs;
         const l = f.tree.layout(n.lid);
-        const content_x = x + l.border.left + l.padding.left;
-        const content_y = y + l.border.top + l.padding.top;
-        const content_w = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
-
         if (n.kind == .anon_text) {
-            try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
-            return;
+            // inline content: after the floats of the box that is painted atomically
+            return p.text_q.append(p.a, .{ .id = id, .ox = x, .oy = y, .ctx = ctx.*, .depth = depth, .text = true });
         }
+        const marks: [4]usize = .{ p.float_q.items.len, p.text_q.items.len, p.pos_q.items.len, p.zpos_q.items.len };
 
         const g = geomOf(cs, l, x, y, ctx);
 
@@ -1349,35 +1370,40 @@ pub const Painter = struct {
             if (n.kind == .image) try p.paintImage(ctx, n, &g);
         }
         // (an anonymous inline formatting context: its text, then its inline-level boxes)
-        if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try ptext.paintText(p, ctx, n, content_x, content_y, content_w);
+        if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try p.text_q.append(p.a, .{ .id = id, .ox = x, .oy = y, .ctx = ctx.*, .depth = depth, .text = true });
 
-        if (n.first_child == none) return;
-        var cctx = ctx.*;
-        if (cs.overflow_x != .visible or cs.overflow_y != .visible) {
-            cctx.clip = try p.makeClip(ctx, g.padRect(), g.padRadii());
-            if (cctx.clip.?.bounds.isEmpty()) return;
-        }
+        if (n.first_child != none) children: {
+            var cctx = ctx.*;
+            if (cs.overflow_x != .visible or cs.overflow_y != .visible) {
+                cctx.clip = try p.makeClip(ctx, g.padRect(), g.padRadii());
+                if (cctx.clip.?.bounds.isEmpty()) break :children;
+            }
 
-        // Paint order: negative z-index, in-flow, positioned / z-index 0, positive z-index.
-        var special = false;
-        var c = n.first_child;
-        while (c != none) : (c = f.nodes.items[c].next) {
-            const ccs = f.nodes.items[c].cs;
-            if (f.nodes.items[c].kind != .anon_text and stacks(ccs)) special = true;
+            // Negative z-indexes first; the walk queues the floats, positioned boxes and stacking contexts.
+            var special = false;
+            var c = n.first_child;
+            while (c != none) : (c = f.nodes.items[c].next) {
+                const ccs = f.nodes.items[c].cs;
+                if (f.nodes.items[c].kind != .anon_text and stacks(ccs)) special = true;
+            }
+            if (n.kind == .anon_box) {
+                // the atomic inlines of a paragraph are inline content, painted as a whole each
+                c = n.first_child;
+                while (c != none) : (c = f.nodes.items[c].next) {
+                    const ccs = f.nodes.items[c].cs;
+                    if (ccs.float != .none or stacks(ccs)) {
+                        try p.paintNode(c, x, y, &cctx, depth + 1);
+                    } else try p.text_q.append(p.a, .{ .id = c, .ox = x, .oy = y, .ctx = cctx, .depth = depth + 1 });
+                }
+            } else if (!special) {
+                c = n.first_child;
+                while (c != none) : (c = f.nodes.items[c].next) try p.paintNode(c, x, y, &cctx, depth + 1);
+            } else {
+                const sc = try p.sortedChildren(n);
+                for (sc.items) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
+            }
         }
-        // (a stacking context, and a float, paints the floats queued inside it after its in-flow content)
-        const froot = enable_floats and (id == f.root or cs.float != .none or stacks(cs));
-        const q0 = p.float_q.items.len;
-        if (!special) {
-            c = n.first_child;
-            while (c != none) : (c = f.nodes.items[c].next) try p.paintNode(c, x, y, &cctx, depth + 1);
-            if (froot) try p.flushFloats(q0);
-        } else {
-            const sc = try p.sortedChildren(n);
-            for (sc.items[0..sc.n_low]) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
-            if (froot) try p.flushFloats(q0);
-            for (sc.items[sc.n_low..]) |it| try p.paintNode(it, x, y, &cctx, depth + 1);
-        }
+        try p.endScope(id, marks);
         // collapsed borders follow every box inside the table
         if (enable_tables) {
             if (tg) |t| if (t.collapse) try ptable.paintCollapsed(p, ctx, id, x, y, t);
@@ -1387,6 +1413,70 @@ pub const Painter = struct {
     /// Painted in the positioned / stacking-context phase.
     fn stacks(cs: *const CS) bool {
         return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
+    }
+
+    /// Stacking context in the strict sense (z-index ordering is local to it).
+    fn isContext(cs: *const CS) bool {
+        return cs.z_index != null or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
+    }
+
+    /// End of the box `id` (queue lengths at its start in `marks`): when it is painted atomically, the
+    /// layers queued inside it follow in order (see `float_q`).
+    noinline fn endScope(p: *Painter, id: u32, marks: [4]usize) Error!void {
+        const f = p.f;
+        const n = &f.nodes.items[id];
+        const cs = n.cs;
+        const root = id == f.root;
+        const st = stacks(cs);
+        var atomic = root or st or (enable_floats and cs.float != .none);
+        if (!atomic and n.parent != none) {
+            const pn = &f.nodes.items[n.parent];
+            atomic = pn.kind == .anon_box or pn.cs.display == .flex or pn.cs.display == .inline_flex or pn.cs.display == .grid or pn.cs.display == .inline_grid;
+        }
+        if (!atomic) return;
+        if (enable_floats) try p.flushFloats(marks[0]);
+        try p.flushText(marks[1]);
+        if (!root and !st) return;
+        try p.flushPos(&p.pos_q, marks[2]);
+        if (!root and !isContext(cs)) return;
+        // positive z-indexes: by z-index, tree order among equals
+        const zs = p.zpos_q.items[@min(marks[3], p.zpos_q.items.len)..];
+        var i: usize = 1;
+        while (i < zs.len) : (i += 1) {
+            const it = zs[i];
+            var j = i;
+            while (j > 0 and zs[j - 1].z > it.z) : (j -= 1) zs[j] = zs[j - 1];
+            zs[j] = it;
+        }
+        try p.flushPos(&p.zpos_q, marks[3]);
+    }
+
+    noinline fn flushText(p: *Painter, t0: usize) Error!void {
+        const f = p.f;
+        var i = t0;
+        while (i < p.text_q.items.len) : (i += 1) {
+            const q = p.text_q.items[i];
+            if (!q.text) {
+                try p.paintNode(q.id, q.ox, q.oy, &q.ctx, q.depth);
+                continue;
+            }
+            const n = &f.nodes.items[q.id];
+            const l = f.tree.layout(n.lid);
+            try ptext.paintText(p, &q.ctx, n, q.ox + l.border.left + l.padding.left, q.oy + l.border.top + l.padding.top, l.w - l.border.left - l.border.right - l.padding.left - l.padding.right);
+        }
+        p.text_q.items.len = @min(t0, p.text_q.items.len);
+    }
+
+    noinline fn flushPos(p: *Painter, list: *std.ArrayList(Queued), q0: usize) Error!void {
+        var i = q0;
+        while (i < list.items.len) : (i += 1) {
+            const q = list.items[i];
+            const saved = p.pos_now;
+            p.pos_now = q.id;
+            defer p.pos_now = saved;
+            try p.paintNode(q.id, q.ox, q.oy, &q.ctx, q.depth);
+        }
+        list.items.len = @min(q0, list.items.len);
     }
 
     noinline fn flushFloats(p: *Painter, q0: usize) Error!void {
