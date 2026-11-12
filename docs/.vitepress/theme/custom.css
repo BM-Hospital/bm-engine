@@ -1,18 +1,18 @@
 /* bm-engine docs theme tweaks */
 :root {
-  --vp-c-brand-1: #5b4bdb;
-  --vp-c-brand-2: #6f61e6;
-  --vp-c-brand-3: #5b4bdb;
-  --vp-c-brand-soft: rgba(91, 75, 219, 0.14);
+  --vp-c-brand-1: #008046;
+  --vp-c-brand-2: #00693a;
+  --vp-c-brand-3: #008046;
+  --vp-c-brand-soft: rgba(0, 128, 70, 0.14);
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #5b4bdb 20%, #e0569b);
+  --vp-home-hero-name-background: linear-gradient(120deg, #008046 20%, #2fbf7a);
 }
 .dark {
-  --vp-c-brand-1: #a197ff;
-  --vp-c-brand-2: #8b7dff;
-  --vp-c-brand-3: #6f61e6;
-  --vp-c-brand-soft: rgba(139, 125, 255, 0.16);
-  --vp-home-hero-name-background: linear-gradient(120deg, #a197ff 20%, #f07ab5);
+  --vp-c-brand-1: #3fcf8e;
+  --vp-c-brand-2: #63dba5;
+  --vp-c-brand-3: #008046;
+  --vp-c-brand-soft: rgba(63, 207, 142, 0.16);
+  --vp-home-hero-name-background: linear-gradient(120deg, #3fcf8e 20%, #a6f0cb);
 }
 
 /* Wide benchmark tables: scroll inside the table, never widen the page. */

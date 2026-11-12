@@ -31,6 +31,7 @@ let blobUrl = "";
 let renderSeq = 0;
 let renderCount = 0;
 let debounce = 0;
+let ready = false; // UI events before the saved state is in the form must not overwrite it
 
 const json = (o) => JSON.stringify(o);
 function saveLocal() {
@@ -401,11 +402,14 @@ function wire() {
   });
   $("template").addEventListener("change", (e) => { if (e.target.value) applyTemplate(e.target.value); else $("templateHint").hidden = true; });
   for (const b of document.querySelectorAll("#tabs button")) b.addEventListener("click", () => {
-    fromUI(); state.kind = b.dataset.kind; toUI(); persist(); scheduleRender(0);
+    if (!ready) return;
+    fromUI(); state.kind = b.dataset.kind;
+    if (!String(state[state.kind] ?? "").trim()) { const t = templates.find((x) => x.kind === state.kind); if (t) { applyTemplate(t.id); return; } }
+    toUI(); persist(); scheduleRender(0);
   });
-  const onEdit = () => { fromUI(); state.template = ""; $("template").value = ""; updateVisibility(); persist(); scheduleRender(); };
+  const onEdit = () => { if (!ready) return; fromUI(); state.template = ""; $("template").value = ""; updateVisibility(); persist(); scheduleRender(); };
   for (const id of ["src", "css"]) $(id).addEventListener("input", onEdit);
-  const onOpt = () => { fromUI(); updateVisibility(); persist(); scheduleRender(); };
+  const onOpt = () => { if (!ready) return; fromUI(); updateVisibility(); persist(); scheduleRender(); };
   for (const id of [...FIELDS, "format", "autoRender", "measureToggle"]) { $(id).addEventListener("input", onOpt); $(id).addEventListener("change", onOpt); }
   $("measureToggle").addEventListener("change", () => { if (!$("measureToggle").checked) $("overlay").hidden = true; scheduleRender(0); });
   for (const id of ["src", "css"]) $(id).addEventListener("keydown", (e) => {
@@ -454,16 +458,20 @@ async function main() {
   if (!fromHash && !local) {
     const t = templates[0]; state.kind = t.kind; state[t.kind] = t.source; state.width = t.width; state.height = t.height; state.template = t.id;
     for (const im of t.images ? t.images() : []) state.images.push({ ...im });
-  } else if (state.template && !state[state.kind]) {
-    const t = templates.find((x) => x.id === state.template); if (t) state[t.kind] = t.source;
   }
   if (!["json", "html", "tw"].includes(state.kind)) state.kind = "json";
+  // A saved state with an empty editor (older builds could store one) falls back to its template, else the default one.
+  if (!String(state[state.kind] ?? "").trim()) {
+    const t = templates.find((x) => x.id === state.template && x.kind === state.kind) || templates.find((x) => x.kind === state.kind) || templates[0];
+    state.kind = t.kind; state[t.kind] = t.source; state.template = t.id; if (!state.css) state.css = t.css || "";
+    for (const im of t.images ? t.images() : []) if (!state.images.some((x) => x.src === im.src)) state.images.push({ ...im });
+  }
 
   try {
     await loadEngine();
     await loadDefaultFonts();
   } catch (e) { setError("Failed to start the engine: " + (e.message || e)); document.body.dataset.ready = "error"; return; }
-  fillTemplateSelect(); toUI(); renderFontList(); renderImageList();
+  fillTemplateSelect(); toUI(); ready = true; renderFontList(); renderImageList();
   const t = templates.find((x) => x.id === state.template); if (t?.hint) { $("templateHint").hidden = false; $("templateHint").textContent = t.hint[getLang()]; }
   document.body.dataset.ready = "1";
   document.body.dataset.profile = profile;

@@ -148,7 +148,7 @@ export default defineConfig({
   ignoreDeadLinks: [/^https?:\/\/(localhost|127\.0\.0\.1)/],
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
-    ["meta", { name: "theme-color", content: "#5b4bdb" }],
+    ["meta", { name: "theme-color", content: "#008046" }],
   ],
   markdown: {
     anchor: { slugify: githubSlug },
