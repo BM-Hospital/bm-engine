@@ -13,13 +13,13 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
 
 ## Điểm nổi bật
 
-Đo so với `@takumi-rs/wasm` 2.20.0 trên 184 fixture dùng chung (Node 26, i3-10100; chi tiết ở
+Đo so với `@takumi-rs/wasm` 2.20.0 trên 200 fixture dùng chung (Node 26, i3-10100; chi tiết ở
 [docs/vi/benchmark.md](docs/vi/benchmark.md)):
 
-- **Nhỏ**: wasm `core` 428.5 KiB, `standard` 849.6 KiB, `full` 1 070.0 KiB (brotli 171 / 365 / 443 KiB),
-  so với 4 234.9 KiB của takumi — nhỏ hơn 9.9× / 5.0× / 4.0×. Module **không có import nào** (không
+- **Nhỏ**: wasm `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB (brotli 180 / 375 / 453 KiB),
+  so với 4 234.9 KiB của takumi — nhỏ hơn 9.3× / 4.8× / 3.9×. Module **không có import nào** (không
   WASI, không glue wasm-bindgen) và wrapper JS không có dependency.
-- **Đầu ra giống nhau**: 74 fixture trùng từng byte, 109 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
+- **Đầu ra giống nhau**: 74 fixture trùng từng byte, 126 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
   mép khử răng cưa), 1 fixture gần giống, 0 fixture khác. Layout của `measure()` khớp takumi tới 0.001 px.
 - **Nhanh**: render PNG mất 0.48× thời gian của takumi (trung bình nhân; nhanh hơn ở 175/175 ca), RGBA
   thô 0.65× (nhanh hơn ở 155/175 ca); cold start (init + font + PNG đầu tiên) 72 ms so với 187 ms; file
@@ -28,8 +28,8 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
   `Response` hoặc một `WebAssembly.Module` đã biên dịch sẵn.
 
 Chỗ còn thua: bộ nhớ tuyến tính wasm **lớn hơn 9 %** so với takumi sau 50 lần render (11.6 so với
-10.6 MiB); render thô chậm hơn ở nhóm `border-radius` (1.18×), `text-stroke` (1.58×), `svg-image`
-(1.55×) và `text-decoration` (1.07×). Xem [Tình trạng](#tình-trạng-và-hạn-chế).
+10.6 MiB); render thô chậm hơn ở nhóm `border-radius` (1.20×), `text-stroke` (1.61×), `svg-image`
+(1.46×) và `text-decoration` (1.10×). Xem [Tình trạng](#tình-trạng-và-hạn-chế).
 
 ## Cài đặt
 
@@ -82,9 +82,9 @@ initSync(wasm)`. Xem [Bắt đầu](docs/vi/getting-started.md) cho bundler, Wor
 
 | Profile | Import | wasm (thô / brotli) | Thêm |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 428.5 / 171.0 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
-| `standard` | `bm-engine/standard` | 849.6 / 364.5 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 070.0 / 442.8 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
+| `core` | `bm-engine/core` | 454.5 / 180.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
+| `standard` | `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 099.8 / 453.4 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
 
 Một add-on 84 KiB (`bm-engine/woff`) giúp `core` đọc được WOFF / WOFF2. `features` cho biết binary đang
 nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles-and-size.md).
@@ -111,9 +111,10 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
   không tải); hãy truyền bytes qua `images` và `registerFont`.
 - **Không có JSX, không có `ImageResponse`, không có PDF, không có binding native.** Chuyển JSX bằng
   `@takumi-rs/helpers`.
-- **Các thiếu sót layout đang được hoàn thiện trong 0.1.0** (xem [docs/BENCHMARK.md](docs/BENCHMARK.md)
-  để biết tình trạng cuối cùng): chữ chảy quanh float; phần tử inline nguyên khối ở giữa dòng và padding
-  của span inline.
+- **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; inline nguyên tử và padding của
+  span inline tham gia ngắt dòng). Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
+  block-in-inline, thứ tự vẽ float chỉ xấp xỉ, `text-wrap: balance` cạnh float hoặc inline nguyên tử, padding
+  theo % trên hộp inline (xem [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết)).
 - Chưa hỗ trợ: `display: contents`, list marker / counter, `writing-mode`, transform 3D,
   `clip-path: url()`, cú pháp màu tương đối, `animate-*` và các variant tương tác của Tailwind (giống
   takumi), `<text>` bên trong ảnh SVG và một số filter SVG.

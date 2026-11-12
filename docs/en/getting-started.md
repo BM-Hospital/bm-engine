@@ -218,9 +218,9 @@ WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await l
 
 | Profile | wasm raw / brotli | Pick it when |
 |:--|:--|:--|
-| `core` | 428.5 / 171.0 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
-| `standard` | 849.6 / 364.5 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
-| `full` | 1 070.0 / 442.8 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
+| `core` | 454.5 / 180.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
+| `standard` | 877.5 / 374.5 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
+| `full` | 1 099.8 / 453.4 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
 
 Details, and what a smaller profile does with input it cannot handle, are in
 [Profiles and size](profiles-and-size.md). At runtime `features` tells you what the loaded binary has:
@@ -327,9 +327,8 @@ const png = renderer.renderSync(
 
 - **Nothing is downloaded.** A URL is only a lookup key into `images`; an unknown key paints nothing
   and does not throw, like takumi's `render` without `prepare`. Fetch the bytes yourself.
-- **Node `Buffer` directly in `src`:** wrap it, `new Uint8Array(buffer)`, or put it into `images`. A
-  `Buffer` placed in `src` goes through `Buffer#toJSON` during serialisation and is not recognised as an
-  image in 0.1.0 (it paints nothing). Buffers in `images[].data` and `registerFont` work.
+- **Node `Buffer` directly in `src`:** works as is; wrapping it in `new Uint8Array(buffer)` is no longer
+  necessary. Buffers in `images[].data` and `registerFont` work too.
 - `images[].data` may be a function or a promise (lazy loading) with the async methods (`render`,
   `prepare`, ...); the sync methods throw `lazy images[].data() needs the async API`.
 - Only images the source actually references are copied into wasm memory.

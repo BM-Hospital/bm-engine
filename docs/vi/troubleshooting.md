@@ -62,7 +62,7 @@ Profile đang nạp không có tính năng đó. Các thông báo và profile nh
 | `this build has no WOFF/WOFF2 font support` | `standard`, hoặc `loadWoff()` từ `bm-engine/woff` |
 | `unsupported font format` (một file `.otf`) | `standard` (CFF) |
 | `invalid value for style property backgroundColor` với `oklch()` / `lab()` / `color-mix()` trên core | `standard` |
-| `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (trong 0.1.0 thông báo ghi "standard / full", nhưng chỉ `full` có các tính năng này) |
+| `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (thông báo ghi "use the full build") |
 
 Kiểm tra `features` khi khởi động, import profile lớn hơn (`bm-engine/standard`, `bm-engine/full`), hoặc
 xem [Profile và kích thước](profiles-and-size.md).
@@ -71,8 +71,7 @@ xem [Profile và kích thước](profiles-and-size.md).
 
 - **URL không bao giờ được tải về.** `src: "https://..."` chỉ dùng để tra một mục trong tùy chọn `images`.
   Hãy tự tải byte rồi truyền `images: [{ src: "https://...", data: bytes }]`.
-- **`Buffer` của Node truyền thẳng vào `src`** không được nhận diện trong 0.1.0 (nó bị tuần tự hoá qua
-  `Buffer#toJSON`). Dùng `src: new Uint8Array(buffer)` hoặc tùy chọn `images`.
+- **`Buffer` của Node truyền thẳng vào `src`** dùng được; không cần bọc `new Uint8Array(buffer)` (chuỗi URL vẫn cần tùy chọn `images`).
 - **SVG, WebP hoặc GIF trên `core`**: không được giải mã ở đó; dùng `standard`.
 - **WebP lossy hoặc nguồn ảnh động trên `standard`**: cần `full`.
 - **`images[].data` dạng lười với phương thức sync** sẽ ném lỗi `lazy images[].data() needs the async

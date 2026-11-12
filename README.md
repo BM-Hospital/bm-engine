@@ -13,23 +13,24 @@ Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNE
 
 ## Highlights
 
-Measured against `@takumi-rs/wasm` 2.20.0 on 184 shared fixtures (Node 26, i3-10100; details in
+Measured against `@takumi-rs/wasm` 2.20.0 on 200 shared fixtures (Node 26, i3-10100; details in
 [docs/en/benchmark.md](docs/en/benchmark.md)):
 
-- **Small**: `core` 428.5 KiB, `standard` 849.6 KiB, `full` 1 070.0 KiB of wasm (171 / 365 / 443 KiB
-  brotli), against 4 234.9 KiB for takumi — 9.9× / 5.0× / 4.0× smaller. The module has **no imports**
+- **Small**: `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB of wasm (180 / 375 / 453 KiB
+  brotli), against 4 234.9 KiB for takumi — 9.3× / 4.8× / 3.9× smaller. The module has **no imports**
   (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
-- **Same output**: 74 fixtures byte-identical, 109 equivalent (SSIM ≥ 0.99, differences at
-  anti-aliased edges), 1 close, 0 different. `measure()` layouts match takumi to 0.001 px.
-- **Fast**: PNG rendering 0.48× takumi's time (geometric mean; faster in 175/175 cases), raw RGBA
-  0.65× (faster in 155/175); cold start (init + font + first PNG) 72 ms vs 187 ms; PNG files 24 %
+- **Same output**: 74 fixtures byte-identical, 126 equivalent (SSIM ≥ 0.99, differences at
+  anti-aliased edges), 0 close, 0 different, 0 errors. `measure()` layouts match takumi to 0.001 px
+  (197/197 non-transform cases).
+- **Fast**: PNG rendering 0.49× takumi's time (geometric mean; faster in 191/191 cases), raw RGBA
+  0.68× (faster in 171/191); cold start (init + font + first PNG) 71 ms vs 178 ms; PNG files 22 %
   smaller.
 - **Synchronous or async**: every method has a `*Sync` twin; `init` / `initSync` accept bytes, URLs,
   `Response`s or a precompiled `WebAssembly.Module`.
 
 Where it still loses: wasm linear memory is **9 % larger** than takumi's after 50 renders (11.6 vs
-10.6 MiB); raw rendering is slower in the `border-radius` group (1.18×), `text-stroke` (1.58×),
-`svg-image` (1.55×) and `text-decoration` (1.07×). See [Status](#status-and-limitations).
+10.6 MiB); raw rendering is slower in the `border-radius` group (1.20×), `text-stroke` (1.61×),
+`svg-image` (1.46×) and `text-decoration` (1.10×). See [Status](#status-and-limitations).
 
 ## Install
 
@@ -82,9 +83,9 @@ initSync(wasm)`. See [Getting started](docs/en/getting-started.md) for bundlers,
 
 | Profile | Import | wasm (raw / brotli) | Adds |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 428.5 / 171.0 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
-| `standard` | `bm-engine/standard` | 849.6 / 364.5 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 070.0 / 442.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
+| `core` | `bm-engine/core` | 454.5 / 180.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
+| `standard` | `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 099.8 / 453.4 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
 
 An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the
 loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.md).
@@ -110,8 +111,10 @@ Version 0.1.0. What to know before adopting it:
 - **No network access.** Remote images and `@font-face` URLs are never fetched (`prepare()` does not
   fetch either); pass bytes through `images` and `registerFont`.
 - **No JSX, no `ImageResponse`, no PDF, no native binding.** Convert JSX with `@takumi-rs/helpers`.
-- **Layout gaps in progress in 0.1.0** (see [docs/BENCHMARK.md](docs/BENCHMARK.md) for the final status):
-  text flowing around floats; atomic inlines in the middle of a line and inline span padding.
+- **Inline layout is complete for common content** (text flows around floats; atomic inlines and inline
+  span padding take part in line breaking). Remaining gaps: RTL inline boxes around LTR text, line-clamp
+  around floats, block-in-inline, approximate float paint order, `text-wrap: balance` beside floats or
+  atomic inlines, percentage padding on inline boxes (see [CSS support → Known gaps](docs/en/css-support.md#known-gaps)).
 - Not supported: `display: contents`, list markers / counters, `writing-mode`, 3D transforms,
   `clip-path: url()`, relative colour syntax, Tailwind `animate-*` and interactive variants (as in
   takumi), `<text>` inside SVG images and some SVG filters.

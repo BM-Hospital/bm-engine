@@ -3,7 +3,7 @@
 [English](../en/profiles-and-size.md) · [Tiếng Việt](profiles-and-size.md)
 
 bm-engine được biên dịch thành ba binary với tập tính năng khác nhau để bạn chỉ phải tải những gì mình
-dùng: `core` (428.5 KiB), `standard` (849.6 KiB) và `full` (1 070.0 KiB), so với 4 234.9 KiB của bản wasm
+dùng: `core` (454.5 KiB), `standard` (877.5 KiB) và `full` (1 099.8 KiB), so với 4 234.9 KiB của bản wasm
 takumi 2.20. Trang này liệt kê nội dung từng profile, chi phí của từng tính năng tùy chọn, cách một
 profile nhỏ xử lý đầu vào nó không hỗ trợ, cách tự build bản riêng, và lý do chỉ có WOFF được tách thành
 add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 1024 byte.
@@ -12,9 +12,9 @@ add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 
 
 | Bản build | Gốc | gzip -9 | brotli (q11) | so với takumi (gốc) |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 428.5 KiB | 200.4 KiB | 171.0 KiB | nhỏ hơn 9.9× |
-| `standard` — `bm_engine.standard.wasm` | 849.6 KiB | 422.3 KiB | 364.5 KiB | nhỏ hơn 5.0× |
-| `full` — `bm_engine.wasm` | 1 070.0 KiB | 526.0 KiB | 442.8 KiB | nhỏ hơn 4.0× |
+| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | nhỏ hơn 9.3× |
+| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | nhỏ hơn 4.8× |
+| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | nhỏ hơn 3.9× |
 | Add-on WOFF — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
@@ -50,6 +50,8 @@ import gì từ môi trường chạy.
 | `renderSvg` (`renderSvg`) | | | ✓ |
 
 ## Chi phí biên của từng tính năng
+
+Bảng chi phí biên dưới đây được đo ở giai đoạn 2, trước công việc định dạng inline vốn thêm khoảng 26–30 KB cho mỗi profile.
 
 Tính bằng KB sau `wasm-opt`, đo theo hai cách: chỉ thêm tính năng đó vào `core` / chỉ bỏ nó khỏi `full`.
 
@@ -103,8 +105,7 @@ Kiểm tra bằng `bench/probe/profiles.mjs` trên cả ba binary (không đầu
 | `format: "ico"`, `renderSvg()`, `renderAnimation()` | ném lỗi `this build has no ... support` | giống core |
 
 Nếu đầu vào của bạn thay đổi, hãy kiểm tra `features` khi khởi động và chọn profile nhỏ nhất đáp ứng
-được. Lưu ý: trong 0.1.0, thông báo lỗi của `renderAnimation`, `renderSvg` và ICO trên `standard` vẫn
-ghi "use the standard / full build", dù chỉ `full` mới có các tính năng này.
+được. Thông báo lỗi của các tính năng chỉ có ở `full` (`renderSvg`, `renderAnimation`, ICO / codec phụ, font màu, chữ phức tạp) ghi "use the full build".
 
 ## Build tùy biến
 

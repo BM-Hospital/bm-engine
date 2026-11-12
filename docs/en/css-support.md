@@ -3,7 +3,7 @@
 [English](css-support.md) · [Tiếng Việt](../vi/css-support.md)
 
 What bm-engine 0.1.0 renders, which build profile each feature needs, and how closely the output matches
-takumi 2.20. "Status" comes from the equivalence benchmark (184 fixtures rendered by both engines and
+takumi 2.20. "Status" comes from the equivalence benchmark (200 fixtures rendered by both engines and
 compared pixel by pixel, plus per-module oracle tests; see [Benchmark](benchmark.md)):
 **identical** = byte-identical output, **equivalent** = SSIM ≥ 0.99 and ≤ 0.5 % of pixels differ (in
 practice: anti-aliasing at curved edges and glyph edges), **close** = SSIM ≥ 0.95, **partial** = works
@@ -47,7 +47,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | Feature | Min. profile | Status |
 |:--|:--|:--|
 | Block layout, margin collapsing, `flow-root` | core | identical / equivalent |
-| Inline formatting (text runs, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (4/4 fixtures); see [known gaps](#known-gaps) for atomic inlines mid-line and inline padding |
+| Inline formatting (text runs, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (atomic inlines take part in line breaking mid-line with every `vertical-align`; inline span padding / border / margin push text; per-span `white-space`, `<br>`, per-box struts; `inline-flow` / `inline-box-model` fixtures at SSIM ≥ 0.9999); see [known gaps](#known-gaps) |
 | Flexbox (direction, wrap, grow / shrink / basis, `gap`, alignment incl. `safe`, `order`, `-webkit-box`) | core | identical (5/5 fixtures) |
 | Grid: tracks, `repeat()` incl. `auto-fill` / `auto-fit`, `fr`, `minmax()`, auto-placement, spans | core | equivalent (4/4) |
 | Grid: named lines, `grid-template-areas`, `grid-area` | core | equivalent (3/3) |
@@ -56,7 +56,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | `aspect-ratio`, `min-*` / `max-*`, `fit-content` / `min-content` / `max-content`, logical sizes | core | identical (5/5 sizing fixtures) |
 | `overflow: hidden / clip` (incl. rounded clipping) | core | equivalent |
 | Tables (`display: table*`, auto / fixed layout, `colspan` / `rowspan` via HTML, `border-collapse`, `border-spacing`, captions, `empty-cells`) | standard | equivalent (8/8 fixtures; 339/352 layout oracle cases) |
-| Floats (`float`, `clear`) | standard | 138/138 layout oracle cases; text flowing around a float is in progress in 0.1.0 (see [known gaps](#known-gaps)) |
+| Floats (`float`, `clear`) | standard (`floats` flag; also `full`) | equivalent; 138/138 layout oracle cases; text flows around floats (line boxes shorten beside a float and re-widen below it, floats inside inline content, RTL; 7 `float-text` fixtures at SSIM ≥ 0.9999) |
 | `display: contents` | — | no: the element and its children are not rendered |
 | `display: list-item` | core | laid out as a block; no list marker |
 | Writing modes (`writing-mode`) | — | no: parsed, horizontal layout only |
@@ -124,7 +124,7 @@ On `core` the effect properties of this table that need `standard` are accepted 
 | `text-overflow: ellipsis` / custom string, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3) |
 | `text-decoration` (line, style incl. `wavy`, colour, thickness), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
 | `-webkit-text-stroke`, `-webkit-text-fill-color`, `paint-order` | core | equivalent (stroke may differ by 1 level) |
-| Inline boxes with background / border / padding, `box-decoration-break` | core | equivalent; horizontal padding / border of a span does not yet push the text (in progress in 0.1.0) |
+| Inline boxes with background / border / padding, `box-decoration-break` | core | equivalent; horizontal padding / border / margin of a span push the text (first / last fragment edges, `box-decoration-break: clone`) |
 | `text-wrap: balance` / `pretty` | standard | identical decisions to takumi (216/216) |
 | Synthetic bold / italic when the face is missing | core | equivalent |
 | `font-feature-settings`, `font-variant-*`, `font-kerning`, ligatures (GSUB 1–8, GPOS 1–9) | core | equivalent |
@@ -270,12 +270,14 @@ shaper in logical order (no reordering).
 
 As of 0.1.0 (see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status):
 
-- **Text around floats** — a paragraph next to a float keeps the narrow width for its whole height
-  instead of widening below the float (`layout2-float-wrap`, the only "close" fixture). In progress in
-  0.1.0.
-- **Atomic inlines mid-line and inline span padding** — text does not wrap around an `inline-block`
-  in the middle of a line; horizontal padding / border of an inline span does not push the following
-  text. In progress in 0.1.0.
+- **Inline layout (remaining gaps)** — RTL-direction inline boxes around LTR text put the start / end
+  edges on the wrong visual side, and box fragments are not split across bidi-reordered runs; RTL +
+  `white-space: pre-wrap` hanging spaces; line-clamp / `-webkit-box` around floats; block-in-inline (a
+  span containing a block) still blockifies the span; float paint order is approximate (floats paint
+  after the in-flow content of their stacking context); `text-wrap: balance / pretty` fall back to greedy
+  wrapping in paragraphs with inline boxes / atomic inlines or beside floats; percentage padding / margin
+  on inline boxes resolve to 0; a chain of nested inline-blocks is limited to about 255 levels (a clean
+  "nested too deeply" error), although plain nesting supports 512.
 - **Direction in flex layout** — `direction: rtl` / `dir: "rtl"` does not reverse the main axis of a
   flex row in 0.1.0 (takumi does).
 - Not supported: `display: contents`, list markers and counters, `writing-mode`, 3D transforms,

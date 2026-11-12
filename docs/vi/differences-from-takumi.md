@@ -4,8 +4,8 @@
 
 bm-engine là bản viết lại bằng Zig phần renderer của [takumi](https://github.com/kane50613/takumi) 2.20
 (`@takumi-rs/wasm`), không phải một bản fork: nó nhận cùng cây node, HTML, stylesheet, class Tailwind và
-tùy chọn render, và được phát triển với takumi làm oracle cho tới khi đầu ra khớp (184/184 fixture
-benchmark identical hoặc equivalent, một ca "close"). Trang này liệt kê những gì thay đổi khi chuyển từ
+tùy chọn render, và được phát triển với takumi làm oracle cho tới khi đầu ra khớp (200/200 fixture
+benchmark identical hoặc equivalent). Trang này liệt kê những gì thay đổi khi chuyển từ
 `@takumi-rs/wasm` hay `takumi-js` sang bm-engine, các khác biệt còn lại về API và kết quả render, và các
 hành vi của takumi mà bm-engine cố ý tái hiện.
 
@@ -77,7 +77,7 @@ Hàm `render(jsx, options)` cấp cao nhất của `takumi-js` tương ứng v�
 | Hạng mục | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / định dạng module | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, chỉ ESM (CommonJS qua `require(esm)`), chỉ WebAssembly — không có binding native |
-| Binary | một file wasm 4.2 MB | ba profile (428 KiB – 1.05 MiB) + add-on WOFF; `features` cho biết bản đang nạp |
+| Binary | một file wasm 4.2 MB | ba profile (454.5 KiB – 1.07 MiB) + add-on WOFF; `features` cho biết bản đang nạp |
 | Import của wasm | glue wasm-bindgen | không có |
 | API đồng bộ | các phương thức của wrapper đều async | mọi phương thức có bản `*Sync`; bản async resolve ngay |
 | `registerFont` | trả về `Promise<RegisteredFamily[]>` (wrapper) | trả về `RegisteredFamily[]` đồng bộ với byte / `{ data: bytes }`; chỉ trả `Promise` với URL và dữ liệu lười |
@@ -101,14 +101,15 @@ Lấy từ benchmark tương đương (xem [Benchmark](benchmark.md)); mọi th�
 trong mức nhiễu khử răng cưa.
 
 - **Khử răng cưa**: bm-engine port bộ quét siêu lấy mẫu 4×4 của tiny-skia và hàm `div_255` của takumi,
-  nên 74/184 fixture trùng từng byte. Số còn lại khác ở mép cong và mép glyph trong phạm vi một mẫu con
+  nên 74/200 fixture trùng từng byte. Số còn lại khác ở mép cong và mép glyph trong phạm vi một mẫu con
   (SSIM ≥ 0.99).
 - **Sai khác 1 mức**: phần trong của gradient (takumi cộng dồn `f32` theo từng span), viền nét đứt trên
   góc bo (lệch pha ~0.1 px), chữ bị xoay, `-webkit-text-stroke`.
-- **Chữ cạnh float**: đoạn văn giữ bề rộng hẹp cả ở phía dưới float (một fixture "close"). Đang hoàn
-  thiện trong 0.1.0; xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết trạng thái cuối cùng.
-- **Nội dung inline hỗn hợp**: chữ không ngắt dòng quanh `inline-block` giữa dòng; padding của span
-  inline không đẩy chữ. Đang hoàn thiện trong 0.1.0.
+- **Layout inline**: chữ chảy quanh float, inline nguyên tử và padding của span inline tham gia ngắt dòng,
+  equivalent với takumi trên mọi fixture. Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
+  block-in-inline, thứ tự vẽ float chỉ xấp xỉ, `text-wrap: balance / pretty` quay về ngắt dòng tham lam
+  cạnh float hoặc inline nguyên tử, padding theo % trên hộp inline
+  (xem [hạn chế đã biết](css-support.md#các-hạn-chế-đã-biết)).
 - **`direction: rtl` trên flex container** chưa đảo trục chính trong 0.1.0.
 - **`image-rendering: pixelated`** trên ảnh raster bị bỏ qua (luôn lấy mẫu lại mượt).
 - **Emoji màu**: bm-engine vẽ được font COLR v1 (takumi thì không); vài chuỗi ZWJ chưa được gộp và thứ tự

@@ -176,8 +176,7 @@ const fromHtml = r.renderSync("<div style='display:flex;width:100px;height:50px;
 ### `renderAsDataUrl` / `renderAsDataUrlSync`
 
 Same arguments as `render`. Returns `data:image/png;base64,...` (or `image/jpeg`, `image/webp`,
-`image/x-icon`). `format: "raw"` throws `bm-engine: renderAsDataUrl needs an encoded format` (so does
-the `"jpg"` alias in 0.1.0; use `"jpeg"`).
+`image/x-icon`). `format: "raw"` throws `bm-engine: renderAsDataUrl needs an encoded format` (`"jpg"` is accepted as an alias of `"jpeg"`).
 
 ### `renderSvg` / `renderSvgSync`
 

@@ -2,11 +2,11 @@
 
 [English](benchmark.md) · [Tiếng Việt](../vi/benchmark.md)
 
-An English summary of the phase-2 results in [docs/BENCHMARK.md](../BENCHMARK.md) (the full report, in
+An English summary of the final 0.1.0 results (phase 3, built on the phase-2 report) in [docs/BENCHMARK.md](../BENCHMARK.md) (the full report, in
 Vietnamese, with the phase-1 report kept below it), together with how to reproduce them. bm-engine
-(`full` profile) was compared with `@takumi-rs/wasm` 2.20.0 on 184 shared fixtures: every fixture is
-identical or equivalent to takumi except one "close" case; PNG rendering is faster in 175/175 timed
-cases, raw rendering in 155/175; cold start is 2.6× faster; the binaries are 4–10× smaller. bm-engine
+(`full` profile) was compared with `@takumi-rs/wasm` 2.20.0 on 200 shared fixtures: every fixture is
+identical (74) or equivalent (126) to takumi, with 0 close, 0 different and 0 errors; PNG rendering is faster in 191/191 timed
+cases, raw rendering in 171/191; cold start is 2.5× faster; the binaries are 4–9× smaller. bm-engine
 still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Per-fixture numbers:
 [RESULTS_FULL.md](../RESULTS_FULL.md) and [results.json](../results.json).
 
@@ -15,7 +15,7 @@ still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Pe
 - Intel Core i3-10100 @ 3.6 GHz (8 threads), 7.8 GB RAM, Windows 11, Node 26.13.0, 2026-11-12.
 - Reference: `@takumi-rs/wasm` 2.20.0 (the official wasm build) and `@takumi-rs/core` 2.20.0 (native,
   for the noise floor only).
-- 184 fixtures in `bench/fixtures/` (87 from phase 1 + 97 for the features ported in phase 2), the same
+- 200 fixtures in `bench/fixtures/` (87 from phase 1 + 97 for the features ported in phase 2 + 16 inline-layout fixtures in phase 3), the same
   node trees and the same 9 static TTF fonts (Inter, Noto Sans, Roboto) registered identically in every
   engine.
 - Timing: median of ≥ 20 iterations and ≥ 300 ms after 3 warm-up renders, engines interleaved per case.
@@ -28,39 +28,40 @@ still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Pe
 
 ## Headline numbers
 
-| Metric | takumi-wasm | bm phase 1 | bm phase 2 (`full`) |
-|:--|--:|--:|--:|
-| Equivalence over all fixtures | — | 78 cases: 9 identical / 69 equivalent (+ 9 "gap" cases: 5 different, 1 error) | **184 cases: 74 identical / 109 equivalent / 1 close / 0 different / 0 errors** |
-| `raw` render, geometric mean | 1.09 ms (175 cases) | 0.61× takumi (78 cases) | **0.65×** (faster in 155/175) |
-| `png` render, geometric mean | 3.41 ms | 0.72× | **0.48×** (faster in **175/175**) |
-| PNG file size, geometric mean | 1.00 | 0.75 | 0.76 |
-| Cold start (init + font + first og-card PNG) | 186.9 ms | 79.5 ms | **72.1 ms** |
-| wasm memory after 50 og-card PNG renders | 10.6 MiB | 11.9 MiB (+12 %) | 11.6 MiB (**+9 %**) |
-| Peak process RSS | 99.4 MiB | 77.2 MiB | 88.6 MiB |
-| Maximum tree depth | 512 | 128 | **512** |
+| Metric | takumi-wasm | bm phase 1 | bm phase 2 (`full`) | bm final 0.1.0 (`full`) |
+|:--|--:|--:|--:|--:|
+| Equivalence over all fixtures | — | 78 cases: 9 identical / 69 equivalent (+ 9 "gap" cases: 5 different, 1 error) | 184 cases: 74 / 109 / 1 close / 0 / 0 | **200 cases: 74 identical / 126 equivalent / 0 close / 0 different / 0 errors** |
+| `raw` render, geometric mean | 1.02 ms (191 cases) | 0.61× takumi (78 cases) | 0.65× (faster in 155/175) | **0.68×** (0.69 ms; faster in 171/191) |
+| `png` render, geometric mean | 3.26 ms | 0.72× | 0.48× (faster in 175/175) | **0.49×** (1.59 ms; faster in **191/191**) |
+| PNG file size, geometric mean | 1.00 | 0.75 | 0.76 | 0.78 |
+| Cold start (init + font + first og-card PNG) | 178.4 ms (native 43.8 ms) | 79.5 ms | 72.1 ms | **70.8 ms** |
+| wasm memory after 50 og-card PNG renders | 10.6 MiB | 11.9 MiB (+12 %) | 11.6 MiB (+9 %) | 11.6 MiB (**+9 %**) |
+| Peak process RSS | 107.9 MiB | 77.2 MiB | 88.6 MiB | 89.1 MiB |
+| Maximum tree depth | 512 | 128 | 512 | **512** |
 
 ## Binary size
 
 | Build | Raw | gzip -9 | brotli | vs. takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 428.5 KiB | 200.4 KiB | 171.0 KiB | 9.9× smaller |
-| `standard` | 849.6 KiB | 422.3 KiB | 364.5 KiB | 5.0× smaller |
-| `full` | 1 070.0 KiB | 526.0 KiB | 442.8 KiB | 4.0× smaller |
+| `core` | 454.5 KiB | 211.5 KiB | 180.3 KiB | 9.3× smaller |
+| `standard` | 877.5 KiB | 435.2 KiB | 374.5 KiB | 4.8× smaller |
+| `full` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | 3.9× smaller |
 | WOFF add-on | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | phase 1 (single build) | 320.9 KiB | 147.1 KiB | 126.5 KiB | 13.2× smaller |
 
-Per-feature costs: [Profiles and size](profiles-and-size.md#marginal-cost-per-feature).
+Phase-2 sizes were 428.5 / 849.6 / 1 070.0 KiB (9.9× / 5.0× / 4.0× smaller); the inline-formatting work added about 26–30 KB to every profile.
+Per-feature costs (measured in phase 2): [Profiles and size](profiles-and-size.md#marginal-cost-per-feature).
 
 ## Where bm-engine still loses
 
 - **wasm memory: +9 %** (11.6 vs 10.6 MiB after 50 og-card renders). The remainder is rasterizer
   scratch buffers, canvas-sized layers and 64 KiB page-granular allocation.
-- **`border-radius` group, raw: 1.18×** takumi (1.00 vs 0.85 ms). The rasterizer itself was fixed
+- **`border-radius` group, raw: 1.20×** takumi (1.18× in the phase-2 run: 1.00 vs 0.85 ms). The rasterizer itself was fixed
   (large ellipse 0.97 → 0.43 ms); what is left is fixed per-frame cost (canvas clear, un-premultiply,
   copying 3 MB to JS).
-- **`text-stroke` raw 1.58×** and **`svg-image` raw 1.55×** (stroker and SVG paths not optimised yet);
-  **`text-decoration` raw 1.07×**.
-- Peak RSS grew from phase 1 (77 → 89 MiB) but stays below takumi (99 MiB).
+- **`text-stroke` raw 1.61×** and **`svg-image` raw 1.46×** (stroker and SVG paths not optimised yet);
+  **`text-decoration` raw 1.10×**.
+- Peak RSS grew from phase 1 (77 → 89 MiB) but stays below takumi-wasm (107.9 MiB).
 
 ## Phase-1 losses and what was done
 
@@ -87,14 +88,14 @@ Per-feature costs: [Profiles and size](profiles-and-size.md#marginal-cost-per-fe
 | Colour emoji: COLR v0/v1, CBDT, sbix | SSIM ≥ 0.991 (compared with Chrome: takumi cannot draw COLR v1) |
 | SVG images (own parser + renderer) | 397/422 of takumi's SVGs identical/equivalent, mean SSIM 0.9956; 3–10× faster |
 | `renderSvg` | both engines' SVGs rasterised with the same rasterizer: 175/179 fixtures identical/equivalent |
-| Tables, floats, inline-block, named grid areas, depth 512 | layout: 339/352 tables, 138/138 floats, 168/179 inline; 19 fixtures: 18 identical/equivalent, 1 close |
+| Tables, floats, inline-block, named grid areas, depth 512 | layout: 339/352 tables, 138/138 floats, 168/179 inline; 19 fixtures: 18 identical/equivalent, 1 close (phase 2; `layout2-float-wrap` is now equivalent) |
 | Dashed / dotted / double / groove / ridge / inset / outset borders, outline | 5 fixtures: 1 identical, 4 equivalent |
 | clip-path, mask-image, blend modes, `background-clip: text`, drop-shadow, backdrop-filter, text-stroke, text decorations, inline boxes | 12 fixtures: 6 identical, 6 equivalent |
 | CSS animations at `timeMs`, `renderAnimation` (WebP / APNG / GIF) | 42 fixtures: 32 identical, 10 equivalent; frame counts and delays exact |
 | Lossy WebP (VP8), animated GIF / APNG / WebP, ICO | VP8 bit-exact with libwebp; animated frames match `anim_dump` |
 | Real browser (headless Edge 157) | 78/78 raw renders byte-identical to Node; PNG / WebP / JPEG decode correctly in the browser |
 
-## Per-feature timing (phase 2, `full`)
+## Per-feature timing (phase 2 run, `full`)
 
 Geometric means of medians in ms; ratio < 1 means bm-engine is faster. Equivalence column:
 identical / equivalent / close / different / error.
@@ -166,9 +167,17 @@ PNG / WebP / JPEG decodes correct, 0 console errors, streaming compile + instant
 ## Remaining gaps
 
 See [CSS support → Known gaps](css-support.md#known-gaps) and
-[Differences from takumi](differences-from-takumi.md). The two layout gaps (text flowing around floats;
-atomic inlines mid-line and inline span padding) are in progress in 0.1.0 — see
-[docs/BENCHMARK.md](../BENCHMARK.md) for their final status.
+[Differences from takumi](differences-from-takumi.md). The two layout gaps that were open in phase 2 are done in phase 3: text flows around floats, and atomic inlines
+(`inline-block` / `inline-flex` / `inline-grid` / inline images, all `vertical-align` values), inline span
+padding / border / margin, per-span `white-space`, `<br>` and per-box struts take part in real inline formatting.
+New fixtures `float-text` (7), `inline-flow` (5) and `inline-box-model` (4) are all equivalent to takumi (SSIM ≥ 0.9999),
+and the measure-tree gate matches takumi within 0.001 px on 197/197 non-transform cases.
+Remaining inline gaps: RTL inline boxes around LTR text (edges on the wrong visual side; fragments not split across
+bidi runs), RTL + `pre-wrap` hanging spaces, line-clamp / `-webkit-box` around floats, block-in-inline, approximate float
+paint order, `text-wrap: balance / pretty` falling back to greedy wrapping with inline boxes or beside floats,
+percentage padding / margin on inline boxes (0), and about 255 levels of chained nested inline-blocks
+(clean "nested too deeply" error; plain nesting supports 512).
+Package: the final `npm pack` has 28 files (1 293.8 KiB packed, 2 655.8 KiB unpacked); `npm run test:pack` passes 15/15; 402/402 unit tests pass.
 
 ## Reproducing
 

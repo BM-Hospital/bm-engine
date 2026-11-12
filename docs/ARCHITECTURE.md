@@ -9,7 +9,7 @@ by both engines and compared.
 
 | | takumi 2.20 (`@takumi-rs/wasm`) | bm-engine target |
 |---|---|---|
-| `.wasm` size | 4.34 MB (4 235 KiB) | phase 1: 321 KiB (one build). Phase 2: **core 428.5 KiB, standard 849.6 KiB, full 1 070.0 KiB** (+ 84.2 KiB WOFF add-on) |
+| `.wasm` size | 4.34 MB (4 235 KiB) | phase 1: 321 KiB (one build). Phase 2 / final 0.1.0 (after wasm-opt): **core 454.5 KiB, standard 877.5 KiB, full 1 099.8 KiB** (+ 84.2 KiB WOFF add-on) |
 | JS glue | ~38 KB + wasm-bindgen marshalling | dependency-free ESM (`js/engine.mjs` + small entry files) |
 | Imports from host | wasm-bindgen shims (dozens) | **none** (pure computation; no WASI) |
 | Init | async fetch/instantiate | sync or async, no start function |
@@ -22,9 +22,9 @@ Phase 2 ported the rest of takumi's renderer except PDF. Optional features are c
 
 | Profile | Size (wasm-opt -Oz) | Contents |
 |:--|--:|:--|
-| core | 428.5 KiB | node JSON + inline styles, var() / calc(), block / inline / flex / grid / absolute, static TTF / TTC + default OpenType shaper, every border style, outline, text decorations, PNG / JPEG in, PNG / JPEG / WebP / raw out |
-| standard | 849.6 KiB | core + stylesheets / selectors (`css`), Tailwind (`tw`), HTML, SVG images, WOFF / WOFF2, variable fonts, CFF, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables, floats, WebP / GIF in, text-wrap balance |
-| full | 1 070.0 KiB | standard + complex text (bidi, Arabic, Hebrew, Indic, Thai), colour emoji, animations + renderAnimation, lossy WebP / animated codecs / ICO, renderSvg |
+| core | 454.5 KiB | node JSON + inline styles, var() / calc(), block / inline / flex / grid / absolute, static TTF / TTC + default OpenType shaper, every border style, outline, text decorations, PNG / JPEG in, PNG / JPEG / WebP / raw out |
+| standard | 877.5 KiB | core + stylesheets / selectors (`css`), Tailwind (`tw`), HTML, SVG images, WOFF / WOFF2, variable fonts, CFF, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables, floats, WebP / GIF in, text-wrap balance |
+| full | 1 099.8 KiB | standard + complex text (bidi, Arabic, Hebrew, Indic, Thai), colour emoji, animations + renderAnimation, lossy WebP / animated codecs / ICO, renderSvg |
 
 `bm_features()` exports the flag bits; the JS wrapper exposes them as `features`. The WOFF decoder is
 also built as a separate add-on module (`src/addon_woff.zig` → `bm_woff.wasm`). User-facing details:

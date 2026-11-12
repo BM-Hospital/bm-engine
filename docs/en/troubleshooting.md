@@ -62,7 +62,7 @@ The loaded profile does not contain the feature. Messages and the smallest profi
 | `this build has no WOFF/WOFF2 font support` | `standard`, or `loadWoff()` from `bm-engine/woff` |
 | `unsupported font format` (an `.otf`) | `standard` (CFF) |
 | `invalid value for style property backgroundColor` with `oklch()` / `lab()` / `color-mix()` on core | `standard` |
-| `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (the message says "standard / full" in 0.1.0, but only `full` has these) |
+| `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (the message says "use the full build") |
 
 Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-engine/full`), or see
 [Profiles and size](profiles-and-size.md).
@@ -71,8 +71,7 @@ Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-
 
 - **A URL is never downloaded.** `src: "https://..."` only looks up an entry of the `images` option.
   Fetch the bytes yourself and pass `images: [{ src: "https://...", data: bytes }]`.
-- **Node `Buffer` passed directly as `src`** is not recognised in 0.1.0 (it is serialised through
-  `Buffer#toJSON`). Use `src: new Uint8Array(buffer)` or the `images` option.
+- **Node `Buffer` passed directly as `src`** works; no `new Uint8Array(buffer)` wrapper is needed (a URL string still needs the `images` option).
 - **SVG, WebP or GIF on `core`**: not decoded there; use `standard`.
 - **Lossy WebP or animated sources on `standard`**: need `full`.
 - **Lazy `images[].data` with a sync method** throws `lazy images[].data() needs the async API`; use

@@ -4,8 +4,8 @@
 
 bm-engine is a Zig re-implementation of [takumi](https://github.com/kane50613/takumi) 2.20's renderer
 (`@takumi-rs/wasm`), not a fork: it accepts the same node trees, HTML, stylesheets, Tailwind classes
-and render options, and was developed against takumi as an oracle until outputs matched (184/184
-benchmark fixtures identical or equivalent, one "close"). This page lists what changes when you move
+and render options, and was developed against takumi as an oracle until outputs matched (200/200
+benchmark fixtures identical or equivalent). This page lists what changes when you move
 from `@takumi-rs/wasm` or `takumi-js` to bm-engine, the API and rendering differences that remain, and
 the takumi behaviours bm-engine deliberately reproduces.
 
@@ -77,7 +77,7 @@ after converting the JSX with `fromJsx` (see step 5).
 | Area | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / module format | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, ESM only (CommonJS via `require(esm)`), WebAssembly only — no native binding |
-| Binary | one 4.2 MB wasm | three profiles (428 KiB – 1.05 MiB) + WOFF add-on; `features` reports the loaded one |
+| Binary | one 4.2 MB wasm | three profiles (454.5 KiB – 1.07 MiB) + WOFF add-on; `features` reports the loaded one |
 | Wasm imports | wasm-bindgen glue | none |
 | Sync API | wrapper methods are async | every method has a `*Sync` twin; async methods resolve immediately |
 | `registerFont` | returns `Promise<RegisteredFamily[]>` (wrapper) | returns `RegisteredFamily[]` synchronously for bytes / `{ data: bytes }`; a `Promise` only for URLs and lazy data |
@@ -101,14 +101,15 @@ From the equivalence benchmark (see [Benchmark](benchmark.md)); everything else 
 within anti-aliasing noise.
 
 - **Anti-aliasing**: bm-engine ports tiny-skia's 4×4 supersampling scan converter and takumi's
-  `div_255`, so 74/184 fixtures are byte-identical. The rest differ at curved edges and glyph edges by a
+  `div_255`, so 74/200 fixtures are byte-identical. The rest differ at curved edges and glyph edges by a
   sub-sample (SSIM ≥ 0.99).
 - **One-level differences**: gradient interiors (takumi accumulates `f32` per span), dashed borders on
   rounded corners (~0.1 px phase), rotated text, `-webkit-text-stroke`.
-- **Text next to floats**: the paragraph keeps the narrow width below the float (one "close" fixture).
-  In progress in 0.1.0; see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status.
-- **Mixed inline content**: no wrapping around an `inline-block` mid-line; inline span padding does not
-  push text. In progress in 0.1.0.
+- **Inline layout**: text flows around floats, and atomic inlines and inline span padding take part in
+  line breaking, equivalent to takumi on all fixtures. Remaining gaps: RTL inline boxes around LTR text,
+  line-clamp around floats, block-in-inline, approximate float paint order, `text-wrap: balance / pretty`
+  falling back to greedy wrapping beside floats or atomic inlines, percentage padding on inline boxes
+  (see [known gaps](css-support.md#known-gaps)).
 - **`direction: rtl` on flex containers** does not reverse the main axis in 0.1.0.
 - **`image-rendering: pixelated`** on raster images is ignored (smooth resampling).
 - **Colour emoji**: bm-engine draws COLR v1 fonts (takumi does not); some ZWJ sequences are not merged

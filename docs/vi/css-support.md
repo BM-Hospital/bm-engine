@@ -3,7 +3,7 @@
 [English](../en/css-support.md) · [Tiếng Việt](css-support.md)
 
 Trang này cho biết bm-engine 0.1.0 vẽ được những gì, mỗi tính năng cần profile build nào, và đầu ra
-khớp với takumi 2.20 tới mức nào. Cột "Trạng thái" lấy từ benchmark tương đương (184 fixture được cả hai
+khớp với takumi 2.20 tới mức nào. Cột "Trạng thái" lấy từ benchmark tương đương (200 fixture được cả hai
 engine render rồi so từng điểm ảnh, cộng thêm các phép thử oracle theo từng module; xem
 [Benchmark](benchmark.md)): **identical** (trùng từng byte), **equivalent** (tương đương: SSIM ≥ 0.99
 và ≤ 0.5 % điểm ảnh khác — trên thực tế là khác biệt khử răng cưa ở mép cong và mép glyph),
@@ -48,7 +48,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | Tính năng | Profile tối thiểu | Trạng thái |
 |:--|:--|:--|
 | Block layout, gộp margin (margin collapsing), `flow-root` | core | identical / equivalent |
-| Định dạng inline (dòng chữ, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (4/4 fixture); xem [hạn chế đã biết](#các-hạn-chế-đã-biết) về hộp inline nguyên khối giữa dòng và padding inline |
+| Định dạng inline (dòng chữ, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (inline nguyên tử tham gia ngắt dòng giữa dòng với mọi `vertical-align`; padding / viền / margin ngang của span đẩy chữ; `white-space` theo từng span, `<br>`, strut theo từng hộp; fixture `inline-flow` / `inline-box-model` đạt SSIM ≥ 0.9999); xem [hạn chế đã biết](#các-hạn-chế-đã-biết) |
 | Flexbox (direction, wrap, grow / shrink / basis, `gap`, căn chỉnh kể cả `safe`, `order`, `-webkit-box`) | core | identical (5/5 fixture) |
 | Grid: track, `repeat()` kể cả `auto-fill` / `auto-fit`, `fr`, `minmax()`, tự xếp chỗ, span | core | equivalent (4/4) |
 | Grid: đường lưới đặt tên, `grid-template-areas`, `grid-area` | core | equivalent (3/3) |
@@ -57,7 +57,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | `aspect-ratio`, `min-*` / `max-*`, `fit-content` / `min-content` / `max-content`, kích thước logic | core | identical (5/5 fixture sizing) |
 | `overflow: hidden / clip` (kể cả cắt theo góc bo) | core | equivalent |
 | Bảng (`display: table*`, layout auto / fixed, `colspan` / `rowspan` qua HTML, `border-collapse`, `border-spacing`, caption, `empty-cells`) | standard | equivalent (8/8 fixture; 339/352 ca oracle layout) |
-| Float (`float`, `clear`) | standard | 138/138 ca oracle layout; chữ chảy quanh float đang được hoàn thiện trong 0.1.0 (xem [hạn chế đã biết](#các-hạn-chế-đã-biết)) |
+| Float (`float`, `clear`) | standard (cờ `floats`; cả `full`) | equivalent; 138/138 ca oracle layout; chữ chảy quanh float (hộp dòng ngắn lại cạnh float và nở lại bên dưới, float trong nội dung inline, RTL; 7 fixture `float-text` đạt SSIM ≥ 0.9999) |
 | `display: contents` | — | không: phần tử và các con của nó không được vẽ |
 | `display: list-item` | core | layout như block; không có ký hiệu đầu dòng (list marker) |
 | Chế độ viết (`writing-mode`) | — | không: parse được, chỉ layout theo chiều ngang |
@@ -125,7 +125,7 @@ Trên `core`, các thuộc tính hiệu ứng cần `standard` trong bảng này
 | `text-overflow: ellipsis` / chuỗi tùy ý, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3) |
 | `text-decoration` (line, style kể cả `wavy`, màu, độ dày), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
 | `-webkit-text-stroke`, `-webkit-text-fill-color`, `paint-order` | core | equivalent (nét viền có thể lệch 1 mức) |
-| Hộp inline có nền / viền / padding, `box-decoration-break` | core | equivalent; padding / viền ngang của span chưa đẩy chữ đi (đang hoàn thiện trong 0.1.0) |
+| Hộp inline có nền / viền / padding, `box-decoration-break` | core | equivalent; padding / viền / margin ngang của span đẩy chữ (mép fragment đầu / cuối, `box-decoration-break: clone`) |
 | `text-wrap: balance` / `pretty` | standard | quyết định ngắt dòng trùng takumi (216/216) |
 | Tự tạo đậm / nghiêng (synthetic) khi thiếu face | core | equivalent |
 | `font-feature-settings`, `font-variant-*`, `font-kerning`, ligature (GSUB 1–8, GPOS 1–9) | core | equivalent |
@@ -272,11 +272,13 @@ theo thứ tự logic (không sắp xếp lại).
 
 Tình trạng ở 0.1.0 (xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết trạng thái cuối cùng):
 
-- **Chữ quanh float** — đoạn văn cạnh một float giữ bề rộng hẹp suốt chiều cao thay vì nở rộng ra bên
-  dưới float (`layout2-float-wrap`, fixture "close" duy nhất). Đang hoàn thiện trong 0.1.0.
-- **Hộp inline nguyên khối giữa dòng và padding của span inline** — chữ không ngắt dòng quanh một
-  `inline-block` nằm giữa dòng; padding / viền ngang của span inline không đẩy phần chữ phía sau. Đang
-  hoàn thiện trong 0.1.0.
+- **Layout inline (hạn chế còn lại)** — hộp inline hướng RTL bao quanh chữ LTR đặt mép start / end sai phía
+  thị giác, và fragment của hộp chưa được tách qua các đoạn bidi bị sắp xếp lại; khoảng trắng treo của RTL +
+  `white-space: pre-wrap`; line-clamp / `-webkit-box` quanh float; block-in-inline (span chứa block) vẫn biến
+  span thành block; thứ tự vẽ float chỉ xấp xỉ (float vẽ sau nội dung in-flow của stacking context);
+  `text-wrap: balance / pretty` quay về ngắt dòng tham lam trong đoạn có hộp inline / inline nguyên tử hoặc
+  cạnh float; padding / margin theo % trên hộp inline được tính bằng 0; chuỗi inline-block lồng nhau giới hạn
+  khoảng 255 cấp (lỗi "nested too deeply" rõ ràng), trong khi lồng thường hỗ trợ 512.
 - **Hướng chữ trong flex layout** — `direction: rtl` / `dir: "rtl"` chưa đảo trục chính của hàng flex
   trong 0.1.0 (takumi có đảo).
 - Chưa hỗ trợ: `display: contents`, ký hiệu đầu dòng và counter, `writing-mode`, transform 3D,

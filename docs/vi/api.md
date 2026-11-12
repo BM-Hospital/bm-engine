@@ -178,8 +178,7 @@ const fromHtml = r.renderSync("<div style='display:flex;width:100px;height:50px;
 ### `renderAsDataUrl` / `renderAsDataUrlSync`
 
 Đối số giống `render`. Trả về `data:image/png;base64,...` (hoặc `image/jpeg`, `image/webp`,
-`image/x-icon`). `format: "raw"` ném `bm-engine: renderAsDataUrl needs an encoded format` (bí danh
-`"jpg"` cũng vậy trong 0.1.0; hãy dùng `"jpeg"`).
+`image/x-icon`). `format: "raw"` ném `bm-engine: renderAsDataUrl needs an encoded format` (`"jpg"` được chấp nhận như bí danh của `"jpeg"`).
 
 ### `renderSvg` / `renderSvgSync`
 

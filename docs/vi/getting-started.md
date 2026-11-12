@@ -218,9 +218,9 @@ của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.w
 
 | Profile | wasm thô / brotli | Chọn khi |
 |:--|:--|:--|
-| `core` | 428.5 / 171.0 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
-| `standard` | 849.6 / 364.5 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
-| `full` | 1 070.0 / 442.8 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
+| `core` | 454.5 / 180.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
+| `standard` | 877.5 / 374.5 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
+| `full` | 1 099.8 / 453.4 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
 
 Chi tiết, kể cả việc profile nhỏ xử lý ra sao với đầu vào nó không hỗ trợ, nằm ở
 [Profile và kích thước](profiles-and-size.md). Lúc chạy, `features` cho biết binary đang nạp có gì:
@@ -327,9 +327,8 @@ const png = renderer.renderSync(
 
 - **Không có gì được tải về.** URL chỉ là khoá để tra trong `images`; khoá không tồn tại thì không vẽ gì
   và không ném lỗi, giống `render` của takumi khi không qua `prepare`. Bạn tự tải bytes.
-- **`Buffer` của Node đặt trực tiếp vào `src`:** hãy bọc lại bằng `new Uint8Array(buffer)`, hoặc đưa vào
-  `images`. Một `Buffer` đặt trong `src` sẽ đi qua `Buffer#toJSON` khi tuần tự hoá và không được nhận ra
-  là ảnh trong 0.1.0 (không vẽ gì). Buffer trong `images[].data` và `registerFont` thì dùng bình thường.
+- **`Buffer` của Node đặt trực tiếp vào `src`:** dùng được luôn; không còn cần bọc bằng
+  `new Uint8Array(buffer)`. Buffer trong `images[].data` và `registerFont` cũng dùng bình thường.
 - `images[].data` có thể là hàm hoặc promise (nạp lười) khi dùng các method async (`render`,
   `prepare`, ...); các method sync sẽ ném `lazy images[].data() needs the async API`.
 - Chỉ những ảnh mà nguồn thực sự tham chiếu tới mới được chép vào bộ nhớ wasm.

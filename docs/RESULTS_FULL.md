@@ -1,6 +1,6 @@
 # bm-engine vs takumi — benchmark & equivalence results
 
-- Date: 2026-11-11T21:14:49.188Z  |  Node v26.13.0  |  win32 10.0.26200 x64
+- Date: 2026-11-11T23:59:23.163Z  |  Node v26.13.0  |  win32 10.0.26200 x64
 - CPU: Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz (8 logical)  |  RAM 7.8 GB
 - Command: `node run.mjs `  |  iterations: >=20 and >=300ms (cap 2000ms), 3 warm-up
 - Engines: takumi-wasm = available, takumi-native = available, bm = available
@@ -14,28 +14,28 @@
 | takumi-wasm | JS glue (dist/export.mjs) | 37.5 KiB | 10.0 KiB | 8.8 KiB |
 | takumi-native | binary (.node addon) | 9796.0 KiB | 4257.9 KiB | 3201.3 KiB |
 | takumi-native | JS glue (dist/export.mjs) | 43.5 KiB | 7.4 KiB | 6.5 KiB |
-| bm | binary (zig-out/bin/bm_engine.wasm) | 1070.0 KiB | 526.0 KiB | 442.8 KiB |
-| bm | JS glue (js/index.mjs + js/node.mjs) | 23.7 KiB | 7.8 KiB | 6.9 KiB |
+| bm | binary (zig-out/bin/bm_engine.wasm) | 1099.8 KiB | 538.2 KiB | 453.4 KiB |
+| bm | JS glue (js/engine.mjs + js/index.mjs + js/node.mjs) | 29.2 KiB | 9.5 KiB | 8.3 KiB |
 
 ## Cold start (fresh `node` process, median of runs)
 
 | engine | runs | wasm compile+instantiate (native: addon load) ms | register Inter-Regular ms | first render (og-card, png) ms | total ms |
 | :-- | --: | --: | --: | --: | --: |
-| takumi-wasm | 7 | 33.59 | 3.67 | 150.20 | 186.86 |
-| takumi-native | 7 | 22.78 | 1.62 | 19.84 | 44.16 |
-| bm | 7 | 4.88 | 2.95 | 63.95 | 72.06 |
+| takumi-wasm | 7 | 33.01 | 3.55 | 141.43 | 178.38 |
+| takumi-native | 7 | 21.83 | 1.61 | 20.15 | 43.77 |
+| bm | 7 | 5.11 | 2.69 | 63.11 | 70.77 |
 
 ## Memory (child process: all fonts, 50 og-card PNG renders)
 
 | engine | peak RSS (maxRSS) | wasm linear memory after init+fonts | wasm linear memory after 50 renders |
 | :-- | --: | --: | --: |
-| takumi-wasm | 99.4 MiB | 6.3 MiB | 10.6 MiB |
-| takumi-native | 82.7 MiB | – | – |
-| bm | 88.6 MiB | 6.4 MiB | 11.6 MiB |
+| takumi-wasm | 107.9 MiB | 6.3 MiB | 10.6 MiB |
+| takumi-native | 82.1 MiB | – | – |
+| bm | 89.1 MiB | 6.4 MiB | 11.6 MiB |
 
 Bare `node` baseline peak RSS: 44.6 MiB.
 
-Wasm linear memory at end of the full case run (largest instance): takumi-wasm 67.6 MiB, bm 69.9 MiB.
+Wasm linear memory at end of the full case run (largest instance): takumi-wasm 66.4 MiB, bm 69.9 MiB.
 
 ## Output equivalence (reference = takumi-wasm, `format: raw`)
 
@@ -45,8 +45,8 @@ Verdict rules: **identical** = 0 differing bytes; **equivalent** = SSIM >= 0.99 
 
 | candidate | identical | equivalent | close | different | error/unsupported |
 | :-- | --: | --: | --: | --: | --: |
-| bm | 74 | 109 | 1 | 0 | 0 |
-| takumi-native | 184 | 0 | 0 | 0 | 0 |
+| bm | 74 | 126 | 0 | 0 | 0 |
+| takumi-native | 200 | 0 | 0 | 0 | 0 |
 
 ### bm vs takumi-wasm
 
@@ -228,7 +228,7 @@ Verdict rules: **identical** = 0 differing bytes; **equivalent** = SSIM >= 0.99 
 | layout2-float-image | float | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.003 | 16 | 62.4 |
 | layout2-float-clear | float | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.001 | 15 | 68.2 |
 | layout2-float-bfc | float | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
-| layout2-float-wrap | float | close | 0.9511 | 0.9511 | 1.676 | 0.776 | 2615 / 1210 | 1.703 | 240 | 23.6 |
+| layout2-float-wrap | float | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.007 | 30 | 58.0 |
 | layout2-ib-badges | inline-block | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.001 | 15 | 65.7 |
 | layout2-ib-wrap | inline-block | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.003 | 15 | 62.0 |
 | layout2-ib-valign | inline-block | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.002 | 16 | 63.0 |
@@ -236,6 +236,22 @@ Verdict rules: **identical** = 0 differing bytes; **equivalent** = SSIM >= 0.99 
 | layout2-grid-areas | grid-areas | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.001 | 16 | 69.9 |
 | layout2-grid-named-lines | grid-areas | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.001 | 16 | 67.9 |
 | layout2-grid-areas-auto | grid-areas | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 9 | 80.5 |
+| layout3-float-left | float-text | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.008 | 30 | 57.6 |
+| layout3-float-right | float-text | equivalent | 0.9999 | 0.9999 | 0.033 | 0.008 | 45 / 11 | 0.021 | 61 | 49.3 |
+| layout3-float-stacked | float-text | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 2 / 0 | 0.011 | 31 | 56.1 |
+| layout3-float-tall | float-text | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.012 | 30 | 55.9 |
+| layout3-float-in-text | float-text | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.010 | 16 | 56.4 |
+| layout3-float-rtl | float-text | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.015 | 16 | 54.7 |
+| layout3-float-inline-box | float-text | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.007 | 31 | 58.3 |
+| layout3-inline-badges | inline-flow | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.008 | 31 | 57.5 |
+| layout3-inline-image | inline-flow | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 2 / 0 | 0.006 | 31 | 58.8 |
+| layout3-inline-flex-chip | inline-flow | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.006 | 16 | 59.2 |
+| layout3-inline-br | inline-flow | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.004 | 24 | 60.4 |
+| layout3-inline-abs | inline-flow | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.007 | 30 | 58.1 |
+| layout3-span-edges | inline-box-model | equivalent | 1.0000 | 1.0000 | 0.001 | 0.000 | 1 / 0 | 0.008 | 30 | 57.9 |
+| layout3-span-nowrap | inline-box-model | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.009 | 16 | 57.1 |
+| layout3-span-valign | inline-box-model | equivalent | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.008 | 16 | 57.7 |
+| layout3-card-all | inline-box-model | equivalent | 1.0000 | 1.0000 | 0.002 | 0.000 | 5 / 0 | 0.010 | 28 | 56.7 |
 
 ### takumi-native vs takumi-wasm
 
@@ -425,8 +441,24 @@ Verdict rules: **identical** = 0 differing bytes; **equivalent** = SSIM >= 0.99 
 | layout2-grid-areas | grid-areas | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
 | layout2-grid-named-lines | grid-areas | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
 | layout2-grid-areas-auto | grid-areas | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-left | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-right | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-stacked | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-tall | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-in-text | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-rtl | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-float-inline-box | float-text | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-inline-badges | inline-flow | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-inline-image | inline-flow | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-inline-flex-chip | inline-flow | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-inline-br | inline-flow | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-inline-abs | inline-flow | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-span-edges | inline-box-model | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-span-nowrap | inline-box-model | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-span-valign | inline-box-model | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
+| layout3-card-all | inline-box-model | identical | 1.0000 | 1.0000 | 0.000 | 0.000 | 0 / 0 | 0.000 | 0 | 100.0 |
 
-Noise floor (native vs wasm): 184/184 identical; lowest SSIM 1.00000 on `colors-solid-bg`.
+Noise floor (native vs wasm): 200/200 identical; lowest SSIM 1.00000 on `colors-solid-bg`.
 
 ## Performance
 
@@ -434,452 +466,487 @@ Noise floor (native vs wasm): 184/184 identical; lowest SSIM 1.00000 on `colors-
 
 | case | feature | size | takumi-wasm | takumi-native | bm | bm / takumi-wasm | native / wasm |
 | :-- | :-- | --: | --: | --: | --: | --: | --: |
-| colors-solid-bg | colors | 400x300 | 0.33 (0.78) | 0.32 (0.69) | 0.23 (0.42) | 0.68 | 0.97 |
-| colors-hex | colors | 1200x630 | 3.68 (5.75) | 2.45 (4.79) | 1.89 (3.11) | 0.51 | 0.67 |
-| colors-functional | colors | 1200x630 | 2.86 (4.31) | 2.34 (4.80) | 1.78 (3.02) | 0.62 | 0.82 |
-| colors-named | colors | 1200x630 | 2.67 (4.38) | 2.59 (4.26) | 1.90 (2.64) | 0.71 | 0.97 |
-| colors-transparent-canvas | colors | 400x300 | 0.61 (0.86) | 0.42 (0.85) | 0.40 (0.68) | 0.66 | 0.69 |
-| flex-row-column | flex | 1200x630 | 1.47 (2.81) | 1.62 (3.69) | 1.58 (2.68) | 1.07 | 1.10 |
-| flex-justify-align | flex | 1200x630 | 1.96 (3.39) | 2.20 (4.13) | 1.74 (2.74) | 0.89 | 1.12 |
-| flex-wrap-gap | flex | 1200x630 | 1.70 (4.18) | 2.00 (4.11) | 2.22 (3.64) | 1.30 | 1.18 |
-| flex-grow-shrink-basis | flex | 1200x630 | 1.43 (2.69) | 1.59 (3.32) | 1.24 (1.96) | 0.87 | 1.11 |
-| flex-nested-small | flex | 400x300 | 0.35 (0.62) | 0.26 (0.69) | 0.22 (0.38) | 0.63 | 0.75 |
-| sizing-percent | sizing | 1200x630 | 1.38 (2.90) | 1.57 (3.40) | 1.18 (2.00) | 0.85 | 1.14 |
-| sizing-minmax | sizing | 1200x630 | 1.24 (2.65) | 1.48 (3.32) | 1.10 (2.02) | 0.88 | 1.19 |
-| sizing-aspect-ratio | sizing | 1200x630 | 1.23 (3.13) | 1.56 (4.12) | 1.25 (2.80) | 1.02 | 1.27 |
-| sizing-padding-margin | sizing | 1200x630 | 1.42 (3.41) | 1.84 (3.75) | 1.29 (2.48) | 0.91 | 1.30 |
-| sizing-auto-margin-center | sizing | 400x300 | 0.20 (0.40) | 0.20 (0.50) | 0.22 (0.33) | 1.12 | 1.01 |
-| abs-inset | absolute | 1200x630 | 2.05 (3.35) | 1.78 (3.56) | 1.28 (2.66) | 0.62 | 0.87 |
-| abs-zorder | absolute | 1200x630 | 1.74 (3.68) | 1.86 (4.04) | 2.26 (3.90) | 1.30 | 1.07 |
-| abs-in-flow | absolute | 400x300 | 0.33 (0.58) | 0.29 (0.66) | 0.25 (0.40) | 0.75 | 0.89 |
-| borders-uniform | borders | 1200x630 | 1.76 (2.97) | 1.70 (3.14) | 1.21 (2.04) | 0.68 | 0.96 |
-| borders-per-side | borders | 1200x630 | 1.79 (3.83) | 1.77 (3.58) | 1.44 (2.97) | 0.80 | 0.99 |
-| borders-with-radius | borders | 400x300 | 0.81 (1.13) | 0.46 (0.92) | 0.75 (0.92) | 0.92 | 0.56 |
-| radius-uniform-percorner | border-radius | 1200x630 | 1.38 (2.61) | 1.63 (3.69) | 1.54 (2.39) | 1.12 | 1.18 |
-| radius-elliptical | border-radius | 1200x630 | 1.39 (2.71) | 1.58 (3.27) | 1.63 (3.37) | 1.17 | 1.14 |
-| radius-pill-circle | border-radius | 1200x630 | 1.31 (2.84) | 1.50 (2.94) | 1.52 (2.40) | 1.16 | 1.14 |
-| radius-small | border-radius | 400x300 | 0.21 (0.39) | 0.20 (0.50) | 0.26 (0.43) | 1.28 | 0.98 |
-| lingrad-angles | linear-gradient | 1200x630 | 6.61 (8.73) | 5.26 (7.70) | 3.92 (5.17) | 0.59 | 0.80 |
-| lingrad-multistop | linear-gradient | 1200x630 | 6.45 (7.34) | 5.53 (7.15) | 3.17 (4.92) | 0.49 | 0.86 |
-| lingrad-alpha | linear-gradient | 1200x630 | 7.44 (8.58) | 5.22 (7.35) | 5.21 (6.72) | 0.70 | 0.70 |
-| lingrad-hero-small | linear-gradient | 400x300 | 0.73 (1.03) | 0.55 (0.97) | 0.41 (0.54) | 0.56 | 0.76 |
-| radial-shapes | radial-gradient | 1200x630 | 8.02 (9.14) | 6.90 (8.82) | 3.30 (5.15) | 0.41 | 0.86 |
-| radial-at-position | radial-gradient | 1200x630 | 9.78 (10.85) | 7.75 (9.08) | 4.04 (5.39) | 0.41 | 0.79 |
-| radial-spotlight-small | radial-gradient | 400x300 | 1.40 (1.72) | 1.26 (1.63) | 0.43 (0.77) | 0.30 | 0.90 |
-| shadow-offset-blur | box-shadow | 1200x630 | 8.57 (9.77) | 6.29 (8.49) | 4.97 (5.92) | 0.58 | 0.73 |
-| shadow-spread-multi | box-shadow | 1200x630 | 8.60 (9.99) | 5.99 (7.18) | 5.50 (6.15) | 0.64 | 0.70 |
-| shadow-inset | box-shadow | 1200x630 | 11.48 (12.47) | 8.18 (9.55) | 5.73 (6.35) | 0.50 | 0.71 |
-| shadow-small | box-shadow | 400x300 | 1.37 (1.68) | 0.96 (1.49) | 0.75 (0.97) | 0.55 | 0.70 |
-| opacity-basic | opacity | 1200x630 | 6.96 (8.43) | 3.72 (6.38) | 3.71 (4.80) | 0.53 | 0.53 |
-| opacity-nested | opacity | 1200x630 | 9.80 (11.82) | 4.76 (7.11) | 2.40 (3.85) | 0.24 | 0.49 |
-| opacity-with-radius-shadow | opacity | 400x300 | 3.66 (3.99) | 1.96 (2.59) | 1.34 (1.77) | 0.37 | 0.54 |
-| overflow-hidden-clip | overflow | 1200x630 | 2.62 (4.21) | 2.43 (4.74) | 1.32 (2.71) | 0.50 | 0.93 |
-| overflow-radius-clip | overflow | 1200x630 | 3.63 (5.10) | 3.50 (5.69) | 2.28 (3.07) | 0.63 | 0.96 |
-| overflow-nested | overflow | 400x300 | 0.44 (0.71) | 0.34 (0.71) | 0.33 (0.53) | 0.76 | 0.78 |
-| transform-basic | transform | 1200x630 | 4.20 (6.17) | 4.45 (7.13) | 2.23 (3.80) | 0.53 | 1.06 |
-| transform-combined-origin | transform | 1200x630 | 3.90 (4.74) | 3.51 (14.19) | 2.20 (4.78) | 0.56 | 0.90 |
-| transform-text-small | transform | 400x300 | 1.69 (2.27) | 1.24 (1.97) | 0.95 (1.56) | 0.56 | 0.74 |
-| text-single-sizes | text-single-line | 1200x630 | 2.11 (3.41) | 2.43 (5.02) | 1.62 (3.10) | 0.77 | 1.15 |
-| text-single-colors-small | text-single-line | 400x300 | 0.68 (1.14) | 0.56 (1.01) | 0.30 (0.55) | 0.44 | 0.82 |
-| text-single-fonts | text-single-line | 1200x630 | 2.29 (3.65) | 2.48 (5.63) | 1.61 (3.07) | 0.70 | 1.08 |
-| text-paragraph-wrap | text-paragraph | 1200x630 | 3.18 (5.59) | 2.94 (4.65) | 2.04 (2.93) | 0.64 | 0.92 |
-| text-paragraph-lineheight | text-paragraph | 1200x630 | 3.62 (5.32) | 3.29 (5.52) | 2.20 (3.66) | 0.61 | 0.91 |
-| text-paragraph-letterspacing | text-paragraph | 1200x630 | 3.76 (5.48) | 3.45 (5.71) | 2.37 (3.32) | 0.63 | 0.92 |
-| text-paragraph-small | text-paragraph | 400x300 | 0.59 (0.81) | 0.48 (0.93) | 0.35 (0.61) | 0.59 | 0.81 |
-| text-long-wrap | text-paragraph | 1200x630 | 2.03 (4.16) | 2.16 (4.93) | 1.59 (2.92) | 0.79 | 1.07 |
-| fonts-weights-italic | fonts | 1200x630 | 3.03 (4.30) | 2.77 (5.20) | 1.93 (3.29) | 0.64 | 0.92 |
-| fonts-mixed-inline | fonts | 1200x630 | 2.42 (4.40) | 2.35 (4.60) | 1.49 (3.17) | 0.62 | 0.97 |
-| text-vietnamese | text-i18n | 1200x630 | 2.31 (3.58) | 2.28 (4.65) | 1.55 (3.18) | 0.67 | 0.99 |
-| text-accented-latin | text-i18n | 1200x630 | 2.38 (3.55) | 2.37 (5.11) | 1.57 (2.58) | 0.66 | 0.99 |
-| text-ellipsis-nowrap | text-truncation | 1200x630 | 2.07 (3.20) | 2.09 (4.60) | 1.34 (2.58) | 0.65 | 1.01 |
-| text-lineclamp | text-truncation | 1200x630 | 3.02 (4.07) | 2.74 (5.02) | 2.04 (2.97) | 0.68 | 0.91 |
-| text-lineclamp-small | text-truncation | 400x300 | 0.54 (0.85) | 0.43 (0.82) | 0.27 (0.43) | 0.50 | 0.80 |
-| img-png-fit | images | 1200x630 | 6.18 (8.52) | 5.10 (6.41) | 2.60 (3.78) | 0.42 | 0.83 |
-| img-jpeg-fit | images | 1200x630 | 19.61 (20.71) | 13.02 (15.30) | 2.53 (3.80) | 0.13 | 0.66 |
-| img-intrinsic-size | images | 400x300 | 0.39 (0.66) | 0.33 (0.74) | 0.34 (0.55) | 0.87 | 0.85 |
-| img-radius-clip | images | 1200x630 | 7.48 (8.39) | 5.94 (7.80) | 4.42 (5.68) | 0.59 | 0.79 |
-| img-photo-bg | images | 1200x630 | 6.23 (7.74) | 4.62 (6.55) | 1.80 (3.01) | 0.29 | 0.74 |
-| grid-fixed-fr | grid | 1200x630 | 1.96 (3.48) | 2.18 (4.79) | 1.69 (3.34) | 0.87 | 1.11 |
-| grid-repeat-gap | grid | 1200x630 | 2.46 (4.02) | 2.37 (4.96) | 1.99 (3.44) | 0.81 | 0.97 |
-| grid-spans | grid | 1200x630 | 2.00 (3.15) | 2.13 (4.46) | 1.63 (2.93) | 0.82 | 1.07 |
-| grid-small-mixed | grid | 400x300 | 0.71 (0.98) | 0.58 (1.05) | 0.46 (0.69) | 0.65 | 0.83 |
-| card-og | og-card | 1200x630 | 6.12 (8.34) | 5.11 (6.75) | 3.72 (4.87) | 0.61 | 0.83 |
-| card-og-small | og-card | 600x315 | 2.94 (3.55) | 2.16 (3.08) | 1.57 (1.90) | 0.53 | 0.74 |
-| card-blog | blog-card | 1200x630 | 15.72 (16.99) | 7.87 (10.85) | 10.06 (12.05) | 0.64 | 0.50 |
-| card-flat-ui | blog-card | 1200x630 | 7.02 (7.93) | 4.98 (6.47) | 4.63 (5.51) | 0.66 | 0.71 |
-| stress-600-boxes | stress | 1200x630 | 8.75 (10.67) | 8.30 (10.44) | 8.56 (9.89) | 0.98 | 0.95 |
-| stress-200-labels | stress | 1200x630 | 15.19 (17.24) | 12.33 (14.19) | 8.53 (10.02) | 0.56 | 0.81 |
-| stress-3000x2000-card | stress | 3000x2000 | 31.51 (36.24) | 27.22 (29.47) | 22.72 (25.45) | 0.72 | 0.86 |
-| fx-text-shadow | text-shadow | 600x200 | 1.00 (1.46) | 0.72 (1.25) | 1.00 (1.20) | 1.01 | 0.73 |
-| gap-dashed-dotted-border | known-gaps | 600x200 | 1.72 (2.05) | 1.07 (1.39) | 0.96 (1.20) | 0.56 | 0.62 |
-| fx-filter-blur-grayscale | filter | 600x200 | 1.77 (2.11) | 1.19 (1.89) | 1.30 (1.54) | 0.74 | 0.67 |
-| gap-tailwind-tw | known-gaps | 600x200 | 0.33 (0.64) | 0.28 (0.63) | 0.27 (0.44) | 0.84 | 0.86 |
-| gap-oklch-color | known-gaps | 600x200 | 0.18 (0.34) | 0.24 (0.66) | 0.15 (0.25) | 0.85 | 1.35 |
-| gap-svg-image | known-gaps | 600x200 | 0.29 (0.55) | 0.23 (0.55) | 0.23 (0.38) | 0.77 | 0.79 |
-| gap-inline-box-decoration | known-gaps | 600x200 | 0.51 (0.77) | 0.40 (0.78) | 0.27 (0.45) | 0.52 | 0.79 |
-| gap-mix-blend-mode | known-gaps | 600x200 | 0.80 (1.18) | 0.43 (0.83) | 0.39 (0.64) | 0.49 | 0.54 |
-| gap-clip-path | known-gaps | 600x200 | 0.61 (0.81) | 0.41 (0.85) | 0.49 (0.68) | 0.81 | 0.67 |
-| gap-background-clip-text | known-gaps | 600x200 | 1.85 (2.24) | 1.23 (1.60) | 0.32 (0.52) | 0.17 | 0.67 |
-| gap-text-wrap-balance | known-gaps | 600x200 | 0.51 (0.95) | 0.37 (0.76) | 0.24 (0.46) | 0.48 | 0.72 |
-| pfx-aa-shapes | aa-exact | 600x200 | 0.52 (0.81) | 0.37 (0.78) | 0.41 (0.74) | 0.78 | 0.72 |
-| pfx-aa-text | aa-exact | 600x200 | 0.71 (1.15) | 0.58 (1.05) | 0.34 (0.64) | 0.48 | 0.81 |
-| pfx-border-dashed | dashed-border | 600x200 | 2.40 (2.75) | 1.39 (2.03) | 1.34 (1.66) | 0.56 | 0.58 |
-| pfx-border-dotted | dotted-border | 600x200 | 2.82 (3.15) | 1.57 (1.97) | 1.50 (1.76) | 0.53 | 0.56 |
-| pfx-border-double-3d | double-3d-border | 600x200 | 0.60 (0.88) | 0.46 (0.90) | 0.49 (0.76) | 0.81 | 0.76 |
-| pfx-border-mixed | mixed-border | 600x200 | 1.07 (1.32) | 0.62 (1.11) | 0.71 (0.95) | 0.66 | 0.58 |
-| pfx-outline | outline | 600x200 | 1.53 (1.80) | 0.93 (1.29) | 0.82 (1.10) | 0.54 | 0.60 |
-| pfx-clip-path-shapes | clip-path | 600x200 | 0.87 (1.13) | 0.58 (1.01) | 0.63 (0.81) | 0.72 | 0.67 |
-| pfx-mask-gradient | mask | 600x200 | 1.57 (1.92) | 1.04 (1.41) | 1.12 (1.35) | 0.71 | 0.66 |
-| pfx-bg-clip-text | bg-clip-text | 600x200 | 2.63 (3.02) | 1.83 (2.28) | 0.44 (0.65) | 0.17 | 0.69 |
-| pfx-mix-blend | mix-blend | 600x200 | 1.80 (2.13) | 1.03 (1.51) | 1.23 (1.54) | 0.69 | 0.57 |
-| pfx-bg-blend | bg-blend | 600x200 | 4.92 (5.26) | 3.91 (4.27) | 0.99 (1.58) | 0.20 | 0.80 |
-| pfx-drop-shadow | drop-shadow | 600x200 | 1.53 (1.87) | 1.09 (1.56) | 1.20 (1.52) | 0.79 | 0.71 |
-| pfx-backdrop-filter | backdrop-filter | 600x200 | 4.42 (4.87) | 2.43 (3.03) | 2.79 (3.10) | 0.63 | 0.55 |
-| pfx-text-stroke | text-stroke | 600x200 | 0.74 (1.28) | 0.59 (1.03) | 1.18 (1.43) | 1.58 | 0.79 |
-| pfx-text-decoration | text-decoration | 600x260 | 1.68 (2.06) | 1.29 (1.89) | 1.80 (2.14) | 1.07 | 0.77 |
-| pfx-visibility | visibility | 600x200 | 0.30 (0.51) | 0.27 (0.64) | 0.18 (0.32) | 0.62 | 0.92 |
-| pfx-opacity-layers | opacity | 600x200 | 3.00 (3.34) | 1.84 (2.56) | 2.20 (2.94) | 0.73 | 0.61 |
-| pfx-svg-background | svg-image | 600x200 | 0.77 (1.05) | 0.48 (0.87) | 1.19 (1.47) | 1.55 | 0.63 |
-| pfx-inline-boxes-many | inline-box | 600x300 | 2.67 (3.06) | 1.91 (2.68) | 1.85 (2.20) | 0.69 | 0.71 |
-| css-class-id | css-stylesheet | 1200x630 | 2.55 (4.65) | 2.58 (4.83) | 1.83 (3.47) | 0.72 | 1.01 |
-| css-nth-child | css-stylesheet | 800x500 | 1.58 (2.69) | 1.43 (3.12) | 1.10 (1.82) | 0.69 | 0.91 |
-| css-media-layer | css-stylesheet | 1200x400 | 0.83 (1.80) | 1.21 (2.92) | 0.89 (1.36) | 1.07 | 1.47 |
-| css-important-var | css-stylesheet | 900x400 | 0.99 (1.79) | 1.07 (3.00) | 0.67 (1.13) | 0.68 | 1.08 |
-| tw-card | tailwind | 1200x630 | 2.16 (4.04) | 2.21 (4.73) | 1.65 (3.47) | 0.76 | 1.02 |
-| tw-responsive | tailwind | 1200x400 | 0.72 (1.67) | 1.30 (2.63) | 0.79 (1.37) | 1.09 | 1.79 |
-| tw-structural | tailwind | 800x500 | 0.77 (1.74) | 0.96 (2.58) | 0.90 (1.42) | 1.17 | 1.24 |
-| tw-arbitrary | tailwind | 900x450 | 5.23 (6.48) | 3.88 (5.91) | 2.83 (3.97) | 0.54 | 0.74 |
-| html-article | html | 1000x600 | 1.71 (2.89) | 1.68 (4.07) | 1.21 (2.02) | 0.71 | 0.98 |
-| html-document | html | 800x400 | 0.80 (1.63) | 0.98 (2.77) | 0.57 (1.16) | 0.72 | 1.23 |
-| html-flex-card | html | 1000x500 | 3.84 (5.04) | 2.88 (4.63) | 2.01 (2.93) | 0.52 | 0.75 |
-| html-inline | html | 900x300 | 1.09 (1.59) | 1.12 (2.65) | 0.64 (0.99) | 0.58 | 1.02 |
-| pseudo-inline | pseudo-elements | 800x300 | 0.81 (1.32) | 0.82 (1.53) | 0.41 (0.72) | 0.51 | 1.00 |
-| pseudo-block | pseudo-elements | 800x400 | 0.99 (1.63) | 1.09 (2.78) | 0.76 (1.22) | 0.77 | 1.09 |
-| pseudo-attr | pseudo-elements | 800x250 | 0.70 (1.15) | 0.51 (1.01) | 0.39 (0.71) | 0.56 | 0.73 |
-| pseudo-tw | pseudo-elements | 800x300 | 0.65 (1.17) | 0.72 (1.51) | 0.51 (0.81) | 0.77 | 1.10 |
-| anim-opacity-t0 | animation | 400x200 | 0.14 (0.24) | 0.14 (0.35) | 0.12 (0.23) | 0.85 | 1.01 |
-| anim-opacity-t250 | animation | 400x200 | 0.30 (0.49) | 0.21 (0.45) | 0.14 (0.24) | 0.47 | 0.71 |
-| anim-opacity-t500 | animation | 400x200 | 0.29 (0.45) | 0.22 (0.51) | 0.14 (0.23) | 0.47 | 0.76 |
-| anim-opacity-t900 | animation | 400x200 | 0.30 (0.47) | 0.21 (0.44) | 0.14 (0.23) | 0.47 | 0.69 |
-| anim-opacity-t1500 | animation | 400x200 | 0.15 (0.29) | 0.15 (0.36) | 0.11 (0.19) | 0.79 | 1.02 |
-| anim-transform-t0 | animation | 400x200 | 0.15 (0.26) | 0.16 (0.37) | 0.16 (0.24) | 1.01 | 1.02 |
-| anim-transform-t200 | animation | 400x200 | 0.16 (0.29) | 0.17 (0.42) | 0.16 (0.27) | 0.98 | 1.01 |
-| anim-transform-t400 | animation | 400x200 | 0.17 (0.34) | 0.18 (0.42) | 0.16 (0.26) | 0.91 | 1.03 |
-| anim-transform-t600 | animation | 400x200 | 0.16 (0.29) | 0.16 (0.39) | 0.16 (0.25) | 0.98 | 1.02 |
-| anim-transform-t800 | animation | 400x200 | 0.16 (0.35) | 0.16 (0.36) | 0.14 (0.24) | 0.89 | 1.00 |
-| anim-color-t0 | animation | 400x200 | 0.32 (0.55) | 0.26 (0.56) | 0.16 (0.25) | 0.51 | 0.82 |
-| anim-color-t300 | animation | 400x200 | 0.30 (0.51) | 0.26 (0.57) | 0.16 (0.26) | 0.55 | 0.88 |
-| anim-color-t700 | animation | 400x200 | 0.29 (0.51) | 0.27 (0.56) | 0.16 (0.26) | 0.55 | 0.91 |
-| anim-color-t2000 | animation | 400x200 | 0.29 (0.48) | 0.27 (0.58) | 0.17 (0.27) | 0.58 | 0.93 |
-| anim-width-t0 | animation | 400x200 | 0.16 (0.29) | 0.17 (0.41) | 0.13 (0.21) | 0.85 | 1.10 |
-| anim-width-t100 | animation | 400x200 | 0.16 (0.30) | 0.17 (0.39) | 0.17 (0.26) | 1.04 | 1.03 |
-| anim-width-t500 | animation | 400x200 | 0.19 (0.33) | 0.18 (0.41) | 0.21 (0.30) | 1.13 | 0.97 |
-| anim-width-t999 | animation | 400x200 | 0.19 (0.35) | 0.21 (0.50) | 0.21 (0.30) | 1.09 | 1.07 |
-| anim-delay-fill-t0 | animation | 400x200 | 0.31 (0.55) | 0.23 (0.52) | 0.18 (0.27) | 0.57 | 0.75 |
-| anim-delay-fill-t750 | animation | 400x200 | 0.47 (0.78) | 0.28 (0.57) | 0.21 (0.34) | 0.45 | 0.60 |
-| anim-delay-fill-t2000 | animation | 400x200 | 0.18 (0.32) | 0.19 (0.43) | 0.17 (0.28) | 0.90 | 1.04 |
-| anim-alternate-t100 | animation | 400x200 | 0.31 (0.45) | 0.24 (0.51) | 0.14 (0.25) | 0.44 | 0.79 |
-| anim-alternate-t500 | animation | 400x200 | 0.30 (0.51) | 0.24 (0.49) | 0.14 (0.23) | 0.46 | 0.78 |
-| anim-alternate-t700 | animation | 400x200 | 0.30 (0.45) | 0.24 (0.50) | 0.13 (0.22) | 0.44 | 0.78 |
-| anim-alternate-t1100 | animation | 400x200 | 0.35 (0.58) | 0.24 (0.52) | 0.14 (0.23) | 0.41 | 0.69 |
-| anim-alternate-t1300 | animation | 400x200 | 0.14 (0.26) | 0.15 (0.39) | 0.13 (0.20) | 0.86 | 1.05 |
-| anim-steps-t0 | animation | 400x200 | 0.16 (0.31) | 0.17 (0.43) | 0.14 (0.22) | 0.87 | 1.07 |
-| anim-steps-t260 | animation | 400x200 | 0.16 (0.29) | 0.17 (0.42) | 0.15 (0.26) | 0.91 | 1.07 |
-| anim-steps-t500 | animation | 400x200 | 0.16 (0.29) | 0.17 (0.39) | 0.14 (0.22) | 0.89 | 1.07 |
-| anim-steps-t990 | animation | 400x200 | 0.16 (0.28) | 0.16 (0.41) | 0.14 (0.22) | 0.87 | 1.03 |
-| anim-two-anims-t0 | animation | 400x200 | 0.29 (0.46) | 0.22 (0.47) | 0.16 (0.24) | 0.55 | 0.74 |
-| anim-two-anims-t400 | animation | 400x200 | 0.58 (0.82) | 0.34 (0.63) | 0.24 (0.38) | 0.41 | 0.58 |
-| anim-two-anims-t600 | animation | 400x200 | 0.66 (0.89) | 0.37 (0.70) | 0.25 (0.35) | 0.37 | 0.55 |
-| anim-two-anims-t1200 | animation | 400x200 | 0.36 (0.51) | 0.26 (0.53) | 0.17 (0.28) | 0.46 | 0.72 |
-| anim-inherit-t0 | animation | 400x200 | 0.35 (0.60) | 0.32 (0.63) | 0.19 (0.33) | 0.55 | 0.92 |
-| anim-inherit-t500 | animation | 400x200 | 0.38 (0.55) | 0.32 (0.65) | 0.20 (0.32) | 0.53 | 0.85 |
-| anim-inherit-t1000 | animation | 400x200 | 0.42 (0.66) | 0.34 (0.68) | 0.21 (0.33) | 0.50 | 0.79 |
-| anim-tw-spin-t125 | animation | 400x200 | 0.31 (0.45) | 0.25 (0.54) | 0.15 (0.24) | 0.47 | 0.81 |
-| anim-tw-spin-t375 | animation | 400x200 | 0.31 (0.51) | 0.24 (0.49) | 0.15 (0.24) | 0.48 | 0.77 |
-| anim-tw-spin-t1600 | animation | 400x200 | 0.32 (0.56) | 0.24 (0.50) | 0.15 (0.25) | 0.47 | 0.76 |
-| anim-kf-option-t0 | animation | 400x200 | 0.21 (0.36) | 0.20 (0.48) | 0.18 (0.27) | 0.83 | 0.92 |
-| anim-kf-option-t500 | animation | 400x200 | 0.48 (0.86) | 0.32 (0.81) | 0.21 (0.37) | 0.44 | 0.66 |
-| layout2-table-auto | table | 600x300 | 1.28 (1.79) | 1.03 (1.82) | 0.84 (1.15) | 0.66 | 0.80 |
-| layout2-table-spans | table | 600x320 | 0.88 (1.36) | 0.71 (1.20) | 0.58 (0.81) | 0.66 | 0.80 |
-| layout2-table-fixed | table | 600x260 | 1.16 (1.49) | 0.93 (1.46) | 0.69 (1.11) | 0.60 | 0.80 |
-| layout2-table-percent | table | 600x220 | 0.64 (0.94) | 0.52 (0.93) | 0.39 (0.64) | 0.61 | 0.81 |
-| layout2-table-collapse-conflicts | table | 600x300 | 1.33 (1.86) | 1.05 (1.56) | 0.81 (1.29) | 0.61 | 0.79 |
-| layout2-table-col-backgrounds | table | 600x260 | 1.93 (2.52) | 1.50 (2.02) | 0.96 (1.26) | 0.50 | 0.78 |
-| layout2-table-empty-cells | table | 600x240 | 1.09 (1.46) | 0.91 (1.29) | 0.61 (0.94) | 0.56 | 0.84 |
-| layout2-table-caption-bottom | table | 600x300 | 1.53 (2.01) | 1.13 (1.74) | 0.91 (1.46) | 0.59 | 0.74 |
-| layout2-float-image | float | 600x240 | 0.73 (1.11) | 0.60 (1.17) | 0.58 (0.83) | 0.79 | 0.82 |
-| layout2-float-clear | float | 600x260 | 0.37 (0.64) | 0.33 (0.72) | 0.30 (0.48) | 0.83 | 0.90 |
-| layout2-float-bfc | float | 600x260 | 0.52 (0.80) | 0.42 (0.93) | 0.31 (0.58) | 0.58 | 0.81 |
-| layout2-float-wrap | float | 600x260 | 0.67 (0.95) | 0.49 (1.03) | 0.49 (0.71) | 0.74 | 0.73 |
-| layout2-ib-badges | inline-block | 600x200 | 0.54 (0.83) | 0.44 (0.94) | 0.33 (0.48) | 0.60 | 0.81 |
-| layout2-ib-wrap | inline-block | 600x260 | 0.66 (0.91) | 0.54 (1.05) | 0.48 (0.72) | 0.74 | 0.82 |
-| layout2-ib-valign | inline-block | 600x220 | 0.56 (0.82) | 0.47 (0.93) | 0.35 (0.53) | 0.63 | 0.83 |
-| layout2-ib-json | inline-block | 600x160 | 0.45 (0.67) | 0.36 (0.75) | 0.25 (0.42) | 0.55 | 0.80 |
-| layout2-grid-areas | grid-areas | 600x360 | 0.72 (1.32) | 0.61 (1.18) | 0.61 (0.85) | 0.84 | 0.84 |
-| layout2-grid-named-lines | grid-areas | 600x300 | 0.79 (1.35) | 0.70 (1.13) | 0.58 (1.00) | 0.73 | 0.88 |
-| layout2-grid-areas-auto | grid-areas | 600x300 | 0.64 (1.02) | 0.58 (1.11) | 0.44 (0.73) | 0.69 | 0.91 |
+| colors-solid-bg | colors | 400x300 | 0.30 (0.63) | 0.29 (0.57) | 0.23 (0.43) | 0.76 | 0.96 |
+| colors-hex | colors | 1200x630 | 3.31 (5.97) | 2.38 (4.14) | 1.90 (2.89) | 0.57 | 0.72 |
+| colors-functional | colors | 1200x630 | 2.85 (4.97) | 2.21 (4.07) | 1.68 (2.77) | 0.59 | 0.78 |
+| colors-named | colors | 1200x630 | 2.51 (4.03) | 2.42 (3.87) | 1.92 (3.03) | 0.76 | 0.96 |
+| colors-transparent-canvas | colors | 400x300 | 0.60 (0.94) | 0.47 (0.87) | 0.40 (0.54) | 0.67 | 0.79 |
+| flex-row-column | flex | 1200x630 | 1.28 (2.45) | 1.38 (3.29) | 1.47 (2.46) | 1.15 | 1.08 |
+| flex-justify-align | flex | 1200x630 | 1.74 (3.33) | 1.73 (3.39) | 1.64 (2.47) | 0.94 | 1.00 |
+| flex-wrap-gap | flex | 1200x630 | 1.63 (3.11) | 1.71 (3.48) | 2.02 (3.33) | 1.24 | 1.05 |
+| flex-grow-shrink-basis | flex | 1200x630 | 1.24 (2.91) | 1.54 (3.67) | 1.20 (2.20) | 0.97 | 1.24 |
+| flex-nested-small | flex | 400x300 | 0.28 (0.45) | 0.30 (0.64) | 0.22 (0.42) | 0.82 | 1.09 |
+| sizing-percent | sizing | 1200x630 | 1.27 (2.73) | 1.42 (3.10) | 1.12 (1.81) | 0.88 | 1.12 |
+| sizing-minmax | sizing | 1200x630 | 1.03 (1.99) | 1.25 (3.29) | 1.01 (1.54) | 0.98 | 1.22 |
+| sizing-aspect-ratio | sizing | 1200x630 | 1.15 (2.12) | 1.30 (2.89) | 1.30 (2.37) | 1.13 | 1.14 |
+| sizing-padding-margin | sizing | 1200x630 | 1.19 (2.21) | 1.36 (3.17) | 1.17 (2.47) | 0.99 | 1.14 |
+| sizing-auto-margin-center | sizing | 400x300 | 0.18 (0.35) | 0.25 (0.52) | 0.16 (0.28) | 0.92 | 1.39 |
+| abs-inset | absolute | 1200x630 | 1.95 (3.25) | 1.66 (3.46) | 1.35 (2.29) | 0.69 | 0.85 |
+| abs-zorder | absolute | 1200x630 | 1.51 (3.38) | 1.53 (3.33) | 2.06 (3.61) | 1.37 | 1.01 |
+| abs-in-flow | absolute | 400x300 | 0.36 (0.70) | 0.27 (0.57) | 0.24 (0.43) | 0.67 | 0.74 |
+| borders-uniform | borders | 1200x630 | 1.51 (3.28) | 1.61 (3.51) | 1.10 (2.46) | 0.73 | 1.06 |
+| borders-per-side | borders | 1200x630 | 1.36 (2.34) | 1.55 (3.10) | 1.19 (2.62) | 0.88 | 1.14 |
+| borders-with-radius | borders | 400x300 | 0.80 (1.08) | 0.45 (0.83) | 0.74 (1.37) | 0.93 | 0.57 |
+| radius-uniform-percorner | border-radius | 1200x630 | 1.23 (2.77) | 1.50 (3.04) | 1.51 (2.71) | 1.22 | 1.22 |
+| radius-elliptical | border-radius | 1200x630 | 1.21 (2.81) | 1.37 (3.02) | 1.49 (2.20) | 1.23 | 1.13 |
+| radius-pill-circle | border-radius | 1200x630 | 1.13 (2.75) | 1.32 (3.05) | 1.38 (2.76) | 1.22 | 1.17 |
+| radius-small | border-radius | 400x300 | 0.21 (0.44) | 0.19 (0.44) | 0.24 (0.37) | 1.14 | 0.87 |
+| lingrad-angles | linear-gradient | 1200x630 | 6.28 (7.78) | 4.77 (6.64) | 3.60 (5.19) | 0.57 | 0.76 |
+| lingrad-multistop | linear-gradient | 1200x630 | 6.20 (7.77) | 5.39 (6.64) | 3.27 (4.59) | 0.53 | 0.87 |
+| lingrad-alpha | linear-gradient | 1200x630 | 7.24 (8.01) | 5.29 (6.79) | 4.95 (6.04) | 0.68 | 0.73 |
+| lingrad-hero-small | linear-gradient | 400x300 | 0.71 (1.00) | 0.54 (0.99) | 0.45 (0.76) | 0.64 | 0.77 |
+| radial-shapes | radial-gradient | 1200x630 | 7.73 (8.57) | 6.65 (7.97) | 3.02 (5.13) | 0.39 | 0.86 |
+| radial-at-position | radial-gradient | 1200x630 | 9.53 (10.39) | 7.72 (9.53) | 3.66 (4.46) | 0.38 | 0.81 |
+| radial-spotlight-small | radial-gradient | 400x300 | 1.33 (1.70) | 1.19 (1.59) | 0.42 (0.64) | 0.32 | 0.89 |
+| shadow-offset-blur | box-shadow | 1200x630 | 8.47 (9.72) | 6.18 (7.89) | 4.99 (5.63) | 0.59 | 0.73 |
+| shadow-spread-multi | box-shadow | 1200x630 | 8.74 (9.57) | 5.84 (7.73) | 5.21 (6.68) | 0.60 | 0.67 |
+| shadow-inset | box-shadow | 1200x630 | 11.50 (12.86) | 8.18 (9.27) | 5.55 (6.38) | 0.48 | 0.71 |
+| shadow-small | box-shadow | 400x300 | 1.32 (1.63) | 0.83 (1.25) | 0.72 (0.99) | 0.54 | 0.63 |
+| opacity-basic | opacity | 1200x630 | 6.86 (9.03) | 4.20 (6.06) | 3.48 (4.71) | 0.51 | 0.61 |
+| opacity-nested | opacity | 1200x630 | 9.70 (10.63) | 4.82 (6.32) | 2.29 (3.75) | 0.24 | 0.50 |
+| opacity-with-radius-shadow | opacity | 400x300 | 3.56 (3.89) | 1.81 (2.41) | 1.29 (1.71) | 0.36 | 0.51 |
+| overflow-hidden-clip | overflow | 1200x630 | 2.15 (3.67) | 2.09 (4.44) | 1.25 (2.16) | 0.58 | 0.97 |
+| overflow-radius-clip | overflow | 1200x630 | 3.45 (5.04) | 3.40 (5.39) | 2.13 (3.27) | 0.62 | 0.99 |
+| overflow-nested | overflow | 400x300 | 0.42 (0.72) | 0.33 (0.64) | 0.33 (0.58) | 0.79 | 0.78 |
+| transform-basic | transform | 1200x630 | 4.00 (5.32) | 3.16 (5.00) | 1.81 (3.14) | 0.45 | 0.79 |
+| transform-combined-origin | transform | 1200x630 | 3.49 (5.46) | 2.77 (4.85) | 1.73 (3.10) | 0.49 | 0.79 |
+| transform-text-small | transform | 400x300 | 1.50 (2.06) | 0.94 (1.54) | 0.86 (1.18) | 0.57 | 0.63 |
+| text-single-sizes | text-single-line | 1200x630 | 2.11 (2.95) | 2.25 (4.71) | 1.44 (2.87) | 0.68 | 1.06 |
+| text-single-colors-small | text-single-line | 400x300 | 0.55 (0.82) | 0.43 (0.85) | 0.26 (0.41) | 0.48 | 0.79 |
+| text-single-fonts | text-single-line | 1200x630 | 1.84 (3.30) | 1.98 (4.44) | 1.31 (2.50) | 0.71 | 1.08 |
+| text-paragraph-wrap | text-paragraph | 1200x630 | 2.90 (4.57) | 2.76 (4.99) | 1.88 (2.63) | 0.65 | 0.95 |
+| text-paragraph-lineheight | text-paragraph | 1200x630 | 3.46 (5.26) | 3.02 (5.14) | 2.21 (3.24) | 0.64 | 0.87 |
+| text-paragraph-letterspacing | text-paragraph | 1200x630 | 3.54 (5.02) | 3.06 (4.88) | 2.19 (3.36) | 0.62 | 0.87 |
+| text-paragraph-small | text-paragraph | 400x300 | 0.55 (0.89) | 0.49 (0.98) | 0.35 (0.58) | 0.64 | 0.90 |
+| text-long-wrap | text-paragraph | 1200x630 | 1.94 (3.39) | 1.85 (4.53) | 1.49 (2.61) | 0.77 | 0.96 |
+| fonts-weights-italic | fonts | 1200x630 | 2.80 (4.49) | 2.50 (4.64) | 1.66 (2.77) | 0.59 | 0.89 |
+| fonts-mixed-inline | fonts | 1200x630 | 2.51 (4.02) | 2.13 (4.34) | 1.37 (2.63) | 0.55 | 0.85 |
+| text-vietnamese | text-i18n | 1200x630 | 2.21 (4.46) | 2.02 (4.39) | 1.36 (2.41) | 0.61 | 0.92 |
+| text-accented-latin | text-i18n | 1200x630 | 2.63 (4.22) | 2.49 (4.96) | 1.76 (3.76) | 0.67 | 0.95 |
+| text-ellipsis-nowrap | text-truncation | 1200x630 | 2.08 (3.66) | 2.03 (4.52) | 1.46 (2.83) | 0.70 | 0.98 |
+| text-lineclamp | text-truncation | 1200x630 | 3.00 (4.40) | 2.76 (5.02) | 2.02 (3.20) | 0.67 | 0.92 |
+| text-lineclamp-small | text-truncation | 400x300 | 0.53 (0.76) | 0.39 (0.74) | 0.28 (0.45) | 0.52 | 0.73 |
+| img-png-fit | images | 1200x630 | 6.00 (8.05) | 4.91 (6.56) | 2.45 (3.65) | 0.41 | 0.82 |
+| img-jpeg-fit | images | 1200x630 | 19.22 (23.53) | 12.95 (14.33) | 2.40 (4.12) | 0.13 | 0.67 |
+| img-intrinsic-size | images | 400x300 | 0.40 (0.71) | 0.30 (0.61) | 0.34 (0.59) | 0.85 | 0.75 |
+| img-radius-clip | images | 1200x630 | 7.24 (8.62) | 5.70 (7.20) | 4.45 (5.60) | 0.62 | 0.79 |
+| img-photo-bg | images | 1200x630 | 5.98 (7.34) | 4.47 (6.51) | 1.61 (2.75) | 0.27 | 0.75 |
+| grid-fixed-fr | grid | 1200x630 | 1.74 (3.13) | 2.08 (4.61) | 1.62 (3.10) | 0.93 | 1.20 |
+| grid-repeat-gap | grid | 1200x630 | 2.13 (3.51) | 2.02 (4.69) | 1.82 (2.78) | 0.86 | 0.95 |
+| grid-spans | grid | 1200x630 | 1.78 (3.62) | 1.95 (4.45) | 1.47 (2.53) | 0.83 | 1.10 |
+| grid-small-mixed | grid | 400x300 | 0.66 (0.99) | 0.51 (1.00) | 0.46 (0.71) | 0.69 | 0.76 |
+| card-og | og-card | 1200x630 | 5.67 (6.91) | 5.00 (6.66) | 3.57 (5.12) | 0.63 | 0.88 |
+| card-og-small | og-card | 600x315 | 2.59 (3.48) | 1.87 (2.45) | 1.47 (2.25) | 0.57 | 0.72 |
+| card-blog | blog-card | 1200x630 | 15.90 (18.39) | 8.30 (9.75) | 10.06 (11.27) | 0.63 | 0.52 |
+| card-flat-ui | blog-card | 1200x630 | 6.60 (7.91) | 4.74 (6.72) | 4.33 (6.27) | 0.66 | 0.72 |
+| stress-600-boxes | stress | 1200x630 | 8.76 (11.00) | 7.78 (10.23) | 8.29 (9.85) | 0.95 | 0.89 |
+| stress-200-labels | stress | 1200x630 | 15.01 (16.50) | 12.42 (15.53) | 9.52 (11.36) | 0.63 | 0.83 |
+| stress-3000x2000-card | stress | 3000x2000 | 32.61 (36.03) | 25.77 (26.53) | 21.31 (25.38) | 0.65 | 0.79 |
+| fx-text-shadow | text-shadow | 600x200 | 0.94 (1.34) | 0.66 (1.14) | 1.00 (1.22) | 1.07 | 0.71 |
+| gap-dashed-dotted-border | known-gaps | 600x200 | 1.71 (2.18) | 1.07 (1.44) | 0.92 (1.16) | 0.54 | 0.63 |
+| fx-filter-blur-grayscale | filter | 600x200 | 1.66 (2.14) | 1.07 (1.58) | 1.27 (1.75) | 0.77 | 0.64 |
+| gap-tailwind-tw | known-gaps | 600x200 | 0.32 (0.56) | 0.29 (0.64) | 0.27 (0.46) | 0.86 | 0.90 |
+| gap-oklch-color | known-gaps | 600x200 | 0.17 (0.30) | 0.24 (0.63) | 0.15 (0.24) | 0.91 | 1.41 |
+| gap-svg-image | known-gaps | 600x200 | 0.29 (0.54) | 0.23 (0.53) | 0.23 (0.37) | 0.80 | 0.80 |
+| gap-inline-box-decoration | known-gaps | 600x200 | 0.48 (0.81) | 0.39 (0.75) | 0.27 (0.44) | 0.56 | 0.80 |
+| gap-mix-blend-mode | known-gaps | 600x200 | 0.71 (0.99) | 0.41 (0.81) | 0.38 (0.52) | 0.54 | 0.57 |
+| gap-clip-path | known-gaps | 600x200 | 0.62 (0.99) | 0.42 (0.78) | 0.50 (0.81) | 0.80 | 0.68 |
+| gap-background-clip-text | known-gaps | 600x200 | 1.85 (2.29) | 1.19 (1.88) | 0.32 (0.58) | 0.17 | 0.64 |
+| gap-text-wrap-balance | known-gaps | 600x200 | 0.44 (0.77) | 0.33 (0.65) | 0.23 (0.36) | 0.53 | 0.76 |
+| pfx-aa-shapes | aa-exact | 600x200 | 0.53 (0.83) | 0.35 (0.72) | 0.42 (0.67) | 0.79 | 0.66 |
+| pfx-aa-text | aa-exact | 600x200 | 0.63 (0.96) | 0.52 (0.99) | 0.33 (0.49) | 0.52 | 0.83 |
+| pfx-border-dashed | dashed-border | 600x200 | 2.35 (3.14) | 1.26 (1.89) | 1.32 (1.77) | 0.56 | 0.54 |
+| pfx-border-dotted | dotted-border | 600x200 | 2.77 (3.31) | 1.56 (2.23) | 1.45 (2.07) | 0.53 | 0.56 |
+| pfx-border-double-3d | double-3d-border | 600x200 | 0.57 (0.85) | 0.42 (0.85) | 0.48 (0.71) | 0.84 | 0.74 |
+| pfx-border-mixed | mixed-border | 600x200 | 1.04 (1.48) | 0.58 (0.97) | 0.70 (1.00) | 0.67 | 0.56 |
+| pfx-outline | outline | 600x200 | 1.48 (1.90) | 0.89 (1.42) | 0.82 (1.02) | 0.55 | 0.60 |
+| pfx-clip-path-shapes | clip-path | 600x200 | 0.84 (1.19) | 0.52 (0.94) | 0.60 (0.84) | 0.72 | 0.62 |
+| pfx-mask-gradient | mask | 600x200 | 1.52 (1.87) | 1.05 (1.63) | 1.16 (1.74) | 0.76 | 0.69 |
+| pfx-bg-clip-text | bg-clip-text | 600x200 | 2.50 (3.01) | 1.63 (2.18) | 0.43 (0.65) | 0.17 | 0.65 |
+| pfx-mix-blend | mix-blend | 600x200 | 1.72 (2.25) | 0.99 (1.56) | 1.19 (1.41) | 0.69 | 0.58 |
+| pfx-bg-blend | bg-blend | 600x200 | 4.84 (5.69) | 3.68 (4.35) | 0.95 (1.33) | 0.20 | 0.76 |
+| pfx-drop-shadow | drop-shadow | 600x200 | 1.44 (1.99) | 0.91 (1.31) | 1.13 (1.47) | 0.78 | 0.63 |
+| pfx-backdrop-filter | backdrop-filter | 600x200 | 4.41 (6.47) | 2.46 (3.05) | 2.77 (3.76) | 0.63 | 0.56 |
+| pfx-text-stroke | text-stroke | 600x200 | 0.73 (1.09) | 0.55 (1.00) | 1.18 (1.49) | 1.61 | 0.75 |
+| pfx-text-decoration | text-decoration | 600x260 | 1.55 (1.97) | 1.07 (1.81) | 1.70 (1.97) | 1.10 | 0.69 |
+| pfx-visibility | visibility | 600x200 | 0.28 (0.50) | 0.26 (0.58) | 0.19 (0.31) | 0.67 | 0.92 |
+| pfx-opacity-layers | opacity | 600x200 | 3.00 (3.53) | 1.73 (2.20) | 2.12 (2.56) | 0.71 | 0.58 |
+| pfx-svg-background | svg-image | 600x200 | 0.82 (1.46) | 0.46 (0.89) | 1.20 (1.64) | 1.46 | 0.56 |
+| pfx-inline-boxes-many | inline-box | 600x300 | 2.65 (3.39) | 1.73 (2.27) | 1.87 (2.62) | 0.70 | 0.65 |
+| css-class-id | css-stylesheet | 1200x630 | 2.26 (3.89) | 2.23 (4.79) | 1.75 (3.05) | 0.77 | 0.98 |
+| css-nth-child | css-stylesheet | 800x500 | 1.57 (2.47) | 1.56 (3.05) | 1.11 (1.84) | 0.71 | 0.99 |
+| css-media-layer | css-stylesheet | 1200x400 | 0.73 (1.59) | 1.26 (2.46) | 0.85 (1.53) | 1.16 | 1.72 |
+| css-important-var | css-stylesheet | 900x400 | 0.89 (1.74) | 0.90 (2.75) | 0.67 (1.36) | 0.75 | 1.01 |
+| tw-card | tailwind | 1200x630 | 1.95 (3.65) | 2.16 (4.69) | 1.55 (2.23) | 0.80 | 1.11 |
+| tw-responsive | tailwind | 1200x400 | 0.65 (1.37) | 1.27 (2.32) | 0.77 (1.21) | 1.17 | 1.95 |
+| tw-structural | tailwind | 800x500 | 0.69 (1.30) | 0.92 (2.77) | 0.87 (1.42) | 1.25 | 1.33 |
+| tw-arbitrary | tailwind | 900x450 | 4.99 (6.08) | 3.47 (5.41) | 2.61 (3.56) | 0.52 | 0.69 |
+| html-article | html | 1000x600 | 1.57 (2.74) | 1.53 (3.76) | 1.17 (2.03) | 0.75 | 0.98 |
+| html-document | html | 800x400 | 0.70 (1.10) | 0.76 (2.82) | 0.55 (0.89) | 0.79 | 1.09 |
+| html-flex-card | html | 1000x500 | 3.42 (4.09) | 2.58 (4.60) | 1.91 (2.84) | 0.56 | 0.75 |
+| html-inline | html | 900x300 | 0.94 (1.41) | 0.92 (2.27) | 0.64 (1.04) | 0.68 | 0.98 |
+| pseudo-inline | pseudo-elements | 800x300 | 0.72 (1.25) | 0.73 (1.46) | 0.41 (0.68) | 0.56 | 1.01 |
+| pseudo-block | pseudo-elements | 800x400 | 0.92 (1.67) | 0.97 (2.90) | 0.71 (1.13) | 0.77 | 1.06 |
+| pseudo-attr | pseudo-elements | 800x250 | 0.61 (1.05) | 0.56 (1.15) | 0.36 (0.57) | 0.59 | 0.91 |
+| pseudo-tw | pseudo-elements | 800x300 | 0.59 (1.07) | 0.68 (1.30) | 0.50 (0.81) | 0.85 | 1.15 |
+| anim-opacity-t0 | animation | 400x200 | 0.14 (0.25) | 0.15 (0.36) | 0.13 (0.20) | 0.88 | 1.02 |
+| anim-opacity-t250 | animation | 400x200 | 0.29 (0.51) | 0.20 (0.40) | 0.14 (0.22) | 0.47 | 0.67 |
+| anim-opacity-t500 | animation | 400x200 | 0.30 (0.52) | 0.20 (0.42) | 0.14 (0.22) | 0.47 | 0.68 |
+| anim-opacity-t900 | animation | 400x200 | 0.34 (0.53) | 0.20 (0.47) | 0.14 (0.24) | 0.42 | 0.59 |
+| anim-opacity-t1500 | animation | 400x200 | 0.15 (0.31) | 0.14 (0.33) | 0.11 (0.18) | 0.76 | 0.95 |
+| anim-transform-t0 | animation | 400x200 | 0.15 (0.27) | 0.15 (0.35) | 0.16 (0.24) | 1.00 | 0.99 |
+| anim-transform-t200 | animation | 400x200 | 0.16 (0.29) | 0.16 (0.37) | 0.16 (0.25) | 0.96 | 0.98 |
+| anim-transform-t400 | animation | 400x200 | 0.17 (0.29) | 0.17 (0.45) | 0.16 (0.33) | 0.96 | 1.00 |
+| anim-transform-t600 | animation | 400x200 | 0.17 (0.34) | 0.17 (0.47) | 0.16 (0.26) | 0.91 | 0.97 |
+| anim-transform-t800 | animation | 400x200 | 0.15 (0.27) | 0.15 (0.36) | 0.14 (0.24) | 0.96 | 1.00 |
+| anim-color-t0 | animation | 400x200 | 0.29 (0.47) | 0.25 (0.51) | 0.17 (0.25) | 0.58 | 0.86 |
+| anim-color-t300 | animation | 400x200 | 0.28 (0.48) | 0.24 (0.49) | 0.16 (0.27) | 0.58 | 0.86 |
+| anim-color-t700 | animation | 400x200 | 0.29 (0.51) | 0.25 (0.54) | 0.16 (0.26) | 0.57 | 0.87 |
+| anim-color-t2000 | animation | 400x200 | 0.29 (0.55) | 0.27 (0.55) | 0.16 (0.25) | 0.57 | 0.92 |
+| anim-width-t0 | animation | 400x200 | 0.16 (0.29) | 0.15 (0.38) | 0.13 (0.22) | 0.85 | 0.98 |
+| anim-width-t100 | animation | 400x200 | 0.17 (0.29) | 0.16 (0.34) | 0.17 (0.26) | 1.05 | 0.96 |
+| anim-width-t500 | animation | 400x200 | 0.19 (0.33) | 0.17 (0.44) | 0.22 (0.38) | 1.16 | 0.93 |
+| anim-width-t999 | animation | 400x200 | 0.18 (0.31) | 0.17 (0.37) | 0.21 (0.30) | 1.17 | 0.93 |
+| anim-delay-fill-t0 | animation | 400x200 | 0.32 (0.51) | 0.23 (0.52) | 0.18 (0.28) | 0.57 | 0.72 |
+| anim-delay-fill-t750 | animation | 400x200 | 0.43 (0.64) | 0.27 (0.54) | 0.21 (0.28) | 0.49 | 0.62 |
+| anim-delay-fill-t2000 | animation | 400x200 | 0.19 (0.32) | 0.17 (0.39) | 0.16 (0.25) | 0.87 | 0.92 |
+| anim-alternate-t100 | animation | 400x200 | 0.30 (0.46) | 0.22 (0.46) | 0.13 (0.21) | 0.45 | 0.75 |
+| anim-alternate-t500 | animation | 400x200 | 0.30 (0.48) | 0.23 (0.47) | 0.14 (0.22) | 0.47 | 0.76 |
+| anim-alternate-t700 | animation | 400x200 | 0.30 (0.47) | 0.23 (0.48) | 0.14 (0.21) | 0.45 | 0.77 |
+| anim-alternate-t1100 | animation | 400x200 | 0.30 (0.49) | 0.23 (0.46) | 0.14 (0.22) | 0.48 | 0.77 |
+| anim-alternate-t1300 | animation | 400x200 | 0.15 (0.33) | 0.14 (0.36) | 0.12 (0.21) | 0.85 | 0.98 |
+| anim-steps-t0 | animation | 400x200 | 0.16 (0.28) | 0.16 (0.35) | 0.14 (0.24) | 0.89 | 0.99 |
+| anim-steps-t260 | animation | 400x200 | 0.16 (0.30) | 0.15 (0.35) | 0.14 (0.22) | 0.90 | 0.99 |
+| anim-steps-t500 | animation | 400x200 | 0.16 (0.27) | 0.16 (0.38) | 0.14 (0.20) | 0.89 | 0.99 |
+| anim-steps-t990 | animation | 400x200 | 0.16 (0.31) | 0.16 (0.40) | 0.14 (0.26) | 0.86 | 0.96 |
+| anim-two-anims-t0 | animation | 400x200 | 0.29 (0.52) | 0.20 (0.40) | 0.16 (0.25) | 0.55 | 0.68 |
+| anim-two-anims-t400 | animation | 400x200 | 0.57 (0.84) | 0.34 (0.62) | 0.24 (0.39) | 0.42 | 0.59 |
+| anim-two-anims-t600 | animation | 400x200 | 0.62 (0.90) | 0.35 (0.62) | 0.25 (0.35) | 0.39 | 0.56 |
+| anim-two-anims-t1200 | animation | 400x200 | 0.36 (0.53) | 0.26 (0.54) | 0.17 (0.26) | 0.48 | 0.73 |
+| anim-inherit-t0 | animation | 400x200 | 0.33 (0.52) | 0.29 (0.63) | 0.19 (0.31) | 0.58 | 0.87 |
+| anim-inherit-t500 | animation | 400x200 | 0.37 (0.57) | 0.31 (0.62) | 0.20 (0.30) | 0.54 | 0.83 |
+| anim-inherit-t1000 | animation | 400x200 | 0.41 (0.66) | 0.32 (0.68) | 0.21 (0.35) | 0.52 | 0.80 |
+| anim-tw-spin-t125 | animation | 400x200 | 0.31 (0.48) | 0.24 (0.49) | 0.15 (0.21) | 0.48 | 0.77 |
+| anim-tw-spin-t375 | animation | 400x200 | 0.31 (0.52) | 0.23 (0.49) | 0.15 (0.23) | 0.49 | 0.76 |
+| anim-tw-spin-t1600 | animation | 400x200 | 0.31 (0.48) | 0.23 (0.47) | 0.15 (0.23) | 0.48 | 0.76 |
+| anim-kf-option-t0 | animation | 400x200 | 0.21 (0.42) | 0.20 (0.52) | 0.22 (0.39) | 1.05 | 0.95 |
+| anim-kf-option-t500 | animation | 400x200 | 0.47 (0.72) | 0.29 (0.56) | 0.20 (0.27) | 0.43 | 0.61 |
+| layout2-table-auto | table | 600x300 | 1.14 (1.53) | 0.91 (1.74) | 0.80 (1.15) | 0.70 | 0.80 |
+| layout2-table-spans | table | 600x320 | 0.84 (1.19) | 0.63 (1.22) | 0.61 (1.02) | 0.72 | 0.75 |
+| layout2-table-fixed | table | 600x260 | 1.06 (1.52) | 0.84 (1.33) | 0.70 (1.08) | 0.66 | 0.79 |
+| layout2-table-percent | table | 600x220 | 0.60 (1.00) | 0.48 (0.92) | 0.36 (0.61) | 0.61 | 0.80 |
+| layout2-table-collapse-conflicts | table | 600x300 | 1.14 (1.59) | 0.86 (1.49) | 0.74 (1.14) | 0.64 | 0.75 |
+| layout2-table-col-backgrounds | table | 600x260 | 1.76 (2.21) | 1.26 (1.89) | 0.94 (1.21) | 0.54 | 0.71 |
+| layout2-table-empty-cells | table | 600x240 | 1.05 (1.46) | 0.78 (1.30) | 0.60 (0.93) | 0.57 | 0.75 |
+| layout2-table-caption-bottom | table | 600x300 | 1.36 (1.91) | 1.00 (1.56) | 0.88 (1.34) | 0.65 | 0.74 |
+| layout2-float-image | float | 600x240 | 0.66 (1.02) | 0.52 (1.03) | 0.57 (0.86) | 0.87 | 0.80 |
+| layout2-float-clear | float | 600x260 | 0.35 (0.62) | 0.29 (0.69) | 0.27 (0.47) | 0.78 | 0.83 |
+| layout2-float-bfc | float | 600x260 | 0.53 (0.87) | 0.40 (0.95) | 0.30 (0.50) | 0.58 | 0.75 |
+| layout2-float-wrap | float | 600x260 | 0.60 (1.04) | 0.46 (0.93) | 0.43 (0.69) | 0.72 | 0.76 |
+| layout2-ib-badges | inline-block | 600x200 | 0.49 (0.76) | 0.40 (0.81) | 0.32 (0.50) | 0.66 | 0.83 |
+| layout2-ib-wrap | inline-block | 600x260 | 0.62 (0.93) | 0.49 (1.05) | 0.55 (0.99) | 0.89 | 0.79 |
+| layout2-ib-valign | inline-block | 600x220 | 0.51 (0.89) | 0.42 (0.94) | 0.34 (0.55) | 0.66 | 0.83 |
+| layout2-ib-json | inline-block | 600x160 | 0.41 (0.73) | 0.38 (0.89) | 0.24 (0.40) | 0.59 | 0.91 |
+| layout2-grid-areas | grid-areas | 600x360 | 0.66 (1.14) | 0.52 (0.99) | 0.57 (0.91) | 0.87 | 0.79 |
+| layout2-grid-named-lines | grid-areas | 600x300 | 0.65 (1.11) | 0.55 (1.12) | 0.53 (0.86) | 0.80 | 0.84 |
+| layout2-grid-areas-auto | grid-areas | 600x300 | 0.55 (0.96) | 0.45 (0.93) | 0.36 (0.63) | 0.65 | 0.82 |
+| layout3-float-left | float-text | 520x260 | 0.61 (1.12) | 0.47 (0.96) | 0.46 (0.74) | 0.75 | 0.77 |
+| layout3-float-right | float-text | 520x260 | 0.64 (0.97) | 0.47 (0.90) | 0.45 (0.72) | 0.70 | 0.73 |
+| layout3-float-stacked | float-text | 560x300 | 0.89 (1.32) | 0.66 (1.23) | 0.71 (1.24) | 0.79 | 0.74 |
+| layout3-float-tall | float-text | 560x330 | 1.10 (1.63) | 0.81 (1.46) | 0.78 (1.33) | 0.71 | 0.74 |
+| layout3-float-in-text | float-text | 560x300 | 0.87 (1.46) | 0.65 (1.14) | 0.61 (0.93) | 0.70 | 0.74 |
+| layout3-float-rtl | float-text | 560x300 | 1.29 (2.11) | 0.86 (1.49) | 0.85 (1.13) | 0.66 | 0.67 |
+| layout3-float-inline-box | float-text | 560x280 | 0.68 (1.07) | 0.52 (0.99) | 0.49 (0.74) | 0.72 | 0.77 |
+| layout3-inline-badges | inline-flow | 520x260 | 0.95 (1.39) | 0.75 (1.27) | 0.68 (0.86) | 0.71 | 0.79 |
+| layout3-inline-image | inline-flow | 560x280 | 0.89 (1.23) | 0.69 (1.32) | 0.73 (1.05) | 0.82 | 0.77 |
+| layout3-inline-flex-chip | inline-flow | 560x280 | 1.25 (1.81) | 0.91 (1.48) | 1.01 (1.49) | 0.81 | 0.73 |
+| layout3-inline-br | inline-flow | 520x260 | 0.68 (0.88) | 0.54 (1.01) | 0.49 (0.80) | 0.73 | 0.79 |
+| layout3-inline-abs | inline-flow | 520x220 | 0.62 (1.03) | 0.48 (0.94) | 0.41 (0.64) | 0.67 | 0.77 |
+| layout3-span-edges | inline-box-model | 520x260 | 0.97 (1.48) | 0.72 (1.23) | 0.88 (1.17) | 0.91 | 0.74 |
+| layout3-span-nowrap | inline-box-model | 520x240 | 0.90 (1.38) | 0.78 (1.48) | 0.66 (1.14) | 0.73 | 0.86 |
+| layout3-span-valign | inline-box-model | 560x280 | 1.25 (1.91) | 0.93 (1.68) | 0.74 (1.06) | 0.59 | 0.75 |
+| layout3-card-all | inline-box-model | 640x420 | 3.02 (4.00) | 2.53 (3.89) | 2.21 (3.25) | 0.73 | 0.84 |
 
 ### `format: png` — median ms (p95)
 
 | case | feature | size | takumi-wasm | takumi-native | bm | bm / takumi-wasm | native / wasm |
 | :-- | :-- | --: | --: | --: | --: | --: | --: |
-| colors-solid-bg | colors | 400x300 | 1.23 (1.52) | 0.70 (1.08) | 0.45 (0.59) | 0.36 | 0.57 |
-| colors-hex | colors | 1200x630 | 8.71 (9.51) | 4.47 (5.16) | 3.16 (4.18) | 0.36 | 0.51 |
-| colors-functional | colors | 1200x630 | 7.76 (8.29) | 4.06 (4.67) | 2.88 (3.67) | 0.37 | 0.52 |
-| colors-named | colors | 1200x630 | 7.91 (8.37) | 4.51 (5.33) | 3.11 (3.68) | 0.39 | 0.57 |
-| colors-transparent-canvas | colors | 400x300 | 1.39 (1.58) | 0.85 (1.36) | 0.62 (1.12) | 0.44 | 0.61 |
-| flex-row-column | flex | 1200x630 | 7.06 (7.77) | 3.52 (4.43) | 2.66 (3.28) | 0.38 | 0.50 |
-| flex-justify-align | flex | 1200x630 | 6.66 (7.36) | 3.41 (4.32) | 2.91 (3.62) | 0.44 | 0.51 |
-| flex-wrap-gap | flex | 1200x630 | 6.68 (7.69) | 3.52 (4.34) | 3.36 (4.35) | 0.50 | 0.53 |
-| flex-grow-shrink-basis | flex | 1200x630 | 5.68 (6.15) | 2.95 (3.65) | 3.32 (3.85) | 0.58 | 0.52 |
-| flex-nested-small | flex | 400x300 | 1.12 (1.34) | 0.67 (0.92) | 0.43 (0.62) | 0.38 | 0.59 |
-| sizing-percent | sizing | 1200x630 | 7.01 (7.95) | 3.59 (4.31) | 3.27 (3.77) | 0.47 | 0.51 |
-| sizing-minmax | sizing | 1200x630 | 6.38 (6.87) | 3.60 (4.38) | 3.13 (3.97) | 0.49 | 0.57 |
-| sizing-aspect-ratio | sizing | 1200x630 | 6.90 (7.41) | 3.54 (4.08) | 2.25 (2.93) | 0.33 | 0.51 |
-| sizing-padding-margin | sizing | 1200x630 | 6.67 (7.24) | 3.26 (4.08) | 3.47 (4.26) | 0.52 | 0.49 |
-| sizing-auto-margin-center | sizing | 400x300 | 0.89 (1.10) | 0.52 (0.70) | 0.50 (0.60) | 0.57 | 0.58 |
-| abs-inset | absolute | 1200x630 | 8.04 (8.68) | 3.95 (4.86) | 3.40 (4.06) | 0.42 | 0.49 |
-| abs-zorder | absolute | 1200x630 | 14.59 (15.49) | 4.36 (5.18) | 6.76 (8.46) | 0.46 | 0.30 |
-| abs-in-flow | absolute | 400x300 | 1.29 (1.54) | 0.85 (1.18) | 0.49 (0.62) | 0.38 | 0.66 |
-| borders-uniform | borders | 1200x630 | 6.24 (10.32) | 3.29 (4.78) | 3.30 (4.02) | 0.53 | 0.53 |
-| borders-per-side | borders | 1200x630 | 6.52 (7.19) | 3.37 (4.30) | 2.26 (3.00) | 0.35 | 0.52 |
-| borders-with-radius | borders | 400x300 | 1.78 (2.01) | 1.09 (1.45) | 1.12 (1.27) | 0.63 | 0.61 |
-| radius-uniform-percorner | border-radius | 1200x630 | 7.33 (7.64) | 3.51 (4.06) | 3.02 (3.64) | 0.41 | 0.48 |
-| radius-elliptical | border-radius | 1200x630 | 6.66 (7.38) | 3.20 (3.96) | 2.96 (3.59) | 0.44 | 0.48 |
-| radius-pill-circle | border-radius | 1200x630 | 6.11 (6.96) | 2.91 (3.67) | 2.72 (3.52) | 0.45 | 0.48 |
-| radius-small | border-radius | 400x300 | 0.95 (1.46) | 0.57 (0.79) | 0.47 (0.61) | 0.50 | 0.60 |
-| lingrad-angles | linear-gradient | 1200x630 | 35.52 (36.32) | 8.29 (10.29) | 10.22 (11.03) | 0.29 | 0.23 |
-| lingrad-multistop | linear-gradient | 1200x630 | 24.33 (24.67) | 7.20 (7.91) | 10.81 (12.89) | 0.44 | 0.30 |
-| lingrad-alpha | linear-gradient | 1200x630 | 30.20 (33.94) | 7.20 (8.16) | 9.23 (10.01) | 0.31 | 0.24 |
-| lingrad-hero-small | linear-gradient | 400x300 | 3.26 (3.63) | 1.40 (1.77) | 1.80 (2.12) | 0.55 | 0.43 |
-| radial-shapes | radial-gradient | 1200x630 | 37.83 (42.56) | 11.11 (13.33) | 18.23 (25.21) | 0.48 | 0.29 |
-| radial-at-position | radial-gradient | 1200x630 | 39.29 (40.52) | 12.03 (13.10) | 16.81 (18.46) | 0.43 | 0.31 |
-| radial-spotlight-small | radial-gradient | 400x300 | 10.23 (10.45) | 2.76 (3.48) | 5.64 (6.06) | 0.55 | 0.27 |
-| shadow-offset-blur | box-shadow | 1200x630 | 29.81 (30.27) | 8.43 (8.97) | 13.98 (14.48) | 0.47 | 0.28 |
-| shadow-spread-multi | box-shadow | 1200x630 | 29.97 (30.95) | 8.25 (10.02) | 14.85 (15.86) | 0.50 | 0.28 |
-| shadow-inset | box-shadow | 1200x630 | 30.44 (32.68) | 9.75 (10.83) | 13.78 (14.48) | 0.45 | 0.32 |
-| shadow-small | box-shadow | 400x300 | 2.25 (2.96) | 1.48 (2.02) | 1.16 (1.30) | 0.51 | 0.65 |
-| opacity-basic | opacity | 1200x630 | 13.62 (14.97) | 5.63 (6.21) | 5.10 (5.66) | 0.37 | 0.41 |
-| opacity-nested | opacity | 1200x630 | 14.75 (16.86) | 6.50 (8.09) | 3.86 (5.41) | 0.26 | 0.44 |
-| opacity-with-radius-shadow | opacity | 400x300 | 4.75 (4.97) | 2.48 (3.09) | 1.83 (2.05) | 0.39 | 0.52 |
-| overflow-hidden-clip | overflow | 1200x630 | 7.25 (8.27) | 3.79 (4.75) | 2.46 (3.08) | 0.34 | 0.52 |
-| overflow-radius-clip | overflow | 1200x630 | 14.97 (15.84) | 5.09 (6.29) | 6.03 (8.04) | 0.40 | 0.34 |
-| overflow-nested | overflow | 400x300 | 1.50 (1.75) | 0.93 (1.19) | 0.60 (0.73) | 0.40 | 0.62 |
-| transform-basic | transform | 1200x630 | 9.87 (11.82) | 5.06 (6.53) | 3.72 (4.76) | 0.38 | 0.51 |
-| transform-combined-origin | transform | 1200x630 | 9.35 (10.33) | 5.10 (7.15) | 3.51 (4.57) | 0.38 | 0.55 |
-| transform-text-small | transform | 400x300 | 2.80 (3.37) | 1.86 (2.40) | 1.52 (2.27) | 0.54 | 0.66 |
-| text-single-sizes | text-single-line | 1200x630 | 7.55 (10.48) | 4.05 (5.14) | 3.72 (5.02) | 0.49 | 0.54 |
-| text-single-colors-small | text-single-line | 400x300 | 1.73 (2.10) | 1.34 (1.84) | 0.78 (1.07) | 0.45 | 0.77 |
-| text-single-fonts | text-single-line | 1200x630 | 8.15 (8.91) | 4.34 (7.08) | 4.03 (4.86) | 0.49 | 0.53 |
-| text-paragraph-wrap | text-paragraph | 1200x630 | 8.80 (9.35) | 4.58 (5.38) | 4.61 (5.91) | 0.52 | 0.52 |
-| text-paragraph-lineheight | text-paragraph | 1200x630 | 9.12 (9.96) | 4.95 (6.19) | 5.15 (5.75) | 0.56 | 0.54 |
-| text-paragraph-letterspacing | text-paragraph | 1200x630 | 10.15 (11.05) | 5.18 (6.24) | 6.00 (6.74) | 0.59 | 0.51 |
-| text-paragraph-small | text-paragraph | 400x300 | 1.82 (2.19) | 1.23 (1.63) | 1.03 (1.39) | 0.57 | 0.68 |
-| text-long-wrap | text-paragraph | 1200x630 | 10.39 (11.64) | 4.23 (5.22) | 3.91 (4.82) | 0.38 | 0.41 |
-| fonts-weights-italic | fonts | 1200x630 | 9.76 (10.15) | 4.82 (5.83) | 5.59 (6.09) | 0.57 | 0.49 |
-| fonts-mixed-inline | fonts | 1200x630 | 7.97 (9.78) | 4.02 (4.62) | 3.87 (5.01) | 0.49 | 0.50 |
-| text-vietnamese | text-i18n | 1200x630 | 8.25 (10.15) | 3.96 (4.69) | 4.09 (5.09) | 0.50 | 0.48 |
-| text-accented-latin | text-i18n | 1200x630 | 7.62 (8.16) | 3.88 (4.54) | 4.01 (4.61) | 0.53 | 0.51 |
-| text-ellipsis-nowrap | text-truncation | 1200x630 | 6.64 (6.97) | 3.56 (4.22) | 2.53 (3.13) | 0.38 | 0.54 |
-| text-lineclamp | text-truncation | 1200x630 | 8.10 (9.12) | 4.22 (4.75) | 3.79 (4.62) | 0.47 | 0.52 |
-| text-lineclamp-small | text-truncation | 400x300 | 1.34 (1.62) | 0.88 (1.19) | 0.59 (0.70) | 0.44 | 0.66 |
-| img-png-fit | images | 1200x630 | 35.13 (38.78) | 9.35 (9.98) | 18.41 (19.05) | 0.52 | 0.27 |
-| img-jpeg-fit | images | 1200x630 | 53.08 (60.69) | 18.84 (19.68) | 28.36 (32.18) | 0.53 | 0.35 |
-| img-intrinsic-size | images | 400x300 | 5.26 (7.13) | 1.38 (1.84) | 2.83 (3.29) | 0.54 | 0.26 |
-| img-radius-clip | images | 1200x630 | 35.56 (36.64) | 10.64 (12.49) | 23.50 (25.11) | 0.66 | 0.30 |
-| img-photo-bg | images | 1200x630 | 54.53 (55.07) | 12.82 (15.16) | 41.79 (43.90) | 0.77 | 0.24 |
-| grid-fixed-fr | grid | 1200x630 | 6.71 (7.36) | 3.52 (4.24) | 3.11 (3.87) | 0.46 | 0.52 |
-| grid-repeat-gap | grid | 1200x630 | 10.67 (11.40) | 4.38 (5.58) | 3.57 (4.22) | 0.33 | 0.41 |
-| grid-spans | grid | 1200x630 | 7.57 (8.31) | 4.01 (4.82) | 2.82 (3.34) | 0.37 | 0.53 |
-| grid-small-mixed | grid | 400x300 | 1.74 (2.06) | 1.09 (1.41) | 0.85 (1.00) | 0.49 | 0.62 |
-| card-og | og-card | 1200x630 | 21.68 (22.11) | 7.84 (8.93) | 14.48 (15.41) | 0.67 | 0.36 |
-| card-og-small | og-card | 600x315 | 8.29 (9.02) | 3.66 (4.61) | 5.88 (6.86) | 0.71 | 0.44 |
-| card-blog | blog-card | 1200x630 | 48.83 (49.56) | 12.78 (13.72) | 30.32 (31.24) | 0.62 | 0.26 |
-| card-flat-ui | blog-card | 1200x630 | 19.86 (20.64) | 7.20 (8.24) | 8.95 (9.62) | 0.45 | 0.36 |
-| stress-600-boxes | stress | 1200x630 | 15.88 (17.00) | 9.76 (10.51) | 12.14 (12.91) | 0.76 | 0.61 |
-| stress-200-labels | stress | 1200x630 | 22.89 (23.79) | 14.56 (16.13) | 14.34 (15.00) | 0.63 | 0.64 |
-| stress-3000x2000-card | stress | 3000x2000 | 136.09 (140.07) | 41.74 (44.41) | 79.45 (85.12) | 0.58 | 0.31 |
-| fx-text-shadow | text-shadow | 600x200 | 4.35 (5.19) | 1.89 (2.39) | 3.95 (4.29) | 0.91 | 0.43 |
-| gap-dashed-dotted-border | known-gaps | 600x200 | 2.57 (2.99) | 1.47 (1.74) | 1.24 (1.57) | 0.48 | 0.57 |
-| fx-filter-blur-grayscale | filter | 600x200 | 4.89 (5.34) | 1.91 (2.43) | 3.09 (3.52) | 0.63 | 0.39 |
-| gap-tailwind-tw | known-gaps | 600x200 | 1.29 (1.57) | 0.83 (1.08) | 0.56 (0.68) | 0.44 | 0.65 |
-| gap-oklch-color | known-gaps | 600x200 | 1.08 (1.33) | 0.66 (0.86) | 0.45 (0.55) | 0.42 | 0.61 |
-| gap-svg-image | known-gaps | 600x200 | 1.08 (1.41) | 0.65 (1.02) | 0.52 (0.69) | 0.48 | 0.60 |
-| gap-inline-box-decoration | known-gaps | 600x200 | 1.72 (2.10) | 1.11 (1.45) | 0.84 (1.10) | 0.49 | 0.64 |
-| gap-mix-blend-mode | known-gaps | 600x200 | 1.54 (1.80) | 0.93 (1.21) | 0.71 (0.81) | 0.46 | 0.60 |
-| gap-clip-path | known-gaps | 600x200 | 6.46 (6.78) | 1.29 (1.67) | 1.49 (1.67) | 0.23 | 0.20 |
-| gap-background-clip-text | known-gaps | 600x200 | 5.32 (5.60) | 2.02 (2.47) | 1.45 (1.63) | 0.27 | 0.38 |
-| gap-text-wrap-balance | known-gaps | 600x200 | 1.63 (2.32) | 1.17 (1.55) | 0.79 (1.05) | 0.48 | 0.71 |
-| pfx-aa-shapes | aa-exact | 600x200 | 1.37 (1.67) | 0.87 (1.17) | 0.73 (0.87) | 0.53 | 0.64 |
-| pfx-aa-text | aa-exact | 600x200 | 1.81 (2.14) | 1.18 (1.44) | 0.98 (1.12) | 0.54 | 0.65 |
-| pfx-border-dashed | dashed-border | 600x200 | 3.35 (3.65) | 1.82 (2.11) | 1.67 (1.97) | 0.50 | 0.54 |
-| pfx-border-dotted | dotted-border | 600x200 | 3.65 (4.05) | 2.03 (2.36) | 1.83 (2.12) | 0.50 | 0.56 |
-| pfx-border-double-3d | double-3d-border | 600x200 | 1.40 (2.16) | 0.84 (1.10) | 0.70 (1.05) | 0.50 | 0.60 |
-| pfx-border-mixed | mixed-border | 600x200 | 1.94 (2.22) | 1.15 (1.47) | 1.05 (1.29) | 0.54 | 0.59 |
-| pfx-outline | outline | 600x200 | 2.64 (3.40) | 1.55 (1.91) | 1.18 (1.34) | 0.45 | 0.59 |
-| pfx-clip-path-shapes | clip-path | 600x200 | 5.44 (5.83) | 1.51 (2.00) | 1.95 (2.18) | 0.36 | 0.28 |
-| pfx-mask-gradient | mask | 600x200 | 6.32 (6.61) | 1.80 (2.26) | 2.29 (2.57) | 0.36 | 0.28 |
-| pfx-bg-clip-text | bg-clip-text | 600x200 | 5.36 (5.68) | 2.61 (3.05) | 2.16 (2.70) | 0.40 | 0.49 |
-| pfx-mix-blend | mix-blend | 600x200 | 7.64 (8.46) | 2.06 (2.66) | 4.15 (4.42) | 0.54 | 0.27 |
-| pfx-bg-blend | bg-blend | 600x200 | 10.58 (10.82) | 4.86 (5.41) | 4.37 (4.90) | 0.41 | 0.46 |
-| pfx-drop-shadow | drop-shadow | 600x200 | 7.06 (7.51) | 1.91 (2.35) | 3.45 (3.81) | 0.49 | 0.27 |
-| pfx-backdrop-filter | backdrop-filter | 600x200 | 7.36 (7.96) | 3.22 (4.08) | 4.11 (4.91) | 0.56 | 0.44 |
-| pfx-text-stroke | text-stroke | 600x200 | 2.11 (2.53) | 1.42 (2.02) | 1.90 (2.39) | 0.90 | 0.67 |
-| pfx-text-decoration | text-decoration | 600x260 | 3.71 (4.30) | 2.10 (3.04) | 2.85 (3.10) | 0.77 | 0.57 |
-| pfx-visibility | visibility | 600x200 | 1.20 (1.53) | 0.76 (1.04) | 0.52 (0.66) | 0.43 | 0.64 |
-| pfx-opacity-layers | opacity | 600x200 | 7.07 (7.58) | 2.72 (3.26) | 4.06 (4.62) | 0.57 | 0.38 |
-| pfx-svg-background | svg-image | 600x200 | 2.21 (2.68) | 1.25 (1.61) | 1.81 (2.06) | 0.82 | 0.56 |
-| pfx-inline-boxes-many | inline-box | 600x300 | 5.34 (5.86) | 2.99 (3.57) | 3.68 (4.33) | 0.69 | 0.56 |
-| css-class-id | css-stylesheet | 1200x630 | 7.53 (9.62) | 3.85 (5.35) | 3.38 (4.23) | 0.45 | 0.51 |
-| css-nth-child | css-stylesheet | 800x500 | 4.23 (4.99) | 2.61 (3.43) | 1.83 (2.25) | 0.43 | 0.62 |
-| css-media-layer | css-stylesheet | 1200x400 | 4.67 (5.05) | 2.57 (3.21) | 1.49 (1.81) | 0.32 | 0.55 |
-| css-important-var | css-stylesheet | 900x400 | 3.50 (4.10) | 2.28 (2.77) | 1.09 (1.33) | 0.31 | 0.65 |
-| tw-card | tailwind | 1200x630 | 7.59 (9.74) | 4.07 (4.94) | 3.38 (4.14) | 0.45 | 0.54 |
-| tw-responsive | tailwind | 1200x400 | 3.64 (4.03) | 2.26 (3.11) | 1.24 (1.50) | 0.34 | 0.62 |
-| tw-structural | tailwind | 800x500 | 3.11 (3.44) | 2.04 (2.90) | 1.34 (1.61) | 0.43 | 0.66 |
-| tw-arbitrary | tailwind | 900x450 | 8.30 (9.07) | 4.83 (6.65) | 3.74 (4.23) | 0.45 | 0.58 |
-| html-article | html | 1000x600 | 5.59 (6.13) | 3.03 (3.52) | 2.42 (3.19) | 0.43 | 0.54 |
-| html-document | html | 800x400 | 2.61 (2.99) | 1.82 (2.42) | 1.11 (1.71) | 0.42 | 0.70 |
-| html-flex-card | html | 1000x500 | 11.91 (13.19) | 4.71 (5.80) | 6.90 (8.22) | 0.58 | 0.40 |
-| html-inline | html | 900x300 | 2.75 (3.24) | 2.04 (2.63) | 1.36 (1.79) | 0.50 | 0.74 |
-| pseudo-inline | pseudo-elements | 800x300 | 2.55 (2.85) | 1.42 (1.76) | 1.03 (1.17) | 0.40 | 0.56 |
-| pseudo-block | pseudo-elements | 800x400 | 2.91 (3.29) | 1.72 (2.10) | 1.22 (1.52) | 0.42 | 0.59 |
-| pseudo-attr | pseudo-elements | 800x250 | 2.01 (2.47) | 1.07 (1.40) | 0.74 (0.86) | 0.37 | 0.54 |
-| pseudo-tw | pseudo-elements | 800x300 | 2.25 (2.57) | 1.15 (1.60) | 0.96 (1.20) | 0.43 | 0.51 |
-| anim-opacity-t0 | animation | 400x200 | 0.52 (0.84) | 0.34 (0.56) | 0.31 (0.45) | 0.60 | 0.65 |
-| anim-opacity-t250 | animation | 400x200 | 0.79 (1.05) | 0.45 (0.64) | 0.33 (0.42) | 0.42 | 0.57 |
-| anim-opacity-t500 | animation | 400x200 | 0.76 (0.96) | 0.45 (0.63) | 0.33 (0.44) | 0.44 | 0.59 |
-| anim-opacity-t900 | animation | 400x200 | 0.78 (1.03) | 0.47 (0.66) | 0.34 (0.40) | 0.43 | 0.60 |
-| anim-opacity-t1500 | animation | 400x200 | 0.61 (0.75) | 0.40 (0.57) | 0.31 (0.36) | 0.51 | 0.66 |
-| anim-transform-t0 | animation | 400x200 | 0.64 (0.84) | 0.43 (0.75) | 0.41 (0.54) | 0.63 | 0.67 |
-| anim-transform-t200 | animation | 400x200 | 0.66 (0.84) | 0.44 (0.64) | 0.34 (0.42) | 0.51 | 0.67 |
-| anim-transform-t400 | animation | 400x200 | 0.64 (0.84) | 0.41 (0.62) | 0.32 (0.38) | 0.50 | 0.65 |
-| anim-transform-t600 | animation | 400x200 | 0.65 (0.86) | 0.43 (0.61) | 0.34 (0.46) | 0.52 | 0.65 |
-| anim-transform-t800 | animation | 400x200 | 0.65 (0.97) | 0.41 (0.55) | 0.38 (0.46) | 0.59 | 0.64 |
-| anim-color-t0 | animation | 400x200 | 0.81 (1.06) | 0.56 (0.90) | 0.32 (0.43) | 0.40 | 0.70 |
-| anim-color-t300 | animation | 400x200 | 0.79 (1.01) | 0.55 (0.74) | 0.32 (0.41) | 0.40 | 0.69 |
-| anim-color-t700 | animation | 400x200 | 0.85 (1.14) | 0.55 (0.74) | 0.32 (0.41) | 0.38 | 0.65 |
-| anim-color-t2000 | animation | 400x200 | 0.80 (0.99) | 0.54 (0.75) | 0.32 (0.41) | 0.40 | 0.67 |
-| anim-width-t0 | animation | 400x200 | 0.58 (0.80) | 0.38 (0.57) | 0.34 (0.42) | 0.58 | 0.65 |
-| anim-width-t100 | animation | 400x200 | 0.66 (0.80) | 0.43 (0.59) | 0.32 (0.57) | 0.48 | 0.65 |
-| anim-width-t500 | animation | 400x200 | 0.70 (1.13) | 0.47 (0.69) | 0.41 (0.50) | 0.58 | 0.68 |
-| anim-width-t999 | animation | 400x200 | 0.71 (0.90) | 0.47 (0.67) | 0.41 (0.55) | 0.58 | 0.66 |
-| anim-delay-fill-t0 | animation | 400x200 | 0.78 (0.96) | 0.48 (0.71) | 0.41 (0.49) | 0.53 | 0.62 |
-| anim-delay-fill-t750 | animation | 400x200 | 0.93 (1.54) | 0.51 (0.70) | 0.44 (0.56) | 0.47 | 0.55 |
-| anim-delay-fill-t2000 | animation | 400x200 | 0.67 (0.94) | 0.44 (0.66) | 0.40 (0.53) | 0.60 | 0.66 |
-| anim-alternate-t100 | animation | 400x200 | 0.76 (1.03) | 0.48 (0.62) | 0.33 (0.42) | 0.43 | 0.62 |
-| anim-alternate-t500 | animation | 400x200 | 0.76 (0.91) | 0.48 (0.63) | 0.34 (0.41) | 0.44 | 0.64 |
-| anim-alternate-t700 | animation | 400x200 | 0.76 (0.95) | 0.52 (0.74) | 0.34 (0.42) | 0.44 | 0.68 |
-| anim-alternate-t1100 | animation | 400x200 | 0.76 (0.95) | 0.46 (0.64) | 0.33 (0.42) | 0.44 | 0.61 |
-| anim-alternate-t1300 | animation | 400x200 | 0.60 (1.12) | 0.40 (0.76) | 0.33 (0.55) | 0.55 | 0.66 |
-| anim-steps-t0 | animation | 400x200 | 0.59 (0.75) | 0.39 (0.57) | 0.35 (0.43) | 0.58 | 0.65 |
-| anim-steps-t260 | animation | 400x200 | 0.60 (0.78) | 0.38 (0.54) | 0.35 (0.43) | 0.58 | 0.64 |
-| anim-steps-t500 | animation | 400x200 | 0.61 (0.78) | 0.38 (0.59) | 0.35 (0.49) | 0.56 | 0.62 |
-| anim-steps-t990 | animation | 400x200 | 0.59 (0.74) | 0.39 (0.58) | 0.35 (0.41) | 0.59 | 0.65 |
-| anim-two-anims-t0 | animation | 400x200 | 0.78 (1.04) | 0.48 (0.76) | 0.36 (0.44) | 0.47 | 0.62 |
-| anim-two-anims-t400 | animation | 400x200 | 1.10 (1.42) | 0.61 (0.87) | 0.46 (0.55) | 0.42 | 0.56 |
-| anim-two-anims-t600 | animation | 400x200 | 1.13 (1.32) | 0.66 (1.09) | 0.48 (0.59) | 0.43 | 0.58 |
-| anim-two-anims-t1200 | animation | 400x200 | 0.87 (1.07) | 0.52 (0.72) | 0.40 (0.50) | 0.46 | 0.60 |
-| anim-inherit-t0 | animation | 400x200 | 0.85 (1.13) | 0.59 (0.86) | 0.39 (0.47) | 0.45 | 0.69 |
-| anim-inherit-t500 | animation | 400x200 | 0.99 (1.24) | 0.68 (0.97) | 0.52 (0.78) | 0.52 | 0.69 |
-| anim-inherit-t1000 | animation | 400x200 | 1.21 (1.47) | 0.92 (1.20) | 0.60 (0.81) | 0.49 | 0.76 |
-| anim-tw-spin-t125 | animation | 400x200 | 0.79 (0.96) | 0.49 (0.71) | 0.36 (0.48) | 0.45 | 0.62 |
-| anim-tw-spin-t375 | animation | 400x200 | 0.78 (1.00) | 0.50 (0.71) | 0.37 (0.45) | 0.47 | 0.64 |
-| anim-tw-spin-t1600 | animation | 400x200 | 0.79 (0.98) | 0.50 (0.70) | 0.38 (0.44) | 0.48 | 0.63 |
-| anim-kf-option-t0 | animation | 400x200 | 0.63 (0.82) | 0.40 (0.58) | 0.38 (0.50) | 0.59 | 0.63 |
-| anim-kf-option-t500 | animation | 400x200 | 0.93 (1.11) | 0.54 (0.78) | 0.40 (0.51) | 0.43 | 0.59 |
-| layout2-table-auto | table | 600x300 | 2.95 (3.32) | 1.78 (2.56) | 1.47 (1.75) | 0.50 | 0.60 |
-| layout2-table-spans | table | 600x320 | 2.23 (2.51) | 1.35 (1.81) | 1.17 (1.44) | 0.52 | 0.60 |
-| layout2-table-fixed | table | 600x260 | 2.60 (3.29) | 1.72 (2.16) | 1.32 (2.01) | 0.51 | 0.66 |
-| layout2-table-percent | table | 600x220 | 1.51 (1.83) | 1.03 (1.45) | 0.70 (1.06) | 0.46 | 0.69 |
-| layout2-table-collapse-conflicts | table | 600x300 | 2.53 (2.89) | 1.64 (1.96) | 1.23 (1.44) | 0.49 | 0.65 |
-| layout2-table-col-backgrounds | table | 600x260 | 4.85 (5.29) | 2.36 (2.87) | 2.90 (3.15) | 0.60 | 0.49 |
-| layout2-table-empty-cells | table | 600x240 | 1.98 (2.47) | 1.32 (1.73) | 0.86 (1.06) | 0.43 | 0.66 |
-| layout2-table-caption-bottom | table | 600x300 | 2.71 (3.11) | 1.85 (2.46) | 1.41 (1.61) | 0.52 | 0.68 |
-| layout2-float-image | float | 600x240 | 5.66 (6.10) | 1.63 (2.13) | 2.46 (2.76) | 0.43 | 0.29 |
-| layout2-float-clear | float | 600x260 | 1.88 (2.15) | 1.07 (1.43) | 0.61 (0.94) | 0.32 | 0.57 |
-| layout2-float-bfc | float | 600x260 | 1.51 (1.89) | 0.91 (1.13) | 0.79 (0.91) | 0.52 | 0.60 |
-| layout2-float-wrap | float | 600x260 | 2.21 (2.54) | 1.37 (1.80) | 1.11 (1.28) | 0.50 | 0.62 |
-| layout2-ib-badges | inline-block | 600x200 | 1.28 (1.55) | 0.81 (1.08) | 0.60 (0.74) | 0.47 | 0.63 |
-| layout2-ib-wrap | inline-block | 600x260 | 1.97 (2.49) | 1.26 (1.68) | 0.95 (1.17) | 0.48 | 0.64 |
-| layout2-ib-valign | inline-block | 600x220 | 3.29 (3.83) | 1.55 (2.21) | 2.42 (3.62) | 0.74 | 0.47 |
-| layout2-ib-json | inline-block | 600x160 | 1.27 (2.00) | 0.81 (1.13) | 0.48 (0.62) | 0.38 | 0.64 |
-| layout2-grid-areas | grid-areas | 600x360 | 2.21 (2.52) | 1.43 (1.81) | 1.10 (1.29) | 0.50 | 0.65 |
-| layout2-grid-named-lines | grid-areas | 600x300 | 2.26 (2.67) | 1.43 (1.91) | 0.96 (1.27) | 0.43 | 0.63 |
-| layout2-grid-areas-auto | grid-areas | 600x300 | 1.93 (2.51) | 1.25 (1.90) | 0.79 (1.04) | 0.41 | 0.65 |
+| colors-solid-bg | colors | 400x300 | 1.18 (1.50) | 0.70 (0.99) | 0.46 (0.51) | 0.39 | 0.59 |
+| colors-hex | colors | 1200x630 | 8.18 (8.41) | 4.25 (5.11) | 2.96 (3.52) | 0.36 | 0.52 |
+| colors-functional | colors | 1200x630 | 7.52 (8.00) | 3.90 (4.49) | 2.93 (4.69) | 0.39 | 0.52 |
+| colors-named | colors | 1200x630 | 7.98 (8.74) | 4.33 (5.34) | 3.02 (3.70) | 0.38 | 0.54 |
+| colors-transparent-canvas | colors | 400x300 | 1.33 (1.54) | 0.76 (1.05) | 0.60 (0.79) | 0.45 | 0.57 |
+| flex-row-column | flex | 1200x630 | 6.99 (7.55) | 3.29 (3.82) | 2.61 (3.52) | 0.37 | 0.47 |
+| flex-justify-align | flex | 1200x630 | 6.39 (7.03) | 3.25 (4.03) | 2.80 (3.52) | 0.44 | 0.51 |
+| flex-wrap-gap | flex | 1200x630 | 6.61 (7.48) | 3.45 (4.74) | 3.20 (4.05) | 0.48 | 0.52 |
+| flex-grow-shrink-basis | flex | 1200x630 | 5.77 (6.96) | 2.93 (4.08) | 3.42 (4.02) | 0.59 | 0.51 |
+| flex-nested-small | flex | 400x300 | 1.12 (1.39) | 0.76 (1.04) | 0.45 (0.71) | 0.40 | 0.68 |
+| sizing-percent | sizing | 1200x630 | 6.74 (7.46) | 3.38 (4.08) | 3.21 (3.60) | 0.48 | 0.50 |
+| sizing-minmax | sizing | 1200x630 | 6.36 (7.12) | 3.39 (4.26) | 3.06 (4.08) | 0.48 | 0.53 |
+| sizing-aspect-ratio | sizing | 1200x630 | 6.83 (7.76) | 3.21 (3.67) | 2.09 (3.06) | 0.31 | 0.47 |
+| sizing-padding-margin | sizing | 1200x630 | 6.69 (7.69) | 3.10 (4.08) | 3.35 (4.13) | 0.50 | 0.46 |
+| sizing-auto-margin-center | sizing | 400x300 | 0.87 (1.08) | 0.49 (0.64) | 0.50 (0.60) | 0.57 | 0.56 |
+| abs-inset | absolute | 1200x630 | 8.00 (8.82) | 3.87 (4.64) | 3.33 (3.98) | 0.42 | 0.48 |
+| abs-zorder | absolute | 1200x630 | 14.67 (17.88) | 3.98 (4.72) | 6.46 (6.93) | 0.44 | 0.27 |
+| abs-in-flow | absolute | 400x300 | 1.27 (1.83) | 0.82 (1.16) | 0.50 (0.61) | 0.39 | 0.64 |
+| borders-uniform | borders | 1200x630 | 5.90 (6.52) | 3.12 (3.93) | 3.17 (3.73) | 0.54 | 0.53 |
+| borders-per-side | borders | 1200x630 | 6.26 (7.30) | 3.19 (4.13) | 2.21 (3.37) | 0.35 | 0.51 |
+| borders-with-radius | borders | 400x300 | 1.73 (2.04) | 0.99 (1.34) | 1.11 (1.24) | 0.64 | 0.57 |
+| radius-uniform-percorner | border-radius | 1200x630 | 7.29 (8.06) | 3.61 (4.72) | 2.90 (4.32) | 0.40 | 0.50 |
+| radius-elliptical | border-radius | 1200x630 | 6.72 (7.78) | 3.08 (3.61) | 2.80 (3.27) | 0.42 | 0.46 |
+| radius-pill-circle | border-radius | 1200x630 | 6.04 (7.72) | 2.86 (3.59) | 2.48 (3.39) | 0.41 | 0.47 |
+| radius-small | border-radius | 400x300 | 0.91 (1.17) | 0.54 (0.74) | 0.47 (0.73) | 0.52 | 0.60 |
+| lingrad-angles | linear-gradient | 1200x630 | 34.96 (38.05) | 7.80 (9.11) | 10.01 (10.58) | 0.29 | 0.22 |
+| lingrad-multistop | linear-gradient | 1200x630 | 24.52 (26.60) | 6.78 (7.57) | 10.53 (11.01) | 0.43 | 0.28 |
+| lingrad-alpha | linear-gradient | 1200x630 | 29.52 (31.23) | 6.86 (7.45) | 9.08 (9.58) | 0.31 | 0.23 |
+| lingrad-hero-small | linear-gradient | 400x300 | 3.18 (3.55) | 1.36 (1.87) | 1.81 (2.29) | 0.57 | 0.43 |
+| radial-shapes | radial-gradient | 1200x630 | 36.94 (39.98) | 10.48 (10.96) | 17.84 (18.46) | 0.48 | 0.28 |
+| radial-at-position | radial-gradient | 1200x630 | 39.06 (41.68) | 11.54 (12.13) | 16.48 (17.25) | 0.42 | 0.30 |
+| radial-spotlight-small | radial-gradient | 400x300 | 10.09 (10.86) | 2.56 (3.01) | 5.56 (6.01) | 0.55 | 0.25 |
+| shadow-offset-blur | box-shadow | 1200x630 | 29.91 (31.28) | 8.02 (8.47) | 13.55 (14.11) | 0.45 | 0.27 |
+| shadow-spread-multi | box-shadow | 1200x630 | 30.17 (32.36) | 7.92 (8.32) | 14.34 (15.23) | 0.48 | 0.26 |
+| shadow-inset | box-shadow | 1200x630 | 30.48 (31.27) | 9.62 (10.27) | 13.91 (14.54) | 0.46 | 0.32 |
+| shadow-small | box-shadow | 400x300 | 2.18 (2.64) | 1.38 (1.66) | 1.15 (1.23) | 0.53 | 0.63 |
+| opacity-basic | opacity | 1200x630 | 13.36 (14.04) | 5.40 (6.02) | 4.95 (5.60) | 0.37 | 0.40 |
+| opacity-nested | opacity | 1200x630 | 14.52 (14.74) | 6.07 (6.75) | 3.61 (4.59) | 0.25 | 0.42 |
+| opacity-with-radius-shadow | opacity | 400x300 | 4.65 (5.12) | 2.40 (2.79) | 1.79 (1.96) | 0.38 | 0.52 |
+| overflow-hidden-clip | overflow | 1200x630 | 6.98 (7.55) | 3.62 (4.29) | 2.49 (3.19) | 0.36 | 0.52 |
+| overflow-radius-clip | overflow | 1200x630 | 15.72 (17.63) | 4.66 (5.78) | 5.85 (6.35) | 0.37 | 0.30 |
+| overflow-nested | overflow | 400x300 | 1.42 (1.79) | 0.89 (1.22) | 0.60 (0.72) | 0.42 | 0.63 |
+| transform-basic | transform | 1200x630 | 9.03 (9.64) | 4.61 (5.73) | 3.27 (4.12) | 0.36 | 0.51 |
+| transform-combined-origin | transform | 1200x630 | 8.73 (9.38) | 4.28 (5.25) | 3.16 (3.95) | 0.36 | 0.49 |
+| transform-text-small | transform | 400x300 | 2.59 (3.04) | 1.63 (1.95) | 1.44 (1.66) | 0.56 | 0.63 |
+| text-single-sizes | text-single-line | 1200x630 | 7.28 (8.21) | 3.65 (4.75) | 3.17 (4.16) | 0.44 | 0.50 |
+| text-single-colors-small | text-single-line | 400x300 | 1.53 (1.82) | 1.05 (1.28) | 0.73 (0.86) | 0.48 | 0.69 |
+| text-single-fonts | text-single-line | 1200x630 | 8.17 (9.02) | 3.70 (4.40) | 3.88 (4.95) | 0.48 | 0.45 |
+| text-paragraph-wrap | text-paragraph | 1200x630 | 8.59 (8.91) | 4.36 (4.97) | 4.40 (5.10) | 0.51 | 0.51 |
+| text-paragraph-lineheight | text-paragraph | 1200x630 | 9.14 (10.02) | 4.65 (5.48) | 5.17 (6.35) | 0.57 | 0.51 |
+| text-paragraph-letterspacing | text-paragraph | 1200x630 | 10.01 (10.45) | 5.01 (5.47) | 5.64 (6.36) | 0.56 | 0.50 |
+| text-paragraph-small | text-paragraph | 400x300 | 1.70 (2.25) | 1.06 (1.29) | 1.00 (1.11) | 0.59 | 0.63 |
+| text-long-wrap | text-paragraph | 1200x630 | 10.33 (10.94) | 3.91 (4.65) | 3.64 (4.28) | 0.35 | 0.38 |
+| fonts-weights-italic | fonts | 1200x630 | 9.58 (10.40) | 4.59 (5.45) | 5.40 (6.39) | 0.56 | 0.48 |
+| fonts-mixed-inline | fonts | 1200x630 | 8.21 (9.97) | 4.17 (5.16) | 3.89 (4.59) | 0.47 | 0.51 |
+| text-vietnamese | text-i18n | 1200x630 | 7.77 (9.49) | 3.70 (4.41) | 3.84 (4.69) | 0.49 | 0.48 |
+| text-accented-latin | text-i18n | 1200x630 | 7.98 (8.98) | 3.76 (4.68) | 3.82 (4.52) | 0.48 | 0.47 |
+| text-ellipsis-nowrap | text-truncation | 1200x630 | 6.62 (7.11) | 3.34 (4.21) | 2.39 (2.76) | 0.36 | 0.50 |
+| text-lineclamp | text-truncation | 1200x630 | 7.89 (8.48) | 4.09 (5.20) | 3.56 (4.22) | 0.45 | 0.52 |
+| text-lineclamp-small | text-truncation | 400x300 | 1.27 (1.59) | 0.78 (1.03) | 0.59 (0.72) | 0.46 | 0.62 |
+| img-png-fit | images | 1200x630 | 34.34 (36.40) | 8.83 (9.60) | 17.80 (18.25) | 0.52 | 0.26 |
+| img-jpeg-fit | images | 1200x630 | 52.57 (53.98) | 17.88 (18.65) | 27.57 (28.42) | 0.52 | 0.34 |
+| img-intrinsic-size | images | 400x300 | 5.27 (5.79) | 1.22 (1.71) | 2.80 (3.13) | 0.53 | 0.23 |
+| img-radius-clip | images | 1200x630 | 34.67 (35.37) | 9.97 (12.35) | 23.43 (25.57) | 0.68 | 0.29 |
+| img-photo-bg | images | 1200x630 | 54.07 (55.51) | 11.62 (12.92) | 41.47 (51.48) | 0.77 | 0.21 |
+| grid-fixed-fr | grid | 1200x630 | 6.65 (7.39) | 3.68 (4.34) | 2.85 (3.30) | 0.43 | 0.55 |
+| grid-repeat-gap | grid | 1200x630 | 10.65 (11.20) | 4.10 (4.56) | 3.64 (4.32) | 0.34 | 0.38 |
+| grid-spans | grid | 1200x630 | 7.65 (8.94) | 3.89 (4.69) | 2.70 (3.42) | 0.35 | 0.51 |
+| grid-small-mixed | grid | 400x300 | 1.57 (1.90) | 1.03 (1.38) | 0.84 (1.05) | 0.53 | 0.65 |
+| card-og | og-card | 1200x630 | 22.05 (23.93) | 7.58 (8.77) | 14.45 (14.74) | 0.66 | 0.34 |
+| card-og-small | og-card | 600x315 | 8.10 (8.37) | 3.44 (4.05) | 5.64 (5.97) | 0.70 | 0.42 |
+| card-blog | blog-card | 1200x630 | 48.53 (50.94) | 11.65 (12.54) | 29.89 (30.51) | 0.62 | 0.24 |
+| card-flat-ui | blog-card | 1200x630 | 19.57 (20.75) | 6.73 (7.81) | 8.60 (9.10) | 0.44 | 0.34 |
+| stress-600-boxes | stress | 1200x630 | 15.44 (15.82) | 9.37 (13.31) | 12.02 (14.04) | 0.78 | 0.61 |
+| stress-200-labels | stress | 1200x630 | 22.55 (23.73) | 13.95 (14.97) | 14.17 (14.92) | 0.63 | 0.62 |
+| stress-3000x2000-card | stress | 3000x2000 | 133.80 (137.26) | 39.95 (42.01) | 79.82 (83.21) | 0.60 | 0.30 |
+| fx-text-shadow | text-shadow | 600x200 | 4.40 (5.29) | 1.83 (2.35) | 3.89 (5.40) | 0.88 | 0.42 |
+| gap-dashed-dotted-border | known-gaps | 600x200 | 2.41 (3.03) | 1.43 (1.98) | 1.22 (1.41) | 0.51 | 0.59 |
+| fx-filter-blur-grayscale | filter | 600x200 | 4.88 (5.41) | 1.81 (2.36) | 3.04 (3.44) | 0.62 | 0.37 |
+| gap-tailwind-tw | known-gaps | 600x200 | 1.25 (1.49) | 0.79 (1.14) | 0.56 (0.72) | 0.45 | 0.64 |
+| gap-oklch-color | known-gaps | 600x200 | 1.05 (1.50) | 0.64 (0.99) | 0.46 (0.57) | 0.44 | 0.61 |
+| gap-svg-image | known-gaps | 600x200 | 1.03 (1.32) | 0.62 (0.87) | 0.50 (0.60) | 0.49 | 0.60 |
+| gap-inline-box-decoration | known-gaps | 600x200 | 1.60 (2.00) | 1.01 (1.62) | 0.82 (0.91) | 0.51 | 0.63 |
+| gap-mix-blend-mode | known-gaps | 600x200 | 1.50 (1.76) | 0.85 (1.15) | 0.69 (0.92) | 0.46 | 0.57 |
+| gap-clip-path | known-gaps | 600x200 | 6.44 (7.36) | 1.20 (1.66) | 1.47 (2.01) | 0.23 | 0.19 |
+| gap-background-clip-text | known-gaps | 600x200 | 5.34 (6.25) | 1.95 (2.29) | 1.41 (1.61) | 0.26 | 0.36 |
+| gap-text-wrap-balance | known-gaps | 600x200 | 1.51 (1.87) | 0.98 (1.26) | 0.76 (0.85) | 0.50 | 0.65 |
+| pfx-aa-shapes | aa-exact | 600x200 | 1.33 (1.55) | 0.85 (1.25) | 0.74 (0.81) | 0.56 | 0.64 |
+| pfx-aa-text | aa-exact | 600x200 | 1.68 (2.04) | 1.03 (1.43) | 0.96 (1.33) | 0.57 | 0.61 |
+| pfx-border-dashed | dashed-border | 600x200 | 3.24 (3.67) | 1.76 (2.27) | 1.65 (2.03) | 0.51 | 0.54 |
+| pfx-border-dotted | dotted-border | 600x200 | 3.56 (4.04) | 2.00 (2.58) | 1.79 (2.12) | 0.50 | 0.56 |
+| pfx-border-double-3d | double-3d-border | 600x200 | 1.29 (1.68) | 0.82 (1.17) | 0.71 (0.81) | 0.55 | 0.64 |
+| pfx-border-mixed | mixed-border | 600x200 | 1.89 (2.25) | 1.09 (1.44) | 1.02 (1.14) | 0.54 | 0.58 |
+| pfx-outline | outline | 600x200 | 2.60 (3.33) | 1.47 (1.96) | 1.17 (1.42) | 0.45 | 0.57 |
+| pfx-clip-path-shapes | clip-path | 600x200 | 5.26 (5.61) | 1.33 (1.65) | 1.91 (2.15) | 0.36 | 0.25 |
+| pfx-mask-gradient | mask | 600x200 | 6.41 (6.85) | 1.78 (2.31) | 2.27 (2.52) | 0.35 | 0.28 |
+| pfx-bg-clip-text | bg-clip-text | 600x200 | 5.22 (5.85) | 2.58 (3.03) | 2.09 (2.32) | 0.40 | 0.49 |
+| pfx-mix-blend | mix-blend | 600x200 | 7.63 (8.23) | 1.98 (2.58) | 4.16 (4.44) | 0.54 | 0.26 |
+| pfx-bg-blend | bg-blend | 600x200 | 10.62 (11.23) | 4.70 (5.26) | 4.24 (4.57) | 0.40 | 0.44 |
+| pfx-drop-shadow | drop-shadow | 600x200 | 7.04 (7.71) | 1.80 (2.46) | 3.40 (3.67) | 0.48 | 0.25 |
+| pfx-backdrop-filter | backdrop-filter | 600x200 | 7.27 (7.80) | 3.19 (4.47) | 4.17 (5.43) | 0.57 | 0.44 |
+| pfx-text-stroke | text-stroke | 600x200 | 2.02 (2.51) | 1.31 (1.65) | 1.82 (2.00) | 0.90 | 0.65 |
+| pfx-text-decoration | text-decoration | 600x260 | 3.45 (3.80) | 1.92 (2.28) | 2.79 (2.94) | 0.81 | 0.56 |
+| pfx-visibility | visibility | 600x200 | 1.11 (1.39) | 0.67 (0.98) | 0.51 (0.68) | 0.46 | 0.61 |
+| pfx-opacity-layers | opacity | 600x200 | 6.87 (7.37) | 2.66 (2.97) | 3.99 (4.17) | 0.58 | 0.39 |
+| pfx-svg-background | svg-image | 600x200 | 2.15 (2.59) | 1.23 (1.41) | 1.79 (2.06) | 0.83 | 0.57 |
+| pfx-inline-boxes-many | inline-box | 600x300 | 5.18 (5.74) | 2.86 (3.39) | 3.63 (3.98) | 0.70 | 0.55 |
+| css-class-id | css-stylesheet | 1200x630 | 7.31 (7.98) | 3.68 (4.24) | 3.36 (4.33) | 0.46 | 0.50 |
+| css-nth-child | css-stylesheet | 800x500 | 4.28 (4.83) | 2.38 (3.09) | 1.81 (2.11) | 0.42 | 0.56 |
+| css-media-layer | css-stylesheet | 1200x400 | 4.53 (5.09) | 2.39 (2.86) | 1.48 (1.80) | 0.33 | 0.53 |
+| css-important-var | css-stylesheet | 900x400 | 3.39 (3.86) | 2.08 (2.58) | 1.04 (1.35) | 0.31 | 0.61 |
+| tw-card | tailwind | 1200x630 | 7.05 (7.79) | 3.58 (4.00) | 3.32 (3.93) | 0.47 | 0.51 |
+| tw-responsive | tailwind | 1200x400 | 3.49 (3.87) | 2.08 (2.67) | 1.21 (1.52) | 0.35 | 0.59 |
+| tw-structural | tailwind | 800x500 | 3.03 (3.90) | 1.80 (2.41) | 1.32 (1.91) | 0.44 | 0.59 |
+| tw-arbitrary | tailwind | 900x450 | 8.03 (8.73) | 4.56 (5.08) | 3.54 (4.85) | 0.44 | 0.57 |
+| html-article | html | 1000x600 | 5.44 (6.04) | 2.94 (3.89) | 2.34 (3.28) | 0.43 | 0.54 |
+| html-document | html | 800x400 | 2.61 (3.10) | 1.67 (2.19) | 1.02 (1.22) | 0.39 | 0.64 |
+| html-flex-card | html | 1000x500 | 11.78 (12.41) | 4.29 (4.78) | 6.73 (7.17) | 0.57 | 0.36 |
+| html-inline | html | 900x300 | 2.66 (3.12) | 1.82 (2.31) | 1.27 (1.59) | 0.48 | 0.69 |
+| pseudo-inline | pseudo-elements | 800x300 | 2.56 (3.57) | 1.37 (1.99) | 0.99 (1.25) | 0.39 | 0.53 |
+| pseudo-block | pseudo-elements | 800x400 | 2.70 (3.11) | 1.57 (2.03) | 1.18 (1.28) | 0.43 | 0.58 |
+| pseudo-attr | pseudo-elements | 800x250 | 1.85 (2.24) | 1.03 (1.45) | 0.73 (0.87) | 0.40 | 0.56 |
+| pseudo-tw | pseudo-elements | 800x300 | 2.16 (2.45) | 1.03 (1.40) | 0.94 (1.09) | 0.43 | 0.48 |
+| anim-opacity-t0 | animation | 400x200 | 0.51 (0.70) | 0.33 (0.55) | 0.31 (0.37) | 0.62 | 0.65 |
+| anim-opacity-t250 | animation | 400x200 | 0.74 (0.98) | 0.43 (0.59) | 0.34 (0.45) | 0.46 | 0.58 |
+| anim-opacity-t500 | animation | 400x200 | 0.74 (1.05) | 0.44 (0.69) | 0.34 (0.40) | 0.46 | 0.59 |
+| anim-opacity-t900 | animation | 400x200 | 0.74 (0.94) | 0.43 (0.70) | 0.33 (0.42) | 0.45 | 0.58 |
+| anim-opacity-t1500 | animation | 400x200 | 0.60 (0.79) | 0.38 (0.51) | 0.31 (0.39) | 0.51 | 0.63 |
+| anim-transform-t0 | animation | 400x200 | 0.62 (0.81) | 0.40 (0.61) | 0.40 (0.48) | 0.64 | 0.64 |
+| anim-transform-t200 | animation | 400x200 | 0.64 (0.81) | 0.42 (0.63) | 0.33 (0.45) | 0.51 | 0.65 |
+| anim-transform-t400 | animation | 400x200 | 0.63 (1.01) | 0.40 (0.65) | 0.32 (0.41) | 0.51 | 0.63 |
+| anim-transform-t600 | animation | 400x200 | 0.64 (0.87) | 0.42 (0.59) | 0.33 (0.42) | 0.51 | 0.66 |
+| anim-transform-t800 | animation | 400x200 | 0.64 (0.79) | 0.40 (0.62) | 0.39 (0.48) | 0.61 | 0.63 |
+| anim-color-t0 | animation | 400x200 | 0.76 (1.05) | 0.51 (0.75) | 0.32 (0.44) | 0.42 | 0.67 |
+| anim-color-t300 | animation | 400x200 | 0.79 (1.15) | 0.52 (0.81) | 0.33 (0.44) | 0.42 | 0.66 |
+| anim-color-t700 | animation | 400x200 | 0.77 (1.08) | 0.53 (0.78) | 0.33 (0.38) | 0.43 | 0.69 |
+| anim-color-t2000 | animation | 400x200 | 0.76 (0.99) | 0.51 (0.81) | 0.32 (0.47) | 0.42 | 0.67 |
+| anim-width-t0 | animation | 400x200 | 0.55 (0.74) | 0.35 (0.56) | 0.34 (0.43) | 0.61 | 0.64 |
+| anim-width-t100 | animation | 400x200 | 0.65 (0.87) | 0.42 (0.67) | 0.32 (0.38) | 0.49 | 0.65 |
+| anim-width-t500 | animation | 400x200 | 0.71 (0.87) | 0.45 (0.74) | 0.41 (0.57) | 0.58 | 0.63 |
+| anim-width-t999 | animation | 400x200 | 0.69 (0.98) | 0.45 (0.62) | 0.41 (0.52) | 0.60 | 0.66 |
+| anim-delay-fill-t0 | animation | 400x200 | 0.78 (1.10) | 0.47 (0.71) | 0.41 (0.57) | 0.53 | 0.60 |
+| anim-delay-fill-t750 | animation | 400x200 | 0.84 (1.10) | 0.48 (0.70) | 0.44 (0.54) | 0.52 | 0.57 |
+| anim-delay-fill-t2000 | animation | 400x200 | 0.65 (0.99) | 0.42 (0.67) | 0.41 (0.73) | 0.62 | 0.65 |
+| anim-alternate-t100 | animation | 400x200 | 0.74 (1.03) | 0.45 (0.69) | 0.34 (0.41) | 0.46 | 0.61 |
+| anim-alternate-t500 | animation | 400x200 | 0.75 (0.99) | 0.46 (0.70) | 0.34 (0.46) | 0.46 | 0.61 |
+| anim-alternate-t700 | animation | 400x200 | 0.75 (1.00) | 0.47 (0.83) | 0.34 (0.54) | 0.45 | 0.62 |
+| anim-alternate-t1100 | animation | 400x200 | 0.74 (1.00) | 0.45 (0.69) | 0.34 (0.41) | 0.46 | 0.61 |
+| anim-alternate-t1300 | animation | 400x200 | 0.56 (0.76) | 0.35 (0.59) | 0.32 (0.38) | 0.58 | 0.63 |
+| anim-steps-t0 | animation | 400x200 | 0.59 (0.78) | 0.38 (0.63) | 0.35 (0.44) | 0.60 | 0.63 |
+| anim-steps-t260 | animation | 400x200 | 0.59 (0.71) | 0.37 (0.58) | 0.35 (0.44) | 0.59 | 0.63 |
+| anim-steps-t500 | animation | 400x200 | 0.58 (0.77) | 0.37 (0.61) | 0.35 (0.43) | 0.61 | 0.64 |
+| anim-steps-t990 | animation | 400x200 | 0.60 (0.78) | 0.37 (0.57) | 0.35 (0.44) | 0.58 | 0.63 |
+| anim-two-anims-t0 | animation | 400x200 | 0.75 (0.91) | 0.44 (0.67) | 0.35 (0.44) | 0.48 | 0.59 |
+| anim-two-anims-t400 | animation | 400x200 | 1.06 (1.29) | 0.59 (0.76) | 0.47 (0.67) | 0.44 | 0.56 |
+| anim-two-anims-t600 | animation | 400x200 | 1.09 (1.43) | 0.60 (0.87) | 0.48 (0.58) | 0.44 | 0.55 |
+| anim-two-anims-t1200 | animation | 400x200 | 0.85 (1.10) | 0.54 (0.90) | 0.41 (0.49) | 0.48 | 0.64 |
+| anim-inherit-t0 | animation | 400x200 | 0.82 (1.04) | 0.54 (0.81) | 0.38 (0.51) | 0.46 | 0.66 |
+| anim-inherit-t500 | animation | 400x200 | 0.94 (1.37) | 0.68 (1.00) | 0.50 (0.61) | 0.53 | 0.72 |
+| anim-inherit-t1000 | animation | 400x200 | 1.17 (1.57) | 0.79 (1.01) | 0.59 (0.70) | 0.51 | 0.67 |
+| anim-tw-spin-t125 | animation | 400x200 | 0.76 (0.95) | 0.47 (0.69) | 0.36 (0.48) | 0.48 | 0.62 |
+| anim-tw-spin-t375 | animation | 400x200 | 0.76 (0.95) | 0.47 (0.64) | 0.37 (0.45) | 0.48 | 0.61 |
+| anim-tw-spin-t1600 | animation | 400x200 | 0.79 (1.20) | 0.49 (0.74) | 0.37 (0.50) | 0.47 | 0.62 |
+| anim-kf-option-t0 | animation | 400x200 | 0.62 (1.03) | 0.40 (0.61) | 0.38 (0.50) | 0.61 | 0.64 |
+| anim-kf-option-t500 | animation | 400x200 | 0.89 (1.08) | 0.52 (0.82) | 0.40 (0.49) | 0.45 | 0.58 |
+| layout2-table-auto | table | 600x300 | 2.78 (3.12) | 1.68 (2.22) | 1.45 (1.89) | 0.52 | 0.61 |
+| layout2-table-spans | table | 600x320 | 2.08 (2.53) | 1.20 (1.48) | 1.13 (1.35) | 0.55 | 0.58 |
+| layout2-table-fixed | table | 600x260 | 2.44 (3.01) | 1.62 (2.28) | 1.26 (1.51) | 0.52 | 0.67 |
+| layout2-table-percent | table | 600x220 | 1.39 (1.82) | 0.89 (1.36) | 0.66 (1.00) | 0.47 | 0.64 |
+| layout2-table-collapse-conflicts | table | 600x300 | 2.42 (2.82) | 1.53 (2.26) | 1.24 (1.51) | 0.51 | 0.63 |
+| layout2-table-col-backgrounds | table | 600x260 | 4.83 (5.51) | 2.18 (2.54) | 2.84 (3.06) | 0.59 | 0.45 |
+| layout2-table-empty-cells | table | 600x240 | 1.89 (2.25) | 1.26 (1.81) | 0.87 (1.03) | 0.46 | 0.67 |
+| layout2-table-caption-bottom | table | 600x300 | 2.56 (2.95) | 1.75 (2.10) | 1.37 (1.54) | 0.53 | 0.69 |
+| layout2-float-image | float | 600x240 | 5.66 (5.98) | 1.52 (2.01) | 2.48 (2.87) | 0.44 | 0.27 |
+| layout2-float-clear | float | 600x260 | 1.79 (2.24) | 0.98 (1.51) | 0.58 (0.68) | 0.32 | 0.55 |
+| layout2-float-bfc | float | 600x260 | 1.41 (1.75) | 0.87 (1.44) | 0.81 (1.00) | 0.58 | 0.62 |
+| layout2-float-wrap | float | 600x260 | 2.00 (2.38) | 1.20 (1.49) | 1.06 (1.19) | 0.53 | 0.60 |
+| layout2-ib-badges | inline-block | 600x200 | 1.19 (1.48) | 0.76 (1.12) | 0.59 (0.82) | 0.49 | 0.64 |
+| layout2-ib-wrap | inline-block | 600x260 | 1.86 (2.20) | 1.18 (1.57) | 0.94 (1.21) | 0.51 | 0.64 |
+| layout2-ib-valign | inline-block | 600x220 | 3.03 (3.46) | 1.40 (1.75) | 2.22 (2.46) | 0.73 | 0.46 |
+| layout2-ib-json | inline-block | 600x160 | 1.00 (1.33) | 0.68 (0.93) | 0.47 (0.63) | 0.47 | 0.68 |
+| layout2-grid-areas | grid-areas | 600x360 | 2.11 (2.49) | 1.24 (1.57) | 1.07 (1.26) | 0.51 | 0.59 |
+| layout2-grid-named-lines | grid-areas | 600x300 | 1.97 (2.36) | 1.22 (1.66) | 0.91 (1.03) | 0.46 | 0.62 |
+| layout2-grid-areas-auto | grid-areas | 600x300 | 1.63 (2.20) | 1.05 (1.49) | 0.74 (0.96) | 0.45 | 0.64 |
+| layout3-float-left | float-text | 520x260 | 1.98 (2.31) | 1.18 (1.41) | 1.08 (1.21) | 0.55 | 0.60 |
+| layout3-float-right | float-text | 520x260 | 2.11 (2.92) | 1.22 (1.52) | 1.09 (1.21) | 0.52 | 0.58 |
+| layout3-float-stacked | float-text | 560x300 | 2.87 (3.34) | 1.50 (2.02) | 1.63 (1.77) | 0.57 | 0.52 |
+| layout3-float-tall | float-text | 560x330 | 3.32 (3.86) | 1.70 (2.05) | 2.02 (2.39) | 0.61 | 0.51 |
+| layout3-float-in-text | float-text | 560x300 | 2.67 (3.72) | 1.56 (1.96) | 1.53 (1.81) | 0.57 | 0.59 |
+| layout3-float-rtl | float-text | 560x300 | 3.39 (3.86) | 1.75 (2.17) | 2.13 (2.22) | 0.63 | 0.52 |
+| layout3-float-inline-box | float-text | 560x280 | 2.18 (2.98) | 1.35 (1.75) | 1.17 (1.53) | 0.54 | 0.62 |
+| layout3-inline-badges | inline-flow | 520x260 | 2.43 (2.79) | 1.53 (2.07) | 1.34 (1.53) | 0.55 | 0.63 |
+| layout3-inline-image | inline-flow | 560x280 | 4.01 (4.33) | 1.80 (2.45) | 2.70 (3.06) | 0.67 | 0.45 |
+| layout3-inline-flex-chip | inline-flow | 560x280 | 4.16 (4.67) | 1.98 (2.30) | 2.66 (4.28) | 0.64 | 0.47 |
+| layout3-inline-br | inline-flow | 520x260 | 1.94 (3.03) | 1.12 (1.50) | 0.91 (1.18) | 0.47 | 0.57 |
+| layout3-inline-abs | inline-flow | 520x220 | 1.64 (2.02) | 1.03 (1.45) | 0.93 (1.11) | 0.57 | 0.63 |
+| layout3-span-edges | inline-box-model | 520x260 | 2.43 (3.34) | 1.46 (1.93) | 1.51 (1.92) | 0.62 | 0.60 |
+| layout3-span-nowrap | inline-box-model | 520x240 | 2.43 (3.39) | 1.55 (2.00) | 1.37 (2.06) | 0.57 | 0.64 |
+| layout3-span-valign | inline-box-model | 560x280 | 2.76 (3.05) | 1.73 (2.26) | 1.55 (1.80) | 0.56 | 0.63 |
+| layout3-card-all | inline-box-model | 640x420 | 8.90 (9.24) | 3.95 (4.80) | 5.75 (6.26) | 0.65 | 0.44 |
 
 ### Per-feature summary (geometric mean of per-case median ratios)
 
 | feature | cases | takumi-wasm raw ms (geomean) | takumi-wasm png ms (geomean) | bm/wasm raw | bm/wasm png | native/wasm raw | native/wasm png |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
-| colors | 5 | 1.41 | 3.91 | 0.63 | 0.39 | 0.81 | 0.56 |
-| flex | 5 | 1.19 | 4.58 | 0.93 | 0.45 | 1.04 | 0.53 |
-| sizing | 5 | 0.90 | 4.49 | 0.95 | 0.47 | 1.18 | 0.53 |
-| absolute | 3 | 1.05 | 5.32 | 0.85 | 0.42 | 0.94 | 0.46 |
-| borders | 3 | 1.37 | 4.17 | 0.80 | 0.49 | 0.81 | 0.55 |
-| border-radius | 4 | 0.85 | 4.10 | 1.18 | 0.45 | 1.11 | 0.51 |
-| linear-gradient | 4 | 3.90 | 17.08 | 0.58 | 0.38 | 0.78 | 0.29 |
-| radial-gradient | 3 | 4.79 | 24.77 | 0.37 | 0.48 | 0.85 | 0.29 |
-| box-shadow | 4 | 5.84 | 15.74 | 0.56 | 0.48 | 0.71 | 0.36 |
-| opacity | 4 | 5.23 | 9.06 | 0.43 | 0.38 | 0.54 | 0.44 |
-| overflow | 3 | 1.61 | 5.46 | 0.62 | 0.38 | 0.89 | 0.48 |
-| transform | 3 | 3.02 | 6.37 | 0.55 | 0.43 | 0.89 | 0.57 |
-| text-single-line | 3 | 1.49 | 4.74 | 0.62 | 0.48 | 1.01 | 0.60 |
-| text-paragraph | 5 | 2.20 | 6.88 | 0.65 | 0.52 | 0.92 | 0.52 |
-| fonts | 2 | 2.71 | 8.82 | 0.63 | 0.53 | 0.94 | 0.50 |
-| text-i18n | 2 | 2.34 | 7.93 | 0.67 | 0.51 | 0.99 | 0.49 |
-| text-truncation | 3 | 1.50 | 4.16 | 0.60 | 0.43 | 0.90 | 0.57 |
-| images | 5 | 4.66 | 28.56 | 0.38 | 0.60 | 0.77 | 0.28 |
-| grid | 4 | 1.61 | 5.54 | 0.78 | 0.41 | 0.99 | 0.52 |
-| og-card | 2 | 4.24 | 13.41 | 0.57 | 0.69 | 0.78 | 0.40 |
-| blog-card | 2 | 10.51 | 31.14 | 0.65 | 0.53 | 0.60 | 0.31 |
-| stress | 3 | 16.11 | 36.71 | 0.73 | 0.65 | 0.87 | 0.49 |
-| text-shadow | 1 | 1.00 | 4.35 | 1.01 | 0.91 | 0.73 | 0.43 |
-| known-gaps | 9 | 0.57 | 2.03 | 0.56 | 0.40 | 0.75 | 0.52 |
-| filter | 1 | 1.77 | 4.89 | 0.74 | 0.63 | 0.67 | 0.39 |
-| aa-exact | 2 | 0.61 | 1.57 | 0.61 | 0.54 | 0.76 | 0.64 |
-| dashed-border | 1 | 2.40 | 3.35 | 0.56 | 0.50 | 0.58 | 0.54 |
-| dotted-border | 1 | 2.82 | 3.65 | 0.53 | 0.50 | 0.56 | 0.56 |
-| double-3d-border | 1 | 0.60 | 1.40 | 0.81 | 0.50 | 0.76 | 0.60 |
-| mixed-border | 1 | 1.07 | 1.94 | 0.66 | 0.54 | 0.58 | 0.59 |
-| outline | 1 | 1.53 | 2.64 | 0.54 | 0.45 | 0.60 | 0.59 |
-| clip-path | 1 | 0.87 | 5.44 | 0.72 | 0.36 | 0.67 | 0.28 |
-| mask | 1 | 1.57 | 6.32 | 0.71 | 0.36 | 0.66 | 0.28 |
-| bg-clip-text | 1 | 2.63 | 5.36 | 0.17 | 0.40 | 0.69 | 0.49 |
-| mix-blend | 1 | 1.80 | 7.64 | 0.69 | 0.54 | 0.57 | 0.27 |
-| bg-blend | 1 | 4.92 | 10.58 | 0.20 | 0.41 | 0.80 | 0.46 |
-| drop-shadow | 1 | 1.53 | 7.06 | 0.79 | 0.49 | 0.71 | 0.27 |
-| backdrop-filter | 1 | 4.42 | 7.36 | 0.63 | 0.56 | 0.55 | 0.44 |
-| text-stroke | 1 | 0.74 | 2.11 | 1.58 | 0.90 | 0.79 | 0.67 |
-| text-decoration | 1 | 1.68 | 3.71 | 1.07 | 0.77 | 0.77 | 0.57 |
-| visibility | 1 | 0.30 | 1.20 | 0.62 | 0.43 | 0.92 | 0.64 |
-| svg-image | 1 | 0.77 | 2.21 | 1.55 | 0.82 | 0.63 | 0.56 |
-| inline-box | 1 | 2.67 | 5.34 | 0.69 | 0.69 | 0.71 | 0.56 |
-| css-stylesheet | 4 | 1.35 | 4.78 | 0.78 | 0.37 | 1.10 | 0.58 |
-| tailwind | 4 | 1.59 | 5.17 | 0.85 | 0.41 | 1.14 | 0.60 |
-| html | 4 | 1.55 | 4.68 | 0.63 | 0.48 | 0.98 | 0.58 |
-| pseudo-elements | 4 | 0.78 | 2.41 | 0.64 | 0.40 | 0.97 | 0.55 |
-| animation | 42 | 0.25 | 0.75 | 0.64 | 0.49 | 0.86 | 0.64 |
-| table | 8 | 1.17 | 2.54 | 0.60 | 0.50 | 0.79 | 0.63 |
-| float | 4 | 0.55 | 2.44 | 0.73 | 0.44 | 0.81 | 0.50 |
-| inline-block | 4 | 0.55 | 1.80 | 0.62 | 0.50 | 0.82 | 0.59 |
-| grid-areas | 3 | 0.71 | 2.13 | 0.75 | 0.44 | 0.88 | 0.64 |
+| colors | 5 | 1.34 | 3.78 | 0.67 | 0.39 | 0.84 | 0.55 |
+| flex | 5 | 1.04 | 4.53 | 1.01 | 0.45 | 1.09 | 0.53 |
+| sizing | 5 | 0.80 | 4.43 | 0.98 | 0.46 | 1.20 | 0.50 |
+| absolute | 3 | 1.02 | 5.30 | 0.86 | 0.42 | 0.86 | 0.44 |
+| borders | 3 | 1.18 | 4.00 | 0.84 | 0.49 | 0.88 | 0.54 |
+| border-radius | 4 | 0.77 | 4.06 | 1.20 | 0.43 | 1.09 | 0.50 |
+| linear-gradient | 4 | 3.76 | 16.84 | 0.60 | 0.38 | 0.78 | 0.28 |
+| radial-gradient | 3 | 4.62 | 24.42 | 0.36 | 0.48 | 0.85 | 0.28 |
+| box-shadow | 4 | 5.79 | 15.65 | 0.55 | 0.48 | 0.68 | 0.34 |
+| opacity | 4 | 5.16 | 8.87 | 0.42 | 0.38 | 0.55 | 0.43 |
+| overflow | 3 | 1.46 | 5.38 | 0.66 | 0.38 | 0.91 | 0.46 |
+| transform | 3 | 2.76 | 5.89 | 0.50 | 0.42 | 0.73 | 0.54 |
+| text-single-line | 3 | 1.28 | 4.50 | 0.62 | 0.46 | 0.97 | 0.54 |
+| text-paragraph | 5 | 2.07 | 6.73 | 0.66 | 0.51 | 0.91 | 0.50 |
+| fonts | 2 | 2.65 | 8.87 | 0.57 | 0.52 | 0.87 | 0.49 |
+| text-i18n | 2 | 2.41 | 7.87 | 0.64 | 0.49 | 0.93 | 0.47 |
+| text-truncation | 3 | 1.49 | 4.05 | 0.63 | 0.42 | 0.87 | 0.54 |
+| images | 5 | 4.57 | 28.20 | 0.37 | 0.60 | 0.75 | 0.26 |
+| grid | 4 | 1.45 | 5.40 | 0.82 | 0.41 | 0.99 | 0.52 |
+| og-card | 2 | 3.83 | 13.37 | 0.60 | 0.68 | 0.80 | 0.38 |
+| blog-card | 2 | 10.24 | 30.82 | 0.64 | 0.52 | 0.61 | 0.29 |
+| stress | 3 | 16.25 | 35.98 | 0.73 | 0.66 | 0.83 | 0.48 |
+| text-shadow | 1 | 0.94 | 4.40 | 1.07 | 0.88 | 0.71 | 0.42 |
+| known-gaps | 9 | 0.55 | 1.95 | 0.58 | 0.41 | 0.77 | 0.51 |
+| filter | 1 | 1.66 | 4.88 | 0.77 | 0.62 | 0.64 | 0.37 |
+| aa-exact | 2 | 0.58 | 1.50 | 0.64 | 0.56 | 0.74 | 0.62 |
+| dashed-border | 1 | 2.35 | 3.24 | 0.56 | 0.51 | 0.54 | 0.54 |
+| dotted-border | 1 | 2.77 | 3.56 | 0.53 | 0.50 | 0.56 | 0.56 |
+| double-3d-border | 1 | 0.57 | 1.29 | 0.84 | 0.55 | 0.74 | 0.64 |
+| mixed-border | 1 | 1.04 | 1.89 | 0.67 | 0.54 | 0.56 | 0.58 |
+| outline | 1 | 1.48 | 2.60 | 0.55 | 0.45 | 0.60 | 0.57 |
+| clip-path | 1 | 0.84 | 5.26 | 0.72 | 0.36 | 0.62 | 0.25 |
+| mask | 1 | 1.52 | 6.41 | 0.76 | 0.35 | 0.69 | 0.28 |
+| bg-clip-text | 1 | 2.50 | 5.22 | 0.17 | 0.40 | 0.65 | 0.49 |
+| mix-blend | 1 | 1.72 | 7.63 | 0.69 | 0.54 | 0.58 | 0.26 |
+| bg-blend | 1 | 4.84 | 10.62 | 0.20 | 0.40 | 0.76 | 0.44 |
+| drop-shadow | 1 | 1.44 | 7.04 | 0.78 | 0.48 | 0.63 | 0.25 |
+| backdrop-filter | 1 | 4.41 | 7.27 | 0.63 | 0.57 | 0.56 | 0.44 |
+| text-stroke | 1 | 0.73 | 2.02 | 1.61 | 0.90 | 0.75 | 0.65 |
+| text-decoration | 1 | 1.55 | 3.45 | 1.10 | 0.81 | 0.69 | 0.56 |
+| visibility | 1 | 0.28 | 1.11 | 0.67 | 0.46 | 0.92 | 0.61 |
+| svg-image | 1 | 0.82 | 2.15 | 1.46 | 0.83 | 0.56 | 0.57 |
+| inline-box | 1 | 2.65 | 5.18 | 0.70 | 0.70 | 0.65 | 0.55 |
+| css-stylesheet | 4 | 1.24 | 4.68 | 0.83 | 0.37 | 1.14 | 0.55 |
+| tailwind | 4 | 1.45 | 4.94 | 0.89 | 0.42 | 1.19 | 0.56 |
+| html | 4 | 1.37 | 4.59 | 0.69 | 0.46 | 0.94 | 0.54 |
+| pseudo-elements | 4 | 0.70 | 2.29 | 0.69 | 0.41 | 1.03 | 0.54 |
+| animation | 42 | 0.25 | 0.72 | 0.65 | 0.51 | 0.83 | 0.63 |
+| table | 8 | 1.07 | 2.40 | 0.63 | 0.52 | 0.76 | 0.61 |
+| float | 4 | 0.52 | 2.31 | 0.73 | 0.46 | 0.79 | 0.48 |
+| inline-block | 4 | 0.50 | 1.61 | 0.69 | 0.54 | 0.84 | 0.60 |
+| grid-areas | 3 | 0.62 | 1.89 | 0.77 | 0.47 | 0.82 | 0.62 |
+| float-text | 7 | 0.84 | 2.59 | 0.72 | 0.57 | 0.74 | 0.56 |
+| inline-flow | 5 | 0.85 | 2.64 | 0.75 | 0.58 | 0.77 | 0.55 |
+| inline-box-model | 4 | 1.35 | 3.47 | 0.73 | 0.60 | 0.80 | 0.57 |
 
-Overall geomean bm / takumi-wasm: raw **0.65**, png **0.47**.
+Overall geomean bm / takumi-wasm: raw **0.67**, png **0.49**.
 
 ### Encoders: jpeg (q85) and webp (default/lossless) — median ms (p95) and encoded bytes
 
 | case | format | takumi-wasm | takumi-native | bm |
 | :-- | :-- | --: | --: | --: |
-| lingrad-angles | png | 35.52 (36.32) · 101.9 KiB | 8.29 (10.29) · 101.9 KiB | 10.22 (11.03) · 32.6 KiB |
-| lingrad-angles | jpeg | 24.71 (26.27) · 52.3 KiB | 18.44 (19.16) · 52.3 KiB | 18.78 (19.71) · 52.2 KiB |
-| lingrad-angles | webp | 15.56 (19.07) · 169.4 KiB | 114.03 (117.46) · 22.8 KiB | 10.63 (11.54) · 28.9 KiB |
-| img-photo-bg | png | 54.53 (55.07) · 512.7 KiB | 12.82 (15.16) · 512.7 KiB | 41.79 (43.90) · 510.9 KiB |
-| img-photo-bg | jpeg | 24.68 (25.56) · 55.2 KiB | 18.57 (20.16) · 55.2 KiB | 17.53 (18.11) · 55.1 KiB |
-| img-photo-bg | webp | 21.26 (22.30) · 470.3 KiB | 173.75 (179.07) · 413.8 KiB | 19.86 (21.19) · 366.9 KiB |
-| card-flat-ui | png | 19.86 (20.64) · 25.3 KiB | 7.20 (8.24) · 25.3 KiB | 8.95 (9.62) · 23.1 KiB |
-| card-flat-ui | jpeg | 25.05 (26.33) · 49.0 KiB | 18.16 (18.55) · 49.0 KiB | 20.00 (21.58) · 48.9 KiB |
-| card-flat-ui | webp | 12.60 (13.60) · 27.6 KiB | 17.77 (19.06) · 13.4 KiB | 9.62 (10.40) · 18.5 KiB |
+| lingrad-angles | png | 34.96 (38.05) · 101.9 KiB | 7.80 (9.11) · 101.9 KiB | 10.01 (10.58) · 32.6 KiB |
+| lingrad-angles | jpeg | 24.25 (25.46) · 52.3 KiB | 18.44 (19.73) · 52.3 KiB | 19.02 (22.81) · 52.2 KiB |
+| lingrad-angles | webp | 15.13 (17.67) · 169.4 KiB | 112.39 (115.83) · 22.8 KiB | 10.50 (12.58) · 28.9 KiB |
+| img-photo-bg | png | 54.07 (55.51) · 512.7 KiB | 11.62 (12.92) · 512.7 KiB | 41.47 (51.48) · 510.9 KiB |
+| img-photo-bg | jpeg | 25.05 (27.90) · 55.2 KiB | 18.24 (19.11) · 55.2 KiB | 17.50 (19.26) · 55.1 KiB |
+| img-photo-bg | webp | 21.02 (23.03) · 470.3 KiB | 165.54 (167.11) · 413.8 KiB | 19.88 (21.89) · 366.9 KiB |
+| card-flat-ui | png | 19.57 (20.75) · 25.3 KiB | 6.73 (7.81) · 25.3 KiB | 8.60 (9.10) · 23.1 KiB |
+| card-flat-ui | jpeg | 24.71 (26.16) · 49.0 KiB | 17.58 (17.90) · 49.0 KiB | 19.48 (19.88) · 48.9 KiB |
+| card-flat-ui | webp | 12.08 (12.31) · 27.6 KiB | 16.89 (17.24) · 13.4 KiB | 9.23 (9.71) · 18.5 KiB |
 
 ## Errors
 

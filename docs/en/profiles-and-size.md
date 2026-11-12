@@ -3,7 +3,7 @@
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
 bm-engine is compiled into three binaries with different feature sets so that you only download what you
-use: `core` (428.5 KiB), `standard` (849.6 KiB) and `full` (1 070.0 KiB), against 4 234.9 KiB for
+use: `core` (454.5 KiB), `standard` (877.5 KiB) and `full` (1 099.8 KiB), against 4 234.9 KiB for
 takumi 2.20's wasm. This page lists what each profile contains, what each optional feature costs, what a
 smaller profile does with input it cannot handle, how to make a custom build, and why only WOFF is
 available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1024 bytes.
@@ -12,9 +12,9 @@ available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1
 
 | Build | Raw | gzip -9 | brotli (q11) | vs. takumi raw |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 428.5 KiB | 200.4 KiB | 171.0 KiB | 9.9× smaller |
-| `standard` — `bm_engine.standard.wasm` | 849.6 KiB | 422.3 KiB | 364.5 KiB | 5.0× smaller |
-| `full` — `bm_engine.wasm` | 1 070.0 KiB | 526.0 KiB | 442.8 KiB | 4.0× smaller |
+| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | 9.3× smaller |
+| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | 4.8× smaller |
+| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | 3.9× smaller |
 | WOFF add-on — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
@@ -72,6 +72,8 @@ KB after `wasm-opt`, measured two ways: added to `core` alone / removed from `fu
 | `extra_codecs` | 0.8 | 33.5 | most of it only pays off together with `animation` |
 | `render_svg` | 57.0 | 59.1 | |
 
+The per-feature table above was measured in phase 2, before the inline-formatting work, which added about 26–30 KB to every profile.
+
 Why `core` is not smaller (the phase-1 single build was 320.9 KiB): the shared core grew by about
 113 KB of real functionality — every border style, outline and text decoration (+31 KB), the full
 GSUB/GPOS engine (+26 KB), `var()` / `calc()` / named grid lines / logical properties (+24 KB),
@@ -104,8 +106,7 @@ Checked with `bench/probe/profiles.mjs` on all three binaries (no input ever tra
 | `format: "ico"`, `renderSvg()`, `renderAnimation()` | throw `this build has no ... support` | same as core |
 
 Check `features` at startup if your inputs vary, and choose the smallest profile that covers them.
-Note: in 0.1.0 the error message for `renderAnimation`, `renderSvg` and ICO on `standard` still says
-"use the standard / full build"; only `full` has them.
+The error messages for the `full`-only features (`renderSvg`, `renderAnimation`, ICO / extra codecs, colour fonts, complex text) say "use the full build".
 
 ## Custom builds
 
