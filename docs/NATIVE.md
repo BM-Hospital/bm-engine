@@ -99,8 +99,11 @@ abi, features, ops: { name: index }
 create() -> handle (an external; GC frees it)      destroy(handle)
 run(handle | null, opIndex, arg0, arg1, input, options, attachments) -> Uint8Array
 runAsync(...same...) -> Promise<Uint8Array>
-memoryBytes()        tune(stackMode, stackBytes, maxBytes)   // test hook
+memoryBytes()        tune(stackMode, stackBytes, maxBytes, zeroedBuffers)   // test hook; js/native.mjs sets zeroedBuffers on V8
 ```
+
+`arg1` of an async `render` call is a size hint: the byte length of the raw frame when `format` is `"raw"` and
+both `width` and `height` are given (0 otherwise; `js/engine.mjs` computes it). See [memory](#memory).
 
 ## Adding an output kind (e.g. PDF)
 
@@ -197,6 +200,19 @@ native build (`zig build native -Dpdf=true`, or in `scripts/build-native.mjs`) a
 * The count is reported to V8 with `napi_adjust_external_memory`, so garbage collection sees the fonts and
   caches behind a dropped `Renderer` and collects them without an explicit `free()`.
 * `memoryBytes()` = bytes currently allocated through the addon in the process (0 after everything is freed).
+* Results are ordinary `Uint8Array`s on an `ArrayBuffer` V8 allocated (transferable, no finalizer). An encoded
+  result is copied into it once. A **raw frame is not copied at all** where that is possible: the renderer
+  paints it straight into the result's buffer (`Renderer.raw_target` in `src/render.zig`, `Exec.rawTarget` in
+  `src/native.zig`). Sync calls create the `ArrayBuffer` during the call, once layout knows the size. Async
+  calls cannot touch V8 from the pool thread, so `runAsync` creates the buffer before queueing the job when the
+  size hint says how large the frame will be, and the job paints into it (nothing in JS can see the buffer
+  before the promise settles). Without a hint, with a wrong one, or for a sync call that had to move to a
+  helper thread, the frame is painted into zeroed process memory and copied once on the JS thread. On V8 the
+  new buffer is known to be zero-filled, so the canvas is not even cleared; other engines clear it first
+  (`tune(0, 0, 0, 1 | 2)`).
+  External buffers (`napi_create_external_arraybuffer`) were **not** used for this: Node.js marks them
+  untransferable (a `postMessage` transfer list would throw), their finalizers only run when the event loop
+  turns (a loop of `renderSync` calls would accumulate every frame), and hosts with the V8 sandbox reject them.
 * All failures become JS exceptions / promise rejections with the wasm build's messages.
 
 ## Stack
