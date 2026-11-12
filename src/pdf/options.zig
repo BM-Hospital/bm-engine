@@ -460,7 +460,8 @@ fn parseGeometry(v: json.Value, d: *Diag) Error!Geometry {
         const h: ?f32 = if (field(vp, "height")) |hx| try num(hx, "viewport height", d) else null;
         const wi = dimU32(w);
         const hi: ?u32 = if (h) |hv| dimU32(hv) else null;
-        if (wi == 0 or (hi != null and hi.? == 0)) return fail(d, &.{"invalid viewport: width/height must be > 0"});
+        // (takumi-pdf: a zero side is the page's `InvalidPageSize`)
+        if (wi == 0 or (hi != null and hi.? == 0)) return fail(d, &.{"Page size must be finite and larger than zero"});
         return .{ .viewport = .{ .width = wi, .height = hi } };
     }
 
@@ -995,7 +996,8 @@ test "viewport and the paged options are mutually exclusive" {
     }) |t| try expectErr(t, msg);
     // null members count as unset (JS `undefined`)
     _ = try tparse(arena.allocator(), "{\"viewport\":{\"width\":600},\"size\":null}");
-    try expectErr("{\"viewport\":{\"width\":0}}", "invalid viewport: width/height must be > 0");
+    try expectErr("{\"viewport\":{\"width\":0}}", "Page size must be finite and larger than zero");
+    try expectErr("{\"viewport\":{\"width\":300,\"height\":0}}", "Page size must be finite and larger than zero");
 }
 
 test "bands: node, html, false; true is rejected" {

@@ -502,7 +502,7 @@ const bad = (opts, re, msg) => rejects(() => r.render(node, opts), re, msg);
 await bad({ size: "tabloid" }, /unknown page size: tabloid/, "unknown page size");
 await bad({ viewport: { width: 600 }, size: "a4" }, /viewport is mutually exclusive with the paged options/, "viewport + size");
 await bad({ viewport: { width: 600 }, pageRanges: [1] }, /mutually exclusive/, "viewport + pageRanges");
-await bad({ viewport: { width: 0 } }, /invalid viewport/, "viewport width 0");
+await bad({ viewport: { width: 0 } }, /Page size must be finite and larger than zero/, "viewport width 0");
 await bad({ pageRanges: [0] }, /Page range is invalid: 0\. Pages are numbered from 1\./, "page range 0");
 await bad({ pageRanges: [{ from: 5, to: 2 }] }, /Page range is invalid: 5-2/, "backwards page range");
 await bad({ viewport: { width: 100, height: 100 }, pageRanges: undefined, backgroundColor: "nope" }, /backgroundColor is not a color: nope/, "bad backgroundColor");
@@ -728,6 +728,15 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
     once.renderSync("<p>x</p>", { ...vp, fonts: [inter] });
     const faces = once.registerFont(inter).find((fam) => fam.name === "Inter").faces.length;
     check(faces === 2, `fonts option: registered once across renders (Inter faces after 4 renders + registerFont: ${faces})`);
+  }
+
+  // 3. a content-sized page of no height: takumi-pdf's InvalidPageSize; measure reports the zero size; the
+  //    page is as tall as the root's margin box, unrounded
+  await rejects(() => r.render("<div></div>", { viewport: { width: 300 } }), /^bm-engine: Page size must be finite and larger than zero$/, "empty content, viewport without height");
+  {
+    const m = await r.measure("<div></div>", { viewport: { width: 300 } });
+    check(m.width === 300 && m.height === 0, `measure of empty content: ${JSON.stringify(m)}`);
+    isPdf(await r.render(`<div style="height:10.2px;margin:5px"></div>`, { viewport: { width: 300 } }), "content-sized page keeps the fractional height", [225, 15.140625]);
   }
 }
 

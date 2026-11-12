@@ -1447,7 +1447,16 @@ pub const Frame = struct {
         const rl = f.tree.layout(lr);
         const cw: f32 = if (o.width) |w| @floatFromInt(w) else @floor(rl.x + rl.w + rl.margin.right + 0.5);
         const ch: f32 = if (o.height) |h| @floatFromInt(h) else @floor(rl.y + rl.h + rl.margin.bottom + 0.5);
-        if (!(cw >= 1) or !(ch >= 1)) return f.fail("invalid viewport: content has zero size and no width/height was given", "");
+        if (!(cw >= 1) or !(ch >= 1)) {
+            // (PDF: a content-sized page is checked by the PDF writer, takumi-pdf `InvalidPageSize`, and
+            // `measurePdf` reports the zero size)
+            if (comptime layout.fragment.enabled) if (f.tree.paged.pdf) {
+                f.canvas_w = @intFromFloat(@max(1, @min(cw, 16384)));
+                f.canvas_h = @intFromFloat(@max(1, @min(ch, 16384)));
+                return;
+            };
+            return f.fail("invalid viewport: content has zero size and no width/height was given", "");
+        }
         if (cw > 16384 or ch > 16384 or cw * ch > 40.0e6) return f.fail("canvas too large", "");
         f.canvas_w = @intFromFloat(cw);
         f.canvas_h = @intFromFloat(ch);
