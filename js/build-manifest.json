@@ -1,8 +1,8 @@
 {
   "package": "bm-engine",
   "version": "0.1.0",
-  "date": "2026-11-12T14:14:54.542Z",
-  "git": "a53865d-dirty",
+  "date": "2026-11-12T20:02:10.672Z",
+  "git": "1d3fb16-dirty",
   "zig": "0.17.1",
   "files": {
     "core": {
@@ -36,8 +36,8 @@
     },
     "pdf": {
       "file": "js/bm_engine.pdf.wasm",
-      "bytes": 1593173,
-      "sha256": "5272da5e6cdf6a497a3c58a85fa8f034cc83416af50584e0dfb1f9cec26d8167",
+      "bytes": 1603250,
+      "sha256": "dae81823c6fc726960cfa3365cfcd46180952fed9f356b23d4d96bb86e17ea02",
       "profile": "pdf",
       "features": "0x7ffff",
       "custom": false

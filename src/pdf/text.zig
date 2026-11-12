@@ -861,6 +861,111 @@ pub fn drawFrameRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const 
     }
 }
 
+/// Unicode Default_Ignorable_Code_Point (the ranges HarfBuzz hides).
+fn defaultIgnorable(cp: u32) bool {
+    return switch (cp) {
+        0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B...0x180F, 0x200B...0x200F, 0x202A...0x202E, 0x2060...0x206F, 0x3164, 0xFE00...0xFE0F, 0xFEFF, 0xFFA0, 0xFFF0...0xFFF8, 0x1BCA0...0x1BCA3, 0x1D173...0x1D17A, 0xE0000...0xE0FFF => true,
+        else => false,
+    };
+}
+
+/// A default-ignorable character that continues the cluster before it in HarfBuzz
+/// (`hb_set_unicode_props`): the zero-width joiner, and the marks among them (variation
+/// selectors, the combining grapheme joiner, tag characters).
+fn ignorableContinues(cp: u32) bool {
+    return switch (cp) {
+        0x200D, 0x034F, 0x180B...0x180D, 0x180F, 0xFE00...0xFE0F, 0xE0020...0xE007F, 0xE0100...0xE01EF => true,
+        else => false,
+    };
+}
+
+/// takumi shapes with HarfBuzz, which keeps a default-ignorable character (soft hyphen, zero-width
+/// space / joiner, direction marks, variation selectors, U+FEFF) as a glyph: the font's space
+/// glyph with no advance, in a cluster of its own unless the character continues the cluster
+/// before it. bm-engine's shaper drops the character and leaves its bytes at the end of the
+/// cluster before it, which would give that cluster's glyph the character as text (ToUnicode
+/// `a` -> `a` + U+200B, an /ActualText span around every plain `a`). This puts the invisible
+/// glyphs back (left-to-right runs; a font without a space glyph gets none, as in HarfBuzz).
+fn hideIgnorables(a: Allocator, font: *const ttf.Font, size: f32, gs: []const font_mod.PositionedGlyph, shaped: []ShapedGlyph, text: []const u8) ![]ShapedGlyph {
+    var any = false;
+    for (shaped) |g| {
+        var i: usize = g.start;
+        while (i < g.end and i < text.len) {
+            const d = uni.decodeUtf8(text, i);
+            i += d.len;
+            if (d.cp >= 0xAD and defaultIgnorable(d.cp)) any = true;
+        }
+    }
+    if (!any) return shaped;
+    for (gs) |g| if (g.bidi_level & 1 != 0) return shaped;
+    const space = font.glyphIndex(' ');
+    const hyphen = font.glyphIndex('-');
+    const hyphen2 = font.glyphIndex(0x2010);
+    const upm: f32 = @floatFromInt(@max(1, font.units_per_em));
+    var out: std.ArrayList(ShapedGlyph) = .empty;
+    var i: usize = 0;
+    while (i < shaped.len) {
+        var j = i + 1;
+        while (j < shaped.len and shaped[j].start == shaped[i].start and shaped[j].end == shaped[i].end) j += 1;
+        const st = shaped[i].start;
+        const en = @min(shaped[i].end, @as(u32, @intCast(text.len)));
+        // where the trailing run of default-ignorable characters starts
+        var tail: u32 = st;
+        var p: u32 = st;
+        while (p < en) {
+            const d = uni.decodeUtf8(text, p);
+            p += @intCast(d.len);
+            if (!defaultIgnorable(d.cp)) tail = p;
+        }
+        if (tail >= en or tail == st) {
+            try out.appendSlice(a, shaped[i..j]);
+            i = j;
+            continue;
+        }
+        // the glyph a soft hyphen shows at a line break stays the hyphen's (takumi draws it as a
+        // run of its own, without text)
+        var base_end = j;
+        const soft_break = j - i >= 2 and (shaped[j - 1].gid == hyphen or shaped[j - 1].gid == hyphen2) and shaped[j - 1].gid != 0 and uni.decodeUtf8(text, tail).cp == 0xAD;
+        if (soft_break) base_end = j - 1;
+        // the pen after the cluster: where the next glyph of the run starts
+        const last = shaped[base_end - 1];
+        const pen_x = if (base_end < shaped.len) shaped[base_end].x else last.x + @as(f32, @floatFromInt(font.advanceWidth(last.gid))) * size / upm;
+        const pen_y = shaped[i].y;
+        var first = out.items.len;
+        try out.appendSlice(a, shaped[i..base_end]);
+        var cur: [2]u32 = .{ st, tail };
+        p = tail;
+        while (p < en) {
+            const d = uni.decodeUtf8(text, p);
+            const next: u32 = p + @as(u32, @intCast(d.len));
+            if (ignorableContinues(d.cp)) {
+                cur[1] = next;
+            } else {
+                for (out.items[first..]) |*g| {
+                    g.start = cur[0];
+                    g.end = cur[1];
+                }
+                first = out.items.len;
+                cur = .{ p, next };
+            }
+            if (space != 0) try out.append(a, .{ .gid = space, .x = pen_x, .y = pen_y, .start = 0, .end = 0 });
+            p = next;
+        }
+        for (out.items[first..]) |*g| {
+            g.start = cur[0];
+            g.end = cur[1];
+        }
+        if (soft_break) {
+            var h = shaped[j - 1];
+            h.start = en;
+            h.end = en;
+            try out.append(a, h);
+        }
+        i = j;
+    }
+    return out.items;
+}
+
 /// takumi-pdf keys a font by the variation values the text asked for, not by the coordinates
 /// they clamp to: text at two sizes beyond the range of an `opsz` axis draws from two font
 /// objects with the same outlines, while `font-optical-sizing: none` (the axis default) shares
@@ -909,6 +1014,9 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
             const st: u32 = @min(g.cluster, @as(u32, @intCast(text.len)));
             sg.* = .{ .gid = g.gid, .x = g.x, .y = g.y, .start = st, .end = clusterEnd(text, starts, st) };
         }
+        const shown = try hideIgnorables(a, font, size, gs, shaped, text);
+        const glyphs = try runGlyphs(a, shown, size, text, &reg.uncovered);
+        return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
     }
     const glyphs = try runGlyphs(a, shaped, size, text, &reg.uncovered);
     return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };

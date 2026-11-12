@@ -247,3 +247,25 @@ test "fonts: font-synthesis decides the synthetic bold stroke and the oblique sk
     const slant = try t.render("<p style=\"font-weight:700;font-style:italic;font-synthesis:style\">x</p>", "{\"tagged\":false}");
     try testing.expect(!has(slant, "2 Tr") and has(slant, skew));
 }
+
+test "text: default-ignorable characters are invisible glyphs of their own" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    // a zero-width space after `a`: the space glyph without advance, whose first use gives that
+    // glyph the text U+200B (so the two real spaces after it carry `/ActualText( )`, exactly as
+    // in takumi-pdf); `a` keeps mapping to `a` alone and needs no span
+    const zwsp = try t.render("<p>a\u{200B}b a ab</p>", "{\"tagged\":false}");
+    try testing.expectEqual(@as(usize, 2), count(zwsp, "/ActualText"));
+    try testing.expectEqual(@as(usize, 2), count(zwsp, "/ActualText( )"));
+    try testing.expect(!has(zwsp, "0061200B"));
+    // a zero-width joiner continues the cluster before it: one span over both glyphs
+    const zwj = try t.render("<p>j\u{200D} j</p>", "{\"tagged\":false}");
+    try expectHas(zwj, "/ActualText<FEFF006A200D>");
+    try testing.expect(!has(zwj, "<006A200D>"));
+    // PDF/A-2u: U+FEFF after two different letters is one glyph with an invalid mapping, so one
+    // error (it was one per letter)
+    try testing.expectEqualStrings("Writing the PDF failed: validation failed with 1 error", try t.err("<p>a\u{FEFF} b\u{FEFF}</p>", "{\"pdfa\":\"2u\",\"uncoveredText\":\"blank\"," ++ meta ++ "}"));
+    // text without such characters is untouched
+    try testing.expect(!has(try t.render("<p>plain text</p>", "{\"tagged\":false}"), "/ActualText"));
+}
