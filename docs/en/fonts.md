@@ -73,7 +73,8 @@ families, `Geist` (face `index: 0`) and `Geist Mono` (face `index: 1`).
 | OpenType with CFF / CFF2 outlines (`.otf`) | no: throws `unsupported font format` | yes | yes |
 | WOFF / WOFF2 | with the [WOFF add-on](#woff-and-woff2) | yes | yes |
 | Variable fonts | registered, drawn at the default instance | yes | yes |
-| Colour glyphs (COLR v0/v1, CBDT, sbix) | no colour | no colour | yes |
+| Colour glyphs: COLR v0/v1 | plain outlines, no colour | plain outlines, no colour | yes |
+| Colour glyphs: bitmap CBDT / sbix | not drawn | yes | yes |
 
 Bytes that are not a font throw `bm-engine: invalid font data`. Check what the loaded binary supports
 with `features.woff`, `features.cff`, `features.variableFonts` and `features.colorFonts`.
@@ -136,14 +137,16 @@ const synthesis = renderer.renderSync(
 
 ![Roboto Regular, a synthetic bold line, a synthetic oblique line and a bold line despite fontSynthesis none](/img/guide/fonts-synthesis.png)
 
-::: warning `font-synthesis` is ignored
-`fontSynthesis`, `fontSynthesisWeight` and `fontSynthesisStyle` are parsed but have no effect in 0.1.0:
-synthesis is always on (last line above). Register real bold / italic files when the synthetic ones are
+::: warning `font-synthesis` does not turn off bold and italic
+`fontSynthesisWeight`, `fontSynthesisStyle` and the weight / style parts of `fontSynthesis` are parsed
+but have no effect in 0.1.0: bold and italic synthesis is always on (last line above). Register real bold / italic files when the synthetic ones are
 not good enough; they always look better.
 :::
 
-Synthetic small caps do not exist either: `fontVariant: "small-caps"` only turns on the font's `smcp`
-feature, so with a font that has no small caps (Inter, Roboto) nothing changes.
+Small caps are synthesised too: `fontVariant: "small-caps"` uses the font's `smcp` feature when it has
+one and otherwise draws uppercase letters at 70 % of the font size (Inter and Roboto have no small caps).
+Unlike bold and italic, this synthesis can be turned off, with `fontSynthesisSmallCaps: "none"` or a
+`fontSynthesis` value without `small-caps`. See [Typography → Small caps](./typography.md#small-caps).
 
 ## Fallback
 
@@ -238,7 +241,7 @@ it matters, or put the font you want first in `fontFamilies`.
 With the async methods (`render`, `measure`, `renderAsDataUrl`, `prepare`, ...) you can pass fonts per
 call. Each entry is anything `registerFont` accepts: bytes, a URL, or a details object whose `data` may be
 a function or a promise. They are registered on the renderer before rendering and **stay registered**
-afterwards. When `fontFamilies` is not given, the families of these fonts become the root font stack, so
+afterwards, as in takumi. When `fontFamilies` is not given, the families of these fonts become the root font stack, so
 text without a `fontFamily` uses them:
 
 <!-- @example fonts#fonts-option -->
@@ -343,31 +346,36 @@ add-on: ...)`. The add-on does not add CFF support: a WOFF2 with CFF outlines st
 
 ## Colour fonts and emoji
 
-Colour emoji need **both** the `full` profile and a colour font (COLR v0/v1, CBDT or sbix, for example
-Noto Color Emoji or Twemoji). As with any other font, registering it is enough, since fallback finds the
+Colour emoji need a colour font (COLR v0/v1, CBDT or sbix, for example Noto Color Emoji or Twemoji) and
+a profile that draws its format: bitmap fonts (CBDT, sbix) are drawn in colour on `standard` and `full`,
+COLR fonts only on `full`. As with any other font, registering it is enough, since fallback finds the
 emoji glyphs:
 
 <!-- @example fonts#emoji -->
 ```js
 // Noto Color Emoji (CBDT bitmaps, 10 MB; OFL). Registering it is enough: fallback finds it.
 renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoColorEmoji.ttf"));
+// ZWJ sequences (👩‍💻), skin tones (👍🏽), flags (🇻🇳), keycaps (1️⃣) and VS16 (❤️) are one glyph each
 const emoji = renderer.renderSync(
   { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
-    children: [{ type: "text", text: "Ship it 🚀 🎉 😀 🇻🇳 ❤️ 👩‍💻", style: { fontFamily: "Inter", fontSize: 30 } }] },
+    children: [{ type: "text", text: "Ship it 🚀 🎉 👩‍💻 👍🏽 🇻🇳 1️⃣ ❤️", style: { fontFamily: "Inter", fontSize: 30 } }] },
   { width: 560, height: 64 },
 );
 ```
 
-![Text with colour emoji: rocket, party popper, smiley, Vietnamese flag, heart, woman and laptop](/img/guide/fonts-emoji.png)
+![Text with colour emoji: rocket, party popper, woman technologist, thumbs up with a medium skin tone, Vietnamese flag, keycap 1 and heart](/img/guide/fonts-emoji.png)
 
-Notice the last emoji: the ZWJ sequence 👩‍💻 is drawn as its two parts (👩 and 💻). Some ZWJ sequences
-are not merged into one glyph in 0.1.0.
+Emoji sequences are shaped as one cluster and drawn as one glyph on `standard` and `full`: ZWJ
+sequences (👩‍💻), skin-tone modifiers (👍🏽), flags (🇻🇳) and tag flags, keycaps (1️⃣) and the VS15 / VS16
+presentation selectors (❤️). Line wrapping, font fallback and letter spacing never split them. One
+remaining difference: takumi picks the presentation of `©️` (U+00A9 + VS16) depending on context.
 
-On `standard` and `core` colour tables are ignored. A COLR font is drawn from its plain outlines, without
-colour, but a bitmap-only font such as Noto Color Emoji (CBDT) has no outlines at all, so the emoji are
-**not drawn** (the same tree on `standard`; only the heart comes from Inter, which has a ❤ glyph):
+On `core` colour tables are ignored. A COLR font is drawn from its plain outlines, without colour, but
+a bitmap-only font such as Noto Color Emoji (CBDT) has no outlines at all, so its emoji are **not drawn**
+(the same tree on `core`; the digit of the keycap and the heart come from Inter, the keycap mark itself
+shows as a missing-glyph box):
 
-![On standard the emoji are missing](/img/guide/fonts-emoji-standard.png)
+![On core the emoji are missing; only the digit 1, a missing-glyph box and a black heart remain](/img/guide/fonts-emoji-core.png)
 
 ## Loading fonts in the browser and from URLs
 

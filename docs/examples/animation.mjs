@@ -144,6 +144,30 @@ const pulse = renderer.renderSync(
 // #endregion
 save("rule-object", pulse);
 
+// #region tailwind
+// Tailwind's animate-* utilities (full profile): the built-in spin / ping / pulse / bounce, arbitrary
+// values, and your own --animate-* theme variables with their @keyframes.
+const twScene = {
+  type: "container",
+  tw: "flex items-center justify-around w-full h-full bg-slate-100",
+  children: [
+    { type: "container", tw: "w-10 h-10 rounded-md bg-indigo-500 animate-spin" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-sky-500 animate-bounce" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-rose-500 animate-ping" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-amber-500 animate-[spin_2s_linear_infinite_reverse]" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-emerald-500 animate-wiggle" },
+  ],
+};
+const twTheme = `@theme {
+  --animate-wiggle: wiggle 1s ease-in-out infinite;
+  @keyframes wiggle { 0%, 100% { transform: rotate(-15deg) } 50% { transform: rotate(15deg) } }
+}`;
+const twGif = renderer.renderAnimationSync({
+  scenes: [{ node: twScene, durationMs: 1000 }], width: 360, height: 100, fps: 20, format: "gif", css: [twTheme],
+});
+// #endregion
+save("tailwind", twGif, "gif");
+
 // #region html
 const spinner = `
   <style>

@@ -19,7 +19,7 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
 - **Nhỏ**: wasm `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB (brotli 180 / 375 / 453 KiB),
   so với 4 234.9 KiB của takumi — nhỏ hơn 9.3× / 4.8× / 3.9×. Module **không có import nào** (không
   WASI, không glue wasm-bindgen) và wrapper JS không có dependency.
-- **Đầu ra giống nhau**: 74 fixture trùng từng byte, 126 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
+- **Đầu ra giống nhau**: 81 fixture trùng từng byte, 169 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
   mép khử răng cưa), 1 fixture gần giống, 0 fixture khác. Layout của `measure()` khớp takumi tới 0.001 px.
 - **Nhanh**: render PNG mất 0.48× thời gian của takumi (trung bình nhân; nhanh hơn ở 175/175 ca), RGBA
   thô 0.65× (nhanh hơn ở 155/175 ca); cold start (init + font + PNG đầu tiên) 72 ms so với 187 ms; file
@@ -130,15 +130,15 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
   không tải); hãy truyền bytes qua `images` và `registerFont`.
 - **Không có JSX, không có `ImageResponse`, không có PDF.** Chuyển JSX bằng
   `@takumi-rs/helpers`.
-- **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; inline nguyên tử và padding của
-  span inline tham gia ngắt dòng). Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
-  block-in-inline, thứ tự vẽ float chỉ xấp xỉ, `text-wrap: balance` cạnh float hoặc inline nguyên tử, padding
-  theo % trên hộp inline (xem [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết)).
-- Chưa hỗ trợ: `display: contents`, list marker / counter, `writing-mode`, transform 3D,
-  `clip-path: url()`, cú pháp màu tương đối, `animate-*` và các variant tương tác của Tailwind (giống
-  takumi), `<text>` bên trong ảnh SVG và một số filter SVG.
-- Khác biệt đã biết: `direction: rtl` không đảo chiều hàng flex; `image-rendering: pixelated` bị bỏ qua
-  với ảnh raster; các text run của `measure()` không có trường `text`.
+- **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; block-in-inline, hộp inline
+  RTL, inline nguyên tử và padding của span inline tham gia ngắt dòng). Còn lại: khoảng trắng treo của RTL +
+  `pre-wrap`, line-clamp quanh float, block nằm trong hộp inline `position: relative` (xem
+  [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết)).
+- Chưa hỗ trợ: list marker / counter, `writing-mode`, transform 3D, `clip-path: url()`, cú pháp màu tương
+  đối, các variant tương tác và `space-*` của Tailwind (giống takumi), `<text>` bên trong ảnh SVG và một số
+  filter SVG.
+- Khác biệt đã biết: `display: contents`, `margin` / `padding` theo % trên hộp inline và `text-indent`
+  sau một con dạng block theo Chrome thay vì takumi; các text run của `measure()` không có trường `text`.
 - WebAssembly: đơn luồng và đồng bộ trong một instance; bộ nhớ chỉ tăng chứ không bao giờ co lại. Native
   (Node.js): một renderer chạy một lệnh tại một thời điểm, nhiều renderer chạy song song; tới nay mới chỉ
   addon Windows x64 được chạy thật.

@@ -95,11 +95,12 @@ const twoSquares = (display) => ({
 const heightOf = (display) =>
   renderer.measureSync({ type: "container", style: { display: "block" }, children: [twoSquares(display)] }, { width: 200, height: 100 }).height;
 
-heightOf(undefined); // 0  – default display is inline: width / height of the box and of its inline children are ignored
+heightOf(undefined); // 20 – default display is inline: width / height of the box and of its inline children are
+                     //      ignored; only one line remains (the padded inline box makes it a non-empty line)
 heightOf("block");   // 20 – only the padding: the children are still inline
 heightOf("flex");    // 70 – flex items are blockified: 50 + 2 × 10 padding
 // #endregion
-assert.equal(heightOf(undefined), 0);
+assert.equal(heightOf(undefined), 20);
 assert.equal(heightOf("block"), 20);
 assert.equal(heightOf("flex"), 70);
 

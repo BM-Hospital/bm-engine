@@ -73,7 +73,8 @@ family là `Geist` (face `index: 0`) và `Geist Mono` (face `index: 1`).
 | OpenType có outline CFF / CFF2 (`.otf`) | không: ném lỗi `unsupported font format` | có | có |
 | WOFF / WOFF2 | có, với [add-on WOFF](#woff-và-woff2) | có | có |
 | Font biến thiên (variable font) | đăng ký được, chỉ vẽ ở instance mặc định | có | có |
-| Glyph màu (COLR v0/v1, CBDT, sbix) | không có màu | không có màu | có |
+| Glyph màu: COLR v0/v1 | outline thường, không màu | outline thường, không màu | có |
+| Glyph màu: bitmap CBDT / sbix | không vẽ | có | có |
 
 Bytes không phải font sẽ ném lỗi `bm-engine: invalid font data`. Kiểm tra binary đang nạp hỗ trợ gì qua
 `features.woff`, `features.cff`, `features.variableFonts` và `features.colorFonts`.
@@ -137,14 +138,16 @@ const synthesis = renderer.renderSync(
 
 ![Roboto Regular, một dòng đậm giả lập, một dòng nghiêng giả lập và một dòng vẫn đậm dù đặt fontSynthesis none](/img/guide/fonts-synthesis.png)
 
-::: warning `font-synthesis` bị bỏ qua
-`fontSynthesis`, `fontSynthesisWeight` và `fontSynthesisStyle` được parse nhưng không có tác dụng trong
-0.1.0: giả lập luôn bật (dòng cuối ở trên). Hãy đăng ký file đậm / nghiêng thật khi bản giả lập chưa đủ
+::: warning `font-synthesis` không tắt được đậm và nghiêng
+`fontSynthesisWeight`, `fontSynthesisStyle` và phần weight / style của `fontSynthesis` được parse nhưng
+không có tác dụng trong 0.1.0: giả lập đậm và nghiêng luôn bật (dòng cuối ở trên). Hãy đăng ký file đậm / nghiêng thật khi bản giả lập chưa đủ
 đẹp; bản thật luôn đẹp hơn.
 :::
 
-Cũng không có small caps giả lập: `fontVariant: "small-caps"` chỉ bật feature `smcp` của font, nên với
-font không có small caps (Inter, Roboto) thì không có gì thay đổi.
+Small caps cũng được giả lập: `fontVariant: "small-caps"` dùng feature `smcp` của font nếu có, nếu không
+thì vẽ chữ hoa ở 70 % cỡ chữ (Inter và Roboto không có small caps). Khác với đậm và nghiêng, giả lập này
+tắt được, bằng `fontSynthesisSmallCaps: "none"` hoặc một giá trị `fontSynthesis` không chứa `small-caps`.
+Xem [Typography → Chữ hoa nhỏ](./typography.md#small-caps).
 
 ## Fallback
 
@@ -238,7 +241,7 @@ trọng, hoặc đặt font bạn muốn lên đầu `fontFamilies`.
 
 Với các method async (`render`, `measure`, `renderAsDataUrl`, `prepare`, ...) bạn có thể truyền font cho
 từng lần gọi. Mỗi phần tử là bất cứ thứ gì `registerFont` nhận: bytes, URL, hoặc object chi tiết có `data`
-là hàm hay promise. Chúng được đăng ký lên renderer trước khi render và **vẫn được giữ** sau đó. Khi không
+là hàm hay promise. Chúng được đăng ký lên renderer trước khi render và **vẫn được giữ** sau đó, giống takumi. Khi không
 có `fontFamilies`, các family của những font này trở thành font stack gốc, nên chữ không có `fontFamily`
 sẽ dùng chúng:
 
@@ -343,30 +346,34 @@ Chi tiết ở [Profile và kích thước](./profiles-and-size.md#add-on-woff).
 
 ## Font màu và emoji
 
-Emoji màu cần **cả hai**: profile `full` và một font màu (COLR v0/v1, CBDT hoặc sbix, ví dụ Noto Color
-Emoji hoặc Twemoji). Như mọi font khác, chỉ cần đăng ký là đủ, vì fallback sẽ tìm ra glyph emoji:
+Emoji màu cần một font màu (COLR v0/v1, CBDT hoặc sbix, ví dụ Noto Color Emoji hoặc Twemoji) và một
+profile vẽ được định dạng của nó: font bitmap (CBDT, sbix) được vẽ có màu trên `standard` và `full`, font
+COLR chỉ trên `full`. Như mọi font khác, chỉ cần đăng ký là đủ, vì fallback sẽ tìm ra glyph emoji:
 
 <!-- @example fonts#emoji -->
 ```js
 // Noto Color Emoji (CBDT bitmaps, 10 MB; OFL). Registering it is enough: fallback finds it.
 renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoColorEmoji.ttf"));
+// ZWJ sequences (👩‍💻), skin tones (👍🏽), flags (🇻🇳), keycaps (1️⃣) and VS16 (❤️) are one glyph each
 const emoji = renderer.renderSync(
   { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
-    children: [{ type: "text", text: "Ship it 🚀 🎉 😀 🇻🇳 ❤️ 👩‍💻", style: { fontFamily: "Inter", fontSize: 30 } }] },
+    children: [{ type: "text", text: "Ship it 🚀 🎉 👩‍💻 👍🏽 🇻🇳 1️⃣ ❤️", style: { fontFamily: "Inter", fontSize: 30 } }] },
   { width: 560, height: 64 },
 );
 ```
 
-![Dòng chữ có emoji màu: tên lửa, pháo giấy, mặt cười, cờ Việt Nam, trái tim, người phụ nữ và laptop](/img/guide/fonts-emoji.png)
+![Dòng chữ có emoji màu: tên lửa, pháo giấy, nữ lập trình viên, ngón cái giơ lên với màu da trung bình, cờ Việt Nam, keycap 1 và trái tim](/img/guide/fonts-emoji.png)
 
-Để ý emoji cuối: chuỗi ZWJ 👩‍💻 được vẽ thành hai phần (👩 và 💻). Trong 0.1.0, một số chuỗi ZWJ chưa được
-gộp thành một glyph.
+Trên `standard` và `full`, chuỗi emoji được shape thành một cluster và vẽ thành một glyph: chuỗi ZWJ
+(👩‍💻), bộ chỉnh màu da (👍🏽), cờ (🇻🇳) và cờ dạng tag, keycap (1️⃣) và bộ chọn kiểu hiển thị VS15 / VS16
+(❤️). Xuống dòng, font dự phòng và giãn chữ không bao giờ tách chúng ra. Còn một khác biệt: takumi chọn
+cách hiển thị của `©️` (U+00A9 + VS16) tuỳ theo ngữ cảnh.
 
-Trên `standard` và `core`, các bảng màu bị bỏ qua. Font COLR được vẽ từ outline thường, không có màu,
-nhưng font chỉ có bitmap như Noto Color Emoji (CBDT) thì không có outline nào, nên emoji **không được vẽ**
-(cùng cây node trên `standard`; chỉ trái tim là lấy từ Inter, vốn có glyph ❤):
+Trên `core`, các bảng màu bị bỏ qua. Font COLR được vẽ từ outline thường, không có màu, nhưng font chỉ có
+bitmap như Noto Color Emoji (CBDT) thì không có outline nào, nên emoji của nó **không được vẽ** (cùng cây
+node trên `core`; chữ số của keycap và trái tim lấy từ Inter, còn dấu keycap hiện thành ô thiếu glyph):
 
-![Trên standard các emoji bị mất](/img/guide/fonts-emoji-standard.png)
+![Trên core các emoji bị mất; chỉ còn chữ số 1, một ô thiếu glyph và trái tim đen](/img/guide/fonts-emoji-core.png)
 
 ## Nạp font trong trình duyệt và từ URL
 

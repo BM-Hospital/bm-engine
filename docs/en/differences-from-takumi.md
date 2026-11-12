@@ -4,7 +4,7 @@
 
 bm-engine is a Zig re-implementation of [takumi](https://github.com/kane50613/takumi) 2.20's renderer
 (`@takumi-rs/wasm`), not a fork: it accepts the same node trees, HTML, stylesheets, Tailwind classes
-and render options, and was developed against takumi as an oracle until outputs matched (200/200
+and render options, and was developed against takumi as an oracle until outputs matched (250/250
 benchmark fixtures identical or equivalent). This page lists what changes when you move
 from `@takumi-rs/wasm` or `takumi-js` to bm-engine, the API and rendering differences that remain, and
 the takumi behaviours bm-engine deliberately reproduces.
@@ -101,33 +101,42 @@ From the equivalence benchmark (see [Benchmark](benchmark.md)); everything else 
 within anti-aliasing noise.
 
 - **Anti-aliasing**: bm-engine ports tiny-skia's 4×4 supersampling scan converter and takumi's
-  `div_255`, so 74/200 fixtures are byte-identical. The rest differ at curved edges and glyph edges by a
+  `div_255`, so 81/250 fixtures are byte-identical. The rest differ at curved edges and glyph edges by a
   sub-sample (SSIM ≥ 0.99).
 - **One-level differences**: gradient interiors (takumi accumulates `f32` per span), dashed borders on
   rounded corners (~0.1 px phase), rotated text, `-webkit-text-stroke`.
-- **Inline layout**: text flows around floats, and atomic inlines and inline span padding take part in
-  line breaking, equivalent to takumi on all fixtures. Remaining gaps: RTL inline boxes around LTR text,
-  line-clamp around floats, block-in-inline, approximate float paint order, `text-wrap: balance / pretty`
-  falling back to greedy wrapping beside floats or atomic inlines, percentage padding on inline boxes
-  (see [known gaps](css-support.md#known-gaps)).
-- **`direction: rtl` on flex containers** does not reverse the main axis in 0.1.0.
-- **`image-rendering: pixelated`** on raster images is ignored (smooth resampling).
-- **Colour emoji**: bm-engine draws COLR v1 fonts (takumi does not); some ZWJ sequences are not merged
-  and emoji-font preference differs for a few characters.
+- **Inline layout**: text flows around floats, block-in-inline splits the inline box, RTL inline boxes
+  are placed visually, and atomic inlines and inline span padding take part in line breaking, equivalent
+  to takumi on all fixtures. Remaining gaps: RTL + `pre-wrap` hanging spaces, line-clamp around floats,
+  a block inside a relatively positioned inline box (see [known gaps](css-support.md#known-gaps)).
+- **Paint order**: floats and positioned boxes follow CSS 2.1 Appendix E in raster output; `renderSvg`
+  keeps an older, approximate order.
+- **Colour emoji**: bm-engine draws COLR v1 fonts (takumi does not); the presentation of `©️` (U+00A9 +
+  VS16) depends on context in takumi and can differ.
 - **SVG images**: `<text>` is drawn in a simplified model (one run per element, `<tspan>` styling ignored, solid fills only; see [Charts](charts.md#what-svg-text-supports)), and a few filter primitives (`feTurbulence`, `feImage`,
   `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting, `feTile`) are not supported.
 - **Encoders**: encoded files are different bytes (bm-engine's encoders are its own; PNG files are
   24 % smaller, geometric mean over the fixtures); decoded pixels are what the benchmark compares.
-- **`display: contents`** is rejected by takumi's inline-style parser but accepted by bm-engine,
-  which lays the element out and paints it like `display: block` (its own box, padding and background stay).
+
+## Deliberate differences (bm-engine follows Chrome)
+
+In these cases takumi differs from browsers, and bm-engine does what Chrome does:
+
+- **`display: contents`**: takumi does not support the value (it drops it from stylesheets and its
+  inline-style parser throws); bm-engine removes the element's box and lays its children out in the
+  parent, as in Chrome.
+- **Percentage `margin` / `padding` on inline boxes and inline-blocks** resolve against the containing
+  block's width; takumi resolves them to 0.
+- **`text-indent`** indents only the first line of a block container; takumi also indents the first line
+  of a non-first anonymous block (text that follows a block-level child).
 
 ## Not ported
 
 - PDF output (`takumi-pdf`, a separate product of ~43 500 lines of Rust).
 - Native N-API binding (`@takumi-rs/core`).
 - Network access of any kind (`prepare` fetching, `@font-face` URLs).
-- Counters in `content`, list markers, `@apply`, Tailwind `animate-*`, animations on pseudo-elements,
-  `clip-path: url()`, relative colour syntax, `outline-offset` in %.
+- Counters in `content`, list markers, `@apply`, animations on pseudo-elements, `clip-path: url()`,
+  relative colour syntax, `outline-offset` in %.
 
 ## takumi behaviours bm-engine reproduces on purpose
 
@@ -144,8 +153,8 @@ renders the same:
 - `width` / `height` options are output pixels; `devicePixelRatio` scales CSS lengths without changing
   the canvas size; `vw` / `vh` refer to output pixels.
 - The root is not stretched to the canvas height; `height: "100%"` resolves against the canvas.
-- The canvas starts transparent; JPEG output drops alpha (transparent becomes black); WebP output is
-  always lossless.
+- The canvas starts transparent; JPEG output drops alpha without compositing (transparent becomes black;
+  give the root an opaque background); WebP output is always lossless.
 - Font fallback walks every registered family in registration order. With the `fonts` option and no
   `fontFamilies`, the families of those fonts become the root font stack.
 - Every JS string source is HTML; JSON text must be wrapped as `{ json }`.

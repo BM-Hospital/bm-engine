@@ -101,7 +101,7 @@ inline element if you need them.
 :::
 
 The user-agent styles only apply to HTML sources. Setting `tagName: "h1"` on a node tree makes the node
-match `h1` selectors but does not make it bold or large.
+match `h1` selectors but does not make it bold or large (as in takumi).
 
 ### Fragments and documents
 
@@ -178,8 +178,8 @@ const ignoredPng = renderer.renderSync(`
 ![Two green lines of text: the body paragraph and the paragraph with the hidden attribute](/img/guide/html-and-tailwind-ignored.png)
 
 ::: warning The `hidden` attribute is not honoured
-In 0.1.0 an element with `hidden` is still drawn (there is no `[hidden] { display: none }` rule in the
-user-agent styles). Use `style="display:none"` instead.
+An element with `hidden` is still drawn (there is no `[hidden] { display: none }` rule in the
+user-agent styles), as in takumi. Use `style="display:none"` instead.
 :::
 
 Also not implemented (same gaps as takumi's parser): the adoption-agency algorithm for misnested
@@ -305,7 +305,7 @@ const variantsPng = renderer.renderSync({
     {
       type: "container",
       tw: "flex flex-col",
-      // structural variants: use container rows (on bare text nodes they match every sibling in 0.1.0)
+      // structural variants: use container rows (or a tagName): a bare text node is not an element for them
       children: rows.map((r) => ({
         type: "container",
         tw: "flex px-3 py-1 text-sm bg-slate-100 odd:bg-sky-100 first:rounded-t-lg last:rounded-b-lg last:font-bold",
@@ -319,9 +319,11 @@ const variantsPng = renderer.renderSync({
 ![A title with an amber NEW badge from after:, and four rows with alternating blue rows, rounded first and last rows and a bold last row](/img/guide/html-and-tailwind-variants.png)
 
 ::: warning Structural variants on bare text nodes
-In 0.1.0 `first:`, `last:`, `odd:` and friends match **every** bare `text` node among its siblings
-(the same happens with `:first-child` in stylesheets). That is why the rows above are containers with a
-text child. HTML elements are not affected.
+A `text` node without a `tagName` is not an element for `first:`, `last:`, `odd:` and friends (nor for
+`:first-child` in stylesheets), as in takumi: it does not count among its siblings, so when several bare
+text nodes sit side by side **every** one of them matches `first:`, `last:` and `odd:`. That is why the
+rows above are containers with a text child; giving the text nodes a `tagName` (for example `"div"`)
+works too. HTML elements are not affected.
 :::
 
 Breakpoints compare against the canvas width in CSS px:
@@ -349,8 +351,9 @@ w("block w-20 h-1", { width: 40 }).width;  // 40 – inline style beats tw
 w("block !w-20 h-1", { width: 40 }).width; // 80 – unless the utility is !important
 ```
 
-Against other style sources: inline `style` beats `tw`, a stylesheet rule beats `tw` (even inside an
-`@layer`), and an `!`-prefixed utility beats both normal declarations. See
+Against other style sources: inline `style` beats `tw`, an unlayered stylesheet rule beats `tw`, `tw`
+beats a rule inside a named `@layer`, and an `!`-prefixed utility beats every normal declaration and
+unlayered `!important` rules (only `!important` rules in named layers beat it). See
 [Styles](./styles.md#how-the-layers-combine).
 
 ### Preflight
@@ -372,29 +375,44 @@ const withPreflight = renderer.renderSync(page, { width: 280, height: 160, css: 
 
 ### Theme variables
 
-`@theme { ... }` in a stylesheet declares its custom properties on `:root`, so `var()` can read them
-in CSS and inline styles:
+`@theme { ... }` in a stylesheet defines theme variables. The utilities read them, as in Tailwind v4:
+colours (`--color-*`, also with an `/opacity` modifier), `--spacing` and `--spacing-*`, `--container-*`,
+`--radius-*`, `--text-*` (with the `--text-*--line-height` companion), `--font-*`, `--font-weight-*`,
+`--tracking-*`, `--leading-*`, `--aspect-*`, `--animate-*` and `--breakpoint-*`; redefining a default
+(`--color-red-500`) changes `bg-red-500`. The variables are also declared on `:root`, so `var()` can read
+them in CSS and inline styles:
 
 <!-- @example html-and-tailwind#theme -->
 ```js
-// @theme declares custom properties on :root; read them with var() in CSS or inline styles
+// @theme variables feed the utilities (bg-brand-500, bg-brand-500/15, rounded-card, text-hero,
+// font-display, ...) and are also custom properties on :root, so var() can read them.
+const theme = `@theme {
+  --color-brand-500: #7c3aed;
+  --radius-card: 14px;
+  --text-hero: 28px;
+  --text-hero--line-height: 34px;
+  --font-display: Inter;
+}`;
 const themePng = renderer.renderSync({
   type: "container",
-  tw: "flex items-center justify-center w-full h-full",
-  style: { backgroundColor: "var(--color-brand-500)" },
-  children: [{ type: "text", text: "@theme → var()", tw: "text-2xl font-bold text-white", style: { fontFamily: "Inter" } }],
-}, { width: 300, height: 80, css: ["@theme { --color-brand-500: #7c3aed; }"] });
+  tw: "flex flex-col items-center justify-center gap-2 w-full h-full bg-brand-500/15 font-display",
+  children: [
+    { type: "text", text: "@theme → utilities", tw: "text-hero font-bold text-brand-500" },
+    { type: "container", tw: "flex px-4 py-1 rounded-card bg-brand-500",
+      children: [{ type: "text", text: "rounded-card bg-brand-500", tw: "text-sm text-white" }] },
+    { type: "text", text: "var(--color-brand-500) in a style", tw: "text-sm", style: { color: "var(--color-brand-500)" } },
+  ],
+}, { width: 340, height: 140, css: [theme] });
 ```
 
-![A violet banner whose colour comes from an @theme variable](/img/guide/html-and-tailwind-theme.png)
+![A light violet card with a large violet title, a rounded violet pill and a violet line, all coloured by an @theme variable](/img/guide/html-and-tailwind-theme.png)
 
-Utilities do **not** read theme variables in 0.1.0: `bg-brand-500` with
-`@theme { --color-brand-500: ... }` paints nothing, and redefining `--color-red-500` does not change
-`bg-red-500`. Use arbitrary values with literal colours (`bg-[#7c3aed]`) or inline styles with `var()`.
+`animate-*` utilities, including names from `--animate-*`, need the `full` profile; see
+[Animation](./animation.md#built-in-names-and-tailwind).
 
 ### What Tailwind does not do
 
-Checked against the package:
+Checked against the package. takumi does not support any of these either:
 
 <!-- @example html-and-tailwind#tw-gaps -->
 ```js
@@ -405,8 +423,9 @@ const px = (tw, css) => {
 px("bg-red-500");                                          // painted
 px("bg-linear-to-r from-red-500 to-blue-500");             // painted
 px("bg-gradient-to-r from-red-500 to-blue-500");           // transparent – Tailwind v3 name, not supported
-px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // transparent – utilities do not read theme tokens
+px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // painted – utilities read @theme variables
 px("bg-[var(--brand)]", [":root { --brand: red }"]);        // transparent – var() inside [...] is not supported
+px("bg-(--brand)", [":root { --brand: red }"]);             // transparent – nor the (--var) shorthand
 px("hover:bg-red-500");                                    // transparent – hover / focus / dark never apply
 ```
 
@@ -415,11 +434,11 @@ px("hover:bg-red-500");                                    // transparent – ho
 - **Interactive and environment variants**: `hover:`, `focus:`, `dark:`, `group-*:`, `peer-*:`,
   `max-*:` breakpoints.
 - **Utilities**: `z-*`, `order-*`, `skew-*`, `ring-*`, `space-x-*` / `space-y-*` (use `gap-*`),
-  `divide-*`, `place-*`, `cursor-*`, `animate-*` (use the `animation` property with `css`, see
-  [Animation](./animation.md)).
-- **Syntax**: arbitrary properties (`[width:30px]`), `(--var)` shorthand, `var()` in brackets,
-  `@apply` in stylesheets, `@utility`, `@plugin`, `@config`.
-- **Theme tokens** in utilities (see [above](#theme-variables)).
+  `divide-*`, `place-*`, `cursor-*`; `outline-2` without an outline style, `backdrop-blur` without a
+  size, `mask-b-from-50%`.
+- **Syntax**: arbitrary properties (`[width:30px]`), `(--var)` shorthand, `var()` in brackets
+  (`bg-[var(--x)]`, `w-[var(--w)]`), `@apply` in stylesheets, `@utility`, `@plugin`, `@config`.
+- **The `class` attribute**: in HTML only `tw="..."` is compiled as Tailwind (see [above](#tailwind)).
 - Unknown classes are skipped silently; nothing throws.
 
 If you need more of Tailwind, compile your classes with the real Tailwind in your build and pass the

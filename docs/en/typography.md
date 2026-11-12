@@ -144,11 +144,32 @@ const align = renderer.renderSync(
 `textAlign` accepts `left`, `right`, `center`, `justify`, `start` and `end` (the last two follow
 `direction`). A justified paragraph stretches every line except the last.
 
-::: warning `text-indent` has no effect in 0.1.0
-`textIndent` is parsed but ignored by layout: the first line starts at the left edge. Use a leading
-inline-block spacer (`{ type: "container", style: { display: "inline-block", width: 20 } }`) as a
-workaround. `textAlignLast` is parsed and ignored too.
-:::
+## First-line indent
+
+`textIndent` indents the first line of a block container: a length, a percentage of the container's
+width, or a negative value (an outdent; add padding so the text stays inside). The keywords `hanging`
+(indent every line except the first) and `each-line` (also indent after forced line breaks) work too,
+and in a right-to-left paragraph the indent is on the right:
+
+<!-- @example typography#indent -->
+```js
+const indentText = "The first line of this paragraph starts further in than the lines that follow it.";
+const indent = renderer.renderSync(
+  page({}, [
+    sample("textIndent: 24", { textIndent: 24 }, [text(indentText)]),
+    sample("textIndent: \"10%\"", { textIndent: "10%" }, [text(indentText)]),
+    sample("textIndent: -16 (+ padding)", { textIndent: -16, paddingLeft: 22 }, [text(indentText)]),
+    sample("\"24px hanging\"", { textIndent: "24px hanging" }, [text(indentText)]),
+  ]),
+  { width: 790, height: 150 },
+);
+```
+
+![Four paragraphs: indented by 24 px, by 10 %, outdented by 16 px, and with a 24 px hanging indent](/img/guide/typography-indent.png)
+
+Only the first line of the block is indented, as in Chrome; takumi also indents the first line of the
+text that follows a block-level child (see [Differences from takumi](./differences-from-takumi.md#deliberate-differences-bm-engine-follows-chrome)).
+`textAlignLast` is parsed but has no effect.
 
 ## Truncation: ellipsis and line clamp
 
@@ -176,10 +197,32 @@ const truncation = renderer.renderSync(
   container, which is blockified), not on a flex container.
 - Text cut off by a fixed `height` gets no ellipsis; use `lineClamp`.
 
-::: warning Custom overflow strings
-`textOverflow` with a string (`'" »"'`) is accepted but drawn like `clip` in 0.1.0: no marker
-appears. Only `ellipsis` draws a marker.
-:::
+### Custom markers
+
+`textOverflow` also takes a string, which is drawn instead of the ellipsis: it is shaped with the
+element's font (and fallback fonts) and mirrored in a right-to-left paragraph. An empty string cuts
+the text without a marker. `lineClamp` takes its own marker as `<n> "<string>"` (the CSS
+`block-ellipsis` syntax; `none` and `no-ellipsis` are accepted too); a clamped line uses that marker, or
+the default ellipsis, not the `textOverflow` string. `overflow: "hidden"` clips the element's own
+glyphs, so `textOverflow: "clip"` really cuts through a letter:
+
+<!-- @example typography#overflow-string -->
+```js
+// A string as the overflow marker: text-overflow on one line, line-clamp's block-ellipsis
+// form on several lines, and an empty string to cut without any marker.
+const overflowString = renderer.renderSync(
+  page({}, [
+    sample("textOverflow: '\" »\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text(long)]),
+    sample("lineClamp: '2 \" [more]\"'", { lineClamp: '2 " [more]"' }, [text(long)]),
+    sample("textOverflow: '\"\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '""' }, [text(long)]),
+    // in a right-to-left paragraph the marker sits on the left and is mirrored (» becomes «)
+    sample("direction: rtl", { direction: "rtl", whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text("Faster PNG encoding and a smaller core build")]),
+  ]),
+  { width: 790, height: 110 },
+);
+```
+
+![A line ending in a » marker, a two-line clamp ending in [more], a line cut without marker, and a right-to-left line with a mirrored « marker on the left](/img/guide/typography-overflow-string.png)
 
 ## Balanced headlines
 
@@ -267,15 +310,43 @@ const transform = renderer.renderSync(
     text("uppercase: đường phố hà nội", { textTransform: "uppercase" }),
     text("CAPITALIZE: every word gets a capital", { textTransform: "capitalize" }),
     text("LOWERCASE: ĐƯỜNG PHỐ", { textTransform: "lowercase" }),
+    text("uppercase, full case mapping: straße ﬁx", { textTransform: "uppercase" }), // STRASSE FIX
   ]),
-  { width: 560, height: 110 },
+  { width: 560, height: 140 },
 );
 ```
 
 ![Uppercase Vietnamese text with diacritics, capitalised words and lowercase text](/img/guide/typography-transform.png)
 
-`textTransform` handles Vietnamese and other accented letters (`đ` → `Đ`). `fontVariant: "small-caps"`
-uses the font's `smcp` feature and has no effect on fonts without small caps (there is no synthesis).
+`textTransform` uses the full Unicode case mapping: Vietnamese and other accented letters (`đ` → `Đ`),
+`ß` → `SS`, ligatures such as `ﬁ` → `FI`, a final sigma in Greek, titlecase digraphs. Not done yet:
+casing tailored by `lang` (Turkish and Azeri dotted i, Greek accents, Lithuanian) and the `full-width` /
+`full-size-kana` values.
+
+### Small caps
+
+`fontVariantCaps` (or `fontVariant`) picks small capitals: `small-caps`, `all-small-caps`,
+`petite-caps`, `all-petite-caps`, `unicase` and `titling-caps`. When the font has the OpenType features
+(`smcp`, `c2sc`, ...), they are used; otherwise the small capitals are **synthesised** from uppercase
+letters at 70 % of the font size, as in Chrome. Petite caps and unicase fall back to small caps.
+`fontSynthesisSmallCaps: "none"` turns synthesis off:
+
+<!-- @example typography#small-caps -->
+```js
+// Inter has no small-caps glyphs (no 'smcp' / 'c2sc' features), so the small capitals are
+// synthesised: uppercase letters at 70 % of the font size, as in Chrome.
+const smallCaps = renderer.renderSync(
+  page({ flexDirection: "column", gap: 4, fontSize: 26 }, [
+    text("normal: Release Notes 2026"),
+    text("small-caps: Release Notes 2026", { fontVariantCaps: "small-caps" }),
+    text("all-small-caps: Release Notes 2026", { fontVariantCaps: "all-small-caps" }),
+    text("no synthesis: Release Notes 2026", { fontVariantCaps: "small-caps", fontSynthesisSmallCaps: "none" }),
+  ]),
+  { width: 560, height: 170 },
+);
+```
+
+![Normal text, synthesised small caps, all-small-caps and the normal text again because synthesis is off](/img/guide/typography-small-caps.png)
 
 ## Mixing inline content
 
@@ -348,7 +419,7 @@ const features = renderer.renderSync(
 | `fontFeatureSettings` | `"'tnum', 'ss01' 1, 'liga' 0"` | turn any feature on or off |
 | `fontVariantNumeric` | `"tabular-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"` | numeric features |
 | `fontVariantLigatures` | `"none"`, `"no-common-ligatures"`, `"discretionary-ligatures"` | ligatures |
-| `fontVariantCaps` | `"small-caps"`, `"all-small-caps"` | caps features (no synthesis) |
+| `fontVariantCaps` | `"small-caps"`, `"all-small-caps"` | caps features, synthesised when missing ([above](#small-caps)) |
 | `fontVariantPosition` | `"super"`, `"sub"` | `sups` / `subs` |
 | `fontKerning` | `"none"` | disables kerning |
 
@@ -418,17 +489,19 @@ laid out left to right. CJK and other scripts that need no reordering look the s
 | Bidi reordering, `direction`, `dir`, `unicode-bidi` | no | no | yes |
 | Arabic / Hebrew / Indic / Thai shaping | default shaper | default shaper | yes |
 | Unicode normalisation (NFD Vietnamese) | no | no | yes |
-| Colour emoji | no | no | yes (with a colour font) |
+| Emoji sequences (ZWJ, skin tones, flags, keycaps) as one glyph | no | yes | yes |
+| Colour emoji | no | bitmap fonts (CBDT / sbix) | yes (with a colour font) |
 
-Known gaps (also in [CSS support](./css-support.md#known-gaps)): `direction: rtl` does not reverse the
-main axis of a flex row, `writing-mode` (vertical text) is not supported, and RTL inline boxes around
-LTR text put their start / end edges on the wrong side.
+`direction: rtl` also mirrors flex rows, grid columns and tables (see [Styles](./styles.md#right-to-left)).
+Known gaps (also in [CSS support](./css-support.md#known-gaps)): `writing-mode` (vertical text) is not
+supported, and hanging spaces of RTL text with `white-space: pre-wrap` are not handled.
 
 ## Properties that do nothing in 0.1.0
 
-Parsed and accepted, without visible effect: `textIndent`, `textAlignLast`, `hyphens` (except soft
-hyphens in the text), `lineBreak`, `writingMode`, `fontSynthesis*`, `paintOrder` on text (SVG images honour it), and string
-values of `textOverflow`. The full list of supported properties is in
+Parsed and accepted, without visible effect: `textAlignLast`, `hyphens` (except soft hyphens in the
+text), `lineBreak`, `writingMode`, `fontSynthesisWeight` / `fontSynthesisStyle` and the weight / style parts
+of `fontSynthesis` (bold and italic are always synthesised), and `paintOrder` on text (ignored as in takumi 2.20; SVG images
+honour it). The full list of supported properties is in
 [CSS support](./css-support.md#text).
 
 See also: [Fonts](./fonts.md), [measure()](./measure.md) for fitting text into a box,

@@ -188,7 +188,8 @@ const twoSquares = (display) => ({
 const heightOf = (display) =>
   renderer.measureSync({ type: "container", style: { display: "block" }, children: [twoSquares(display)] }, { width: 200, height: 100 }).height;
 
-heightOf(undefined); // 0  – default display is inline: width / height of the box and of its inline children are ignored
+heightOf(undefined); // 20 – default display is inline: width / height of the box and of its inline children are
+                     //      ignored; only one line remains (the padded inline box makes it a non-empty line)
 heightOf("block");   // 20 – only the padding: the children are still inline
 heightOf("flex");    // 70 – flex items are blockified: 50 + 2 × 10 padding
 ```
@@ -213,7 +214,7 @@ const displayPng = renderer.renderSync({
 }, { width: 420, height: 180 });
 ```
 
-![Ba hàng: hàng mặc định trống, hàng block chỉ có dải padding xám, hàng flex hiện hai ô vuông cam và tím](/img/guide/concepts-display.png)
+![Ba hàng: hàng mặc định chỉ có một ô xám nhỏ (padding của hộp inline rỗng), hàng block có dải padding xám, hàng flex hiện hai ô vuông cam và tím](/img/guide/concepts-display.png)
 
 ::: tip Quy tắc dễ nhớ
 Hãy đặt `display: "flex"`, `"block"` hoặc `"grid"` tường minh cho mọi container có kích thước, hoặc có

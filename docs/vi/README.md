@@ -11,9 +11,11 @@ Tài liệu người dùng cho bm-engine 0.1.0, bản port bộ render ảnh tak
 | [Tham chiếu API](api.md) | `init`, `features`, `Renderer` và mọi method, định dạng node, tùy chọn render, lỗi, giới hạn, mô hình bộ nhớ, add-on WOFF |
 | [Hỗ trợ CSS và tính năng](css-support.md) | Ma trận tính năng kèm profile tối thiểu và mức tương đương, Tailwind, HTML, SVG, animation, hạn chế đã biết, mọi thuộc tính được hỗ trợ |
 | [Profile và kích thước](profiles-and-size.md) | `core` / `standard` / `full` gồm những gì, kích thước, chi phí từng tính năng, build tùy biến, add-on WOFF |
+| [Native và WebAssembly](native-vs-wasm.md) | Backend Node.js nào được dùng, mô hình thread, đầu ra trùng từng byte, nền tảng hỗ trợ, tốc độ / bộ nhớ / cold start so với wasm và takumi |
 | [Khác biệt với takumi](differences-from-takumi.md) | Hướng dẫn chuyển đổi, khác biệt API và kết quả render, các hành vi của takumi được giữ nguyên có chủ đích |
 | [Benchmark](benchmark.md) | Tốc độ, kích thước, bộ nhớ và mức tương đương điểm ảnh so với takumi 2.20, cách chạy lại |
 | [Build từ mã nguồn](building-from-source.md) | Bộ công cụ Zig, lệnh build / test / fuzz, cấu trúc repository, đóng góp |
+| [Phát hành (maintainer)](publishing.md) | Phát hành chín package npm: thiết lập một lần, quy trình phát hành, xử lý khi lỗi, bản prerelease và dist-tag, CI |
 | [Playground](playground.md) | Playground chạy trên trình duyệt (nhúng trong trang tài liệu), chạy cục bộ |
 | [Xử lý sự cố](troubleshooting.md) | Mất chữ, khối chứa bị co, lỗi do profile, ảnh, nạp wasm, bộ nhớ, DPR, tiếng Việt, emoji |
 

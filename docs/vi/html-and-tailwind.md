@@ -101,7 +101,7 @@ bằng `::before` hoặc một phần tử inline.
 :::
 
 Style user-agent chỉ áp dụng cho source HTML. Đặt `tagName: "h1"` trên node tree giúp node khớp với
-selector `h1` nhưng không làm nó đậm hay to lên.
+selector `h1` nhưng không làm nó đậm hay to lên (giống takumi).
 
 ### Fragment và tài liệu {#fragments-and-documents}
 
@@ -178,8 +178,8 @@ const ignoredPng = renderer.renderSync(`
 ![Hai dòng chữ xanh lá: đoạn văn trong body và đoạn có thuộc tính hidden](/img/guide/html-and-tailwind-ignored.png)
 
 ::: warning Thuộc tính `hidden` không được tôn trọng
-Ở 0.1.0, phần tử có `hidden` vẫn được vẽ (style user-agent không có rule `[hidden] { display: none }`).
-Hãy dùng `style="display:none"` thay thế.
+Phần tử có `hidden` vẫn được vẽ (style user-agent không có rule `[hidden] { display: none }`), giống
+takumi. Hãy dùng `style="display:none"` thay thế.
 :::
 
 Cũng chưa được hiện thực (cùng các lỗ hổng như trình parse của takumi): thuật toán adoption agency cho
@@ -306,7 +306,7 @@ const variantsPng = renderer.renderSync({
     {
       type: "container",
       tw: "flex flex-col",
-      // structural variants: use container rows (on bare text nodes they match every sibling in 0.1.0)
+      // structural variants: use container rows (or a tagName): a bare text node is not an element for them
       children: rows.map((r) => ({
         type: "container",
         tw: "flex px-3 py-1 text-sm bg-slate-100 odd:bg-sky-100 first:rounded-t-lg last:rounded-b-lg last:font-bold",
@@ -320,9 +320,11 @@ const variantsPng = renderer.renderSync({
 ![Tiêu đề kèm huy hiệu NEW màu hổ phách từ after:, và bốn hàng xen kẽ màu xanh, hàng đầu và cuối bo góc, hàng cuối in đậm](/img/guide/html-and-tailwind-variants.png)
 
 ::: warning Variant cấu trúc trên node text trần
-Ở 0.1.0, `first:`, `last:`, `odd:` và các variant tương tự khớp với **mọi** node `text` trần giữa các
-anh em của nó (`:first-child` trong stylesheet cũng vậy). Đó là lý do các hàng ở trên là container có
-một node text con. Phần tử HTML không bị ảnh hưởng.
+Node `text` không có `tagName` không phải là phần tử đối với `first:`, `last:`, `odd:` và các variant
+tương tự (cũng như `:first-child` trong stylesheet), giống takumi: nó không được tính vào các anh em, nên
+khi nhiều node text trần đứng cạnh nhau thì **node nào** cũng khớp `first:`, `last:` và `odd:`. Đó là lý
+do các hàng ở trên là container có một node text con; đặt `tagName` (ví dụ `"div"`) cho node text cũng
+được. Phần tử HTML không bị ảnh hưởng.
 :::
 
 Breakpoint so sánh với chiều rộng canvas tính bằng CSS px:
@@ -350,8 +352,9 @@ w("block w-20 h-1", { width: 40 }).width;  // 40 – inline style beats tw
 w("block !w-20 h-1", { width: 40 }).width; // 80 – unless the utility is !important
 ```
 
-So với các nguồn style khác: `style` inline thắng `tw`, rule stylesheet thắng `tw` (kể cả khi nằm trong
-`@layer`), và utility có tiền tố `!` thắng cả hai loại khai báo thường. Xem
+So với các nguồn style khác: `style` inline thắng `tw`, rule stylesheet không thuộc layer thắng `tw`, `tw`
+thắng rule nằm trong `@layer` có tên, và utility có tiền tố `!` thắng mọi khai báo thường lẫn rule
+`!important` không thuộc layer (chỉ rule `!important` trong layer có tên mới thắng nó). Xem
 [Style](./styles.md#how-the-layers-combine).
 
 ### Preflight {#preflight}
@@ -373,29 +376,44 @@ const withPreflight = renderer.renderSync(page, { width: 280, height: 160, css: 
 
 ### Biến theme {#theme-variables}
 
-`@theme { ... }` trong stylesheet khai báo các custom property của nó trên `:root`, nên `var()` đọc
-được chúng trong CSS và style inline:
+`@theme { ... }` trong stylesheet định nghĩa biến theme. Utility đọc các biến này, như Tailwind v4: màu
+(`--color-*`, cả khi có modifier `/opacity`), `--spacing` và `--spacing-*`, `--container-*`, `--radius-*`,
+`--text-*` (kèm biến `--text-*--line-height` đi cùng), `--font-*`, `--font-weight-*`, `--tracking-*`,
+`--leading-*`, `--aspect-*`, `--animate-*` và `--breakpoint-*`; định nghĩa lại một giá trị mặc định
+(`--color-red-500`) sẽ đổi `bg-red-500`. Các biến cũng được khai báo trên `:root`, nên `var()` đọc được
+chúng trong CSS và style inline:
 
 <!-- @example html-and-tailwind#theme -->
 ```js
-// @theme declares custom properties on :root; read them with var() in CSS or inline styles
+// @theme variables feed the utilities (bg-brand-500, bg-brand-500/15, rounded-card, text-hero,
+// font-display, ...) and are also custom properties on :root, so var() can read them.
+const theme = `@theme {
+  --color-brand-500: #7c3aed;
+  --radius-card: 14px;
+  --text-hero: 28px;
+  --text-hero--line-height: 34px;
+  --font-display: Inter;
+}`;
 const themePng = renderer.renderSync({
   type: "container",
-  tw: "flex items-center justify-center w-full h-full",
-  style: { backgroundColor: "var(--color-brand-500)" },
-  children: [{ type: "text", text: "@theme → var()", tw: "text-2xl font-bold text-white", style: { fontFamily: "Inter" } }],
-}, { width: 300, height: 80, css: ["@theme { --color-brand-500: #7c3aed; }"] });
+  tw: "flex flex-col items-center justify-center gap-2 w-full h-full bg-brand-500/15 font-display",
+  children: [
+    { type: "text", text: "@theme → utilities", tw: "text-hero font-bold text-brand-500" },
+    { type: "container", tw: "flex px-4 py-1 rounded-card bg-brand-500",
+      children: [{ type: "text", text: "rounded-card bg-brand-500", tw: "text-sm text-white" }] },
+    { type: "text", text: "var(--color-brand-500) in a style", tw: "text-sm", style: { color: "var(--color-brand-500)" } },
+  ],
+}, { width: 340, height: 140, css: [theme] });
 ```
 
-![Banner tím có màu lấy từ một biến @theme](/img/guide/html-and-tailwind-theme.png)
+![Một thẻ tím nhạt có tiêu đề lớn màu tím, một viên thuốc bo tròn màu tím và một dòng chữ tím, tất cả lấy màu từ một biến @theme](/img/guide/html-and-tailwind-theme.png)
 
-Ở 0.1.0 utility **không** đọc biến theme: `bg-brand-500` với `@theme { --color-brand-500: ... }` không
-vẽ gì, và định nghĩa lại `--color-red-500` không làm `bg-red-500` thay đổi. Hãy dùng giá trị tùy ý với
-màu cụ thể (`bg-[#7c3aed]`) hoặc style inline với `var()`.
+Utility `animate-*`, kể cả tên lấy từ `--animate-*`, cần profile `full`; xem
+[Animation](./animation.md#tên-dựng-sẵn-và-tailwind).
 
 ### Những gì Tailwind không làm {#what-tailwind-does-not-do}
 
-Đã kiểm tra với package:
+Đã kiểm tra với package. takumi cũng không hỗ trợ bất kỳ mục nào sau đây:
 
 <!-- @example html-and-tailwind#tw-gaps -->
 ```js
@@ -406,8 +424,9 @@ const px = (tw, css) => {
 px("bg-red-500");                                          // painted
 px("bg-linear-to-r from-red-500 to-blue-500");             // painted
 px("bg-gradient-to-r from-red-500 to-blue-500");           // transparent – Tailwind v3 name, not supported
-px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // transparent – utilities do not read theme tokens
+px("bg-brand-500", ["@theme { --color-brand-500: red }"]);  // painted – utilities read @theme variables
 px("bg-[var(--brand)]", [":root { --brand: red }"]);        // transparent – var() inside [...] is not supported
+px("bg-(--brand)", [":root { --brand: red }"]);             // transparent – nor the (--var) shorthand
 px("hover:bg-red-500");                                    // transparent – hover / focus / dark never apply
 ```
 
@@ -416,11 +435,11 @@ px("hover:bg-red-500");                                    // transparent – ho
 - **Variant tương tác và môi trường**: `hover:`, `focus:`, `dark:`, `group-*:`, `peer-*:`, breakpoint
   `max-*:`.
 - **Utility**: `z-*`, `order-*`, `skew-*`, `ring-*`, `space-x-*` / `space-y-*` (dùng `gap-*`),
-  `divide-*`, `place-*`, `cursor-*`, `animate-*` (dùng thuộc tính `animation` với `css`, xem
-  [Animation](./animation.md)).
-- **Cú pháp**: thuộc tính tùy ý (`[width:30px]`), rút gọn `(--var)`, `var()` trong ngoặc vuông,
-  `@apply` trong stylesheet, `@utility`, `@plugin`, `@config`.
-- **Token theme** trong utility (xem [ở trên](#theme-variables)).
+  `divide-*`, `place-*`, `cursor-*`; `outline-2` không kèm kiểu outline, `backdrop-blur` không kèm cỡ,
+  `mask-b-from-50%`.
+- **Cú pháp**: thuộc tính tùy ý (`[width:30px]`), rút gọn `(--var)`, `var()` trong ngoặc vuông
+  (`bg-[var(--x)]`, `w-[var(--w)]`), `@apply` trong stylesheet, `@utility`, `@plugin`, `@config`.
+- **Thuộc tính `class`**: trong HTML chỉ `tw="..."` được biên dịch thành Tailwind (xem [ở trên](#tailwind)).
 - Class không biết bị bỏ qua lặng lẽ; không có gì ném lỗi.
 
 Nếu cần nhiều Tailwind hơn, hãy biên dịch class bằng Tailwind thật trong bước build rồi truyền CSS sinh

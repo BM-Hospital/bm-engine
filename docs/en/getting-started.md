@@ -353,7 +353,7 @@ an existing family name adds faces to that family. See the [API reference](api.m
 | OpenType with CFF / CFF2 outlines (`.otf`) | no (`unsupported font format`) | yes | yes |
 | WOFF / WOFF2 | with the [WOFF add-on](#woff-on-core) | yes | yes |
 | Variable fonts | registered, drawn at the default instance only | yes | yes |
-| Colour glyphs (COLR v0/v1, CBDT, sbix): emoji fonts | no colour | no colour | yes |
+| Colour glyphs, emoji fonts: COLR v0/v1 / bitmap CBDT, sbix | no colour / not drawn | no colour / yes | yes |
 
 On `standard` and `full`, a variable font follows `font-weight` (`wght`), `font-stretch` (`wdth`),
 `font-optical-sizing` (`opsz`) and `font-variation-settings`.

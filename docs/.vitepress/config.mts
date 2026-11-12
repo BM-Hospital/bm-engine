@@ -123,6 +123,7 @@ const GROUPS: [string, string, P[], boolean?][] = [
     ["animation", "Animation", "Hoạt ảnh"],
     ["performance", "Performance", "Hiệu năng"],
     ["profiles-and-size", "Profiles & size", "Profile và kích thước"],
+    ["native-vs-wasm", "Native vs WebAssembly", "Native và WebAssembly"],
     ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
   ]],
   ["Frameworks", "Framework", [
@@ -159,6 +160,7 @@ const GROUPS: [string, string, P[], boolean?][] = [
   ["Help", "Trợ giúp", [
     ["troubleshooting", "Troubleshooting", "Xử lý sự cố"],
     ["building-from-source", "Building from source", "Build từ mã nguồn"],
+    ["publishing", "Publishing (maintainers)", "Phát hành (maintainer)"],
   ]],
 ];
 /** Pages that do not exist (yet) are left out, so the sidebar never links to a 404. */
@@ -182,7 +184,7 @@ const sidebarEn = sidebar(false);
 const sidebarVi = sidebar(true);
 
 /** Pages whose wide tables need the full width (no outline column). */
-const WIDE = new Set(["results-full.md", "vi/benchmark-report.md", "benchmark.md", "vi/benchmark.md", "profiles-and-size.md", "vi/profiles-and-size.md", "css-support.md", "vi/css-support.md"]);
+const WIDE = new Set(["results-full.md", "vi/benchmark-report.md", "benchmark.md", "vi/benchmark.md", "profiles-and-size.md", "vi/profiles-and-size.md", "css-support.md", "vi/css-support.md", "native-vs-wasm.md", "vi/native-vs-wasm.md"]);
 
 export default defineConfig({
   title: "bm-engine",

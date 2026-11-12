@@ -6,7 +6,7 @@ titleTemplate: Render HTML + CSS to images with WebAssembly
 hero:
   name: bm-engine
   text: Node trees, HTML and CSS to PNG, WebP, JPEG, SVG and animations
-  tagline: A dependency-free Zig → WebAssembly port of takumi. Same node format, 4–9× smaller binaries, faster rendering, and pixel-equivalent output on all 200 benchmark fixtures. Runs in Node.js, browsers, Bun, Deno and edge workers.
+  tagline: A dependency-free Zig → WebAssembly port of takumi. Same node format, 4–9× smaller binaries, faster rendering, and pixel-equivalent output on all 250 benchmark fixtures. Runs in Node.js, browsers, Bun, Deno and edge workers.
   actions:
     - theme: brand
       text: Get started
@@ -31,7 +31,7 @@ features:
     linkText: Benchmark summary
   - icon: 🎯
     title: Pixel-equivalent to takumi
-    details: "All <strong>200</strong> shared fixtures are identical (74) or equivalent (126) to takumi 2.20: 0 close, 0 different, 0 errors."
+    details: "All <strong>250</strong> shared fixtures are identical (81) or equivalent (169) to takumi 2.20: 0 close, 0 different, 0 errors."
     link: /results-full
     linkText: Per-fixture results
   - icon: 🌐

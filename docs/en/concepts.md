@@ -187,7 +187,8 @@ const twoSquares = (display) => ({
 const heightOf = (display) =>
   renderer.measureSync({ type: "container", style: { display: "block" }, children: [twoSquares(display)] }, { width: 200, height: 100 }).height;
 
-heightOf(undefined); // 0  – default display is inline: width / height of the box and of its inline children are ignored
+heightOf(undefined); // 20 – default display is inline: width / height of the box and of its inline children are
+                     //      ignored; only one line remains (the padded inline box makes it a non-empty line)
 heightOf("block");   // 20 – only the padding: the children are still inline
 heightOf("flex");    // 70 – flex items are blockified: 50 + 2 × 10 padding
 ```
@@ -212,7 +213,7 @@ const displayPng = renderer.renderSync({
 }, { width: 420, height: 180 });
 ```
 
-![Three rows: the default row is empty, the block row shows only a grey padding strip, the flex row shows the orange and purple squares](/img/guide/concepts-display.png)
+![Three rows: the default row shows only a small grey square (the padding of the empty inline box), the block row a grey padding strip, the flex row the orange and purple squares](/img/guide/concepts-display.png)
 
 ::: tip Rule of thumb
 Give every container that has a size, or whose children should form a row or a column, an explicit

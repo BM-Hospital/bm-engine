@@ -477,3 +477,35 @@ Representative fixtures (vp = viewport; "no text" = needs no font at all):
 8. **Caches:** ResourceCache 64 MiB default (decoded images, SVG rasters, parsed stylesheets); font cache unbounded by default;
    glyph-mask cache (`setGlyphCacheMaxBytes`); per-font shape-plan vectors; last-source cache holds the whole JSON text + tree.
 9. Fonts: WOFF2 decode (brotli) on registration; variable-font instancing per (face, size, axes) via harfrust instance builder.
+
+---------------------------------------------------------------------------------------------------
+
+## 12. Behaviours re-checked against `@takumi-rs/wasm` 2.20.0 (fix-css / fix-text / fix-layout branches)
+
+Probed with the published package (`bench/node_modules/@takumi-rs/wasm`, via `bench/engines/takumi-wasm.mjs`),
+not with `ref/takumi`, whose HEAD is newer than 2.20 (its last commit, 33eed4a "Core: support
+`display: contents` (#2509)", adds the value upstream).
+
+- **`display: contents`: not supported.** An inline style `display: "contents"` throws `invalid value for
+  display near "contents"`; in a stylesheet the declaration is dropped and the element keeps its box
+  (padding and background stay). bm-engine follows Chrome here (the element generates no box) — a
+  deliberate difference.
+- **Percentage `margin` / `padding` on inline boxes and inline-blocks resolve to 0** (a span with
+  `padding-left: 10%` in a 200 px block: its text run starts at x = 0). bm-engine resolves them against the
+  containing block, as Chrome does — deliberate difference.
+- **`text-indent` on a non-first anonymous block**: takumi indents the first line of text that follows a
+  block-level child (an anonymous block that is not the first); Chrome and bm-engine indent only the
+  first line of the block container — deliberate difference.
+- **`paint-order` on text is ignored** (2.20: stroke always over fill, `paint_text` phases); Chrome honours
+  it. bm-engine keeps takumi parity (fixture `fix-text-paint-order`).
+- **JPEG drops alpha** without compositing and has no background option: transparent pixels become black,
+  semi-transparent ones keep their colour at full strength. Same in bm-engine.
+- **The HTML `class` attribute is not Tailwind**; only `tw` is compiled (`<div class="w-20 h-4">` stays
+  full width).
+- **No `space-x-*` / `space-y-*`** (a `flex space-x-4` row of two `w-4` boxes puts the second at x = 16).
+  Also unsupported, same as bm-engine: `bg-[var(--x)]` / `w-[var(--w)]` and the `(--var)` shorthand,
+  `outline-2` without a style utility, bare `backdrop-blur`, `mask-b-from-50%`, `[prop:value]` classes,
+  the v3 name `bg-gradient-to-*`.
+- Text nodes without a `tagName` are skipped as siblings by the selector DOM (`matching.rs`), so
+  `:first-child` / `first:` / `odd:` match every bare text node of a run of text siblings; empty or
+  whitespace-only text nodes are dropped. bm-engine matches this.

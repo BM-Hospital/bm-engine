@@ -3,7 +3,7 @@
 [English](css-support.md) · [Tiếng Việt](../vi/css-support.md)
 
 What bm-engine 0.1.0 renders, which build profile each feature needs, and how closely the output matches
-takumi 2.20. "Status" comes from the equivalence benchmark (200 fixtures rendered by both engines and
+takumi 2.20. "Status" comes from the equivalence benchmark (250 fixtures rendered by both engines and
 compared pixel by pixel, plus per-module oracle tests; see [Benchmark](benchmark.md)):
 **identical** = byte-identical output, **equivalent** = SSIM ≥ 0.99 and ≤ 0.5 % of pixels differ (in
 practice: anti-aliasing at curved edges and glyph edges), **close** = SSIM ≥ 0.95, **partial** = works
@@ -49,6 +49,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | Block layout, margin collapsing, `flow-root` | core | identical / equivalent |
 | Inline formatting (text runs, `inline`, `inline-block`, `inline-flex`, `inline-grid`, `vertical-align`) | core | equivalent (atomic inlines take part in line breaking mid-line with every `vertical-align`; inline span padding / border / margin push text; per-span `white-space`, `<br>`, per-box struts; `inline-flow` / `inline-box-model` fixtures at SSIM ≥ 0.9999); see [known gaps](#known-gaps) |
 | Flexbox (direction, wrap, grow / shrink / basis, `gap`, alignment incl. `safe`, `order`, `-webkit-box`) | core | identical (5/5 fixtures) |
+| `direction: rtl` / `dir="rtl"` on boxes: flex rows, grid columns, table columns and block alignment are mirrored | core | equivalent; the text inside is laid out right to left only on `full` (bidi); `justify-self: left / right` is not mirrored |
 | Grid: tracks, `repeat()` incl. `auto-fill` / `auto-fit`, `fr`, `minmax()`, auto-placement, spans | core | equivalent (4/4) |
 | Grid: named lines, `grid-template-areas`, `grid-area` | core | equivalent (3/3) |
 | `position: relative / absolute / fixed`, `inset`, `z-index` | core | identical / equivalent (3/3); `fixed` is positioned against the canvas |
@@ -57,7 +58,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | `overflow: hidden / clip` (incl. rounded clipping) | core | equivalent |
 | Tables (`display: table*`, auto / fixed layout, `colspan` / `rowspan` via HTML, `border-collapse`, `border-spacing`, captions, `empty-cells`) | standard | equivalent (8/8 fixtures; 339/352 layout oracle cases) |
 | Floats (`float`, `clear`) | standard (`floats` flag; also `full`) | equivalent; 138/138 layout oracle cases; text flows around floats (line boxes shorten beside a float and re-widen below it, floats inside inline content, RTL; 7 `float-text` fixtures at SSIM ≥ 0.9999) |
-| `display: contents` | — | no: laid out and painted like `display: block` (the element keeps its own box, padding and background) |
+| `display: contents` | core | supported, following Chrome: the element generates no box and its children take part in the parent's layout (takumi does not support the value: it drops it from stylesheets and throws for inline style) |
 | `display: list-item` | core | laid out as a block; no list marker |
 | Writing modes (`writing-mode`) | — | no: parsed, horizontal layout only |
 
@@ -120,15 +121,18 @@ On `core` the effect properties of this table that need `standard` are accepted 
 | Feature | Min. profile | Status |
 |:--|:--|:--|
 | Line breaking (UAX #14), `white-space` (all modes), `word-break`, `overflow-wrap`, `tab-size` | core | equivalent; widths and break positions match takumi (825/825 oracle cases) |
-| `text-align` (incl. `justify`), `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
-| `text-indent` | — | parsed, no effect in 0.1.0 (the first line is not indented) |
-| `text-overflow: ellipsis`, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3); a custom string value (`text-overflow: " »"`) is accepted but drawn like `clip` |
+| `text-align` (incl. `justify`), `line-height`, `letter-spacing`, `word-spacing` | core | equivalent |
+| `text-transform` | core | equivalent: full Unicode case mapping (`ß` → `SS`, final sigma, ligatures, titlecase digraphs); not done: `lang`-tailored casing (Turkish / Azeri, Greek, Lithuanian), `full-width`, `full-size-kana` |
+| `text-indent` (lengths, %, negative, `each-line`, `hanging`, RTL) | core | equivalent; one deliberate difference: takumi also indents a non-first anonymous block (text after a block child), bm-engine and Chrome do not |
+| `text-overflow: ellipsis` / `clip` / `"<string>"`, `line-clamp` / `-webkit-line-clamp` (incl. `<n> "<string>"`, `none`, `no-ellipsis`) | core | equivalent; a string marker is shaped with the element's font and fallback and mirrored in RTL (an empty string truncates without a marker); `overflow` clips the element's own glyphs |
 | `text-decoration` (line, style incl. `wavy`, colour, thickness), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
 | `-webkit-text-stroke`, `-webkit-text-fill-color` | core | equivalent (stroke may differ by 1 level); `paint-order` is parsed but the stroke is always painted over the fill, as in takumi 2.20 |
 | Inline boxes with background / border / padding, `box-decoration-break` | core | equivalent; horizontal padding / border / margin of a span push the text (first / last fragment edges, `box-decoration-break: clone`) |
-| `text-wrap: balance` / `pretty` | standard | identical decisions to takumi (216/216) |
+| `text-wrap: balance` / `pretty` | standard | identical decisions to takumi (216/216); also with inline boxes, atomic inlines and beside a single leading float |
 | Synthetic bold / italic when the face is missing | core | equivalent |
 | `font-feature-settings`, `font-variant-*`, `font-kerning`, ligatures (GSUB 1–8, GPOS 1–9) | core | equivalent |
+| `font-variant-caps` (`small-caps`, `all-small-caps`, `petite-caps`, `all-petite-caps`, `unicase`, `titling-caps`), `font-synthesis-small-caps` | core | the font's OpenType features when it has them, otherwise synthesised (uppercase at 70 % of the font size); petite caps and unicase fall back to small caps; `font-synthesis-small-caps: none` turns synthesis off |
+| Inline boxes: percentage `margin` / `padding`, `position: relative` | core | percentages resolve against the containing block, following Chrome (takumi resolves them to 0); relative offsets shift the inline box |
 | `hyphens`, `line-break`, `text-align-last` | — | parsed, no effect in 0.1.0 |
 
 ## Fonts
@@ -139,7 +143,8 @@ On `core` the effect properties of this table that need `standard` are accepted 
 | CFF / CFF2 (`.otf`) | standard | widths within 1/64 px |
 | WOFF / WOFF2 | standard (core: [add-on](profiles-and-size.md#the-woff-add-on)) | 17/19 takumi WOFF2 test fonts decode byte-identical to the reference decoder (the other 2 differ by one flag bit) |
 | Variable fonts (`fvar`, `avar`, `gvar`, `HVAR`, `MVAR`), `font-variation-settings`, `font-optical-sizing` | standard | 1 400 width comparisons within 1/64 px; on core only the default instance is drawn |
-| Colour fonts: COLR v0 / v1, CBDT, sbix | full | SSIM ≥ 0.991 against Chrome (takumi does not draw COLR v1) |
+| Colour fonts: COLR v0 / v1 | full | SSIM ≥ 0.991 against Chrome (takumi does not draw COLR v1); `core` / `standard` draw the plain outlines, without colour |
+| Bitmap colour fonts: CBDT, sbix | standard | drawn in colour on `standard` and `full`; `core` draws nothing for a bitmap-only font |
 | `@font-face` in stylesheets | — | not loaded: register fonts with `registerFont` / `fonts` |
 
 ## Colours
@@ -180,6 +185,12 @@ Pass stylesheets with the `css` option (strings or takumi rule objects `{ select
   `@container`, `@scope`, `@apply`, `@counter-style` and other at-rules are ignored, as in takumi.
 - Invalid declarations are dropped one by one (CSS error recovery); a stylesheet never makes the render
   throw.
+- **Cascade order**, as in takumi: rules in named `@layer` blocks < Tailwind utilities from `tw` <
+  unlayered stylesheet rules < inline `style`; for `!important` declarations the order reverses:
+  unlayered < `tw` < named layers.
+- Text nodes without a `tagName` are not elements for structural pseudo-classes and sibling combinators
+  (`:first-child`, `:nth-child()`, `+`, `~`, ...), as in takumi. Empty or whitespace-only text nodes
+  are dropped unless in-flow inline content precedes them (always in flex and grid containers).
 - Not supported: `counter()` / `counters()` in `content`, list markers.
 
 ## Tailwind
@@ -200,13 +211,19 @@ The compiler is a port of takumi's Tailwind v4 subset, so it supports exactly wh
 - **Values**: the default theme (spacing scale, the full colour palette with `/opacity` modifiers,
   font sizes, radii, shadows, breakpoints), arbitrary values (`w-[37px]`, `bg-[#123456]`,
   underscores as spaces), `!important` prefix.
+- **`@theme` variables feed the utilities**: colours (with `/opacity`), `--spacing` and `--spacing-*`,
+  `--container-*`, `--radius-*`, `--text-*` (with its `--line-height` companion), `--font-*`,
+  `--font-weight-*`, `--tracking-*`, `--leading-*`, `--aspect-*`, `--animate-*`, `--breakpoint-*`.
+- **`animate-*`** (`animate-spin`, `-ping`, `-pulse`, `-bounce`, `-none`, `animate-[...]`, theme names)
+  on the `full` profile, which has animations.
 - **Variants**: breakpoints `sm` `md` `lg` `xl` `2xl` (min-width against the canvas width),
   structural `first` `last` `only` `odd` `even` `*-of-type` `empty` `not-*` `nth-*` and `[&:...]`,
   `before:` / `after:`.
 - **Not supported (as in takumi)**: `hover:`, `focus:`, `dark:`, `group-*:`, `peer-*:`, `max-*:`
-  breakpoints; `z-*`, `order-*`, `skew-*`, `ring-*`, `space-*`, `divide-*`, `place-*`, `cursor-*`;
-  `animate-*` (silently skipped; use the `animation` property with `css`); `(--var)` shorthand and
-  `[prop:value]` classes. Unknown classes are skipped silently.
+  breakpoints; `z-*`, `order-*`, `skew-*`, `ring-*`, `space-x-*` / `space-y-*`, `divide-*`, `place-*`,
+  `cursor-*`, `outline-2` alone, bare `backdrop-blur`, `mask-b-from-50%`; `var()` in arbitrary values
+  (`bg-[var(--x)]`) and the `(--var)` shorthand; `[prop:value]` classes; the v3 name `bg-gradient-to-*`;
+  the HTML `class` attribute (only `tw` is Tailwind). Unknown classes are skipped silently.
 - `style` beats `tw`; `!`-prefixed utilities beat normal inline declarations.
 
 ## HTML input
@@ -235,6 +252,8 @@ Pass an HTML string as the source (every JS string is HTML, as in takumi). Needs
 | `keyframes` render option (deprecated takumi form) | full | supported |
 | `renderAnimation` → animated WebP / APNG / GIF | full | frame counts and delays identical to takumi |
 | Built-in names `spin`, `ping`, `pulse`, `bounce` (Tailwind keyframes) without a `@keyframes` rule | full | supported, as in takumi |
+| Tailwind `animate-*` utilities, `--animate-*` theme variables | full | supported |
+| `em` lengths on an element whose `font-size` is animated | full | follow the animated font size |
 | Animations on `::before` / `::after`, animated custom properties | — | no |
 | `transition*` | — | parsed; a still render has no transitions |
 | `animation-play-state: paused` | full | ignored (sampled anyway), as in takumi |
@@ -252,7 +271,7 @@ property is ignored.
 | WebP lossy (VP8; bit-exact with libwebp), animated GIF / APNG / WebP sources | full | identical to the reference decoders |
 | SVG images (`<svg>` markup, `data:image/svg+xml`, `url()` backgrounds and masks) | standard | 397/422 of takumi's SVG test files identical or equivalent |
 | SVG coverage | standard | shapes, paths, `use` / `symbol`, gradients, patterns, `clipPath`, `mask`, markers, nested `<svg>` / `<image>`, `<style>` with simple selectors, filters `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. `<text>` is drawn with the registered fonts in a simplified model (one run per element: `x` / `y`, `font-family`, `font-size`, `font-weight`, `text-anchor`, solid `fill`; `<tspan>` content joins the parent run with the parent style; gradient-filled or stroke-only text is not drawn; see [Charts](charts.md#what-svg-text-supports)). Not supported: `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting filters, `feTile`, external references |
-| `image-rendering` | core | parsed; raster images are always resampled smoothly in 0.1.0 (`pixelated` is honoured only inside SVG) |
+| `image-rendering: pixelated` / `crisp-edges` | core | nearest-neighbour scaling of image nodes and background images, identical to takumi (also honoured inside SVG images) |
 | Remote URLs | — | never fetched: pass bytes through `images` |
 
 ## Complex scripts, bidi, emoji
@@ -262,7 +281,8 @@ property is ignored.
 | Latin, Cyrillic, Greek, Vietnamese (precomposed), CJK line breaking | core | equivalent |
 | Bidi (UAX #9), `direction`, `dir`, `unicode-bidi` isolation | full | 91 679/91 679 bidi conformance cases |
 | Arabic, Hebrew, Devanagari, Bengali, Thai shaping; Unicode normalisation (decomposed Vietnamese) | full | glyph widths match takumi (0.000 px difference in every group); other Indic scripts use the default shaper |
-| Colour emoji (with a registered emoji font) | full | SSIM ≥ 0.991; some ZWJ sequences are not merged into one glyph, emoji font choice can differ from takumi for a few characters (©️, VS15) |
+| Emoji sequences: ZWJ, skin-tone modifiers, flags, tag flags, keycaps, VS15 / VS16 | standard | one cluster and one glyph each (never split by wrapping, fallback or letter spacing) |
+| Colour emoji (with a registered emoji font) | standard (bitmap: CBDT / sbix), full (also COLR) | SSIM ≥ 0.991; the presentation of `©️` (U+00A9 + VS16) depends on context in takumi and can differ |
 
 On `core` and `standard`, right-to-left and complex scripts are shaped with the default OpenType
 shaper in logical order (no reordering).
@@ -271,26 +291,25 @@ shaper in logical order (no reordering).
 
 As of 0.1.0 (see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status):
 
-- **Inline layout (remaining gaps)** — RTL-direction inline boxes around LTR text put the start / end
-  edges on the wrong visual side, and box fragments are not split across bidi-reordered runs; RTL +
-  `white-space: pre-wrap` hanging spaces; line-clamp / `-webkit-box` around floats; block-in-inline (a
-  span containing a block) still blockifies the span; float paint order is approximate (floats paint
-  after the in-flow content of their stacking context); `text-wrap: balance / pretty` fall back to greedy
-  wrapping in paragraphs with inline boxes / atomic inlines or beside floats; percentage padding / margin
-  on inline boxes resolve to 0; a chain of nested inline-blocks is limited to about 255 levels (a clean
-  "nested too deeply" error), although plain nesting supports 512.
-- **Tables and RTL** — `dir="rtl"` / `direction: rtl` on a table does not put the first column on the
-  right in 0.1.0 (see [Tables](tables.md)).
-- **Structural pseudo-classes on text nodes** — `:first-child`, `:last-child`, `:nth-child()` (and the
-  Tailwind `first:` / `last:` / `odd:` variants) match every sibling when the elements are bare `text`
-  nodes; wrap the text in containers.
-- **`measure()` and transforms** — the `transform` matrix returned by `measure()` does not include CSS
-  `transform` / `translate` / `rotate` / `scale` of the node (takumi includes them); see [measure()](measure.md).
-- **Direction in flex layout** — `direction: rtl` / `dir: "rtl"` does not reverse the main axis of a
-  flex row in 0.1.0 (takumi does).
-- Not supported: `display: contents`, list markers and counters, `writing-mode`, 3D transforms,
-  `filter: url()` / `clip-path: url()`, relative colour syntax, `outline-offset` in %, `@apply`,
-  Tailwind `animate-*`, animations on pseudo-elements, PDF output.
+- **Inline layout (remaining gaps)** — RTL + `white-space: pre-wrap` hanging spaces; line-clamp /
+  `-webkit-box` around floats; a block inside a relatively positioned inline box is not shifted with it;
+  a chain of nested inline-blocks is limited to about 255 levels (a clean "nested too deeply" error),
+  although plain nesting supports 512.
+- **Paint order** — raster output paints floats and positioned boxes in CSS 2.1 Appendix E order (floats
+  after block backgrounds and before inline content; positioned boxes after the in-flow content of their
+  stacking context); `renderSvg` still uses the older, approximate order, and negative `z-index` keeps a
+  sibling-level approximation.
+- **RTL** — `justify-self: left / right` is not mirrored under `direction: rtl`; on `core` and
+  `standard` boxes are mirrored but the text inside them stays left to right (bidi needs `full`).
+- **Structural pseudo-classes on text nodes** — a `text` node without a `tagName` is not an element for
+  `:first-child`, `:nth-child()`, sibling combinators or the Tailwind `first:` / `odd:` / ... variants
+  (as in takumi): it does not count as a sibling, so every one of several bare text siblings matches
+  `first:`, `last:` and `odd:`. Give the node a `tagName` or wrap the text in a container.
+- **`text-transform`** — no `lang`-tailored casing (Turkish, Azeri, Greek, Lithuanian), no `full-width` /
+  `full-size-kana`.
+- Not supported: list markers and counters, `writing-mode`, 3D transforms, `filter: url()` /
+  `clip-path: url()`, relative colour syntax, `outline-offset` in %, `@apply`, animations on
+  pseudo-elements, PDF output.
 - Remaining one-level differences: gradient interior, dashed borders on rounded corners, rotated text,
   `text-stroke`.
 
@@ -387,9 +406,11 @@ Notes:
   `pointerEvents`, `cursor`, `userSelect`, `WebkitUserSelect`, `transitionBehavior`, `maskComposite`,
   `WebkitMaskComposite`.
 - **Parsed, no visible effect in 0.1.0** (found by inspecting which computed values the renderer
-  reads): `writingMode`, `textIndent`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`, `unicodeBidi`,
-  `fontSynthesis*` (synthesis is always on), `counterReset` / `counterIncrement` / `counterSet`,
-  `listStyle*` (no markers), `transition*`; `imageRendering` only inside SVG images.
+  reads): `writingMode`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`, `unicodeBidi`,
+  `fontSynthesisWeight` / `fontSynthesisStyle` and the weight / style parts of `fontSynthesis` (bold /
+  italic synthesis is always on; small-caps synthesis does follow `fontSynthesis` /
+  `fontSynthesisSmallCaps`), `counterReset` / `counterIncrement` / `counterSet`, `listStyle*` (no
+  markers), `transition*`, `paintOrder` on text (ignored as in takumi 2.20).
 - Properties of a feature that is compiled out of the loaded profile are accepted and ignored (for
   example `float` on `core`), except values that need a missing parser (modern colour functions on
   `core`), which are invalid.

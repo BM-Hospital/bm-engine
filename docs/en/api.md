@@ -81,7 +81,7 @@ A frozen-shape object of booleans describing the loaded binary; all `false` befo
 | `floats` | floats | | ✓ | ✓ |
 | `webpGifDecode` | WebP (lossless) and GIF image sources | | ✓ | ✓ |
 | `textWrapBalance` | `text-wrap: balance / pretty` | | ✓ | ✓ |
-| `colorFonts` | colour glyphs (COLR v0/v1, CBDT, sbix) | | | ✓ |
+| `colorFonts` | COLR v0/v1 colour glyphs (bitmap CBDT / sbix glyphs are drawn in colour on `standard` too) | | | ✓ |
 | `complexText` | bidi, Arabic / Hebrew / Indic / Thai shaping, normalisation | | | ✓ |
 | `animation` | CSS animations (`timeMs`), `renderAnimation`, animated image sources | | | ✓ |
 | `extraCodecs` | lossy WebP decode, animated GIF / APNG / WebP decode and encode, ICO output | | | ✓ |
@@ -186,7 +186,8 @@ Returns an SVG document string (needs `features.renderSvg`, i.e. the `full` prof
 `bm-engine: this build has no renderSvg support ...`). Boxes become `<rect>`/`<path>`, gradients
 `<linearGradient>`/`<radialGradient>` (conic gradients as wedges), shadows `<filter>`s, images are
 embedded as `data:` URLs, text becomes glyph outlines (`<use>` of paths in `<defs>`; no font embedding,
-the text is not selectable). `format` and `quality` are ignored.
+the text is not selectable). `format`, `quality` and `devicePixelRatio` are ignored (always ratio 1, as in
+takumi).
 
 ```js
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });

@@ -82,9 +82,36 @@ as in takumi.
 ### Built-in names and Tailwind
 
 `spin`, `ping`, `pulse` and `bounce` (Tailwind's keyframes) work without a `@keyframes` rule, as in
-takumi: `animation: "spin 1s linear infinite"` rotates the element. The Tailwind utilities themselves
-(`tw: "animate-spin"`, `animate-[spin_1s_linear_infinite]`) are **not** supported in bm-engine 0.1.0 —
-they are skipped silently and nothing moves. Use the `animation` property instead.
+takumi: `animation: "spin 1s linear infinite"` rotates the element. The Tailwind utilities work too:
+`animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`, `animate-none`, arbitrary values such
+as `animate-[spin_1s_linear_infinite]`, and your own names from `--animate-*` variables in `@theme` (with
+their `@keyframes` inside the `@theme` block or anywhere in `css`):
+
+<!-- @example animation#tailwind -->
+```js
+// Tailwind's animate-* utilities (full profile): the built-in spin / ping / pulse / bounce, arbitrary
+// values, and your own --animate-* theme variables with their @keyframes.
+const twScene = {
+  type: "container",
+  tw: "flex items-center justify-around w-full h-full bg-slate-100",
+  children: [
+    { type: "container", tw: "w-10 h-10 rounded-md bg-indigo-500 animate-spin" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-sky-500 animate-bounce" },
+    { type: "container", tw: "w-10 h-10 rounded-full bg-rose-500 animate-ping" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-amber-500 animate-[spin_2s_linear_infinite_reverse]" },
+    { type: "container", tw: "w-10 h-10 rounded-md bg-emerald-500 animate-wiggle" },
+  ],
+};
+const twTheme = `@theme {
+  --animate-wiggle: wiggle 1s ease-in-out infinite;
+  @keyframes wiggle { 0%, 100% { transform: rotate(-15deg) } 50% { transform: rotate(15deg) } }
+}`;
+const twGif = renderer.renderAnimationSync({
+  scenes: [{ node: twScene, durationMs: 1000 }], width: 360, height: 100, fps: 20, format: "gif", css: [twTheme],
+});
+```
+
+![Five shapes animated by Tailwind classes: spinning, bouncing, pinging, spinning backwards and wiggling](/img/guide/animation-tailwind.gif)
 
 ## One frame: `timeMs`
 
@@ -324,11 +351,8 @@ const notAnimated = renderer.measureSync(
 console.log(notAnimated.children[0].transform[4]); // 0
 ```
 
-::: warning `em` lengths on the animated element
-When `font-size` is animated, `em` lengths **on the same element** still resolve against its
-un-animated font size in 0.1.0 (text and children do use the animated size). Put the animated
-`font-size` on a parent, or animate the length itself.
-:::
+When `font-size` is animated, `em` lengths on the same element follow the animated size, as in a
+browser: `width: "2em"` with `font-size` animated from 10 px to 30 px is 40 px wide halfway through.
 
 ## Animations in HTML sources
 

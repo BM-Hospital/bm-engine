@@ -4,7 +4,7 @@
 
 bm-engine là bản viết lại bằng Zig phần renderer của [takumi](https://github.com/kane50613/takumi) 2.20
 (`@takumi-rs/wasm`), không phải một bản fork: nó nhận cùng cây node, HTML, stylesheet, class Tailwind và
-tùy chọn render, và được phát triển với takumi làm oracle cho tới khi đầu ra khớp (200/200 fixture
+tùy chọn render, và được phát triển với takumi làm oracle cho tới khi đầu ra khớp (250/250 fixture
 benchmark identical hoặc equivalent). Trang này liệt kê những gì thay đổi khi chuyển từ
 `@takumi-rs/wasm` hay `takumi-js` sang bm-engine, các khác biệt còn lại về API và kết quả render, và các
 hành vi của takumi mà bm-engine cố ý tái hiện.
@@ -101,34 +101,42 @@ Lấy từ benchmark tương đương (xem [Benchmark](benchmark.md)); mọi th�
 trong mức nhiễu khử răng cưa.
 
 - **Khử răng cưa**: bm-engine port bộ quét siêu lấy mẫu 4×4 của tiny-skia và hàm `div_255` của takumi,
-  nên 74/200 fixture trùng từng byte. Số còn lại khác ở mép cong và mép glyph trong phạm vi một mẫu con
+  nên 81/250 fixture trùng từng byte. Số còn lại khác ở mép cong và mép glyph trong phạm vi một mẫu con
   (SSIM ≥ 0.99).
 - **Sai khác 1 mức**: phần trong của gradient (takumi cộng dồn `f32` theo từng span), viền nét đứt trên
   góc bo (lệch pha ~0.1 px), chữ bị xoay, `-webkit-text-stroke`.
-- **Layout inline**: chữ chảy quanh float, inline nguyên tử và padding của span inline tham gia ngắt dòng,
-  equivalent với takumi trên mọi fixture. Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
-  block-in-inline, thứ tự vẽ float chỉ xấp xỉ, `text-wrap: balance / pretty` quay về ngắt dòng tham lam
-  cạnh float hoặc inline nguyên tử, padding theo % trên hộp inline
-  (xem [hạn chế đã biết](css-support.md#các-hạn-chế-đã-biết)).
-- **`direction: rtl` trên flex container** chưa đảo trục chính trong 0.1.0.
-- **`image-rendering: pixelated`** trên ảnh raster bị bỏ qua (luôn lấy mẫu lại mượt).
-- **Emoji màu**: bm-engine vẽ được font COLR v1 (takumi thì không); vài chuỗi ZWJ chưa được gộp và thứ tự
-  ưu tiên font emoji khác ở một số ký tự.
+- **Layout inline**: chữ chảy quanh float, block-in-inline tách hộp inline, hộp inline RTL được đặt theo
+  vị trí thị giác, inline nguyên tử và padding của span inline tham gia ngắt dòng, equivalent với takumi
+  trên mọi fixture. Còn lại: khoảng trắng treo của RTL + `pre-wrap`, line-clamp quanh float, block nằm
+  trong hộp inline `position: relative` (xem [hạn chế đã biết](css-support.md#các-hạn-chế-đã-biết)).
+- **Thứ tự vẽ**: float và hộp được định vị theo CSS 2.1 Phụ lục E trong đầu ra raster; `renderSvg` vẫn
+  dùng thứ tự cũ, xấp xỉ.
+- **Emoji màu**: bm-engine vẽ được font COLR v1 (takumi thì không); cách hiển thị `©️` (U+00A9 + VS16)
+  trong takumi tuỳ ngữ cảnh nên có thể khác.
 - **Ảnh SVG**: `<text>` được vẽ theo mô hình đơn giản (mỗi phần tử một run, style của `<tspan>` bị bỏ qua,
   chỉ tô màu đặc; xem [Biểu đồ](charts.md#svg-text-hỗ-trợ-những-gì)); một vài filter primitive (`feTurbulence`,
   `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, chiếu sáng, `feTile`) chưa được hỗ trợ.
 - **Bộ mã hoá**: file mã hoá ra khác byte (bm-engine dùng bộ mã hoá riêng; file PNG nhỏ hơn 24 %, trung
   bình nhân trên các fixture); benchmark so sánh điểm ảnh sau khi giải mã.
-- **`display: contents`** bị bộ parse style inline của takumi từ chối nhưng bm-engine chấp nhận,
-  và layout cũng như vẽ phần tử đó như `display: block` (vẫn giữ box, padding và nền của chính nó).
+
+## Khác biệt có chủ ý (bm-engine theo Chrome)
+
+Ở những trường hợp này takumi khác trình duyệt, còn bm-engine làm như Chrome:
+
+- **`display: contents`**: takumi không hỗ trợ giá trị này (bỏ nó khỏi stylesheet và bộ parse style
+  inline ném lỗi); bm-engine bỏ hộp của phần tử và dàn các con của nó trong cha, như Chrome.
+- **`margin` / `padding` theo % trên hộp inline và inline-block** được tính theo bề rộng containing
+  block; takumi tính chúng bằng 0.
+- **`text-indent`** chỉ thụt dòng đầu của block container; takumi thụt cả dòng đầu của block ẩn danh
+  không phải đầu tiên (chữ đứng sau một con dạng block).
 
 ## Chưa port
 
 - Xuất PDF (`takumi-pdf`, một sản phẩm riêng khoảng 43 500 dòng Rust).
 - Binding native N-API (`@takumi-rs/core`).
 - Mọi kiểu truy cập mạng (`prepare` tải tài nguyên, URL `@font-face`).
-- Counter trong `content`, ký hiệu đầu dòng của danh sách, `@apply`, `animate-*` của Tailwind, animation
-  trên pseudo-element, `clip-path: url()`, cú pháp màu tương đối, `outline-offset` theo %.
+- Counter trong `content`, ký hiệu đầu dòng của danh sách, `@apply`, animation trên pseudo-element,
+  `clip-path: url()`, cú pháp màu tương đối, `outline-offset` theo %.
 
 ## Những hành vi của takumi được bm-engine cố ý giữ nguyên
 
@@ -145,8 +153,8 @@ cho takumi cho ra cùng kết quả:
 - Tùy chọn `width` / `height` tính bằng điểm ảnh đầu ra; `devicePixelRatio` nhân các độ dài CSS mà không
   đổi kích thước canvas; `vw` / `vh` tính theo điểm ảnh đầu ra.
 - Node gốc không bị kéo giãn theo chiều cao canvas; `height: "100%"` được tính theo canvas.
-- Canvas khởi đầu trong suốt; đầu ra JPEG bỏ kênh alpha (vùng trong suốt thành đen); đầu ra WebP luôn
-  lossless.
+- Canvas khởi đầu trong suốt; đầu ra JPEG bỏ kênh alpha mà không trộn màu (vùng trong suốt thành đen;
+  hãy cho node gốc một nền đặc); đầu ra WebP luôn lossless.
 - Font dự phòng duyệt mọi family đã đăng ký theo thứ tự đăng ký. Khi dùng tùy chọn `fonts` mà không có
   `fontFamilies`, các family của những font đó trở thành bộ font gốc (root font stack).
 - Mọi nguồn là chuỗi JS đều là HTML; văn bản JSON phải được bọc thành `{ json }`.

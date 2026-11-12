@@ -96,13 +96,19 @@ const base = { type: "container", className: "box", tw: "block w-20 h-5" };   //
 
 widthWith(base);                                                      // 80  – tw
 widthWith(base, [".box { width: 60px }"]);                            // 60  – a stylesheet rule beats tw
+widthWith(base, ["@layer base { .box { width: 33px } }"]);            // 80  – … unless it sits in a named @layer
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px }"]); // 40  – inline style beats both
 widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px !important }"]); // 60 – !important wins
 widthWith({ ...base, tw: "block !w-20 h-5", style: { width: 40 } });  // 80  – a !utility beats inline style
+widthWith({ ...base, tw: "block !w-20 h-5" }, [".box { width: 60px !important }"]); // 80 – … and an unlayered !important rule
+widthWith({ ...base, tw: "block !w-20 h-5" }, ["@layer base { .box { width: 33px !important } }"]); // 33 – a layered one wins
 widthWith({ type: "container", preset: { display: "block", width: 30 }, style: { height: 5 } }); // 30 – preset is the lowest layer
 // #endregion
 assert.equal(widthWith(base), 80);
 assert.equal(widthWith(base, [".box { width: 60px }"]), 60);
+assert.equal(widthWith(base, ["@layer base { .box { width: 33px } }"]), 80);
+assert.equal(widthWith({ ...base, tw: "block !w-20 h-5" }, [".box { width: 60px !important }"]), 80);
+assert.equal(widthWith({ ...base, tw: "block !w-20 h-5" }, ["@layer base { .box { width: 33px !important } }"]), 33);
 assert.equal(widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px }"]), 40);
 assert.equal(widthWith({ ...base, style: { width: 40 } }, [".box { width: 60px !important }"]), 60);
 assert.equal(widthWith({ ...base, tw: "block !w-20 h-5", style: { width: 40 } }), 80);
@@ -166,6 +172,25 @@ const flexPng = renderer.renderSync({
 // #endregion
 save("flex", flexPng);
 
+// #region rtl
+// direction: rtl (or dir: "rtl" on the node) mirrors flex rows, grid columns and block alignment
+const steps = (style) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, height: 44, ...style },
+  children: ["first", "second", "third"].map((t, i) => box(t, { width: 110, backgroundColor: ["#0ea5e9", "#6366f1", "#a855f7"][i] })),
+});
+const rtlPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 10, padding: 16, width: "100%", height: "100%", backgroundColor: "#f1f5f9", fontFamily: "Inter" },
+  children: [
+    steps({}),                                     // ltr: first item on the left
+    steps({ direction: "rtl" }),                   // rtl: first item on the right
+    { ...steps({ display: "grid", gridTemplateColumns: "110px 110px 110px" }), dir: "rtl" }, // grid columns too
+  ],
+}, { width: 560, height: 190 });
+// #endregion
+save("rtl", rtlPng);
+
 // #region grid
 const area = (name, color) => ({
   type: "container",
@@ -208,6 +233,28 @@ const flowPng = renderer.renderSync({
 }, { width: 560, height: 150 });
 // #endregion
 save("flow", flowPng);
+
+// #region contents
+// display: contents removes the element's own box: its children take part in the parent's
+// layout (here: they become flex items of the row) and its padding / background are not drawn.
+const pill = (t, color) => box(t, { padding: "8px 14px", backgroundColor: color });
+const group = (display) => ({
+  type: "container",
+  style: { display, gap: 10, padding: 10, backgroundColor: "#fecaca" }, // padding + background of the wrapper
+  children: [pill("B", "#6366f1"), pill("C", "#a855f7")],
+});
+const contentsRow = (display) => ({
+  type: "container",
+  style: { display: "flex", gap: 10, alignItems: "center", padding: 10, backgroundColor: "#e2e8f0" },
+  children: [pill("A", "#0ea5e9"), group(display), pill("D", "#f97316")],
+});
+const contentsPng = renderer.renderSync({
+  type: "container",
+  style: { display: "flex", flexDirection: "column", gap: 12, padding: 16, width: "100%", height: "100%", backgroundColor: "white", fontFamily: "Inter" },
+  children: [contentsRow("flex"), contentsRow("contents")],
+}, { width: 400, height: 150 });
+// #endregion
+save("contents", contentsPng);
 
 // #region absolute
 const absPng = renderer.renderSync({

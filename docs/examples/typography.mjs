@@ -80,6 +80,20 @@ const align = renderer.renderSync(
 // #endregion
 save("align", align);
 
+// #region indent
+const indentText = "The first line of this paragraph starts further in than the lines that follow it.";
+const indent = renderer.renderSync(
+  page({}, [
+    sample("textIndent: 24", { textIndent: 24 }, [text(indentText)]),
+    sample("textIndent: \"10%\"", { textIndent: "10%" }, [text(indentText)]),
+    sample("textIndent: -16 (+ padding)", { textIndent: -16, paddingLeft: 22 }, [text(indentText)]),
+    sample("\"24px hanging\"", { textIndent: "24px hanging" }, [text(indentText)]),
+  ]),
+  { width: 790, height: 150 },
+);
+// #endregion
+save("indent", indent);
+
 // #region truncation
 const long = "bm-engine renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
 const truncation = renderer.renderSync(
@@ -93,6 +107,22 @@ const truncation = renderer.renderSync(
 );
 // #endregion
 save("truncation", truncation);
+
+// #region overflow-string
+// A string as the overflow marker: text-overflow on one line, line-clamp's block-ellipsis
+// form on several lines, and an empty string to cut without any marker.
+const overflowString = renderer.renderSync(
+  page({}, [
+    sample("textOverflow: '\" »\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text(long)]),
+    sample("lineClamp: '2 \" [more]\"'", { lineClamp: '2 " [more]"' }, [text(long)]),
+    sample("textOverflow: '\"\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '""' }, [text(long)]),
+    // in a right-to-left paragraph the marker sits on the left and is mirrored (» becomes «)
+    sample("direction: rtl", { direction: "rtl", whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text("Faster PNG encoding and a smaller core build")]),
+  ]),
+  { width: 790, height: 110 },
+);
+// #endregion
+save("overflow-string", overflowString);
 
 // #region balance
 // text-wrap: balance / pretty need the standard or full profile.
@@ -140,8 +170,9 @@ const transform = renderer.renderSync(
     text("uppercase: đường phố hà nội", { textTransform: "uppercase" }),
     text("CAPITALIZE: every word gets a capital", { textTransform: "capitalize" }),
     text("LOWERCASE: ĐƯỜNG PHỐ", { textTransform: "lowercase" }),
+    text("uppercase, full case mapping: straße ﬁx", { textTransform: "uppercase" }), // STRASSE FIX
   ]),
-  { width: 560, height: 110 },
+  { width: 560, height: 140 },
 );
 // #endregion
 save("transform", transform);
@@ -188,6 +219,21 @@ const features = renderer.renderSync(
 );
 // #endregion
 save("features", features);
+
+// #region small-caps
+// Inter has no small-caps glyphs (no 'smcp' / 'c2sc' features), so the small capitals are
+// synthesised: uppercase letters at 70 % of the font size, as in Chrome.
+const smallCaps = renderer.renderSync(
+  page({ flexDirection: "column", gap: 4, fontSize: 26 }, [
+    text("normal: Release Notes 2026"),
+    text("small-caps: Release Notes 2026", { fontVariantCaps: "small-caps" }),
+    text("all-small-caps: Release Notes 2026", { fontVariantCaps: "all-small-caps" }),
+    text("no synthesis: Release Notes 2026", { fontVariantCaps: "small-caps", fontSynthesisSmallCaps: "none" }),
+  ]),
+  { width: 560, height: 170 },
+);
+// #endregion
+save("small-caps", smallCaps);
 
 // #region vietnamese
 const vietnamese = renderer.renderSync(

@@ -14,7 +14,7 @@ benchmark nói gì về tốc độ và dung lượng file. Mọi đoạn mã d�
 | `format` | Alpha | `quality` | Profile | Ghi chú |
 |:--|:-:|:-:|:--|:--|
 | `"png"` (mặc định) | có | bỏ qua | tất cả | lossless; tự chọn palette / RGB / RGBA |
-| `"jpeg"` (bí danh `"jpg"`) | không — vùng trong suốt thành **đen** | 1–100, mặc định 75 | tất cả | JPEG baseline |
+| `"jpeg"` (bí danh `"jpg"`) | không — bị bỏ, vùng trong suốt thành **đen** (giống takumi) | 1–100, mặc định 75 | tất cả | JPEG baseline; hãy cho node gốc một nền đặc |
 | `"webp"` | có | bỏ qua | tất cả | luôn **lossless** (giống bản wasm của takumi); `lossless` cũng bị bỏ qua |
 | `"raw"` | có | bỏ qua | tất cả | `width × height × 4` byte RGBA8 dạng straight (không premultiply) |
 | `"ico"` | có | bỏ qua | `full` | một ảnh PNG trong container ICO, mỗi cạnh 1–256 px |
@@ -140,7 +140,8 @@ const onWhite = renderer.renderSync(
 | ![JPEG có góc đen](/img/guide/formats-jpeg-black-corners.jpg) | ![JPEG trên nền trắng](/img/guide/formats-jpeg-on-white.jpg) |
 
 ::: tip
-Bộ mã hoá JPEG chỉ đơn giản bỏ kênh alpha, không trộn với màu nào. Điểm ảnh trong suốt hoàn toàn thành
+Bộ mã hoá JPEG chỉ đơn giản bỏ kênh alpha, không trộn với màu nào, và không có tuỳ chọn màu nền — takumi
+cũng vậy. Điểm ảnh trong suốt hoàn toàn thành
 màu đen, còn điểm ảnh bán trong suốt giữ nguyên màu với cường độ đầy đủ: canvas tô `rgba(255, 0, 0, 0.5)`
 ra màu đỏ đặc, và một bóng đổ mềm trên canvas trong suốt biến thành một khối cứng màu của bóng. Luôn đặt
 một màu đặc cho node gốc khi xuất JPEG.
@@ -259,8 +260,8 @@ SVG của ví dụ này nặng 7 118 byte. Cần biết:
 
 - **Chữ không còn là chữ.** Glyph được vẽ bằng đường viền; không nhúng font, không chọn hay tìm kiếm được
   chữ. Đổi lại, SVG trông giống hệt dù máy xem không cài font của bạn.
-- `format` và `quality` bị bỏ qua. `devicePixelRatio` thì **không** bị bỏ qua: nội dung được phóng to như
-  khi render bitmap trong khi tài liệu vẫn giữ `width` / `height` của canvas, nên hãy để nó bằng 1 khi xuất SVG.
+- `format`, `quality` và `devicePixelRatio` bị bỏ qua: đầu ra SVG luôn được dàn trang với tỉ lệ điểm
+  ảnh 1, giống takumi (dù sao tài liệu SVG cũng co giãn được).
 - Trong benchmark, SVG của cả hai engine được rasterize rồi so sánh: 175/179 fixture identical hoặc
   equivalent với SVG của takumi.
 

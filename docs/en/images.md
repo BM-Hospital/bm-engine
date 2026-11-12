@@ -114,8 +114,33 @@ const sources = renderer.renderSync(
 ![The same picture from an images key, a Buffer and a data URL, a 4 × 4 raw RGBA checkerboard and an inline SVG](/img/guide/images-sources.png)
 
 Notice the raw 4 × 4 checkerboard: it was scaled up to 96 × 96 with smooth (bilinear) resampling.
-`image-rendering: pixelated` is parsed but not honoured for raster images in 0.1.0, so you cannot get
-crisp pixel-art upscaling from the engine; upscale the pixels yourself if you need that.
+For crisp pixel-art upscaling, set `imageRendering: "pixelated"` (or `"crisp-edges"`): the image is
+then scaled with nearest-neighbour sampling, exactly as in takumi. It works on image nodes and on
+background images, on every profile:
+
+<!-- @example images#pixelated -->
+```js
+// image-rendering: pixelated (or crisp-edges) scales with nearest-neighbour sampling instead of
+// smooth (bilinear) resampling: on image nodes and on background images, on every profile.
+const checker = { width: 4, height: 4, data: pixels };
+const pixelated = renderer.renderSync(
+  {
+    type: "container",
+    style: { display: "flex", gap: 20, padding: 20, width: "100%", height: "100%", backgroundColor: "#f8fafc" },
+    children: [
+      tile("auto (smooth)", { type: "image", src: checker, style: { width: 96, height: 96 } }),
+      tile("pixelated", { type: "image", src: checker, style: { width: 96, height: 96, imageRendering: "pixelated" } }),
+      tile("pixelated background", {
+        type: "container",
+        style: { width: 96, height: 96, backgroundImage: "url(checker)", backgroundSize: "48px 48px", imageRendering: "pixelated" },
+      }),
+    ],
+  },
+  { width: 420, height: 170, images: [{ src: "checker", data: renderer.renderSync({ type: "image", src: checker }, { width: 4, height: 4 }) }] },
+);
+```
+
+![The 4 × 4 checkerboard scaled smoothly into a blurred pattern, the same with sharp pixel edges, and a background tiled with sharp checkerboards](/img/guide/images-pixelated.png)
 
 ::: warning bm-engine has no network access
 A URL in `src` (or in `url(...)`) is **never fetched**, not even by `prepare()` (takumi's `prepare`

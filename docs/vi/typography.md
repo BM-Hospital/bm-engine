@@ -143,11 +143,32 @@ const align = renderer.renderSync(
 `textAlign` nhận `left`, `right`, `center`, `justify`, `start` và `end` (hai giá trị cuối đi theo
 `direction`). Đoạn căn đều sẽ giãn mọi dòng trừ dòng cuối.
 
-::: warning `text-indent` không có tác dụng trong 0.1.0
-`textIndent` được parse nhưng layout bỏ qua: dòng đầu vẫn bắt đầu sát lề trái. Có thể tạm dùng một
-inline-block làm khoảng đệm ở đầu đoạn (`{ type: "container", style: { display: "inline-block", width: 20 } }`).
-`textAlignLast` cũng được parse và bị bỏ qua.
-:::
+## Thụt dòng đầu
+
+`textIndent` thụt dòng đầu tiên của block container: một độ dài, phần trăm bề rộng container, hoặc giá
+trị âm (thụt ra ngoài; hãy thêm padding để chữ vẫn nằm trong). Từ khoá `hanging` (thụt mọi dòng trừ
+dòng đầu) và `each-line` (thụt cả sau các lần xuống dòng bắt buộc) cũng dùng được, và trong đoạn từ phải
+sang trái thì khoảng thụt nằm bên phải:
+
+<!-- @example typography#indent -->
+```js
+const indentText = "The first line of this paragraph starts further in than the lines that follow it.";
+const indent = renderer.renderSync(
+  page({}, [
+    sample("textIndent: 24", { textIndent: 24 }, [text(indentText)]),
+    sample("textIndent: \"10%\"", { textIndent: "10%" }, [text(indentText)]),
+    sample("textIndent: -16 (+ padding)", { textIndent: -16, paddingLeft: 22 }, [text(indentText)]),
+    sample("\"24px hanging\"", { textIndent: "24px hanging" }, [text(indentText)]),
+  ]),
+  { width: 790, height: 150 },
+);
+```
+
+![Bốn đoạn văn: thụt 24 px, thụt 10 %, thụt ra ngoài 16 px, và thụt treo 24 px](/img/guide/typography-indent.png)
+
+Chỉ dòng đầu của block được thụt, giống Chrome; takumi thụt cả dòng đầu của phần chữ đứng sau một con
+dạng block (xem [Khác biệt so với takumi](./differences-from-takumi.md#khác-biệt-có-chủ-ý-bm-engine-theo-chrome)).
+`textAlignLast` được parse nhưng không có tác dụng.
 
 ## Cắt bớt: dấu ba chấm và line clamp
 
@@ -175,10 +196,32 @@ const truncation = renderer.renderSync(
   blockify), không đặt lên flex container.
 - Chữ bị cắt do `height` cố định thì không có dấu ba chấm; hãy dùng `lineClamp`.
 
-::: warning Chuỗi tràn tuỳ chỉnh
-`textOverflow` với một chuỗi (`'" »"'`) được chấp nhận nhưng trong 0.1.0 được vẽ như `clip`: không có
-ký hiệu nào xuất hiện. Chỉ `ellipsis` mới vẽ ký hiệu.
-:::
+### Ký hiệu tuỳ chỉnh
+
+`textOverflow` cũng nhận một chuỗi, được vẽ thay cho dấu ba chấm: chuỗi được shape bằng font của phần tử
+(và các font dự phòng) và được lật ngược trong đoạn từ phải sang trái. Chuỗi rỗng cắt chữ mà không có ký
+hiệu. `lineClamp` nhận ký hiệu riêng theo dạng `<n> "<chuỗi>"` (cú pháp `block-ellipsis` của CSS; `none`
+và `no-ellipsis` cũng được chấp nhận); dòng bị clamp dùng ký hiệu đó, hoặc dấu ba chấm mặc định, chứ không
+dùng chuỗi của `textOverflow`. `overflow: "hidden"` cắt cả glyph của chính phần tử, nên
+`textOverflow: "clip"` thật sự cắt ngang một chữ cái:
+
+<!-- @example typography#overflow-string -->
+```js
+// A string as the overflow marker: text-overflow on one line, line-clamp's block-ellipsis
+// form on several lines, and an empty string to cut without any marker.
+const overflowString = renderer.renderSync(
+  page({}, [
+    sample("textOverflow: '\" »\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text(long)]),
+    sample("lineClamp: '2 \" [more]\"'", { lineClamp: '2 " [more]"' }, [text(long)]),
+    sample("textOverflow: '\"\"'", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: '""' }, [text(long)]),
+    // in a right-to-left paragraph the marker sits on the left and is mirrored (» becomes «)
+    sample("direction: rtl", { direction: "rtl", whiteSpace: "nowrap", overflow: "hidden", textOverflow: '" »"' }, [text("Faster PNG encoding and a smaller core build")]),
+  ]),
+  { width: 790, height: 110 },
+);
+```
+
+![Một dòng kết thúc bằng ký hiệu », một clamp hai dòng kết thúc bằng [more], một dòng bị cắt không ký hiệu, và một dòng từ phải sang trái có ký hiệu « lật ngược ở bên trái](/img/guide/typography-overflow-string.png)
 
 ## Tiêu đề cân dòng
 
@@ -265,15 +308,42 @@ const transform = renderer.renderSync(
     text("uppercase: đường phố hà nội", { textTransform: "uppercase" }),
     text("CAPITALIZE: every word gets a capital", { textTransform: "capitalize" }),
     text("LOWERCASE: ĐƯỜNG PHỐ", { textTransform: "lowercase" }),
+    text("uppercase, full case mapping: straße ﬁx", { textTransform: "uppercase" }), // STRASSE FIX
   ]),
-  { width: 560, height: 110 },
+  { width: 560, height: 140 },
 );
 ```
 
 ![Tiếng Việt có dấu viết hoa, viết hoa chữ cái đầu mỗi từ và viết thường](/img/guide/typography-transform.png)
 
-`textTransform` xử lý đúng tiếng Việt và các chữ có dấu khác (`đ` → `Đ`). `fontVariant: "small-caps"`
-dùng feature `smcp` của font và không có tác dụng với font không có small caps (không có giả lập).
+`textTransform` dùng ánh xạ hoa / thường Unicode đầy đủ: tiếng Việt và các chữ có dấu khác (`đ` → `Đ`),
+`ß` → `SS`, ligature như `ﬁ` → `FI`, sigma cuối từ của tiếng Hy Lạp, digraph titlecase. Chưa có: đổi
+hoa / thường theo `lang` (chữ i có chấm của tiếng Thổ Nhĩ Kỳ và Azeri, dấu tiếng Hy Lạp, tiếng Litva) và
+các giá trị `full-width` / `full-size-kana`.
+
+### Chữ hoa nhỏ {#small-caps}
+
+`fontVariantCaps` (hoặc `fontVariant`) chọn chữ hoa nhỏ: `small-caps`, `all-small-caps`, `petite-caps`,
+`all-petite-caps`, `unicase` và `titling-caps`. Khi font có các feature OpenType (`smcp`, `c2sc`, ...) thì
+chúng được dùng; nếu không, chữ hoa nhỏ được **tự tạo** từ chữ hoa ở 70 % cỡ chữ, giống Chrome. Petite caps
+và unicase quay về small caps. `fontSynthesisSmallCaps: "none"` tắt việc tự tạo:
+
+<!-- @example typography#small-caps -->
+```js
+// Inter has no small-caps glyphs (no 'smcp' / 'c2sc' features), so the small capitals are
+// synthesised: uppercase letters at 70 % of the font size, as in Chrome.
+const smallCaps = renderer.renderSync(
+  page({ flexDirection: "column", gap: 4, fontSize: 26 }, [
+    text("normal: Release Notes 2026"),
+    text("small-caps: Release Notes 2026", { fontVariantCaps: "small-caps" }),
+    text("all-small-caps: Release Notes 2026", { fontVariantCaps: "all-small-caps" }),
+    text("no synthesis: Release Notes 2026", { fontVariantCaps: "small-caps", fontSynthesisSmallCaps: "none" }),
+  ]),
+  { width: 560, height: 170 },
+);
+```
+
+![Chữ thường, small caps tự tạo, all-small-caps, và lại là chữ thường vì đã tắt tự tạo](/img/guide/typography-small-caps.png)
 
 ## Trộn nội dung inline
 
@@ -347,7 +417,7 @@ const features = renderer.renderSync(
 | `fontFeatureSettings` | `"'tnum', 'ss01' 1, 'liga' 0"` | bật hoặc tắt bất kỳ feature nào |
 | `fontVariantNumeric` | `"tabular-nums"`, `"oldstyle-nums"`, `"slashed-zero"`, `"diagonal-fractions"` | feature cho chữ số |
 | `fontVariantLigatures` | `"none"`, `"no-common-ligatures"`, `"discretionary-ligatures"` | ligature |
-| `fontVariantCaps` | `"small-caps"`, `"all-small-caps"` | feature chữ hoa nhỏ (không giả lập) |
+| `fontVariantCaps` | `"small-caps"`, `"all-small-caps"` | feature chữ hoa nhỏ, tự tạo khi font không có ([ở trên](#small-caps)) |
 | `fontVariantPosition` | `"super"`, `"sub"` | `sups` / `subs` |
 | `fontKerning` | `"none"` | tắt kerning |
 
@@ -417,17 +487,19 @@ dàn từ trái sang phải. CJK và các hệ chữ không cần sắp xếp l�
 | Sắp xếp hai chiều, `direction`, `dir`, `unicode-bidi` | không | không | có |
 | Shaping Ả Rập / Do Thái / Ấn Độ / Thái | shaper mặc định | shaper mặc định | có |
 | Chuẩn hoá Unicode (tiếng Việt NFD) | không | không | có |
-| Emoji màu | không | không | có (kèm font màu) |
+| Chuỗi emoji (ZWJ, màu da, cờ, keycap) thành một glyph | không | có | có |
+| Emoji màu | không | font bitmap (CBDT / sbix) | có (kèm font màu) |
 
-Các hạn chế đã biết (cũng có trong [Hỗ trợ CSS](./css-support.md#các-hạn-chế-đã-biết)): `direction: rtl` không
-đảo trục chính của một flex row, `writing-mode` (chữ dọc) chưa được hỗ trợ, và inline box RTL bao quanh chữ
-LTR đặt cạnh đầu / cuối của nó sai phía.
+`direction: rtl` cũng lật ngược hàng flex, cột grid và bảng (xem [Style](./styles.md#right-to-left)). Các
+hạn chế đã biết (cũng có trong [Hỗ trợ CSS](./css-support.md#các-hạn-chế-đã-biết)): `writing-mode` (chữ dọc)
+chưa được hỗ trợ, và khoảng trắng treo của chữ RTL với `white-space: pre-wrap` chưa được xử lý.
 
 ## Thuộc tính không có tác dụng trong 0.1.0
 
-Được parse và chấp nhận nhưng không có hiệu ứng nhìn thấy: `textIndent`, `textAlignLast`, `hyphens` (trừ
-dấu gạch nối mềm trong văn bản), `lineBreak`, `writingMode`, `fontSynthesis*`, `paintOrder` trên chữ (ảnh
-SVG thì có tôn trọng), và giá trị chuỗi của `textOverflow`. Danh sách đầy đủ các thuộc tính được hỗ trợ
+Được parse và chấp nhận nhưng không có hiệu ứng nhìn thấy: `textAlignLast`, `hyphens` (trừ dấu gạch nối
+mềm trong văn bản), `lineBreak`, `writingMode`, `fontSynthesisWeight` / `fontSynthesisStyle` và phần weight /
+style của `fontSynthesis` (đậm và nghiêng luôn được tự tạo), và `paintOrder` trên chữ (bị bỏ qua giống takumi
+2.20; ảnh SVG thì có tôn trọng). Danh sách đầy đủ các thuộc tính được hỗ trợ
 nằm ở [Hỗ trợ CSS](./css-support.md#văn-bản).
 
 Xem thêm: [Font](./fonts.md), [measure()](./measure.md) để co chữ vừa một hộp,

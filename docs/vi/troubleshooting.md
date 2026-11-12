@@ -179,9 +179,10 @@ const png = renderer.renderSync(node, { width: 2400, height: 1260, devicePixelRa
 
 ## Emoji không có màu
 
-Emoji màu cần **cả** profile `full` (`features.colorFonts`) lẫn một font emoji màu đã đăng ký (COLR,
-CBDT hoặc sbix, ví dụ Noto Color Emoji). Không có font, emoji hiện thành ô vuông hoặc glyph của font
-khác; trên `core` / `standard` font màu được vẽ không màu. Chỉ cần đăng ký font là đủ — font dự phòng
+Emoji màu cần một font emoji màu đã đăng ký (COLR, CBDT hoặc sbix, ví dụ Noto Color Emoji) và một profile
+vẽ được nó: font bitmap (CBDT, sbix — Noto Color Emoji) trên `standard` và `full`, font COLR
+(`features.colorFonts`) chỉ trên `full`. Không có font, emoji hiện thành ô vuông hoặc glyph của font khác;
+font COLR trên `core` / `standard` được vẽ không màu, còn `core` không vẽ gì với font chỉ có bitmap. Chỉ cần đăng ký font là đủ — font dự phòng
 duyệt mọi family đã đăng ký.
 
 ## Một style bị bỏ qua
@@ -194,7 +195,7 @@ duyệt mọi family đã đăng ký.
 - Khai báo trong stylesheet hoặc Tailwind có giá trị không hợp lệ bị loại im lặng. Hãy thử nó dưới dạng
   style inline, vốn ném lỗi với giá trị không hợp lệ.
 - Các variant Tailwind ngoài breakpoint, variant cấu trúc và `before:` / `after:` (`hover:`, `dark:`,
-  `group-*:`) không bao giờ được áp dụng, và `animate-*` không được hỗ trợ — giống takumi.
+  `group-*:`) không bao giờ được áp dụng — giống takumi. Utility `animate-*` cần profile `full`.
 - Xem danh sách [thuộc tính parse được nhưng chưa cài đặt](css-support.md#phụ-lục-danh-sách-thuộc-tính-được-hỗ-trợ).
 
 ## "invalid value for style property"
