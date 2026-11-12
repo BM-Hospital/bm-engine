@@ -385,7 +385,8 @@ async function workerMain() {
   } else {
     // render forever; the parent terminates this thread in the middle
     parentPort.postMessage({ ready: true });
-    for (;;) await Promise.all(Array.from({ length: 4 }, () => r.render(WORKER_NODE, { format: "png", width: 1200, height: 630 })));
+    // (PNG and raw: a raw frame of a known size is painted into an ArrayBuffer of this environment by the pool thread)
+    for (;;) await Promise.all(Array.from({ length: 4 }, (_, i) => r.render(WORKER_NODE, { format: i % 2 ? "raw" : "png", width: 1200, height: 630 })));
   }
 }
 CASES.workers = async () => {

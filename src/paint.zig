@@ -1074,7 +1074,17 @@ pub const Painter = struct {
         if (n.kind == .anon_text or n.kind == .text or n.para != null) {
             var m = cs.font_size + cs.webkit_text_stroke_width;
             for (cs.text_shadow) |sh| m = @max(m, cs.font_size + @max(@abs(sh.x), @abs(sh.y)) + @ceil(sh.blur * 1.5) + 2);
-            r = devRectF(tf, smax, box, m);
+            // text may overflow its box (nowrap, an unbreakable word, more lines than the box is
+            // tall), to either side depending on the alignment: the laid out size decides
+            var tb = box;
+            const cw = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
+            const ch = l.h - l.border.top - l.border.bottom - l.padding.top - l.padding.bottom;
+            if (f.textLayout(id, cw) catch return null) |tl| {
+                const ox = @max(0, tl.width - cw);
+                const oy = @max(0, tl.height - ch);
+                tb = .{ .x = x - ox, .y = y - oy, .w = l.w + 2 * ox, .h = l.h + 2 * oy };
+            }
+            r = devRectF(tf, smax, tb, m);
         }
         if (n.kind == .anon_text) return r;
         if (cs.display == .none) return .{ .x = x, .y = y, .w = 0, .h = 0 };
