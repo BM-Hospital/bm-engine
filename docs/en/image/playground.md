@@ -14,7 +14,7 @@ Tailwind input, compare the three profiles, inspect layout with `measure()` and 
 format. Nothing is uploaded; fonts and images you add stay in the page.
 
 <ClientOnly>
-  <PlaygroundFrame lang="en" />
+  <PlaygroundFrame lang="en" mode="image" />
 </ClientOnly>
 
 ## Features
@@ -28,6 +28,8 @@ format. Nothing is uploaded; fonts and images you add stay in the page.
 - `measure()` overlay, templates (OG card, blog card, Vietnamese text, emoji, SVG image, HTML article,
   Tailwind card, CSS demo, animation, gradients, table + float), English / Vietnamese UI.
 - **Share link** puts the deflate-compressed state into the URL hash.
+- **PDF output**: the switcher above the app opens the [PDF playground](../pdf/playground.md), the same
+  app in PDF mode (`?mode=pdf`); the editor content carries over.
 
 Templates that need a feature the selected profile lacks show a clear message or render in a degraded
 way (for example the Tailwind card on `core`), which makes the playground a quick way to see what each

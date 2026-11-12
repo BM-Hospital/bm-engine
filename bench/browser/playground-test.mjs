@@ -4,7 +4,11 @@
 // 2. Builds and smoke-tests the self-contained build (docs/playground-app/dist).
 // 3. Builds the VitePress docs site (npm run docs:build equivalent; --skip-docs-build reuses docs/.vitepress/dist) and
 //    checks the /image/playground and /vi/image/playground pages: the embedded app starts on every profile and renders the OG card.
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdtempSync } from "node:fs";
+// PDF mode (?mode=pdf): on the dev server (full pass: lazy loading, every PDF template, viewer and pdf.js previews,
+// download, open in a tab, "Copy code" run in Node.js, engine errors, share link, Image <-> PDF, dark, phone), on the
+// self-contained build (reduced pass) and embedded at /pdf/playground and /vi/pdf/playground of the built docs site.
+// Screenshot: bench/out/docs-site/playground-pdf-standalone.png. Servers listen on ephemeral ports.
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, mkdtempSync, symlinkSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +22,8 @@ const PG = path.join(ROOT, "docs", "playground-app");
 const SITE = path.join(ROOT, "docs", ".vitepress", "dist");
 const SHOTS = path.join(PG, "screenshots");
 const OUT = path.join(ROOT, "bench", "out");
-mkdirSync(SHOTS, { recursive: true }); mkdirSync(OUT, { recursive: true });
+const DOCS_SHOTS = path.join(OUT, "docs-site");
+mkdirSync(SHOTS, { recursive: true }); mkdirSync(OUT, { recursive: true }); mkdirSync(DOCS_SHOTS, { recursive: true });
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
 const candidates = [args.browser, process.env.BROWSER_PATH,
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -94,7 +99,16 @@ async function suite(ctxFactory, base, profile, { dist = false } = {}) {
   const dl = mkdtempSync(path.join(os.tmpdir(), "bm-pg-dl-"));
   let page;
   try {
-    page = await openPage(ctx, base, `?profile=${profile}`, sink, tag);
+    const imgReqs = []; // Image mode must not request anything of PDF mode
+    page = await ctx.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    watch(page, tag, sink);
+    page.on("request", (r) => imgReqs.push(r.url()));
+    await page.goto(`${base}?profile=${profile}`, { waitUntil: "load" });
+    await page.waitForFunction("document.body.dataset.ready === '1' || document.body.dataset.ready === 'error'", { timeout: 60000 });
+    if (await page.evaluate(() => document.body.dataset.ready) !== "1") throw new Error("playground failed to start: " + await page.evaluate(() => document.getElementById("errorText").textContent));
+    await settle(page, 0);
+    { const hits = imgReqs.filter((u) => PDF_LAZY.test(u)); R.extra["no PDF engine / pdf.js requested"] = hits.length ? "FAIL" : "pass"; check(!hits.length, `${tag}: Image mode requested ${hits.join(", ")}`); }
     const cdp = await page.createCDPSession();
     await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl, eventsEnabled: true }).catch(() => cdp.send("Page.setDownloadBehavior", { behavior: "allow", downloadPath: dl }));
     const info = await page.evaluate(() => ({ profile: document.body.dataset.profile, bin: document.getElementById("binInfo").textContent, chips: document.querySelectorAll("#featChips .chip").length, on: document.querySelectorAll("#featChips .chip:not(.off)").length, features: window.pg.engine.features, tplOptions: document.querySelectorAll("#template option").length }));
@@ -260,6 +274,311 @@ async function suite(ctxFactory, base, profile, { dist = false } = {}) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------------------------- PDF mode
+const PDF_LAZY = /\/(pdf\.mjs|pdf-api\.mjs|pdf-templates\.js|bm_engine\.pdf\.wasm)(\?|$)|pdfjs-/;
+const PDFJS = /pdfjs-[\d.]+\/pdf(\.worker)?\.min\.mjs/;
+const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+const countPages = (buf) => (Buffer.from(buf).toString("latin1").match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+function trackRequests(page) { const urls = []; page.on("request", (r) => urls.push(r.url())); return urls; }
+/** A screenshot of an element, decoded in the page: how many distinct colours and dark pixels it shows. */
+async function shotStats(page, handle) {
+  const b64 = await handle.screenshot({ encoding: "base64" });
+  return page.evaluate(async (b64) => {
+    const bmp = await createImageBitmap(await (await fetch("data:image/png;base64," + b64)).blob());
+    const c = new OffscreenCanvas(bmp.width, bmp.height); const x = c.getContext("2d"); x.drawImage(bmp, 0, 0);
+    const d = x.getImageData(0, 0, bmp.width, bmp.height).data; const colors = new Set(); let dark = 0;
+    for (let i = 0; i < d.length; i += 4 * 3) { colors.add(((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4)); if (d[i] + d[i + 1] + d[i + 2] < 240) dark++; }
+    return { w: bmp.width, h: bmp.height, colors: colors.size, dark };
+  }, b64);
+}
+/** pdf.js canvases: how many, and the share of non-white pixels of the first (the page drawn, not an empty sheet). */
+const canvasInk = (frame) => frame.evaluate(() => {
+  const cv = document.querySelector("#pdfPages canvas"); if (!cv) return { n: 0, ink: 0 };
+  const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; let ink = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4 * 7) { n++; if (d[i] < 200 || d[i + 1] < 200 || d[i + 2] < 200) ink++; }
+  return { n: document.querySelectorAll("#pdfPages canvas").length, ink: ink / n };
+});
+async function pdfSnap(frame) {
+  return frame.evaluate(() => {
+    const d = document.body.dataset;
+    return { status: d.status, mode: d.mode, head: d.outHead || "", pages: +d.outPages || 0, bytes: +d.outBytes || 0, preview: d.pdfPreview, previewReady: d.previewReady,
+      error: document.getElementById("errorPanel").hidden ? "" : document.getElementById("errorText").textContent,
+      frameSrc: document.getElementById("pdfFrame").getAttribute("src") || "", time: document.getElementById("stTime").textContent,
+      bin: document.getElementById("binInfo").textContent, mem: document.getElementById("stMem").textContent };
+  });
+}
+/** Waits for the PDF viewer frame (blob: URL) and checks from a screenshot that it shows the page. */
+async function viewerShows(page, frame) {
+  const fh = await frame.$("#pdfFrame");
+  let cf = null;
+  for (let i = 0; i < 40 && !(cf && cf.url().startsWith("blob:")); i++) { cf = await fh.contentFrame(); await sleep(150); }
+  await sleep(1500); // the viewer paints asynchronously
+  const st = await shotStats(page, fh);
+  return { url: cf?.url() || "", child: cf ? cf.childFrames().length : -1, ...st };
+}
+/** Runs the "Copy code" module in Node.js against this checkout (node_modules/bm-engine and assets/ are junctions). */
+function runSnippet(code) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "bm-pg-snippet-"));
+  const links = [path.join(dir, "node_modules", "bm-engine"), path.join(dir, "assets")];
+  mkdirSync(path.join(dir, "node_modules"));
+  symlinkSync(ROOT, links[0], "junction"); symlinkSync(path.join(ROOT, "assets"), links[1], "junction");
+  writeFileSync(path.join(dir, "render-pdf.mjs"), code);
+  const r = spawnSync(process.execPath, ["render-pdf.mjs"], { cwd: dir, encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "wasm" } });
+  const out = existsSync(path.join(dir, "bm-engine.pdf")) ? readFileSync(path.join(dir, "bm-engine.pdf")) : null;
+  for (const l of links) unlinkSync(l); // the junctions first: never recurse into the checkout
+  rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim(), head: out ? out.subarray(0, 5).toString("latin1") : "", pages: out ? countPages(out) : 0, bytes: out?.length || 0 };
+}
+async function selectPdfTemplate(frame, id) {
+  const b = await renders(frame);
+  await frame.select("#template", id);
+  await settle(frame, b);
+  await frame.waitForFunction(() => document.body.dataset.previewReady, { timeout: 30000 });
+}
+async function interceptDownload(frame) {
+  await frame.evaluate(() => {
+    window.__dl = null;
+    HTMLAnchorElement.prototype.click = function () {
+      if (!this.download) return;
+      const name = this.download;
+      fetch(this.href).then((r) => r.arrayBuffer()).then((buf) => { const u = new Uint8Array(buf); window.__dl = { name, size: u.length, head: new TextDecoder("latin1").decode(u.subarray(0, 5)) }; });
+    };
+  });
+}
+const setPdf = (page, kv) => page.evaluate((kv) => {
+  for (const [k, v] of Object.entries(kv)) {
+    const el = document.querySelector(`[data-pdf="${k}"]`); if (el.type === "checkbox") el.checked = v; else el.value = v;
+    el.dispatchEvent(new Event(el.tagName === "SELECT" || el.type === "checkbox" ? "change" : "input", { bubbles: true }));
+  }
+}, kv);
+
+/** PDF mode of the standalone app (dev layout, or a reduced pass on the self-contained build). */
+async function pdfSuite(base, tag, { full = true } = {}) {
+  const sink = [];
+  const R = { templates: {}, extra: {} };
+  results[tag] = R;
+  const ctx = await browser.createBrowserContext();
+  try {
+    // ---- Image mode first: nothing of the PDF engine or pdf.js is requested
+    const page = await ctx.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    watch(page, tag, sink);
+    const reqs = trackRequests(page);
+    await page.goto(`${base}?profile=full&mode=image`, { waitUntil: "load" });
+    await page.waitForFunction("document.body.dataset.ready === '1'", { timeout: 60000 });
+    await settle(page, 0);
+    const lazyHits = reqs.filter((u) => PDF_LAZY.test(u));
+    R.extra["Image mode requests no PDF engine / pdf.js"] = lazyHits.length ? "FAIL" : `pass (wasm: ${reqs.filter((u) => /\.wasm/.test(u)).map((u) => u.split("/").pop()).join(", ")})`;
+    check(!lazyHits.length, `${tag}: Image mode requested PDF files: ${lazyHits.join(", ")}`);
+    const switchVisible = await page.$eval("#modeSwitch", (e) => getComputedStyle(e).display !== "none");
+    check(switchVisible, `${tag}: Image | PDF switch not visible standalone`);
+
+    // ---- switch to PDF in place: the editor content stays, the PDF engine loads now, the URL says mode=pdf
+    const before = await page.evaluate(() => ({ kind: window.pg.state.kind, src: document.getElementById("src").value, css: document.getElementById("css").value }));
+    let b = await renders(page);
+    await page.click('#modeSwitch button[data-mode="pdf"]');
+    await settle(page, b);
+    await page.waitForFunction(() => document.body.dataset.previewReady, { timeout: 30000 });
+    let s = await pdfSnap(page);
+    const after = await page.evaluate(() => ({ kind: window.pg.state.kind, src: document.getElementById("src").value, css: document.getElementById("css").value, url: location.search, accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
+    const kept = after.kind === before.kind && after.src === before.src && after.css === before.css;
+    const okSwitch = kept && s.mode === "pdf" && s.status === "ok" && s.head.startsWith("%PDF-") && /mode=pdf/.test(after.url) && /bm_engine\.pdf\.wasm - 1\.\d+ MiB/.test(s.bin) && after.accent.toLowerCase() === "#be123c";
+    R.extra["Image -> PDF keeps the editor, loads the pdf wasm, ?mode=pdf"] = okSwitch ? `pass (${s.bin}; OG card JSON -> ${s.pages}-page PDF)` : "FAIL";
+    check(okSwitch, `${tag}: switch to PDF: ${JSON.stringify({ kept, s, after })}`);
+    check(reqs.some((u) => /bm_engine\.pdf\.wasm/.test(u)) && !reqs.some((u) => PDFJS.test(u)), `${tag}: after the switch: pdf wasm requested and pdf.js not (viewer preview)`);
+
+    // ---- every PDF template: %PDF- bytes, page count, the viewer shows it
+    const tpls = await page.evaluate(() => window.pg.pdfTemplates.map((t) => ({ id: t.id, pages: t.pages })));
+    check(tpls.length >= 5 && tpls.length <= 7, `${tag}: ${tpls.length} PDF templates`);
+    const tplOptions = await page.evaluate(() => document.querySelectorAll("#template option").length);
+    check(tplOptions === tpls.length + 1, `${tag}: PDF template options ${tplOptions}`);
+    for (const t of full ? tpls : tpls.slice(0, 2)) {
+      await selectPdfTemplate(page, t.id);
+      s = await pdfSnap(page);
+      const ok = s.status === "ok" && s.head.startsWith("%PDF-") && s.pages === t.pages && s.previewReady === "viewer" && s.frameSrc.startsWith("blob:") && !s.error;
+      R.templates[t.id] = ok ? `pass (${s.pages} page(s), ${s.bytes} B, ${s.time})` : "FAIL";
+      if (!ok) fail(`${tag}: PDF template ${t.id}: ${JSON.stringify(s)} expected ${t.pages} pages`); else say(`  ok   pdf ${t.id} ${s.pages}p ${s.bytes} B  ${s.time}`);
+    }
+    await selectPdfTemplate(page, "invoice");
+    // the page screenshot first: an element screenshot can resize the viewport for a moment and the viewer re-zooms
+    if (full) { await sleep(2000); await page.screenshot({ path: path.join(DOCS_SHOTS, "playground-pdf-standalone.png") }); }
+    const v = await viewerShows(page, page.mainFrame());
+    const vok = v.url.startsWith("blob:") && v.colors > 8 && v.dark > 200;
+    R.extra["inline preview: browser PDF viewer (iframe, blob URL) shows the page"] = vok ? `pass (viewer child frames: ${v.child}, ${v.colors} colours, ${v.dark} dark px in ${v.w}x${v.h})` : "FAIL";
+    check(vok, `${tag}: viewer preview: ${JSON.stringify(v)}`);
+
+    // ---- pdf.js preview (chosen), loaded only now; canvases with ink
+    await page.select("#pdfPreview", "pdfjs");
+    await page.waitForFunction(() => ["pdfjs", "pdfjs-error"].includes(document.body.dataset.previewReady), { timeout: 30000 });
+    const ink = await canvasInk(page.mainFrame());
+    const pjOk = ink.n === 1 && ink.ink > 0.01 && reqs.some((u) => PDFJS.test(u));
+    R.extra["pdf.js preview: loaded on demand, non-blank canvas"] = pjOk ? `pass (${ink.n} canvas, ${(ink.ink * 100).toFixed(1)}% ink)` : "FAIL";
+    check(pjOk, `${tag}: pdf.js preview ${JSON.stringify({ ink, note: await page.$eval("#previewNote", (e) => e.textContent) })}`);
+    await selectPdfTemplate(page, "report");
+    await page.waitForFunction(() => document.body.dataset.previewReady === "pdfjs", { timeout: 30000 });
+    { const k = await canvasInk(page.mainFrame()); check(k.n === 4 && k.ink > 0.01, `${tag}: pdf.js report pages ${JSON.stringify(k)}`); }
+    await page.select("#pdfPreview", "auto");
+    if (!full) { check(sink.length === 0, `${tag}: browser errors:\n  ` + sink.join("\n  ")); R.extra["console/page/network errors"] = sink.length ? "see FAIL" : "none"; await ctx.close(); return; }
+
+    // ---- measure(), stats
+    await page.click("#measureToggle"); await sleep(100); await selectPdfTemplate(page, "article");
+    { const m = await page.evaluate(() => ({ v: document.getElementById("stMeasure").textContent, shown: !document.getElementById("stMeasureBox").hidden, mem: document.getElementById("stMem").textContent, t: document.getElementById("stTime").textContent }));
+      const ok = m.shown && /^\d+ x \d+ px$/.test(m.v) && /MiB/.test(m.mem) && /median of \d+/.test(m.t);
+      R.extra["stats: pages, size, median time, wasm memory, measure()"] = ok ? `pass (measure ${m.v}, memory ${m.mem})` : "FAIL"; check(ok, `${tag}: stats ${JSON.stringify(m)}`); }
+    await page.click("#measureToggle");
+
+    // ---- download (intercepted) and open in a new tab
+    await interceptDownload(page.mainFrame());
+    await page.click("#downloadBtn");
+    await page.waitForFunction(() => window.__dl, { timeout: 5000 }).catch(() => {});
+    { const d = await page.evaluate(() => window.__dl); const ok = d && d.name === "bm-engine.pdf" && d.head === "%PDF-" && d.size > 1000;
+      R.extra["download .pdf"] = ok ? `pass (${d.size} B)` : "FAIL"; check(ok, `${tag}: download ${JSON.stringify(d)}`); }
+    const newTarget = browser.waitForTarget((t) => t.url().startsWith("blob:"), { timeout: 10000 }).catch(() => null);
+    await page.click("#openBtn");
+    { const t = await newTarget; R.extra["open in new tab (blob URL)"] = t ? "pass" : "FAIL"; check(!!t, `${tag}: open in new tab: no blob: target`); if (t) { const p2 = await t.page().catch(() => null); await p2?.close().catch(() => {}); } }
+
+    // ---- Copy code -> run the module in Node.js
+    await selectPdfTemplate(page, "accessible");
+    await page.click("#codeBtn"); await sleep(200);
+    { const code = await page.evaluate(() => window.__lastCode || "");
+      const want = await page.evaluate(() => +document.body.dataset.outPages);
+      const r = code.includes('from "bm-engine/pdf"') && code.includes("new PdfRenderer()") ? runSnippet(code) : { status: -1, stderr: "no snippet" };
+      const ok = r.status === 0 && r.head === "%PDF-" && r.pages === want;
+      R.extra["Copy code -> runs in Node.js"] = ok ? `pass (accessible template, PDF/UA-1 + image: ${r.pages} page, ${r.bytes} B; ${code.split("\n").length} lines)` : "FAIL";
+      check(ok, `${tag}: copy code run: ${JSON.stringify(r)}`); }
+
+    // ---- engine errors verbatim: a PDF/UA violation (with the hint), a colour the engine rejects, a character no font draws
+    await setPdf(page, { title: "" }); await doRender(page);
+    s = await pdfSnap(page);
+    { const hint = await page.$eval("#errorHint", (e) => (e.hidden ? "" : e.textContent));
+      const ok = s.status === "error" && s.error === "bm-engine: Writing the PDF failed: validation failed with 1 error" && /metadata.title/.test(hint);
+      R.extra["PDF/UA validation error (no title) + hint"] = ok ? `pass (${s.error})` : "FAIL"; check(ok, `${tag}: ua1 without title ${JSON.stringify({ s, hint })}`); }
+    await selectPdfTemplate(page, "invoice");
+    await setPdf(page, { bg: "paper" });
+    await doRender(page);
+    s = await pdfSnap(page);
+    { const ok = s.status === "error" && s.error === "bm-engine: backgroundColor is not a color: paper";
+      R.extra["engine error shown verbatim (backgroundColor)"] = ok ? `pass (${s.error})` : "FAIL"; check(ok, `${tag}: bg error ${JSON.stringify(s)}`); }
+    await setPdf(page, { bg: "" });
+    await setSource(page, "html", "<p style=\"font-family: Inter\">Tokyo 東京</p>");
+    await doRender(page);
+    s = await pdfSnap(page);
+    { const ok = s.status === "error" && /^bm-engine: No font the text can use draws 東/.test(s.error);
+      R.extra["missing font error (uncoveredText: error)"] = ok ? `pass (${s.error.slice(0, 60)}...)` : "FAIL"; check(ok, `${tag}: missing font ${JSON.stringify(s)}`); }
+    await setPdf(page, { uncovered: "blank" }); await doRender(page);
+    s = await pdfSnap(page); check(s.status === "ok" && s.head.startsWith("%PDF-"), `${tag}: uncoveredText blank ${JSON.stringify(s)}`);
+    // conformance selects follow the typings: pdfa 2a forbids tagged false / ua2
+    await setPdf(page, { pdfa: "2a" }); await sleep(100);
+    { const dis = await page.$$eval("#pdfTagged option", (o) => o.filter((x) => x.disabled).map((x) => x.value).join(","));
+      R.extra["tagged choices limited by pdfa (2a)"] = dis === "false,ua2" ? "pass (false, ua2 disabled)" : "FAIL"; check(dis === "false,ua2", `${tag}: tagged disabled for 2a: ${dis}`); }
+    await setPdf(page, { pdfa: "" });
+
+    // ---- share link: mode + PDF options survive a fresh browser profile
+    await selectPdfTemplate(page, "invoice");
+    await setPdf(page, { size: "letter", landscape: true, title: "Shared invoice", outline: true, pageRanges: "1" });
+    await doRender(page);
+    await page.click("#shareBtn"); await sleep(400);
+    const shareUrl = await page.evaluate(() => window.__shareUrl || "");
+    check(/[?&]mode=pdf/.test(shareUrl) && /#s=[zp]\./.test(shareUrl), `${tag}: share URL ${shareUrl.slice(0, 120)}`);
+    const ctx2 = await browser.createBrowserContext();
+    const p2 = await ctx2.newPage(); await p2.setViewport({ width: 1440, height: 900 }); watch(p2, tag + "-share", sink);
+    const u = new URL(shareUrl); u.searchParams.delete("mode"); // the hash alone must restore the mode
+    await p2.goto(u.href, { waitUntil: "load" });
+    await p2.waitForFunction("document.body.dataset.ready === '1' && +document.body.dataset.renders > 0 && document.body.dataset.previewReady", { timeout: 60000 });
+    { const st = await p2.evaluate(() => ({ mode: window.pg.state.mode, p: window.pg.state.pdf, size: document.getElementById("pdfSize").value, land: document.querySelector('[data-pdf="landscape"]').checked, title: document.querySelector('[data-pdf="title"]').value }));
+      const s2 = await pdfSnap(p2);
+      const ok = st.mode === "pdf" && st.size === "letter" && st.land && st.title === "Shared invoice" && st.p.outline === true && st.p.pageRanges === "1" && s2.status === "ok" && s2.pages === 1;
+      R.extra["share link round trip (mode + PDF options)"] = ok ? `pass (${shareUrl.length} chars)` : "FAIL"; check(ok, `${tag}: share round trip ${JSON.stringify({ st, s2 })}`); }
+    await ctx2.close();
+
+    // ---- back to Image: the editor content stays and renders as an image
+    const srcPdf = await page.$eval("#src", (e) => e.value);
+    b = await renders(page);
+    await page.click('#modeSwitch button[data-mode="image"]');
+    await settle(page, b);
+    { const st = await page.evaluate(() => ({ mode: document.body.dataset.mode, src: document.getElementById("src").value, fmt: document.body.dataset.outFormat, status: document.body.dataset.status, url: location.search }));
+      const ok = st.mode === "image" && st.src === srcPdf && st.fmt === "png" && st.status === "ok" && /mode=image/.test(st.url);
+      R.extra["PDF -> Image keeps the editor"] = ok ? "pass" : "FAIL"; check(ok, `${tag}: back to image ${JSON.stringify(st)}`); }
+
+    // ---- dark theme accent and the phone layout (pdf.js preview: a phone browser has no inline viewer)
+    const pd = await ctx.newPage(); watch(pd, tag + "-dark", sink);
+    await pd.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+    await pd.setViewport({ width: 1440, height: 900 });
+    await pd.goto(`${base}?mode=pdf`, { waitUntil: "load" });
+    await pd.waitForFunction("document.body.dataset.ready === '1' && document.body.dataset.previewReady", { timeout: 60000 });
+    { const a = await pd.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().toLowerCase());
+      R.extra["dark theme (PDF accent #fb7185)"] = a === "#fb7185" ? "pass" : "FAIL"; check(a === "#fb7185", `${tag}: dark accent ${a}`); }
+    await pd.close();
+    const pm = await ctx.newPage(); watch(pm, tag + "-mobile", sink);
+    await pm.setUserAgent(IPHONE_UA);
+    await pm.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    await pm.goto(`${base}?mode=pdf`, { waitUntil: "load" });
+    await pm.waitForFunction("document.body.dataset.ready === '1' && ['pdfjs','pdfjs-error'].includes(document.body.dataset.previewReady)", { timeout: 60000 });
+    { const k = await canvasInk(pm.mainFrame()); const o = await pm.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      const ok = k.n >= 1 && k.ink > 0.01 && o <= 1;
+      R.extra["phone (iPhone UA, 390px): pdf.js preview, no overflow"] = ok ? `pass (${k.n} page canvas, overflow ${o}px)` : "FAIL"; check(ok, `${tag}: mobile ${JSON.stringify({ k, o })}`); }
+    await pm.close();
+  } catch (e) { fail(`${tag}: exception ${e.stack || e}`); }
+  check(sink.length === 0, `${tag}: browser errors:\n  ` + sink.join("\n  "));
+  R.extra["console/page/network errors"] = sink.length ? sink.length + " (see FAIL)" : "none";
+  await ctx.close();
+}
+
+/** /pdf/playground and /vi/pdf/playground of the built docs site: the embedded app in PDF mode. */
+async function sitePdfSuite(siteBase, lang) {
+  const route = lang === "vi" ? "/vi/pdf/playground" : "/pdf/playground";
+  const tag = `site${route}`;
+  const sink = [];
+  const R = { templates: {}, extra: {} };
+  results[tag] = R;
+  const ctx = await browser.createBrowserContext();
+  try {
+    const page = await ctx.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
+    watch(page, tag, sink);
+    const reqs = trackRequests(page);
+    const resp = await page.goto(siteBase + route, { waitUntil: "load" });
+    check(resp.status() === 200, `${tag}: HTTP ${resp.status()}`);
+    await page.waitForSelector("iframe.pg-embed-frame", { timeout: 30000 });
+    const src = await page.$eval("iframe.pg-embed-frame", (f) => f.getAttribute("src"));
+    check(src.includes("mode=pdf") && src.includes("embed=1") && src.includes(`lang=${lang}`), `${tag}: iframe src ${src}`);
+    const frame = await (await page.$("iframe.pg-embed-frame")).contentFrame();
+    await frame.waitForFunction(() => document.body?.dataset.ready === "1" && +document.body.dataset.renders > 0 && document.body.dataset.previewReady, { timeout: 60000 });
+    const ui = await frame.evaluate(() => ({ lang: document.documentElement.lang, switchShown: getComputedStyle(document.getElementById("modeSwitch")).display !== "none", tpl: document.getElementById("template").value }));
+    check(ui.lang === lang && !ui.switchShown && ui.tpl === "invoice", `${tag}: embedded app ${JSON.stringify(ui)}`);
+    let s = await pdfSnap(frame);
+    check(s.status === "ok" && s.head.startsWith("%PDF-") && s.pages === 1, `${tag}: first render ${JSON.stringify(s)}`);
+    R.templates["invoice (first render)"] = `pass (${s.pages} page, ${s.bytes} B, ${s.time})`;
+    // the nested iframe (docs page > app > blob: PDF) shows the page in the browser's viewer
+    const v = await viewerShows(page, frame);
+    const vok = v.url.startsWith("blob:") && v.colors > 8 && v.dark > 200;
+    R.extra["nested iframe: browser PDF viewer shows the page"] = vok ? `pass (${v.colors} colours, ${v.dark} dark px in ${v.w}x${v.h})` : "FAIL";
+    check(vok, `${tag}: nested viewer ${JSON.stringify(v)}`);
+    for (const id of ["article", "links"]) {
+      await selectPdfTemplate(frame, id);
+      s = await pdfSnap(frame);
+      const ok = s.status === "ok" && s.head.startsWith("%PDF-") && s.pages === 4;
+      R.templates[id] = ok ? `pass (${s.pages} pages, ${s.bytes} B)` : "FAIL"; check(ok, `${tag}: ${id} ${JSON.stringify(s)}`);
+    }
+    await frame.select("#pdfPreview", "pdfjs");
+    await frame.waitForFunction(() => ["pdfjs", "pdfjs-error"].includes(document.body.dataset.previewReady), { timeout: 30000 });
+    const ink = await canvasInk(frame);
+    const pjOk = ink.n === 4 && ink.ink > 0.01 && reqs.some((u) => PDFJS.test(u)) && reqs.every((u) => u.startsWith(siteBase) || /^(blob|data):/.test(u));
+    R.extra["pdf.js preview inside the docs iframe (served by the site, no CDN)"] = pjOk ? `pass (${ink.n} canvases)` : "FAIL";
+    check(pjOk, `${tag}: embedded pdf.js ${JSON.stringify(ink)} ${reqs.filter((u) => !u.startsWith(siteBase)).join(" ")}`);
+    await frame.select("#pdfPreview", "auto");
+    // the docs page's own switcher: PDF current, Image links to the image playground of this locale
+    const sw = await page.evaluate(() => [...document.querySelectorAll(".bm-pg-switcher a")].map((a) => [a.getAttribute("href"), a.getAttribute("aria-current") || ""]));
+    const pre = lang === "vi" ? "/vi" : "";
+    const swOk = JSON.stringify(sw) === JSON.stringify([[`${pre}/image/playground`, ""], [`${pre}/pdf/playground`, "page"]]);
+    R.extra["page switcher (Image | PDF) above the app"] = swOk ? "pass" : "FAIL";
+    check(swOk, `${tag}: page switcher ${JSON.stringify(sw)}`);
+  } catch (e) { fail(`${tag}: exception ${e.stack || e}`); }
+  check(sink.length === 0, `${tag}: browser errors:\n  ` + sink.join("\n  "));
+  R.extra["console/page/network errors"] = sink.length ? sink.length + " (see FAIL)" : "none";
+  await ctx.close();
+}
+
 // ---------------------------------------------------------------------------------------------- screenshots
 async function shots(base) {
   const sink = [];
@@ -296,6 +615,7 @@ async function siteSuite(siteBase, lang) {
     const page = await ctx.newPage();
     await page.setViewport({ width: 1440, height: 900 });
     watch(page, tag, sink);
+    const reqs = trackRequests(page);
     const resp = await page.goto(siteBase + route, { waitUntil: "load" });
     check(resp.status() === 200, `${tag}: HTTP ${resp.status()}`);
     await page.waitForSelector("iframe.pg-embed-frame", { timeout: 30000 });
@@ -317,6 +637,7 @@ async function siteSuite(siteBase, lang) {
       R.templates[`og-card (${profile})`] = ok ? `pass (${s.bytes} B, ${s.time}, ui=${uiLang})` : "FAIL";
       if (!ok) fail(`${tag}: ${profile}: ${JSON.stringify({ ...s, uiLang })}`); else say(`  ok   ${tag} ${profile} og-card ${s.imgW}x${s.imgH}`);
     }
+    { const hits = reqs.filter((u) => PDF_LAZY.test(u)); R.extra["no PDF engine / pdf.js requested"] = hits.length ? "FAIL" : "pass"; check(!hits.length, `${tag}: requested ${hits.join(", ")}`); }
   } catch (e) { fail(`${tag}: exception ${e.stack || e}`); }
   check(sink.length === 0, `${tag}: browser errors:\n  ` + sink.join("\n  "));
   R.extra["console/page/network errors"] = sink.length ? sink.length + " (see FAIL)" : "none";
@@ -336,6 +657,7 @@ try {
     const t = await fetch(server.url + "/docs/playground-app/..%2f..%2f..%2fpackage.json").catch(() => null); check(!t || t.status >= 400, "directory traversal not blocked"); }
 
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), base, profile);
+  await pdfSuite(base, "pdf (dev)");
   await shots(base);
 
   // ---- dist build
@@ -346,6 +668,9 @@ try {
   say(`dist server: ${distServer.url}`);
   { const r = await fetch(distServer.url + "/vendor/bm_engine.core.wasm"); check(r.headers.get("content-type") === "application/wasm", "dist wasm type"); }
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), distServer.url + "/", profile, { dist: true });
+  { const r = await fetch(distServer.url + "/vendor/bm_engine.pdf.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "dist pdf wasm " + r.status);
+    const cfg = await (await fetch(distServer.url + "/config.js")).text(); check(/versions: \{"bm_engine\.core\.wasm":"[0-9a-f]{12}"/.test(cfg) && /pdfjsBase: "\.\/vendor\/pdfjs-[\d.]+\/"/.test(cfg), "dist config.js: versions / pdfjsBase"); }
+  await pdfSuite(distServer.url + "/", "pdf (dist)", { full: false });
 
   // ---- docs site (VitePress build) embedding the playground
   if (!args["skip-docs-build"] || !existsSync(path.join(SITE, "index.html"))) {
@@ -361,6 +686,7 @@ try {
   say(`docs site server: ${siteServer.url}`);
   { const r = await fetch(siteServer.url + "/playground-app/vendor/bm_engine.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "site wasm " + r.status); }
   for (const lang of ["en", "vi"]) await siteSuite(siteServer.url, lang);
+  for (const lang of ["en", "vi"]) await sitePdfSuite(siteServer.url, lang);
 } catch (e) {
   fail("fatal: " + (e.stack || e));
 } finally {
@@ -378,7 +704,7 @@ for (const [tag, R] of Object.entries(results)) {
   const ex = Object.entries(R.extra);
   if (ex.length) { md.push("| check | result |", "|---|---|", ...ex.map(([k, v]) => `| ${k} | ${v} |`), ""); }
 }
-md.push("## Screenshots", "", "- docs/playground-app/screenshots/og-card-full.png (1440x900, OG card, full profile)", "- docs/playground-app/screenshots/vietnamese-full.png", "- docs/playground-app/screenshots/dark-mode-full.png", "- docs/playground-app/screenshots/mobile-full.png", "");
+md.push("## Screenshots", "", "- bench/out/docs-site/playground-pdf-standalone.png (1440x900, PDF mode, invoice, browser viewer)", "- docs/playground-app/screenshots/og-card-full.png (1440x900, OG card, full profile)", "- docs/playground-app/screenshots/vietnamese-full.png", "- docs/playground-app/screenshots/dark-mode-full.png", "- docs/playground-app/screenshots/mobile-full.png", "");
 if (failures.length) md.push("## Failures", "", ...failures.map((f) => "- " + f.replace(/\n/g, "\n  ")), "");
 writeFileSync(path.join(OUT, "PLAYGROUND.md"), md.join("\n"));
 say(failures.length ? `\n${failures.length} FAILURE(S)` : "\nALL PLAYGROUND CHECKS PASSED");

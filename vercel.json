@@ -24,9 +24,20 @@
     {
       "source": "/playground-app/vendor/fonts/(.*)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=2592000" }]
+    },
+    {
+      "source": "/playground-app/vendor/(.*)\\.wasm",
+      "has": [{ "type": "query", "key": "v" }],
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/playground-app/vendor/pdfjs-(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ],
   "redirects": [
+    { "source": "/:product(image|pdf)", "destination": "/:product/", "permanent": true },
+    { "source": "/vi/:product(image|pdf)", "destination": "/vi/:product/", "permanent": true },
     { "source": "/README", "destination": "/", "permanent": true },
     { "source": "/en/README", "destination": "/overview", "permanent": true },
     { "source": "/vi/README", "destination": "/vi/overview", "permanent": true },

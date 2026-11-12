@@ -15,6 +15,12 @@ npm run docs:build                                   # builds into docs/public/p
 - `config.js` is the only place that knows where the engine lives: dev = `../../js/` and `../../assets/fonts/`;
   `build.mjs` writes a `config.js` pointing at `./vendor/` into its output folder (`--out <dir>`, relative to
   this folder). It needs the prebuilt `js/*.wasm` (tracked in git), not Zig.
+- `?mode=image|pdf` picks the output (the Image | PDF switch in the header changes it in place; the docs
+  site embeds the app with `&embed=1`, which hides that switch, on `/image/playground` and `/pdf/playground`).
+  PDF mode imports `js/pdf.mjs` + `bm_engine.pdf.wasm` on first use only; its preview is the browser's PDF viewer,
+  or pages drawn by pdf.js (`third_party/pdfjs-<version>/`, Apache-2.0, legacy build, also loaded on demand) where
+  the browser has none. `pdf-options.js` maps the options panel to `PdfRenderOptions` and writes the "Copy code"
+  snippet; `pdf-templates.js` holds the PDF templates.
 - `?profile=core|standard|full` picks the binary (one wasm instance per page, so switching reloads);
   `?lang=en|vi` and `?theme=light|dark` override the language and colour scheme (the docs site sets both and
   posts `{ type: "bm-playground:theme" }` messages when the site theme changes). State is kept in localStorage
@@ -24,5 +30,5 @@ npm run docs:build                                   # builds into docs/public/p
 - Deployment: the build output is plain static files, so it is deployed with the docs site (Vercel, see
   `vercel.json` at the repository root). Any static host works if it serves `.wasm` as `application/wasm`.
 
-Tiếng Việt: mã nguồn playground của bm-engine. Trang **Playground** của trang tài liệu (`/vi/playground`) nhúng bản
+Tiếng Việt: mã nguồn playground của bm-engine. Trang **Playground** của trang tài liệu (`/vi/image/playground`, `/vi/pdf/playground`) nhúng bản
 build độc lập của thư mục này; `npm run playground` chạy bản phát triển tại `http://127.0.0.1:8080/docs/playground-app/`.

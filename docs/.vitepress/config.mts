@@ -176,6 +176,7 @@ const PDF_GROUPS: G[] = [
     ["pdf/", "PDF quick start", "Bắt đầu nhanh"],
     ["pdf/page-size-and-viewport", "Page size, margins, viewport", "Khổ giấy, lề, viewport"],
     ["pdf/native-and-wasm", "Native & WebAssembly", "Native và WebAssembly"],
+    ["pdf/playground", "Playground", "Playground"],
   ]],
   ["Guides", "Hướng dẫn", [
     ["pdf/pagination", "Pagination", "Phân trang"],
@@ -278,10 +279,11 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "Image", link: "/image/", activeMatch: "^/image/(?!playground)" },
-          { text: "PDF", link: "/pdf/", activeMatch: "^/pdf/" },
+          { text: "PDF", link: "/pdf/", activeMatch: "^/pdf/(?!playground)" },
           { text: "Install", link: "/getting-started", activeMatch: "^/(getting-started|overview|native-vs-wasm|profiles-and-size|outputs-compared|troubleshooting|building-from-source|publishing)" },
           { text: "Benchmark", link: "/benchmark", activeMatch: "^/(benchmark|results-full)" },
-          { text: "Playground", link: "/image/playground", activeMatch: "^/image/playground" },
+          // points at /pdf/playground while the reader is in the PDF product (theme/product.ts)
+          { text: "Playground", link: "/image/playground", activeMatch: "^/(image|pdf)/playground" },
         ],
         sidebar: sidebars(false),
         products: {
@@ -302,10 +304,10 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: "Ảnh", link: "/vi/image/", activeMatch: "^/vi/image/(?!playground)" },
-          { text: "PDF", link: "/vi/pdf/", activeMatch: "^/vi/pdf/" },
+          { text: "PDF", link: "/vi/pdf/", activeMatch: "^/vi/pdf/(?!playground)" },
           { text: "Cài đặt", link: "/vi/getting-started", activeMatch: "^/vi/(getting-started|overview|native-vs-wasm|profiles-and-size|outputs-compared|troubleshooting|building-from-source|publishing)" },
           { text: "Benchmark", link: "/vi/benchmark", activeMatch: "^/vi/benchmark" },
-          { text: "Playground", link: "/vi/image/playground", activeMatch: "^/vi/image/playground" },
+          { text: "Playground", link: "/vi/image/playground", activeMatch: "^/vi/(image|pdf)/playground" },
         ],
         sidebar: sidebars(true),
         products: {

@@ -11,10 +11,20 @@
 <header class="top">
   <div class="brand">
     <h1 data-i18n="title">bm-engine playground</h1>
-    <p class="sub" data-i18n="subtitle"></p>
+    <p class="sub" id="subtitle"></p>
+  </div>
+  <div class="modes" id="modeSwitch" role="radiogroup" data-i18n-aria="modeLabel" aria-label="Output">
+    <button type="button" role="radio" data-mode="image" aria-checked="true">
+      <span class="mode-icon is-image" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></svg></span>
+      <span data-i18n="modeImage">Image</span>
+    </button>
+    <button type="button" role="radio" data-mode="pdf" aria-checked="false">
+      <span class="mode-icon is-pdf" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8M16 13H8M16 17H8" /></svg></span>
+      <span data-i18n="modePdf">PDF</span>
+    </button>
   </div>
   <div class="top-controls">
-    <label class="inline"><span data-i18n="profile">Profile</span>
+    <label class="inline" id="profileBox"><span data-i18n="profile">Profile</span>
       <select id="profile">
         <option value="core">core</option>
         <option value="standard">standard</option>
@@ -48,10 +58,10 @@
 
     <details open id="cssBox"><summary><span data-i18n="css">CSS</span> <i id="cssMiss" class="miss" hidden>x</i></summary>
       <textarea id="css" class="code" spellcheck="false" rows="7" aria-label="css"></textarea>
-      <p class="note" data-i18n="cssNote"></p>
+      <p class="note" id="cssNote"></p>
     </details>
 
-    <details open><summary data-i18n="options">Options</summary>
+    <details open id="imgOptBox" class="image-only"><summary data-i18n="options">Options</summary>
       <div class="grid">
         <label><span class="lbl" data-i18n="width">Width</span><input id="width" type="number" min="1" max="4096" step="1" /></label>
         <label><span class="lbl" data-i18n="height">Height</span><input id="height" type="number" min="1" max="4096" step="1" /></label>
@@ -68,6 +78,56 @@
         <label id="fpsBox"><span class="lbl" data-i18n="fps">FPS</span><input id="fps" type="number" min="1" max="50" step="1" /></label>
         <label id="durBox"><span class="lbl" data-i18n="duration">Duration</span><input id="duration" type="number" min="100" max="10000" step="100" /></label>
       </div>
+    </details>
+
+    <!-- PDF mode: every field maps to a PdfRenderOptions entry (see pdf-options.js) -->
+    <details open id="pdfPageBox" class="pdf-only" hidden><summary data-i18n="pdfPage">Page</summary>
+      <div class="grid">
+        <label class="wide"><span class="lbl" data-i18n="layout">Layout</span>
+          <select id="pdfLayout" data-pdf="layout"><option value="paged" data-i18n="layoutPaged">Paged</option><option value="viewport" data-i18n="layoutViewport">One page (viewport)</option></select>
+        </label>
+        <label class="wide paged-only"><span class="lbl"><code>size</code></span>
+          <select id="pdfSize" data-pdf="size"></select>
+        </label>
+        <label class="paged-only custom-only"><span class="lbl" data-i18n="widthPx">Width (px)</span><input type="number" min="1" step="1" data-pdf="cw" /></label>
+        <label class="paged-only custom-only"><span class="lbl" data-i18n="heightPx">Height (px)</span><input type="number" min="1" step="1" data-pdf="ch" /></label>
+        <label class="check wide paged-only"><input type="checkbox" data-pdf="landscape" /> <span><code>landscape</code></span></label>
+        <label class="viewport-only"><span class="lbl" data-i18n="widthPx">Width (px)</span><input type="number" min="1" step="1" data-pdf="vw" /></label>
+        <label class="viewport-only"><span class="lbl" data-i18n="vpHeight">Height (px)</span><input type="number" min="1" step="1" data-pdf="vh" data-i18n-ph="fitContent" /></label>
+        <label class="paged-only"><span class="lbl" data-i18n="mTop">Margin top</span><input type="number" min="0" step="1" data-pdf="mt" placeholder="auto" /></label>
+        <label class="paged-only"><span class="lbl" data-i18n="mRight">Right</span><input type="number" min="0" step="1" data-pdf="mr" placeholder="auto" /></label>
+        <label class="paged-only"><span class="lbl" data-i18n="mBottom">Bottom</span><input type="number" min="0" step="1" data-pdf="mb" placeholder="auto" /></label>
+        <label class="paged-only"><span class="lbl" data-i18n="mLeft">Left</span><input type="number" min="0" step="1" data-pdf="ml" placeholder="auto" /></label>
+        <label class="wide paged-only"><span class="lbl"><code>pageRanges</code></span><input type="text" data-pdf="pageRanges" data-i18n-ph="rangesPh" /></label>
+        <label class="wide"><span class="lbl"><code>backgroundColor</code></span><input type="text" data-pdf="bg" data-i18n-ph="bgPh" /></label>
+      </div>
+      <p class="note" data-i18n="pageNote"></p>
+    </details>
+
+    <details id="pdfBandsBox" class="pdf-only paged-only" hidden><summary data-i18n="bands">Header and footer</summary>
+      <label class="block"><span class="lbl"><code>header</code></span><textarea class="code" rows="3" spellcheck="false" data-pdf="header" aria-label="header"></textarea></label>
+      <label class="block"><span class="lbl"><code>footer</code></span><textarea class="code" rows="3" spellcheck="false" data-pdf="footer" aria-label="footer"></textarea></label>
+      <div class="row">
+        <button type="button" id="insertCounters" data-i18n="insertCounters">Footer: Page X of Y</button>
+        <label class="check"><input type="checkbox" data-pdf="plainFirst" /> <span data-i18n="plainFirst">No bands on the first page</span></label>
+      </div>
+      <p class="note" data-i18n="bandNote"></p>
+    </details>
+
+    <details id="pdfDocBox" class="pdf-only" hidden><summary data-i18n="docStd">Document and standards</summary>
+      <div class="grid">
+        <label class="wide"><span class="lbl" data-i18n="docTitle">Title</span><input type="text" data-pdf="title" /></label>
+        <label class="wide"><span class="lbl" data-i18n="docAuthor">Authors</span><input type="text" data-pdf="author" data-i18n-ph="commaPh" /></label>
+        <label class="wide"><span class="lbl" data-i18n="docSubject">Subject</span><input type="text" data-pdf="subject" /></label>
+        <label class="wide"><span class="lbl" data-i18n="docKeywords">Keywords</span><input type="text" data-pdf="keywords" data-i18n-ph="commaPh" /></label>
+        <label><span class="lbl"><code>lang</code></span><input type="text" data-pdf="lang" placeholder="en" /></label>
+        <label><span class="lbl" data-i18n="docDate">Creation date</span><input type="text" data-pdf="creationDate" placeholder="2026-01-31" /></label>
+        <label class="check wide"><input type="checkbox" data-pdf="outline" /> <span><code>outline</code> <span data-i18n="outlineNote">(bookmarks from h1-h6)</span></span></label>
+        <label><span class="lbl"><code>tagged</code></span><select id="pdfTagged" data-pdf="tagged"></select></label>
+        <label><span class="lbl"><code>pdfa</code></span><select id="pdfPdfa" data-pdf="pdfa"></select></label>
+        <label class="wide"><span class="lbl"><code>uncoveredText</code></span><select id="pdfUncovered" data-pdf="uncovered"></select></label>
+      </div>
+      <p class="note" data-i18n="stdNote"></p>
     </details>
 
     <details id="fontsBox"><summary data-i18n="fonts">Fonts</summary>
@@ -93,11 +153,20 @@
   <section class="pane preview" aria-label="preview">
     <div class="toolbar">
       <button id="renderBtn" class="primary" type="button"><span data-i18n="render">Render</span> <kbd>Ctrl+Enter</kbd></button>
-      <button id="downloadBtn" type="button" data-i18n="download" disabled>Download</button>
-      <button id="copyBtn" type="button" data-i18n="copyDataUrl" disabled>Copy data URL</button>
+      <button id="downloadBtn" type="button" disabled>Download</button>
+      <button id="openBtn" class="pdf-only" type="button" data-i18n="openTab" disabled hidden>Open in new tab</button>
+      <button id="copyBtn" class="image-only" type="button" data-i18n="copyDataUrl" disabled>Copy data URL</button>
+      <button id="codeBtn" class="pdf-only" type="button" data-i18n="copyCode" hidden>Copy code</button>
       <button id="shareBtn" type="button" data-i18n="share">Share link</button>
       <label class="check"><input id="measureToggle" type="checkbox" /> <span data-i18n="measure">measure()</span></label>
       <label class="check"><input id="autoRender" type="checkbox" checked /> <span data-i18n="autoRender">Auto render</span></label>
+      <label class="inline pdf-only" hidden><span data-i18n="preview">Preview</span>
+        <select id="pdfPreview">
+          <option value="auto" data-i18n="previewAuto">Auto</option>
+          <option value="viewer" data-i18n="previewViewer">Browser viewer</option>
+          <option value="pdfjs" data-i18n="previewPdfjs">pdf.js pages</option>
+        </select>
+      </label>
       <span id="toast" class="toast" role="status" aria-live="polite"></span>
     </div>
     <div id="errorPanel" class="error" role="alert" hidden>
@@ -112,12 +181,18 @@
         <canvas id="outCanvas" hidden></canvas>
         <div id="overlay" class="overlay" hidden></div>
       </div>
+      <div id="pdfView" class="pdfview" hidden>
+        <iframe id="pdfFrame" data-i18n-title="previewTitle" title="PDF preview" hidden></iframe>
+        <div id="pdfPages" class="pdfpages" hidden></div>
+      </div>
     </div>
+    <p id="previewNote" class="note pdf-only" hidden></p>
     <dl id="stats" class="stats">
       <div><dt data-i18n="renderTime">Render</dt><dd id="stTime">-</dd></div>
       <div><dt data-i18n="size">Size</dt><dd id="stBytes">-</dd></div>
-      <div><dt data-i18n="dims">Pixels</dt><dd id="stDims">-</dd></div>
+      <div><dt id="stDimsLbl" data-i18n="dims">Pixels</dt><dd id="stDims">-</dd></div>
       <div><dt data-i18n="memory">wasm memory</dt><dd id="stMem">-</dd></div>
+      <div id="stMeasureBox" hidden><dt data-i18n="measured">measure()</dt><dd id="stMeasure">-</dd></div>
     </dl>
   </section>
 </main>
