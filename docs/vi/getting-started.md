@@ -76,8 +76,8 @@ trở lên.
 
 ### Package manager, Docker, serverless
 
-- **npm, pnpm, Yarn, Bun** tôn trọng `os` và `cpu`. `libc` (glibc hay musl) được npm hiện tại (đã kiểm
-  thử: npm 11), pnpm và Yarn 3.2+ tôn trọng; một package manager bỏ qua nó có thể cài cả hai biến thể
+- **npm, pnpm, Yarn, Bun** tôn trọng `os` và `cpu` (ở đây chỉ npm được kiểm thử). `libc` (glibc hay musl) được npm hiện tại (đã kiểm
+  thử: npm 11) và, theo tài liệu của chúng, pnpm và Yarn 3.2+ tôn trọng; một package manager bỏ qua nó có thể cài cả hai biến thể
   Linux cho kiến trúc của bạn, điều này vô hại: `bm-engine` phát hiện musl và nạp đúng cái.
 - **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) không cài platform
   package nào: bạn nhận WebAssembly (đã kiểm thử với npm).

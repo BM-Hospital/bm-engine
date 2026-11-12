@@ -75,8 +75,8 @@ need an x86-64-v2 CPU (SSE4.2, 2009 onwards); older CPUs get WebAssembly. Node.j
 
 ### Package managers, Docker, serverless
 
-- **npm, pnpm, Yarn, Bun** honour `os` and `cpu`. `libc` (glibc or musl) is honoured by current npm
-  (tested: npm 11), pnpm and Yarn 3.2+; a manager that ignores it may install both Linux variants of your
+- **npm, pnpm, Yarn, Bun** honour `os` and `cpu` (only npm was tested here). `libc` (glibc or musl) is honoured by current npm
+  (tested: npm 11) and, per their documentation, pnpm and Yarn 3.2+; a manager that ignores it may install both Linux variants of your
   architecture, which is harmless: `bm-engine` detects musl and loads the right one.
 - **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) installs no platform
   package: you get WebAssembly (tested with npm).
