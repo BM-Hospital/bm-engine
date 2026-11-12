@@ -1486,6 +1486,14 @@ pub const Frame = struct {
                 out.* = style.computeLayers(h.f.a, &h.f.ctx, h.parent, layers[0..n], &diag) catch |e| return h.f.styleFail(e, &diag);
                 return out;
             }
+            /// The element's style with its font size forced to `px` (device px; animated font-size).
+            pub fn fontSizeStyle(h: @This(), px: f32) Error!*const CS {
+                var txt: std.ArrayList(u8) = .empty;
+                try writeNum(h.f.a, &txt, px / h.f.opts.dpr);
+                try txt.appendSlice(h.f.a, "px");
+                const decls = [1]style.Declaration{.{ .name = "font-size", .value = txt.items, .important = true }};
+                return h.keyframeStyle(&decls);
+            }
         };
         const r = animate.apply(f.a, cs, f.opts.time_ms, Host{ .f = f, .i = i, .parent = parent_cs }) catch |e| return e;
         if (r) |x| cs.* = x.*;
