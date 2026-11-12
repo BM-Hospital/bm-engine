@@ -1677,6 +1677,17 @@ pub const Frame = struct {
         }
     }
 
+    /// takumi `participates_in_inflow_inline_formatting_context` after an in-flow child; floats and
+    /// out-of-flow boxes keep `prev`.
+    fn afterInline(f: *const Frame, item: Item, prev: bool) bool {
+        const cs = f.itemStyle(item);
+        if (cs.display == .none or cs.position == .absolute or cs.position == .fixed or cs.float != .none) return prev;
+        return switch (cs.display) {
+            .@"inline", .inline_block, .inline_flex, .inline_grid, .inline_table, .webkit_inline_box => true,
+            else => false,
+        };
+    }
+
     fn inFlowInline(cs: *const CS) bool {
         // (a float is blockified)
         return cs.display == .@"inline" and cs.position != .absolute and cs.position != .fixed and cs.float == .none;
@@ -1725,13 +1736,16 @@ pub const Frame = struct {
         };
     }
 
-    fn isBlankRun(f: *const Frame, item: Item) bool {
+    /// Collapsible white-space-only text (takumi `is_collapsible_whitespace_only_text_node`): a bare
+    /// run, or with `elements` also a text element (class / style / tw ...), never `<br>`.
+    fn isBlankText(f: *const Frame, item: Item, elements: bool) bool {
         const i = switch (item) {
             .el => |i| i,
             .ps => return false,
         };
         const el = f.dom.at(i);
-        if (!el.run or el.cs.white_space_collapse != .collapse) return false;
+        if (el.kind != .text or el.own != none or el.cs.white_space_collapse != .collapse) return false;
+        if (!el.run and (!elements or std.ascii.eqlIgnoreCase(el.tag, "br"))) return false;
         for (el.text) |c| if (c != ' ' and c != '\n' and c != '\t' and c != '\r' and c != 0x0c) return false;
         return true;
     }
@@ -1790,9 +1804,18 @@ pub const Frame = struct {
         var run_start = it;
         var run_len: u32 = 0;
         var run_content = false;
+        // takumi `drop_collapsible_boundary_whitespace`: white-space-only text (bare or a text element)
+        // not preceded by in-flow inline content generates nothing.
+        var after_inline = cs.display == .@"inline";
         while (true) {
             const before = it;
             const c = it.next();
+            var drop = false;
+            if (c) |x| {
+                drop = !after_inline and f.isBlankText(x, true);
+                if (!drop) after_inline = f.afterInline(x, after_inline);
+            }
+            if (drop and run_len == 0) continue;
             var joins = false;
             if (c) |x| {
                 if (inline_ctx) {
@@ -1812,7 +1835,7 @@ pub const Frame = struct {
             }
             const x = c orelse break;
             // white-space-only text between boxes generates nothing
-            if (f.isBlankRun(x)) continue;
+            if (drop or f.isBlankText(x, !inline_ctx)) continue;
             try f.buildItem(x, id, depth + 1);
         }
         return id;

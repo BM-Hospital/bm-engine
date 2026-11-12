@@ -1,0 +1,10 @@
+import { both } from "./lib.mjs";
+import { templates } from "../../../docs/playground-app/templates.js";
+import { compare, verdict } from "../../lib/metrics.mjs";
+const t = templates.find((x) => x.id === "css-demo");
+const node = JSON.parse(t.source);
+const r = await both((e) => e.measure(node, { width: t.width, height: t.height, css: [t.css] }));
+for (const k of ["tk", "bm"]) console.log(k, typeof r[k] === "string" ? r[k] : r[k].children.map((c) => `${c.width}x${c.height}`).join(" "));
+const px = await both(async (e) => new Uint8Array(await e.render(node, { width: t.width, height: t.height, css: [t.css], format: "raw" })));
+const m = compare(px.tk, px.bm, t.width, t.height); m.verdict = verdict(m);
+console.log(m && m);

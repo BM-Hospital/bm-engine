@@ -106,7 +106,7 @@ const cssDemoCss = `.list { display: flex; flex-direction: column; width: 100%; 
 .item:nth-child(3n) { padding-left: 64px; }
 .item.muted { color: #6b7280; }
 @media (min-width: 900px) { .list { background: #f0fdf4; } .item { font-size: 30px; } }`;
-const cssDemo = J({ type: "container", className: "list", children: ["Alpha (first-child)", "Beta (even)", "Gamma (3n, muted)", "Delta", "Epsilon", "Zeta (last-child)"].map((s, i) => ({ type: "text", className: i === 2 ? "item muted" : "item", text: s })) });
+const cssDemo = J({ type: "container", className: "list", children: ["Alpha (first-child)", "Beta (even)", "Gamma (3n, muted)", "Delta", "Epsilon", "Zeta (last-child)"].map((s, i) => ({ type: "text", tagName: "div", className: i === 2 ? "item muted" : "item", text: s })) });
 
 const animCss = `@keyframes pulse { 0% { transform: scale(0.6) rotate(0deg); background-color: #ef4444; border-radius: 8px }
   50% { transform: scale(1.1) rotate(180deg); background-color: #f59e0b; border-radius: 60px }
