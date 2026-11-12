@@ -192,6 +192,12 @@ pub const MatchResult = struct {
     /// Declarations `[start .. important_start)` (appended to `out`) are the normal ones in ascending
     /// precedence; `[important_start .. out.len)` the `!important` ones in ascending precedence.
     important_start: usize,
+    /// Where the unlayered normal declarations start (`<= important_start`): `[start ..
+    /// unlayered_start)` come from named `@layer`s. takumi puts the `tw` utilities between the two.
+    unlayered_start: usize = 0,
+    /// Where the `!important` declarations of named layers start (`>= important_start`):
+    /// `[important_start .. layered_important_start)` are unlayered ones; `tw` goes between.
+    layered_important_start: usize = 0,
     /// For `.before`/`.after`: whether a matched declaration sets `content` (takumi creates the
     /// pseudo-element box only then).
     sets_content: bool = false,
@@ -218,7 +224,7 @@ pub fn match(m: *const Matcher, scratch: *Scratch, dom: *const sel.Dom, el: sel.
     scratch.cand.clearRetainingCapacity();
     scratch.keys.clearRetainingCapacity();
     const out_start = out.items.len;
-    var res: MatchResult = .{ .important_start = out_start };
+    var res: MatchResult = .{ .important_start = out_start, .unlayered_start = out_start, .layered_important_start = out_start };
     const want = pseudoOf(pseudo);
     if (pseudo == .before and !m.has_before) return res;
     if (pseudo == .after and !m.has_after) return res;
@@ -277,7 +283,12 @@ pub fn match(m: *const Matcher, scratch: *Scratch, dom: *const sel.Dom, el: sel.
     const keys = scratch.keys.items;
     std.sort.heap(u64, keys, {}, std.sort.asc(u64));
     // normal
+    var unlayered_seen = false;
     for (keys) |k| {
+        if (!unlayered_seen and (k >> 54) >= @min(m.layer_count, 1023)) {
+            unlayered_seen = true;
+            res.unlayered_start = out.items.len;
+        }
         const r = m.rules[@intCast(k & 0xFF_FFFF)].rule;
         for (r.decls) |d| if (!d.important) {
             try out.append(gpa, d);
@@ -285,6 +296,8 @@ pub fn match(m: *const Matcher, scratch: *Scratch, dom: *const sel.Dom, el: sel.
         };
     }
     res.important_start = out.items.len;
+    if (!unlayered_seen) res.unlayered_start = out.items.len;
+    res.layered_important_start = out.items.len;
     // important: re-key the layer part (unlayered -> 0, layer i -> L - i)
     var any_imp = false;
     for (keys) |*k| {
@@ -305,14 +318,20 @@ pub fn match(m: *const Matcher, scratch: *Scratch, dom: *const sel.Dom, el: sel.
     }
     if (any_imp) {
         std.sort.heap(u64, keys, {}, std.sort.asc(u64));
+        var layered_seen = false;
         for (keys) |k| {
             if (k >> 63 != 0) break;
+            if (!layered_seen and (k >> 54) != 0) {
+                layered_seen = true;
+                res.layered_important_start = out.items.len;
+            }
             const r = m.rules[@intCast(k & 0xFF_FFFF)].rule;
             for (r.decls) |d| if (d.important) {
                 try out.append(gpa, d);
                 if (tk.seq(d.name, "content")) res.sets_content = true;
             };
         }
+        if (!layered_seen) res.layered_important_start = out.items.len;
     }
     return res;
 }

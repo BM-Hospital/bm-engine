@@ -117,4 +117,54 @@ const item5 = [
   },
 ];
 
-export default [...item1, ...item2, ...item5];
+// ------------------------------------------------------------------------------------- 6. Tailwind
+// (a) theme variables (`@theme` = `:root`, or set on a node) feed utilities only when defined (takumi `TwVarRef`):
+// colours (+ opacity modifier, palette overrides, gradient stops), --spacing / --spacing-*, --radius-*, --text-*,
+// --container-*, --animate-*, --breakpoint-*. (c) animate-* presets / arbitrary. (f) cascade: named @layer < tw <
+// unlayered rules; !important reversed.
+const themeCss = `@theme {
+  --color-brand-500: #7c3aed; --color-red-500: #059669; --spacing: 3px; --spacing-big: 26px; --radius-blob: 22px 4px;
+  --text-huge: 34px; --text-huge--line-height: 40px; --container-card: 150px; --breakpoint-tab: 300px; --breakpoint-md: 2000px;
+}`;
+const tw = (t, extra = {}) => ({ type: "container", tw: t, children: [], ...extra });
+const item6 = [
+  {
+    id: "fix-css-tw-theme", feature: "tailwind", title: "@theme tokens: brand colour (+ /50), palette override, --spacing, --spacing-*, --radius-*, --text-*, --container-*, --breakpoint-*", width: 640, height: 360,
+    opts: { css: [themeCss] },
+    node: { type: "container", tw: "flex flex-col w-full h-full p-4 gap-big bg-white", style: { fontFamily: "Inter" }, children: [
+      { type: "container", tw: "flex gap-4", children: [tw("w-16 h-16 bg-brand-500 rounded-blob"), tw("w-16 h-16 bg-brand-500/50"), tw("w-16 h-16 bg-red-500"), tw("w-big h-16 bg-linear-to-r from-red-500 to-brand-500"), tw("w-16 h-16 border-4 border-brand-500 -ml-big")] },
+      { type: "text", text: "Huge brand text", tw: "text-huge text-brand-500 max-w-card" },
+      { type: "container", tw: "flex gap-2", children: [tw("w-10 h-10 bg-gray-300 tab:bg-brand-500"), tw("w-10 h-10 bg-gray-300 md:bg-red-500"), tw("w-10 h-10 bg-gray-300 sm:bg-sky-500")] },
+    ] },
+  },
+  {
+    id: "fix-css-tw-theme-node-vars", feature: "tailwind", title: "theme variables set on nodes (inherited), undefined tokens stay no-ops", width: 480, height: 200,
+    node: { type: "container", tw: "flex gap-3 p-4 w-full h-full bg-slate-50", style: { "--color-accent": "#f43f5e", "--spacing-gutter": "18px" }, children: [
+      tw("w-16 h-16 bg-accent p-gutter"), tw("w-16 h-16 bg-sky-500 bg-nothing"), tw("w-16 h-16 bg-accent/40 rounded-xl", { style: { "--color-accent": "#22c55e" } }), tw("w-gutter h-16 bg-zinc-800"),
+    ] },
+  },
+  {
+    id: "fix-css-tw-animate", feature: "tailwind", title: "animate-spin / ping / pulse / bounce / animate-[...] / --animate-* at timeMs 350", width: 560, height: 160,
+    opts: { timeMs: 350, css: ["@keyframes wig { from { width: 20px } to { width: 60px } } @theme { --animate-wobble: wig 1s linear infinite; }"] },
+    node: { type: "container", tw: "flex items-center gap-8 p-8 w-full h-full bg-white", children: [
+      tw("w-12 h-12 bg-indigo-500 animate-spin"), tw("w-12 h-12 bg-rose-500 animate-ping"), tw("w-12 h-12 bg-amber-500 animate-pulse"), tw("w-12 h-12 bg-emerald-500 animate-bounce"),
+      tw("w-12 h-12 bg-sky-500 animate-[wig_700ms_ease-in-out_infinite]"), tw("w-12 h-12 bg-fuchsia-500 animate-wobble"),
+    ] },
+  },
+  {
+    id: "fix-css-cascade-layers-tw", feature: "css-stylesheet", title: "named @layer < tw < unlayered rules; !important: unlayered < tw < layers", width: 560, height: 120,
+    opts: { css: ["@layer base, components; @layer components { .a { background-color: #2563eb; } .d { background-color: #2563eb !important; } } .b { background-color: #2563eb; } .c { background-color: #2563eb !important; } @layer base { .e { width: 90px; } }"] },
+    node: { type: "container", tw: "flex gap-4 p-6 w-full h-full bg-white", children: [
+      tw("w-16 h-16 bg-red-500", { className: "a" }), tw("w-16 h-16 bg-red-500", { className: "b" }), tw("w-16 h-16 !bg-red-500", { className: "c" }), tw("w-16 h-16 !bg-red-500", { className: "d" }), tw("w-16 h-16 bg-red-500", { className: "e" }),
+    ] },
+  },
+];
+
+// ------------------------------------------------------------------------------------- 7. em with an animated font-size
+const item7 = [0, 500].map((t) => ({
+  id: `fix-css-anim-font-size-em-t${t}`, feature: "animation", title: `own em lengths follow an animated font-size (t=${t})`, width: 300, height: 160,
+  opts: { timeMs: t, css: ["@keyframes fs { from { font-size: 10px } to { font-size: 30px } } .a { animation: fs 1000ms linear; width: 3em; height: 2em; border-radius: 0.5em; background: #6366f1; } .b { animation: fs 1000ms linear; padding: 0.5em; background: #fde68a; } .c { width: 2em; height: 1em; background: #0f172a; }"] },
+  node: { type: "container", style: { display: "flex", gap: 12, padding: 12, width: "100%", height: "100%", backgroundColor: "#fff" }, children: [{ type: "container", className: "a", children: [] }, { type: "container", className: "b", children: [{ type: "container", className: "c", children: [] }] }] },
+}));
+
+export default [...item1, ...item2, ...item5, ...item6, ...item7];

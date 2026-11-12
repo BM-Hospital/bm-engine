@@ -73,3 +73,56 @@ test "image-rendering pixelated: nearest resize picks floor((out + 0.5) * ratio)
     try std.testing.expectEqual(@as(u8, 20), out.data[0]);
     try std.testing.expectEqual(@as(u8, 40), out.data[4]);
 }
+
+test "tw: theme variables only when defined (TwVarRef), animate-* presets" {
+    const tw = @import("tw/tw.zig");
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    const Stub = struct {
+        fn defined(_: *const anyopaque, name: []const u8) bool {
+            return std.mem.eql(u8, name, "--color-brand") or std.mem.eql(u8, name, "--spacing");
+        }
+        fn bp(_: *const anyopaque, token: []const u8) ?[]const u8 {
+            return if (std.mem.eql(u8, token, "tab")) "10px" else null;
+        }
+    };
+    const dummy: u8 = 0;
+    const theme: tw.Theme = .{ .ctx = &dummy, .defined = Stub.defined, .breakpoint = Stub.bp };
+    var out: std.ArrayList(tw.Declaration) = .empty;
+    try tw.compile(arena.allocator(), "bg-brand bg-nope/50 p-2 tab:w-4 animate-spin", .{ .viewport_w = 100, .viewport_h = 100, .theme = &theme }, &out);
+    var seen: u32 = 0;
+    for (out.items) |d| {
+        if (std.mem.eql(u8, d.name, "background-color")) {
+            try std.testing.expectEqualStrings("var(--color-brand)", d.value);
+            seen |= 1;
+        } else if (std.mem.eql(u8, d.name, "padding")) {
+            try std.testing.expectEqualStrings("calc(var(--spacing, 0.25rem) * 2)", d.value);
+            seen |= 2;
+        } else if (std.mem.eql(u8, d.name, "width")) {
+            seen |= 4;
+        } else if (std.mem.eql(u8, d.name, "animation")) {
+            try std.testing.expectEqualStrings("1s linear infinite spin", d.value);
+            seen |= 8;
+        }
+    }
+    try std.testing.expectEqual(@as(u32, 15), seen);
+    // without theme lookups: built-in values, unknown tokens dropped
+    out.clearRetainingCapacity();
+    try tw.compile(arena.allocator(), "bg-brand p-2 tab:w-4", .{ .viewport_w = 100, .viewport_h = 100 }, &out);
+    try std.testing.expectEqual(@as(usize, 1), out.items.len);
+    try std.testing.expectEqualStrings("0.5rem", out.items[0].value);
+}
+
+test "cascade: named @layer < tw < unlayered; own em lengths follow an animated font-size" {
+    const r = try newRenderer();
+    defer r.destroy();
+    const node = "{\"type\":\"container\",\"style\":{\"display\":\"flex\"},\"children\":[{\"type\":\"container\",\"className\":\"q\",\"tw\":\"w-5 h-5\"}]}";
+    var out = try r.measure(node, "{\"width\":100,\"height\":100,\"css\":[\"@layer x { .q { width: 30px } }\"]}");
+    try expectContains(out, "\"children\":[{\"width\":20,");
+    out = try r.measure(node, "{\"width\":100,\"height\":100,\"css\":[\".q { width: 30px }\"]}");
+    try expectContains(out, "\"children\":[{\"width\":30,");
+    if (!@import("config.zig").enable_animation) return;
+    out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"flex\"},\"children\":[{\"type\":\"container\",\"className\":\"a\"}]}", "{\"width\":100,\"height\":100,\"timeMs\":500,\"css\":[\"@keyframes fs{from{font-size:10px}to{font-size:30px}} .a{animation:fs 1000ms linear;width:1em;height:2em}\"]}");
+    try expectContains(out, "\"children\":[{\"width\":20,\"height\":40,");
+}

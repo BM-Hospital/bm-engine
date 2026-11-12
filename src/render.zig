@@ -1214,6 +1214,11 @@ pub const Frame = struct {
     pend_objs: std.ArrayList(PendingObj) = .empty,
     /// A line layout could not be allocated during the layout pass.
     layout_oom: bool = false,
+    /// The inputs mention a Tailwind theme variable (`--color-*`, `--spacing`, `--breakpoint-*`, ...):
+    /// `tw` compiles with theme lookups (else every utility keeps its built-in value).
+    tw_theme: bool = false,
+    /// Computed style of the root element once styled (`--breakpoint-*` lookups).
+    tw_root_cs: ?*const CS = null,
 
     pub const Pseudo = struct { cs: *const CS, text: []const u8 };
 
@@ -1268,6 +1273,9 @@ pub const Frame = struct {
         } else if (nonEmpty(o.css) or nonEmpty(o.stylesheets)) {
             return f.fail("the `css` option is not supported by this build", "");
         }
+        if (comptime config.enable_tw) if (hasThemeVar(source)) {
+            f.tw_theme = true;
+        };
         try f.styleTree(f.dom.root, null, 0);
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
@@ -1355,6 +1363,9 @@ pub const Frame = struct {
             else => return f.fail("the `css` option must be an array", ""),
         };
         for (f.dom.styles) |s| try buf.appendSlice(a, s);
+        if (comptime config.enable_tw) if (hasThemeVar(buf.items)) {
+            f.tw_theme = true;
+        };
         var sheet: css.Stylesheet = .{};
         if (buf.items.len > 0) try css.parse(a, buf.items, &sheet);
         if (comptime config.enable_animation) if (o.keyframes) |k| css.addKeyframesJson(a, &sheet, k) catch |err| switch (err) {
@@ -1382,16 +1393,78 @@ pub const Frame = struct {
 
     /// Matched declarations of element `i` (or its pseudo-element) as style declarations, in cascade
     /// order with `important` flags (the style module orders normal < important itself).
-    fn cssDecls(f: *Frame, i: u32, pseudo: css.Pseudo, sets_content: ?*bool) Error![]const style.Declaration {
+    /// Matched stylesheet declarations with takumi's layer split points (indices into `decls`).
+    const CssOut = struct { decls: []const style.Declaration = &.{}, unlayered: usize = 0, important: usize = 0, imp_layered: usize = 0 };
+
+    fn cssDecls(f: *Frame, i: u32, pseudo: css.Pseudo, sets_content: ?*bool) Error!CssOut {
         const st = &f.cssx;
         st.decls.clearRetainingCapacity();
         const r = try css.match(&st.m, &st.scratch, &st.vt, i, pseudo, &st.decls);
         if (sets_content) |p| p.* = r.sets_content;
-        return convertDecls(f.a, st.decls.items);
+        return .{ .decls = try convertDecls(f.a, st.decls.items), .unlayered = r.unlayered_start, .important = r.important_start, .imp_layered = r.layered_important_start };
+    }
+
+    /// Room for preset, presentation hints, the six author parts, inline style and a keyframe layer.
+    const max_layers = 10;
+
+    /// Appends the author origin in takumi's cascade order (matching.rs `layer_order`): normal
+    /// declarations of named `@layer`s < `tw` utilities < unlayered rules; `!important` ones
+    /// unlayered < `tw` < named layers. (`tw` lists its normal declarations first.)
+    fn authorLayers(layers: []style.Layer, n: *usize, tw: []const style.Declaration, c: CssOut) void {
+        var k: usize = 0;
+        while (k < tw.len and !tw[k].important) k += 1;
+        const d = c.decls;
+        const parts = [_][]const style.Declaration{ d[0..c.unlayered], tw[0..k], d[c.unlayered..c.important], d[c.important..c.imp_layered], tw[k..], d[c.imp_layered..] };
+        for (parts) |p| if (p.len > 0) {
+            layers[n.*] = .{ .decls = p, .lenient = true };
+            n.* += 1;
+        };
     }
 
     /// Tailwind declarations of element `i` for `target` (lenient layer).
-    fn twDecls(f: *Frame, i: u32, target: twc.Target) Error![]const style.Declaration {
+    /// Theme lookups for `tw` (takumi `TwVarRef`): a variable is defined for element `i` when its
+    /// parent's computed style has it, or the element's own inline style / matched rules declare it.
+    const TwTheme = struct {
+        f: *Frame,
+        i: u32,
+        own: []const style.Declaration,
+
+        fn defined(ctx: *const anyopaque, name: []const u8) bool {
+            const t: *const TwTheme = @ptrCast(@alignCast(ctx));
+            const el = t.f.dom.at(t.i);
+            if (el.parent != none) if (t.f.dom.at(el.parent).cs.customProperty(name) != null) return true;
+            for (t.own) |d| if (std.mem.eql(u8, d.name, name)) return true;
+            return switch (el.style) {
+                .json => |v| v.get(name) != null,
+                .text => |s| std.mem.indexOf(u8, s, name) != null,
+                .none => false,
+            };
+        }
+
+        fn breakpoint(ctx: *const anyopaque, token: []const u8) ?[]const u8 {
+            const t: *const TwTheme = @ptrCast(@alignCast(ctx));
+            const root = t.f.tw_root_cs orelse return null;
+            var buf: [96]u8 = undefined;
+            const pre = "--breakpoint-";
+            if (token.len > buf.len - pre.len) return null;
+            @memcpy(buf[0..pre.len], pre);
+            @memcpy(buf[pre.len..][0..token.len], token);
+            return root.customProperty(buf[0 .. pre.len + token.len]);
+        }
+    };
+
+    /// Whether `text` mentions a Tailwind theme variable namespace (`--color-`, `--spacing`, ...).
+    fn hasThemeVar(text: []const u8) bool {
+        const prefixes = [_][]const u8{ "color-", "spacing", "radius-", "text-", "font-", "tracking-", "leading-", "aspect-", "container-", "animate-", "breakpoint-" };
+        var k: usize = 0;
+        while (std.mem.indexOfPos(u8, text, k, "--")) |p| {
+            k = p + 2;
+            for (prefixes) |pr| if (std.mem.startsWith(u8, text[k..], pr)) return true;
+        }
+        return false;
+    }
+
+    fn twDecls(f: *Frame, i: u32, target: twc.Target, own_css: []const style.Declaration) Error![]const style.Declaration {
         const el = f.dom.at(i);
         var env: twc.Env = .{ .viewport_w = f.ctx.viewport_w, .viewport_h = f.ctx.viewport_h, .dpr = f.opts.dpr, .target = target };
         // every variant contains ':'; only then is the structural information needed
@@ -1399,6 +1472,9 @@ pub const Frame = struct {
             const info = f.dom.elementInfo(i);
             env.element = .{ .index = info.index, .count = info.count, .type_index = info.type_index, .type_count = info.type_count, .empty = info.empty };
         }
+        var th: TwTheme = .{ .f = f, .i = i, .own = own_css };
+        const theme: twc.Theme = .{ .ctx = &th, .defined = TwTheme.defined, .breakpoint = TwTheme.breakpoint };
+        if (f.tw_theme) env.theme = &theme;
         var out: std.ArrayList(twc.Declaration) = .empty;
         twc.compile(f.a, el.tw, env, &out) catch return error.OutOfMemory;
         return convertDecls(f.a, out.items);
@@ -1410,6 +1486,7 @@ pub const Frame = struct {
         if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
         try f.styleElement(i, parent_cs);
         const cs = f.dom.at(i).cs;
+        if (parent_cs == null) f.tw_root_cs = cs;
         var c = f.dom.at(i).first;
         while (c != none) : (c = f.dom.at(c).next) try f.styleTree(c, cs, depth + 1);
     }
@@ -1440,7 +1517,7 @@ pub const Frame = struct {
 
     /// Cascade layers of element `i`: preset (UA) < presentation hints < tw utilities < stylesheet
     /// rules < inline style. Returns the count written to `layers` (room for one extra layer).
-    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[6]style.Layer) Error!usize {
+    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[max_layers]style.Layer) Error!usize {
         const a = f.a;
         const el = f.dom.at(i);
         var n: usize = 0;
@@ -1453,14 +1530,9 @@ pub const Frame = struct {
             layers[n] = .{ .decls = list.items, .lenient = true };
             n += 1;
         }
-        if (comptime config.enable_tw) if (el.tw.len > 0) {
-            layers[n] = .{ .decls = try f.twDecls(i, .element), .lenient = true };
-            n += 1;
-        };
-        if (comptime config.enable_css) if (f.css_on) {
-            layers[n] = .{ .decls = try f.cssDecls(i, .none, null), .lenient = true };
-            n += 1;
-        };
+        const cs_out: CssOut = if (comptime config.enable_css) (if (f.css_on) try f.cssDecls(i, .none, null) else .{}) else .{};
+        const tw: []const style.Declaration = if (comptime config.enable_tw) (if (el.tw.len > 0) try f.twDecls(i, .element, cs_out.decls) else &.{}) else &.{};
+        authorLayers(layers, &n, tw, cs_out);
         layers[n] = try f.srcLayer(el.style, diag);
         n += 1;
         return n;
@@ -1478,7 +1550,7 @@ pub const Frame = struct {
             /// The element's style with `decls` as the top (lenient) layer.
             pub fn keyframeStyle(h: @This(), decls: []const style.Declaration) Error!*const CS {
                 var diag: style.Diagnostics = .{};
-                var layers: [6]style.Layer = undefined;
+                var layers: [max_layers]style.Layer = undefined;
                 var n = try h.f.elementLayers(h.i, &diag, &layers);
                 layers[n] = .{ .decls = decls, .lenient = true };
                 n += 1;
@@ -1512,7 +1584,7 @@ pub const Frame = struct {
             // fast path (JSON source, no stylesheet, no tw): exactly the phase-1 computation
             cs.* = style.compute(a, &f.ctx, parent_cs, jsonOf(el.preset), jsonOf(el.style), &diag) catch |e| return f.styleFail(e, &diag);
         } else {
-            var layers: [6]style.Layer = undefined;
+            var layers: [max_layers]style.Layer = undefined;
             const n = try f.elementLayers(i, &diag, &layers);
             cs.* = style.computeLayers(a, &f.ctx, parent_cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
         }
@@ -1541,26 +1613,20 @@ pub const Frame = struct {
     /// `before:` / `after:` utility sets `content` to something other than none/normal.
     fn pseudoBox(f: *Frame, i: u32, which: enum { before, after }) Error!u32 {
         const el = f.dom.at(i);
-        var layers: [2]style.Layer = undefined;
+        var layers: [6]style.Layer = undefined;
         var n: usize = 0;
+        var tw: []const style.Declaration = &.{};
         if (comptime config.enable_tw) {
             const key = if (which == .before) "before:" else "after:";
-            if (el.tw.len > 0 and std.mem.indexOf(u8, el.tw, key) != null) {
-                const d = try f.twDecls(i, if (which == .before) .before else .after);
-                if (d.len > 0) {
-                    layers[n] = .{ .decls = d, .lenient = true };
-                    n += 1;
-                }
-            }
+            if (el.tw.len > 0 and std.mem.indexOf(u8, el.tw, key) != null) tw = try f.twDecls(i, if (which == .before) .before else .after, &.{});
         }
+        var cs_out: CssOut = .{};
         if (comptime config.enable_css) if (f.css_on and (if (which == .before) f.cssx.m.has_before else f.cssx.m.has_after)) {
             var sets = false;
             const d = try f.cssDecls(i, if (which == .before) .before else .after, &sets);
-            if (sets) {
-                layers[n] = .{ .decls = d, .lenient = true };
-                n += 1;
-            }
+            if (sets) cs_out = d;
         };
+        authorLayers(&layers, &n, tw, cs_out);
         if (n == 0) return none;
         var diag: style.Diagnostics = .{};
         const pcs = try f.a.create(CS);

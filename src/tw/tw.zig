@@ -9,7 +9,7 @@
 //! - Utilities/values/variants are exactly takumi's table (`utility.rs`); unknown classes, unknown variants,
 //!   values takumi would not parse, and theme tokens (`bg-brand`, which takumi compiles to an undefined
 //!   `var(--color-brand)`, i.e. a no-op) are skipped silently. takumi has no `z-*`, `order-*`, `skew-*`,
-//!   `ring-*`, `space-*`, `divide-*`, `place-*`, `cursor-*`, `animate-*` keyframes, `(--var)` shorthand or
+//!   `ring-*`, `space-*`, `divide-*`, `place-*`, `cursor-*`, `(--var)` shorthand or
 //!   `[prop:value]` classes, so neither does this. Root/keyword matching is case-sensitive for utility names
 //!   and case-insensitive for values, as in takumi.
 //! - Rules are sorted the way takumi sorts them (`rule.rs` TwOrder + cascade): normal before `!important`,
@@ -78,6 +78,20 @@ pub const Env = struct {
     /// (rules with `before:` / `after:`; each such rule also sets `content: ""`, so a non-empty result means
     /// takumi would generate that pseudo-element box).
     target: Target = .element,
+    /// Theme variables (takumi `@theme` / `--color-*`, `--spacing`, ... and `--breakpoint-*`); null when
+    /// the render defines none (then every utility keeps its built-in value, as in takumi).
+    theme: ?*const Theme = null,
+};
+
+/// takumi's theme hooks. A themed utility emits `var(--<namespace><token>)` (or `calc(var(--spacing,
+/// 0.25rem) * n)`) only when that variable is defined for the element, else its built-in value or
+/// nothing (takumi `TwVarRef`).
+pub const Theme = struct {
+    ctx: *const anyopaque,
+    /// Whether custom property `name` (with `--`) is defined for the element.
+    defined: *const fn (ctx: *const anyopaque, name: []const u8) bool,
+    /// Value text of `--breakpoint-<token>` from the root's custom properties, if any.
+    breakpoint: *const fn (ctx: *const anyopaque, token: []const u8) ?[]const u8,
 };
 
 /// Compiles a class string. Appends declarations in the order takumi applies them (normal then important,
@@ -165,6 +179,7 @@ pub const P = enum(u8) {
     tw_scale_x,
     tw_scale_y,
     rotate,
+    animation,
     list_style_position,
     list_style_type,
     list_style_image,
@@ -496,6 +511,11 @@ const Ctx = struct {
                     .p2 = @fromBackingInt(@intCast(alts[k + 3])),
                 };
                 var v = (try parseForm(c.a, alt.f, suffix)) orelse continue;
+                if (neg and !alt.neg) return false;
+                if (c.env.theme != null) if (try c.themeValue(alt, suffix, neg, v)) |tv| {
+                    try c.emit(alt, tv);
+                    return true;
+                };
                 if (neg) {
                     if (!alt.neg) return false;
                     v = (try negate(c.a, v)) orelse return false;
@@ -503,8 +523,93 @@ const Ctx = struct {
                 try c.emit(alt, v);
                 return true;
             }
+            if (c.env.theme != null and try c.themeFallback(alts, suffix, neg)) return true;
         }
         return false;
+    }
+
+    fn defined(c: *const Ctx, name: []const u8) bool {
+        const t = c.env.theme orelse return false;
+        return t.defined(t.ctx, name);
+    }
+
+    /// takumi `var_expression` + `TwVarRef` for a value that also has a built-in meaning: the themed
+    /// value when the variable is defined, else null (keep `builtin`).
+    fn themeValue(c: *Ctx, alt: Alt, suffix: []const u8, neg: bool, builtin: []const u8) !?[]const u8 {
+        if (alt.op != .set and alt.op != .font_size and alt.f != .var_color) return null;
+        const ns = formNs(alt) orelse return null;
+        if (suffix.len == 0 or suffix[0] == '[') return null;
+        if (std.mem.indexOfScalar(u8, suffix, '/')) |sl| {
+            if (!eql(ns[0], "--color-")) return null;
+            const pct = suffix[sl + 1 ..];
+            const p = parseNum(pct) orelse return null;
+            if (!(p >= 0 and p <= 100)) return null;
+            const name = try cat(c.a, &.{ ns[0], suffix[0..sl] });
+            if (!c.defined(name)) return null;
+            return try cat(c.a, &.{ "color-mix(in oklab, var(", name, ") ", pct, "%, transparent)" });
+        }
+        if (parseNum(suffix) != null and nsHas(ns, "--spacing-")) {
+            if (!c.defined("--spacing")) return null;
+            return try cat(c.a, &.{ "calc(var(--spacing, 0.25rem) * ", if (neg) "-" else "", suffix, ")" });
+        }
+        const e = (try c.themeExpr(ns, suffix, neg)) orelse return null;
+        if (alt.op != .font_size) return e.expr;
+        // `--text-*`: font-size, then the companion `--text-*--line-height` (else the built-in one)
+        const lh_name = try cat(c.a, &.{ e.name, "--line-height" });
+        const z = std.mem.indexOfScalar(u8, builtin, 0);
+        if (c.defined(lh_name)) return try cat(c.a, &.{ e.expr, "\x00var(", lh_name, ")" });
+        return if (z) |k| try cat(c.a, &.{ e.expr, builtin[k..] }) else e.expr;
+    }
+
+    const ThemeExpr = struct { name: []const u8, expr: []const u8 };
+
+    /// `var(--ns-token)` (negated: `calc(var(..) * -1)`) for the first namespace in `ns` whose
+    /// variable is defined.
+    fn themeExpr(c: *Ctx, ns: [2][]const u8, suffix: []const u8, neg: bool) !?ThemeExpr {
+        for (ns) |prefix| {
+            if (prefix.len == 0) continue;
+            const name = try cat(c.a, &.{ prefix, suffix });
+            if (!c.defined(name)) continue;
+            return .{ .name = name, .expr = try cat(c.a, &.{ if (neg) "calc(var(" else "var(", name, if (neg) ") * -1)" else ")" }) };
+        }
+        return null;
+    }
+
+    /// No value form reads `suffix`: the root's theme groups (takumi `Utility::theme`) emit
+    /// `var(--<namespace><suffix>)` for each namespaced form whose variable is defined.
+    fn themeFallback(c: *Ctx, alts: []const u8, suffix: []const u8, neg: bool) !bool {
+        if (suffix.len == 0 or suffix[0] == '[') return false;
+        const slash = std.mem.indexOfScalar(u8, suffix, '/');
+        var done = false;
+        var k: usize = 0;
+        while (k + 4 <= alts.len) : (k += 4) {
+            const alt = Alt{
+                .f = @fromBackingInt(@intCast(alts[k])),
+                .op = @fromBackingInt(@intCast(alts[k + 1] & 0x7f)),
+                .neg = alts[k + 1] & 0x80 != 0,
+                .p1 = @fromBackingInt(@intCast(alts[k + 2])),
+                .p2 = @fromBackingInt(@intCast(alts[k + 3])),
+            };
+            if (alt.op != .set and alt.op != .font_size) continue;
+            if (neg and !alt.neg) continue;
+            const ns = formNs(alt) orelse continue;
+            if (slash != null) {
+                // `bg-brand/50`: colours only (takumi `var_expression`)
+                if (!eql(ns[0], "--color-") or neg) continue;
+                const v = (try c.themeValue(alt, suffix, false, "")) orelse continue;
+                try c.emit(alt, v);
+                done = true;
+                continue;
+            }
+            const e = (try c.themeExpr(ns, suffix, neg)) orelse continue;
+            if (alt.op == .font_size) {
+                const lh_name = try cat(c.a, &.{ e.name, "--line-height" });
+                try c.add(.font_size, e.expr);
+                if (c.defined(lh_name)) try c.add(.line_height, try cat(c.a, &.{ "var(", lh_name, ")" }));
+            } else try c.emit(alt, e.expr);
+            done = true;
+        }
+        return done;
     }
 
     fn emit(c: *Ctx, alt: Alt, v: []const u8) !void {
@@ -556,6 +661,29 @@ const Ctx = struct {
     }
 };
 
+/// The theme namespaces (custom-property prefixes, takumi `Namespace`) a value form reads, in order;
+/// null = not themable. `max-w-*` reads `--container-*` before `--spacing-*`.
+fn formNs(alt: Alt) ?[2][]const u8 {
+    const one: []const u8 = switch (alt.f) {
+        .color, .var_color => "--color-",
+        .length, .size, .basis => if (alt.p1 == .max_width) return .{ "--container-", "--spacing-" } else "--spacing-",
+        .radius => "--radius-",
+        .font_size => "--text-",
+        .font_family => "--font-",
+        .font_weight => "--font-weight-",
+        .tracking => "--tracking-",
+        .line_height => "--leading-",
+        .aspect => "--aspect-",
+        .animation => "--animate-",
+        else => return null,
+    };
+    return .{ one, "" };
+}
+
+fn nsHas(ns: [2][]const u8, prefix: []const u8) bool {
+    return eql(ns[0], prefix) or eql(ns[1], prefix);
+}
+
 noinline fn cat(a: Allocator, parts: []const []const u8) ![]const u8 {
     return std.mem.concat(a, u8, parts);
 }
@@ -594,24 +722,40 @@ const Variants = struct {
         if (rem == null and !isIdent(tok)) return false;
         if (vs.has_bp) return false;
         vs.has_bp = true;
-        const r = rem orelse {
-            vs.applies = false;
-            vs.bp = 1 + @as(u64, @as(u32, @bitCast(std.math.inf(f32))));
-            return true;
-        };
-        vs.bp = 1 + @as(u64, @as(u32, @bitCast(r)));
         const dpr = if (env.dpr > 0 and env.dpr < 1e6) env.dpr else 1;
+        // takumi `collect_breakpoints`: a `--breakpoint-<token>` (rem / px / vw) re-sizes the variant
+        var over: ?f32 = null;
+        if (env.theme) |t| if (t.breakpoint(t.ctx, tok)) |txt| {
+            over = bpLength(txt, env.viewport_w, dpr);
+        };
+        vs.bp = 1 + @as(u64, @as(u32, @bitCast(rem orelse std.math.inf(f32))));
+        if (rem == null and over == null) {
+            vs.applies = false;
+            return true;
+        }
         if (!(env.viewport_w >= 1)) {
             vs.applies = false;
         } else {
             const vw: u32 = if (env.viewport_w >= 4e9) std.math.maxInt(u32) else @intFromFloat(env.viewport_w);
-            const px = r * 16 * dpr;
+            const px = over orelse rem.? * 16 * dpr;
             const bpx: u32 = if (px >= 4e9) std.math.maxInt(u32) else @intFromFloat(px);
             if (vw < bpx) vs.applies = false;
         }
         return true;
     }
 };
+
+/// A `--breakpoint-*` value in device px (takumi `Breakpoint::matches`: rem = 16 px, px, vw); null for
+/// any other value.
+fn bpLength(txt: []const u8, viewport_w: f32, dpr: f32) ?f32 {
+    const s = std.mem.trim(u8, txt, " \t\n\r");
+    var unit: usize = s.len;
+    while (unit > 0 and std.ascii.isAlphabetic(s[unit - 1])) unit -= 1;
+    const n = parseNum(s[0..unit]) orelse return null;
+    const u = s[unit..];
+    const px = if (std.ascii.eqlIgnoreCase(u, "rem")) n * 16 * dpr else if (std.ascii.eqlIgnoreCase(u, "px")) n * dpr else if (std.ascii.eqlIgnoreCase(u, "vw")) n / 100 * viewport_w else return null;
+    return if (px < 0) 0 else px;
+}
 
 const Structural = struct { rank: u5, spec: u8, matches: bool };
 
@@ -1060,6 +1204,7 @@ const Form = enum(u8) {
     overflow_wrap,
     align_items,
     justify,
+    animation,
 };
 
 const Op = enum(u8) { set, font_size, border_width, border_style, axes, filter, grad_color, shadow_arb, bg_linear, bg_conic };
@@ -1148,6 +1293,7 @@ const roots_pack = pack(&.{
     rt("leading", &.{s1(.line_height, .line_height)}),
     rt("tracking", &.{n1(.tracking, .letter_spacing)}),
     rt("opacity", &.{s1(.pct, .opacity)}),
+    rt("animate", &.{s1(.animation, .animation)}),
     rt("line-clamp", &.{s1(.line_clamp, .line_clamp)}),
     rt("whitespace", &.{s1(.white_space, .white_space)}),
     rt("wrap", &.{s1(.overflow_wrap, .overflow_wrap)}),
@@ -1305,7 +1451,9 @@ const font_sizes = [_]FontSizeEnt{
 /// Per value form: a keyword table tried first, then (when `unit` is set) a plain number + unit.
 /// Forms with neither are handled in `parseForm`'s switch.
 const form_count = @typeInfo(Form).@"enum".field_names.len;
-const kw_tables = [_][]const u8{ kw_tracking, kw_radius, kw_border_style, kw_family, kw_blur, kw_position, kw_bg_size, kw_bg_clip, kw_white_space, kw_text_wrap, kw_text_align, kw_overflow, kw_valign, kw_object_fit, kw_list_type, kw_list_pos, kw_blend, kw_overflow_wrap, kw_align_items, kw_justify, "auto|fr=1fr", "none", kw_angle, "auto|from-font", kw_weight };
+/// takumi `Animations::parse_tw` presets (Tailwind's `--animate-*` defaults; the keyframes are built in).
+const kw_animate = "spin=1s linear infinite spin|ping=1s cubic-bezier(0, 0, 0.2, 1) infinite ping|pulse=2s cubic-bezier(0.4, 0, 0.6, 1) infinite pulse|bounce=1s infinite bounce|none";
+const kw_tables = [_][]const u8{ kw_tracking, kw_radius, kw_border_style, kw_family, kw_blur, kw_position, kw_bg_size, kw_bg_clip, kw_white_space, kw_text_wrap, kw_text_align, kw_overflow, kw_valign, kw_object_fit, kw_list_type, kw_list_pos, kw_blend, kw_overflow_wrap, kw_align_items, kw_justify, "auto|fr=1fr", "none", kw_angle, "auto|from-font", kw_weight, kw_animate };
 const unit_names = [_][]const u8{ "deg", "%", "px", "" };
 /// Per form: bits 0-4 = 1 + index in `kw_tables` (0: none), bits 5-7 = 1 + index in `unit_names`.
 const form_desc: [form_count]u8 = blk: {
@@ -1332,6 +1480,7 @@ const form_desc: [form_count]u8 = blk: {
         .{ .overflow_wrap, kw_overflow_wrap, null },
         .{ .align_items, kw_align_items, null },
         .{ .justify, kw_justify, null },
+        .{ .animation, kw_animate, null },
         .{ .grid_track, "auto|fr=1fr", null },
         .{ .bg_image, "none", null },
         .{ .content, "none", null },
