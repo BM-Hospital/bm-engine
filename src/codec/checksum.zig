@@ -1,17 +1,23 @@
-//! CRC-32 (PNG/zlib polynomial, slicing-by-4: four 1 KB tables) and Adler-32 (16-byte SIMD blocks).
+//! CRC-32 (PNG/zlib polynomial; slicing-by-4 with four 1 KB tables in the native build, one table
+//! in the size-budgeted wasm build) and Adler-32 (16-byte SIMD blocks).
 const std = @import("std");
+const builtin = @import("builtin");
 const bytes = @import("bytes.zig");
 
+/// Tables used: 3 KiB more buy about 2x on the megabyte-long IDAT stream of a photo-like PNG
+/// (1 ms of a 35 ms encode); the wasm binaries keep the single table.
+const crc_slices = if (builtin.cpu.arch.isWasm()) 1 else 4;
+
 /// `crc_tables[k][b]`: the CRC of byte `b` followed by `k` zero bytes.
-const crc_tables: [4][256]u32 = blk: {
+const crc_tables: [crc_slices][256]u32 = blk: {
     @setEvalBranchQuota(20000);
-    var t: [4][256]u32 = undefined;
+    var t: [crc_slices][256]u32 = undefined;
     for (0..256) |i| {
         var c: u32 = @intCast(i);
         for (0..8) |_| c = if (c & 1 != 0) 0xEDB88320 ^ (c >> 1) else c >> 1;
         t[0][i] = c;
     }
-    for (1..4) |k| {
+    for (1..crc_slices) |k| {
         for (0..256) |i| t[k][i] = (t[k - 1][i] >> 8) ^ t[0][t[k - 1][i] & 0xff];
     }
     break :blk t;
@@ -21,10 +27,12 @@ const crc_tables: [4][256]u32 = blk: {
 pub fn crc32(crc: u32, data: []const u8) u32 {
     var c = ~crc;
     var p = data;
-    // four bytes per step (the IDAT stream of a photo-like PNG is megabytes long)
-    while (p.len >= 4) : (p = p[4..]) {
-        c ^= bytes.le32(p, 0);
-        c = crc_tables[3][c & 0xff] ^ crc_tables[2][(c >> 8) & 0xff] ^ crc_tables[1][(c >> 16) & 0xff] ^ crc_tables[0][c >> 24];
+    if (crc_slices == 4) {
+        // four bytes per step
+        while (p.len >= 4) : (p = p[4..]) {
+            c ^= bytes.le32(p, 0);
+            c = crc_tables[3][c & 0xff] ^ crc_tables[2][(c >> 8) & 0xff] ^ crc_tables[1][(c >> 16) & 0xff] ^ crc_tables[0][c >> 24];
+        }
     }
     for (p) |b| c = crc_tables[0][(c ^ b) & 0xff] ^ (c >> 8);
     return ~c;

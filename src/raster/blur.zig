@@ -176,7 +176,7 @@ fn columnPass(pass: *const Pass, s: *Scratch, base: [*]u8, rows: usize, row_stri
                     const wv: VF4 = @splat(weight);
                     inline for (0..8) |q| acc[q] += @as(VF4, samples[q * 4 ..][0..4].*) * wv;
                 }
-                inline for (0..8) |q| outb[k + q * 4 ..][0..4].* = gaussByte(acc[q]);
+                for (0..8) |q| outb[k + q * 4 ..][0..4].* = gaussByte(acc[q]);
             }
             @memcpy((base + (index - border) * row_stride)[0..channels], outb[0..channels]);
         }
@@ -317,11 +317,7 @@ fn gaussRows4(alloc: Allocator, pass: *const Pass, data: []u8, width: usize, hei
                 const wv: VF4 = @splat(weight);
                 inline for (0..8) |q| acc[q] += @as(VF4, samples[q * 4 ..][0..4].*) * wv;
             }
-            if (x + 8 <= width) {
-                inline for (0..8) |q| row[(x + q) * 4 ..][0..4].* = gaussByte(acc[q]);
-            } else {
-                for (0..width - x) |q| row[(x + q) * 4 ..][0..4].* = gaussByte(acc[q]);
-            }
+            for (0..@min(8, width - x)) |q| row[(x + q) * 4 ..][0..4].* = gaussByte(acc[q]);
         }
     }
 }
