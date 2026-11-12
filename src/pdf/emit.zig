@@ -199,6 +199,10 @@ pub const Emitter = struct {
     in_repeat: bool = false,
     page_index: u32 = 0,
     doc_lang: []const u8 = "",
+    /// [lists] an inside symbol marker the text of its line container paints (emit_text.zig)
+    inline_marker: ?InlineMarker = null,
+
+    pub const InlineMarker = struct { host: u32, node: u32, x: f32, y: f32, depth: u32 };
 
     pub fn init(f: *Frame, cx: *sf.Ctx, s: *sf.Surface, fonts: *text.FontRegistry) Emitter {
         return .{
@@ -596,7 +600,22 @@ pub const Emitter = struct {
         if (e.tphase == .decorations and n.kind == .anon_text) return;
         // [interactive] links / anchors / headings (once per box: table parts in their decorations pass)
         if (e.links) |lk| if ((e.tphase != .content or kind == .none) and e.home()) lk.onBox(e, id, x, y);
+        // [lists] the marker box of a line container, where takumi's tree order paints it
+        var marker: u32 = none;
+        if (n.kind == .anon_box) if (@import("markers.zig").placement(f, id)) |pl| {
+            marker = pl.node;
+            switch (pl.how) {
+                .before_text => try e.paintNode(pl.node, x, y, depth + 1),
+                .in_text => e.inline_marker = .{ .host = id, .node = pl.node, .x = x, .y = y, .depth = depth + 1 },
+            }
+        };
         try e.paintOwn(id, x, y);
+        if (marker != none) {
+            // (the text did not paint on this page: neither does the marker inside it)
+            if (e.inline_marker) |im| if (im.host == id) {
+                e.inline_marker = null;
+            };
+        }
         if (n.kind == .anon_text or n.first_child == none) return;
         if (e.tphase == .decorations and kind == .cell) return;
         const saved_phase = e.tphase;
@@ -622,13 +641,19 @@ pub const Emitter = struct {
         const q0 = e.float_q.items.len;
         if (!special) {
             c = n.first_child;
-            while (c != none) : (c = f.nodes.items[c].next) try e.paintNode(c, x, y, depth + 1);
+            while (c != none) : (c = f.nodes.items[c].next) {
+                if (c != marker) try e.paintNode(c, x, y, depth + 1);
+            }
             if (froot) try e.flushFloats(q0);
         } else {
             const sc = try e.sortedChildren(n);
-            for (sc.items[0..sc.n_low]) |it| try e.paintNode(it, x, y, depth + 1);
+            for (sc.items[0..sc.n_low]) |it| {
+                if (it != marker) try e.paintNode(it, x, y, depth + 1);
+            }
             if (froot) try e.flushFloats(q0);
-            for (sc.items[sc.n_low..]) |it| try e.paintNode(it, x, y, depth + 1);
+            for (sc.items[sc.n_low..]) |it| {
+                if (it != marker) try e.paintNode(it, x, y, depth + 1);
+            }
         }
         if (pm.enable_tables) try etable.collapsedAfter(e, id, x, y);
     }
@@ -803,6 +828,9 @@ pub const Emitter = struct {
         if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try etext.paintText(e, n, content_x, content_y, content_w);
         // [tagging] a line container holding only boxes still opens its (empty) region
         if (n.kind == .anon_box and n.para == null) etag.end(e, etag.begin(e, id));
+        // [tagging] so does a block whose inline content puts nothing on a line (takumi: every box
+        // with an inline layout draws in a region, `draws(OwnContent::Inline)`)
+        if (e.tagged and n.kind == .container and tagsm.emptyInlineBlock(f, id)) etag.end(e, etag.begin(e, id));
     }
 
     /// The geometry of the fragment of a box (border-box origin `x`, `y`) that this page's window

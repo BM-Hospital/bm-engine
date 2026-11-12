@@ -145,7 +145,8 @@ const Synth = struct { italic: bool, bold: bool, colored: bool };
 
 fn synthOf(e: *Emitter, rcs: *const CS, g: *const font.PositionedGlyph) Synth {
     const fc = e.f.r.fonts.face(g.face);
-    var sy: Synth = .{ .italic = rcs.font_style != .normal and !fc.italic, .bold = rcs.font_weight >= 600 and fc.weight < 600, .colored = false };
+    // (font-synthesis: a face is emboldened / slanted only where the style allows it)
+    var sy: Synth = .{ .italic = rcs.font_synthesis.style and rcs.font_style != .normal and !fc.italic, .bold = rcs.font_synthesis.weight and rcs.font_weight >= 600 and fc.weight < 600, .colored = false };
     if (comptime pm.enable_color_fonts) {
         const color = @import("../font/color.zig");
         if (color.glyphKind(&fc.font, g.gid) != .none) sy = .{ .italic = false, .bold = false, .colored = true };
@@ -228,8 +229,8 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
             .fill = dev.filtered(e.filter, fill_raw),
             .stroke = if (sw > 0 and scol.a != 0) .{ .width = sw, .color = dev.filtered(e.filter, scol) } else null,
             .stroke_first = rcs.paint_order == .stroke,
-            .synthetic_bold = if (!colored and rcs.font_weight >= 600 and fc.weight < 600) ptext.emboldenWidth(g0.size) else 0,
-            .synthetic_italic = !colored and rcs.font_style != .normal and !fc.italic,
+            .synthetic_bold = if (!colored and rcs.font_synthesis.weight and rcs.font_weight >= 600 and fc.weight < 600) ptext.emboldenWidth(g0.size) else 0,
+            .synthetic_italic = !colored and rcs.font_synthesis.style and rcs.font_style != .normal and !fc.italic,
             .colored = colored,
             .shadow = if (o.shadow) |sh| .{ .dx = sh.dx, .dy = sh.dy, .blur = sh.blur, .color = dev.filtered(e.filter, sh.color) } else null,
             .owned = o.owned,
@@ -636,6 +637,15 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
     // a symbol list marker paints its shape, no glyph (takumi `TextFragmentPainter::Paint`)
     if (markers.ofNode(f, f.nodeId(n))) |mk| if (mk.shape) |shape| return paintSymbol(e, n, tl, x, y, mk, shape);
     if (tl.boxes.len > 0) try paintInlineBoxes(e, n, tl, x, y);
+    // [lists] an inside symbol marker is text of this line: it paints here, in the line's content
+    // sequence (no label of its own)
+    if (e.inline_marker) |im| if (im.host == f.nodeId(n)) {
+        e.inline_marker = null;
+        const was_tagged = e.tagged;
+        e.tagged = false;
+        defer e.tagged = was_tagged;
+        try e.paintNode(im.node, im.x, im.y, im.depth);
+    };
 
     var block_deco: ?*const CS = null;
     if (hasLine(n.cs)) {

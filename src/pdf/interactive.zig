@@ -41,6 +41,8 @@ const meta = @import("metadata.zig");
 const attach = @import("attach.zig");
 const emit = @import("emit.zig");
 const counters = @import("counters.zig");
+const tags = @import("tags.zig");
+const markers = @import("markers.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = render.Frame;
@@ -58,6 +60,9 @@ pub const Link = struct {
     node: u32,
     el: u32,
     frame: *const Frame,
+    /// a repeated fragment (a table header / footer group on a later page) paints it (takumi
+    /// `LinkTarget.repeated`): annotated on every page that repeats it, outside the structure tree
+    repeated: bool = false,
 };
 
 pub const Anchor = struct { top: f32, node: u32, el: u32 };
@@ -68,6 +73,8 @@ const PageLinks = struct {
     /// repeated `position: fixed` boxes (annotated after the page's own links)
     fixed: std.ArrayList(Link) = .empty,
 };
+
+const TextKey = struct { f: usize, id: u32, x: u32, y: u32 };
 
 const HrefMap = struct { f: *const Frame, map: std.AutoHashMapUnmanaged(usize, u32) = .empty };
 
@@ -85,8 +92,9 @@ pub const Collector = struct {
     heading_els: std.AutoHashMapUnmanaged(u32, void) = .empty,
     /// per frame: computed style -> element, for the elements with an `href`
     href_maps: std.ArrayList(HrefMap) = .empty,
-    /// paragraphs already collected on this page (frame address ^ node id)
-    text_seen: std.AutoHashMapUnmanaged(usize, void) = .empty,
+    /// paragraphs already collected on this page, by frame, node and place (a repeated table
+    /// header / footer group paints its paragraphs again, somewhere else)
+    text_seen: std.AutoHashMapUnmanaged(TextKey, void) = .empty,
     failed: bool = false,
 
     pub fn init(a: Allocator, f: *Frame, page_count: usize) Error!Collector {
@@ -146,7 +154,11 @@ pub const Collector = struct {
         // a box that links as a whole is not linked again per run
         if (host != none) if (f.dom.attr(host, "href")) |h| if (allowedUri(h)) return;
         const id = f.nodeId(n);
-        const key = @intFromPtr(f) ^ (@as(usize, id) << 1);
+        // takumi `collect_paint_links` reads the runs of a painted box that has a source node
+        // (`PaintedBox::of`): the inline content of an anonymous block (text and inline elements
+        // next to block-level siblings) is never linked, whatever element carries the `href`
+        if ((n.kind == .anon_text or n.kind == .anon_box) and !tags.standsForParent(f, id)) return;
+        const key: TextKey = .{ .f = @intFromPtr(f), .id = id, .x = @bitCast(x), .y = @bitCast(y) };
         if ((try c.text_seen.getOrPut(c.a, key)).found_existing) return;
         var it: render.RunIter = .{ .tl = tl };
         while (it.next()) |r| {
@@ -193,7 +205,7 @@ pub const Collector = struct {
         const b = (bottom - y0 + oy) * pt_per_px;
         if (!(rr >= l) or !std.math.isFinite(l + t + rr + b)) return;
         const h = page.height * pt_per_px;
-        const link: Link = .{ .rect = .{ l, h - b, rr, h - t }, .uri = uri, .node = node, .el = el, .frame = e.f };
+        const link: Link = .{ .rect = .{ l, h - b, rr, h - t }, .uri = uri, .node = node, .el = el, .frame = e.f, .repeated = e.in_repeat };
         const pl = &c.pages[c.cur];
         try (if (fixed) &pl.fixed else &pl.content).append(c.a, link);
     }
@@ -290,19 +302,34 @@ pub fn headingLevel(tag: []const u8) ?u8 {
     return tag[1] - '0';
 }
 
-/// takumi `text_content`: the source text of the element's subtree, trimmed (Unicode white space).
+/// takumi `text_content`: the text of the element's subtree in the render tree, trimmed (Unicode
+/// white space): the source text as written (no `text-transform`), the generated text of
+/// `::before` / `::after`, nothing of a `display: none` descendant (it has no box).
 pub fn textContent(a: Allocator, f: *const Frame, el: u32) Error![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     try collectText(a, f, el, &out, 0);
     return trimUnicode(out.items);
 }
 
+fn pseudoText(a: Allocator, f: *const Frame, p: u32, out: *std.ArrayList(u8)) Error!void {
+    if (p == none or p >= f.pseudos.items.len) return;
+    const ps = &f.pseudos.items[p];
+    if (ps.cs.display == .none) return;
+    try out.appendSlice(a, ps.text);
+}
+
 fn collectText(a: Allocator, f: *const Frame, el: u32, out: *std.ArrayList(u8), depth: u32) Error!void {
     if (depth > 512) return;
     const e = f.dom.at(el);
+    if (depth > 0 and !e.run and e.cs.display == .none) return;
+    // (a list marker is generated in the `::before` slot, the real `::before` chained to it;
+    // the marker's text is not the element's)
+    const before = if (markers.ofPseudo(f, e.before) != null) markers.chainedBefore(f, e.before) else e.before;
+    try pseudoText(a, f, before, out);
     if (e.kind == .text) try out.appendSlice(a, e.text);
     var c = e.first;
     while (c != none) : (c = f.dom.at(c).next) try collectText(a, f, c, out, depth + 1);
+    try pseudoText(a, f, e.after, out);
 }
 
 fn isUnicodeSpace(cp: u21) bool {
@@ -508,7 +535,7 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
                     dref = try dests.register(a, doc, d);
                 }
                 const ref = doc.alloc();
-                const rec: AnnotRecord = .{ .ref = ref, .page = @intCast(pi), .node = lk.node, .el = lk.el, .uri = lk.uri, .repeated = which == 1 };
+                const rec: AnnotRecord = .{ .ref = ref, .page = @intCast(pi), .node = lk.node, .el = lk.el, .uri = lk.uri, .repeated = which == 1 or lk.repeated };
                 const b = doc.beginDict(ref, .annotations);
                 b.pairName("Type", "Annot");
                 b.pairName("Subtype", "Link");

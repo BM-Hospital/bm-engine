@@ -135,6 +135,8 @@ pub const FontContainer = struct {
     /// The instance (variation coordinates applied); `font.data` must outlive the document.
     font: ttf.Font,
     face_index: u32,
+    /// see `FontRegistry.container`
+    variant: u32 = 0,
     upem: f32,
     /// krilla `can_be_cid_font`: the font has glyf / CFF / CFF2 outlines.
     cid_capable: bool,
@@ -326,11 +328,12 @@ pub const Uncovered = struct {
 };
 
 /// Key of a font instance.
-fn instanceHash(font: *const ttf.Font, face_index: u32) u64 {
+fn instanceHash(font: *const ttf.Font, face_index: u32, variant: u32) u64 {
     var h = std.hash.Wyhash.init(0x7e47);
     h.update(std.mem.asBytes(&@intFromPtr(font.data.ptr)));
     h.update(std.mem.asBytes(&font.data.len));
     h.update(std.mem.asBytes(&face_index));
+    h.update(std.mem.asBytes(&variant));
     h.update(std.mem.sliceAsBytes(font.coords[0..font.n_axes]));
     return h.final();
 }
@@ -367,15 +370,18 @@ pub const FontRegistry = struct {
     /// The container of an instance, created on first use (krilla `register_font_container`).
     /// `font` is the instance the text was shaped with (bm-engine `fonts.font(face)`) and
     /// `face_index` its face in a collection (`fonts.face(face).index`).
-    pub fn container(reg: *FontRegistry, font: *const ttf.Font, face_index: u32) !*FontContainer {
-        const key = instanceHash(font, face_index);
+    /// `variant` tells instances apart that share their coordinates (krilla keys a font by the
+    /// variation values it was asked for, see `text.zig opszVariant`); 0 = none.
+    pub fn container(reg: *FontRegistry, font: *const ttf.Font, face_index: u32, variant: u32) !*FontContainer {
+        const key = instanceHash(font, face_index, variant);
         for (reg.keys.items, 0..) |k, i| {
             const c = reg.containers.items[i];
-            if (k == key and c.font.data.ptr == font.data.ptr and c.face_index == face_index and
+            if (k == key and c.font.data.ptr == font.data.ptr and c.face_index == face_index and c.variant == variant and
                 std.mem.eql(i16, c.font.coords[0..c.font.n_axes], font.coords[0..font.n_axes])) return c;
         }
         const c = try reg.a.create(FontContainer);
         c.* = try FontContainer.init(reg.a, font, face_index);
+        c.variant = variant;
         try reg.containers.append(reg.a, c);
         try reg.keys.append(reg.a, key);
         return c;

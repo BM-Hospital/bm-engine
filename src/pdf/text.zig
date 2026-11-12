@@ -70,7 +70,7 @@ pub const Glyph = struct {
 pub const ShapedGlyph = struct { gid: u16, x: f32, y: f32, start: u32, end: u32 };
 
 /// The font instance of a run (bm-engine: `fonts.font(face)` and `fonts.face(face).index`).
-pub const FontRef = struct { font: *const ttf.Font, face_index: u32 = 0 };
+pub const FontRef = struct { font: *const ttf.Font, face_index: u32 = 0, variant: u32 = 0 };
 
 /// What krilla's `draw_glyphs` needs about a run.
 pub const Run = struct {
@@ -321,7 +321,7 @@ fn fillStrokeGlyphRun(reg: *FontRegistry, cx: *sf.Ctx, b: *sf.Builder, x: f32, y
         b.setStrokeProps(cx, bounds, s);
     }
     b.c.beginText();
-    const fc = try reg.container(run.font.font, run.font.face_index);
+    const fc = try reg.container(run.font.font, run.font.face_index, run.font.variant);
     var cur_x = x;
     var cur_y = y;
     const reversed = isReversed(run.glyphs);
@@ -861,6 +861,23 @@ pub fn drawFrameRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const 
     }
 }
 
+/// takumi-pdf keys a font by the variation values the text asked for, not by the coordinates
+/// they clamp to: text at two sizes beyond the range of an `opsz` axis draws from two font
+/// objects with the same outlines, while `font-optical-sizing: none` (the axis default) shares
+/// the font of text at the default size. The value asked for when it lies outside the axis
+/// range (inside it the instance's coordinates differ already), as bits; 0 otherwise.
+fn opszVariant(f: *rt.Frame, g0: *const font_mod.PositionedGlyph, font: *const ttf.Font) u32 {
+    const ax = font.findAxis("opsz") orelse return 0;
+    if (g0.user >= f.run_styles.items.len) return 0;
+    const cs = f.run_styles.items[g0.user];
+    var v: f32 = if (cs.font_optical_sizing != .none) cs.font_size else ax.default;
+    for (cs.font_variation_settings) |fv| {
+        if (std.mem.eql(u8, &fv.tag, "opsz")) v = fv.value;
+    }
+    if (!(v < ax.min or v > ax.max)) return 0;
+    return @bitCast(v);
+}
+
 /// The krilla run of bm-engine glyphs `gs` (one face and size): cluster ranges from the
 /// paragraph's cluster starts; without the paragraph text, a stand-in text made of each glyph's
 /// lowest cmap codepoint (so ToUnicode still maps simple text).
@@ -872,8 +889,9 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
     if (!(size > 0)) return null;
     const shaped = try a.alloc(ShapedGlyph, gs.len);
     var text = text_in;
+    const variant = opszVariant(f, g0, font);
     if (text.len == 0) {
-        const fc = try reg.container(font, face.index);
+        const fc = try reg.container(font, face.index, variant);
         var t: std.ArrayList(u8) = .empty;
         for (gs, shaped) |g, *sg| {
             const st: u32 = @intCast(t.items.len);
@@ -893,7 +911,7 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
         }
     }
     const glyphs = try runGlyphs(a, shaped, size, text, &reg.uncovered);
-    return .{ .font = .{ .font = font, .face_index = face.index }, .glyphs = glyphs, .text = text, .size = size };
+    return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
 }
 
 fn coloredFace(font: *const ttf.Font) bool {
@@ -915,8 +933,8 @@ fn drawSubRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const rt.Nod
         .stroke_width = rcs.webkit_text_stroke_width,
         .stroke_color = rcs.resolveColor(rcs.webkit_text_stroke_color),
         .stroke_first = rcs.paint_order == .stroke,
-        .synthetic_bold = if (!colored_face and rcs.font_weight >= 600 and face.weight < 600) ptext.emboldenWidth(run.size) else null,
-        .synthetic_skew = if (!colored_face and rcs.font_style != .normal and !face.italic) synthetic_italic_skew else null,
+        .synthetic_bold = if (!colored_face and rcs.font_synthesis.weight and rcs.font_weight >= 600 and face.weight < 600) ptext.emboldenWidth(run.size) else null,
+        .synthetic_skew = if (!colored_face and rcs.font_synthesis.style and rcs.font_style != .normal and !face.italic) synthetic_italic_skew else null,
         .baseline = baseline,
         .owned = o.owned,
         .filter = o.filter,

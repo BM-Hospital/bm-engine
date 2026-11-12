@@ -50,6 +50,11 @@ const CASES = {
   "area-map": [`<img usemap="#m" alt="map" width="40" height="40" src="${PNG1}"><map name="m"><area href="https://area.example/" shape="rect" coords="0,0,20,20"></map>`],
   "target-and-rel-attributes": [`<p><a href="https://example.com/" target="_blank" rel="noopener" title="Tooltip" download>attrs</a></p>`],
   "link.title-or-aria-label-as-contents": [`<p><a href="https://example.com/" title="Title text" aria-label="Aria text">visible</a></p>`],
+  // takumi-pdf 0.20.0 measures an inline link from its block's border box: the rectangle sits padding + border up and
+  // left of the text it covers. bm-engine places it over the text (kept: the takumi rectangle misses the link).
+  "inline-rect-in-padded-block": [`<p style="padding:10px;border:3px solid"><a href="https://example.com/">padded</a></p>`],
+  // an anonymous block's inline content (inline elements next to block-level siblings) is not linked by takumi-pdf
+  "inline-link-in-anonymous-block": [`<div>block</div><a href="https://a.example/">a</a> <span href="https://s.example/">s</span><p><span href="https://p.example/">in p</span></p>`],
   "many-links": [Array.from({ length: 60 }, (_, i) => `<a href="https://example.com/${i}">l${i}</a> `).join("")],
 };
 
@@ -69,6 +74,9 @@ const PAGED = {
   "internal-target-at-page-top": [`<p><a href="#p2">to p2</a></p><h2 id="p2" style="break-before:page">Page two</h2>`, A5],
   "internal-target-with-margins": [`<p><a href="#p2">to p2</a></p><h2 id="p2" style="break-before:page;margin-top:50px">Page two</h2>`, { size: "A5", margin: 40 }],
   "links-in-bands": [`<h1 id="top">Top</h1>${long(700)}`, { ...A5, header: `<p><a href="https://header.example/">header link</a> <a href="#top">top</a></p>`, footer: `<p><a href="https://footer.example/">footer link</a></p>` }],
+  // (takumi places an inline link's rectangle from the block's border box, without its padding and border: the cells
+  // of this variant have neither, so only the repeats are compared; see links.inline-rect-in-padded-block)
+  "link-in-repeated-thead-and-tfoot-no-padding": [`<table><thead><tr><th style="padding:0"><a href="https://thead.example/">head link</a></th></tr></thead><tbody>${"<tr><td>row</td></tr>".repeat(40)}</tbody><tfoot><tr><td style="padding:0"><a href="https://tfoot.example/">foot</a></td></tr></tfoot></table>`, A5],
   "link-in-repeated-thead": [`<table><thead><tr><th><a href="https://thead.example/">head link</a></th></tr></thead><tbody>${"<tr><td>row</td></tr>".repeat(90)}</tbody></table>`, A5],
   "link-in-fixed-element": [`<a href="https://fixed.example/" style="position:fixed;top:0;right:0">fixed link</a>${long(700)}`, A5],
   "page-ranges-drop-target": [`<h1 id="a">A</h1><p><a href="#c">to c (dropped page)</a> <a href="#b">to b</a></p><h1 id="b" style="break-before:page">B</h1><p><a href="#a">to a (dropped)</a> <a href="#c">to c</a></p><h1 id="c" style="break-before:page">C</h1><p><a href="#b">to b</a></p>`, { ...A5, pageRanges: [{ from: 2, to: 2 }], outline: true }],

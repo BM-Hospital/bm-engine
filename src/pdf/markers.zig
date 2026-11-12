@@ -131,6 +131,34 @@ pub fn labelOwner(f: *const Frame, id: u32) ?u32 {
     return null;
 }
 
+/// Where the marker box among the children of line container `id` paints, when not after the
+/// container's text (takumi's tree holds an outside marker as its item's first child, an inside
+/// one as text of the line):
+/// * `before_text`: an outside marker whose line is not the item's own inline layout (the item
+///   holds block-level content, or the line belongs to a block the item starts with) paints
+///   before that content, so its label precedes the body in the content order;
+/// * `in_text`: an inside symbol paints with the line's text, in the same content sequence.
+pub const Placement = struct { node: u32, how: enum { before_text, in_text } };
+
+pub fn placement(f: *const Frame, id: u32) ?Placement {
+    if (stateOf(f) == null) return null;
+    const n = &f.nodes.items[id];
+    var c = n.first_child;
+    var guard: u32 = 0;
+    while (c != none and guard < 64) : (guard += 1) {
+        if (ofNode(f, c)) |info| {
+            if (!info.outside) return if (info.shape != null) .{ .node = c, .how = .in_text } else null;
+            if (n.parent != none and @import("tags.zig").standsForParent(f, id)) {
+                const p = &f.nodes.items[n.parent];
+                if (p.el == info.item and p.kind != .anon_text and p.kind != .anon_box) return null;
+            }
+            return .{ .node = c, .how = .before_text };
+        }
+        c = f.nodes.items[c].next;
+    }
+    return null;
+}
+
 // ---------------------------------------------------------------------------------------------
 // counter styles (takumi `ListStyleType`)
 // ---------------------------------------------------------------------------------------------
@@ -432,6 +460,23 @@ fn primaryAscent(f: *const Frame, cs: *const CS) i32 {
     return @intFromFloat(@round(m.ascent * cs.font_size));
 }
 
+/// Whether the fonts `cs` selects (its families, then every registered family) draw all of `text`.
+fn covered(f: *const Frame, cs: *const CS, text: []const u8) bool {
+    var buf: [32]@import("../font/font.zig").FaceId = undefined;
+    const faces = f.r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &buf);
+    var i: usize = 0;
+    while (i < text.len) {
+        const d = @import("../font/unicode.zig").decodeUtf8(text, i);
+        i += d.len;
+        if (d.cp < 0x80) continue;
+        const ok = for (faces) |id| {
+            if (f.r.fonts.font(id).glyphIndex(d.cp) != 0) break true;
+        } else false;
+        if (!ok) return false;
+    }
+    return true;
+}
+
 /// LayoutUnit truncation (1/64 px).
 fn lu(v: f32) f32 {
     return @trunc(v * 64) / 64;
@@ -444,7 +489,11 @@ fn attach(f: *Frame, item: u32, ordinal: i32) Error!void {
     const ics = e.cs;
     const rtl = ics.direction == .rtl;
     const k = kindOf(ics.list_style_type);
-    const text = (try markerText(a, ics.list_style_type, ordinal, rtl)) orelse return;
+    var text = (try markerText(a, ics.list_style_type, ordinal, rtl)) orelse return;
+    // A counter style beyond takumi's twelve is drawn when the item's fonts have its glyphs;
+    // without them the marker is the decimal one takumi-pdf shows for such a list (it drops the
+    // declaration), not a render failed for characters the document never wrote.
+    if (k == .other and !covered(f, ics, text)) text = try std.fmt.allocPrint(a, "{d}. ", .{ordinal});
     const outside = ics.list_style_position == .outside;
     const hp: Host = if (outside) (outsideHost(f, item, rtl) orelse return) else .{ .el = item, .inset = 0 };
     const host = hp.el;

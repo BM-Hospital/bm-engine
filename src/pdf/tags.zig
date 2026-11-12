@@ -19,6 +19,7 @@ const render = @import("../render.zig");
 const style = @import("../style/style.zig");
 const w = @import("writer.zig");
 const markers = @import("markers.zig");
+const dom_mod = @import("../dom.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = render.Frame;
@@ -130,7 +131,6 @@ const Walk = struct {
     headings: std.ArrayList(u8) = .empty,
     /// render nodes a destination names (anchors with an `id`, headings)
     targets: *const std.AutoHashMapUnmanaged(u32, void),
-    path: std.ArrayList(u32) = .empty,
 
     fn newGroup(wk: *Walk, role: Role) Error!*Group {
         const g = try wk.a.create(Group);
@@ -141,15 +141,7 @@ const Walk = struct {
     /// takumi `name_target`: the `Un.<path>` id when a destination names `node`.
     fn nameTarget(wk: *Walk, node: u32, g: *Group) Error!bool {
         if (!wk.targets.contains(node)) return false;
-        var buf: std.ArrayList(u8) = .empty;
-        // the document sits under takumi's page root: its paths start at child 0
-        try buf.appendSlice(wk.a, "Un.0");
-        for (wk.path.items) |i| {
-            var t: [16]u8 = undefined;
-            try buf.append(wk.a, '.');
-            try buf.appendSlice(wk.a, std.fmt.bufPrint(&t, "{d}", .{i}) catch unreachable);
-        }
-        g.id = buf.items;
+        g.id = try tagId(wk.a, wk.f, node);
         g.node = node;
         return true;
     }
@@ -223,13 +215,33 @@ fn isRowFlex(n: *const Node) bool {
     return n.cs.flex_direction == .row or n.cs.flex_direction == .row_reverse;
 }
 
-/// The children the walk visits: an anonymous only child stands for its block, so its children
-/// are the block's.
-fn firstKid(f: *const Frame, n: *const Node) u32 {
-    const c = n.first_child;
-    if (c == none) return none;
-    if (standsForParent(f, c)) return f.nodes.items[c].first_child;
+/// A render node takumi's tree does not hold: `display: none` generates no box.
+fn gone(f: *const Frame, id: u32) bool {
+    const n = &f.nodes.items[id];
+    return n.kind != .anon_text and n.kind != .anon_box and n.cs.display == .none;
+}
+
+fn firstLive(f: *const Frame, n: *const Node) u32 {
+    var c = n.first_child;
+    while (c != none and gone(f, c)) c = f.nodes.items[c].next;
     return c;
+}
+
+fn nextLive(f: *const Frame, id: u32) u32 {
+    var c = f.nodes.items[id].next;
+    while (c != none and gone(f, c)) c = f.nodes.items[c].next;
+    return c;
+}
+
+/// The children the walk visits (no `display: none` box): an anonymous only child stands for
+/// its block, so its children are the block's.
+fn liveKids(wk: *Walk, id: u32) Error![]const u32 {
+    const f = wk.f;
+    var out: std.ArrayList(u32) = .empty;
+    var c = firstLive(f, &f.nodes.items[id]);
+    if (c != none and standsForParent(f, c)) c = firstLive(f, &f.nodes.items[c]);
+    while (c != none) : (c = nextLive(f, c)) try out.append(wk.a, c);
+    return out.items;
 }
 
 /// An anonymous paragraph leaf / line container that is the only child of a block container is
@@ -239,56 +251,353 @@ pub fn standsForParent(f: *const Frame, id: u32) bool {
     const n = &f.nodes.items[id];
     if (!(n.kind == .anon_text or n.kind == .anon_box) or n.parent == none) return false;
     const p = &f.nodes.items[n.parent];
-    if (p.first_child != id or p.last_child != id) return false;
+    if (firstLive(f, p) != id or nextLive(f, id) != none) return false;
     return switch (p.cs.display) {
         .flex, .inline_flex, .grid, .inline_grid, .webkit_box, .webkit_inline_box => false,
+        // a table, row group or row lays out no lines: its text sits in an anonymous cell
+        .table, .inline_table, .table_row_group, .table_header_group, .table_footer_group, .table_row => p.kind == .anon_text,
         else => true,
     };
 }
 
-/// The index takumi's path gives node `id`: its element's place among its DOM siblings (text
-/// runs included), else its place among the render node's children.
-fn pathIndex(f: *const Frame, id: u32, fallback: u32) u32 {
-    const n = &f.nodes.items[id];
-    if (n.el == none or n.kind == .anon_text or n.kind == .anon_box) return fallback;
-    // (white-space-only text runs are not nodes in takumi's tree)
-    var k: u32 = 0;
-    const paged = f.paginated() != null;
-    var p = f.dom.at(n.el).prev;
-    var guard: u32 = 0;
-    while (p != none and guard < 1 << 20) : (p = f.dom.at(p).prev) {
-        guard += 1;
-        const sib = f.dom.at(p);
-        if (sib.kind == .text and sib.tag.len == 0 and std.mem.trim(u8, sib.text, &std.ascii.whitespace).len == 0) continue;
-        // a paged document's repeating fixed boxes leave the tree (takumi `take_repeating_fixed`)
-        if (paged and !sib.run and sib.cs.position == .fixed) continue;
-        k += 1;
+const ChildClass = enum { inline_flow, out_of_flow, block };
+
+/// How a child takes part in its parent's layout (takumi `participates_in_*inline_formatting_context`).
+fn childClass(e: *const dom_mod.El) ChildClass {
+    if (e.run) return .inline_flow;
+    const cs = e.cs;
+    if (cs.position == .absolute or cs.position == .fixed or cs.float != .none) return .out_of_flow;
+    return switch (cs.display) {
+        .@"inline", .inline_block, .inline_flex, .inline_grid, .inline_table, .webkit_inline_box => .inline_flow,
+        else => .block,
+    };
+}
+
+fn collapsibleSpace(e: *const dom_mod.El) bool {
+    if (!(e.run or (e.kind == .text and e.tag.len == 0))) return false;
+    if (e.cs.white_space_collapse != .collapse) return false;
+    return std.mem.trim(u8, e.text, &std.ascii.whitespace).len == 0;
+}
+
+/// The children of DOM element `parent` as takumi's render tree holds them
+/// (`RenderNode::normalize_children`): no `display: none` box, no collapsible white space
+/// that follows no inline content (`drop_collapsible_boundary_whitespace`), a paged
+/// document's repeating fixed boxes taken out; next to block-level siblings every run of inline
+/// content is one anonymous block. `visit` gets each kept child with its place: the index among
+/// the parent's children and, inside an anonymous block, the index in it.
+const ChildPlaces = struct {
+    f: *const Frame,
+    parent: u32,
+    mixed: bool = false,
+    items_parent: bool = false,
+    parent_inline: bool = false,
+
+    fn init(f: *const Frame, parent: u32) ChildPlaces {
+        var cp: ChildPlaces = .{ .f = f, .parent = parent };
+        const pe = f.dom.at(parent);
+        const pd = pe.cs.display;
+        cp.parent_inline = pd == .@"inline";
+        cp.items_parent = switch (pd) {
+            .flex, .inline_flex, .grid, .inline_grid, .webkit_box, .webkit_inline_box => true,
+            // (table parts: the fix-up keeps the children in order; white space goes)
+            .table, .inline_table, .table_row_group, .table_header_group, .table_footer_group, .table_row => true,
+            else => false,
+        };
+        if (!cp.items_parent) {
+            var has_inline = false;
+            var has_block = false;
+            var it = cp.iter();
+            while (it.next()) |c| switch (childClass(f.dom.at(c))) {
+                .inline_flow => has_inline = true,
+                .block => has_block = true,
+                .out_of_flow => {},
+            };
+            cp.mixed = has_inline and has_block and !cp.parent_inline;
+        }
+        return cp;
     }
-    // (a list item's marker is its first child in takumi's tree)
-    const parent = f.dom.at(n.el).parent;
-    if (parent != none and markers.hasMarker(f, parent)) k += 1;
-    return k;
+
+    const Iter = struct {
+        cp: *const ChildPlaces,
+        cur: u32,
+        after_inline: bool,
+        guard: u32 = 0,
+
+        fn next(it: *Iter) ?u32 {
+            const f = it.cp.f;
+            const paged = f.paginated() != null;
+            while (it.cur != none and it.guard < 1 << 22) {
+                it.guard += 1;
+                const c = it.cur;
+                const e = f.dom.at(c);
+                it.cur = e.next;
+                if (!e.run and e.cs.display == .none) continue;
+                // a paged document's repeating fixed boxes leave the tree (takumi `take_repeating_fixed`)
+                if (paged and !e.run and e.cs.position == .fixed) continue;
+                if (collapsibleSpace(e) and (it.cp.items_parent or !it.after_inline)) continue;
+                const cls = childClass(e);
+                if (cls != .out_of_flow) it.after_inline = cls == .inline_flow;
+                return c;
+            }
+            return null;
+        }
+    };
+
+    fn iter(cp: *const ChildPlaces) Iter {
+        return .{ .cp = cp, .cur = cp.f.dom.at(cp.parent).first, .after_inline = cp.parent_inline };
+    }
+
+    /// The place of child `el`: `.{ index, index inside the anonymous block or null }`.
+    fn of(cp: *const ChildPlaces, el: u32) ?struct { u32, ?u32 } {
+        const f = cp.f;
+        // (a list item's marker is its first child in takumi's tree)
+        var index: u32 = if (markers.hasMarker(f, cp.parent)) 1 else 0;
+        var it = cp.iter();
+        if (!cp.mixed) {
+            while (it.next()) |c| {
+                if (c == el) return .{ index, null };
+                index += 1;
+            }
+            return null;
+        }
+        // runs of inline content (with the floats and out-of-flow boxes inside them): one
+        // anonymous block each when the run holds in-flow inline content
+        var run: [2]u32 = .{ 0, 0 }; // members so far, in-flow inline members so far
+        var found: ?u32 = null;
+        while (true) {
+            const c = it.next();
+            const cls: ChildClass = if (c) |x| childClass(f.dom.at(x)) else .block;
+            if (cls == .block) {
+                // the run before this child ends
+                if (run[0] > 0) {
+                    if (run[1] > 0) {
+                        if (found) |inner| return .{ index, inner };
+                        index += 1;
+                    } else {
+                        if (found) |inner| return .{ index + inner, null };
+                        index += run[0];
+                    }
+                    run = .{ 0, 0 };
+                }
+                const x = c orelse return null;
+                if (x == el) return .{ index, null };
+                index += 1;
+                continue;
+            }
+            if (c.? == el) found = run[0];
+            run[0] += 1;
+            if (cls == .inline_flow) run[1] += 1;
+        }
+    }
+};
+
+/// takumi `tag_id` of the path to render node `node`: `n` and the child indices from the root
+/// (krilla prefixes `U`); the document sits under takumi's page root, so paths start at child 0.
+fn tagId(a: Allocator, f: *const Frame, node: u32) Error![]const u8 {
+    var rev: std.ArrayList(u32) = .empty;
+    const root_el = f.nodes.items[f.root].el;
+    var el = f.nodes.items[node].el;
+    var guard: u32 = 0;
+    while (el != none and el != root_el and guard < 4096) : (guard += 1) {
+        const parent = f.dom.at(el).parent;
+        if (parent == none) break;
+        const cp = ChildPlaces.init(f, parent);
+        if (cp.of(el)) |place| {
+            if (place[1]) |inner| try rev.append(a, inner);
+            try rev.append(a, place[0]);
+        } else try rev.append(a, 0);
+        el = parent;
+    }
+    var buf: std.ArrayList(u8) = .empty;
+    try buf.appendSlice(a, "Un.0");
+    var i = rev.items.len;
+    while (i > 0) {
+        i -= 1;
+        var t: [16]u8 = undefined;
+        try buf.append(a, '.');
+        try buf.appendSlice(a, std.fmt.bufPrint(&t, "{d}", .{rev.items[i]}) catch unreachable);
+    }
+    return buf.items;
+}
+
+/// takumi `should_create_inline_layout` for a block that lays out no line: its children are
+/// all inline-level and none of them puts anything on a line (`<h1><span> </span></h1>`).
+/// takumi still opens the block's (empty) content region.
+pub fn emptyInlineBlock(f: *const Frame, id: u32) bool {
+    const n = &f.nodes.items[id];
+    if (n.kind != .container or n.el == none) return false;
+    switch (n.cs.display) {
+        .block, .flow_root, .inline_block, .list_item, .table_cell, .table_caption => {},
+        else => return false,
+    }
+    // (lines, or block-level children, are render nodes)
+    var c = firstLive(f, n);
+    while (c != none) : (c = nextLive(f, c)) {
+        const cn = &f.nodes.items[c];
+        if (cn.kind == .anon_text or cn.kind == .anon_box) return false;
+        if (!(cn.cs.float != .none or cn.cs.position == .absolute or cn.cs.position == .fixed)) return false;
+    }
+    var found = false;
+    var k = f.dom.at(n.el).first;
+    var guard: u32 = 0;
+    while (k != none and guard < 1 << 20) : (k = f.dom.at(k).next) {
+        guard += 1;
+        const e = f.dom.at(k);
+        if (e.run) continue;
+        if (e.cs.display == .none) continue;
+        switch (childClass(e)) {
+            .inline_flow => found = true,
+            .out_of_flow => {},
+            .block => return false,
+        }
+    }
+    return found;
+}
+
+/// Whether DOM element `el` has a child in takumi's render tree (an element that generates a
+/// box, text that is not only white space, generated content).
+fn hasTreeChildren(f: *const Frame, el: u32) bool {
+    const e = f.dom.at(el);
+    if (e.before != none or e.after != none) return true;
+    if (e.kind == .text and std.mem.trim(u8, e.text, &std.ascii.whitespace).len > 0) return true;
+    var k = e.first;
+    var guard: u32 = 0;
+    while (k != none and guard < 1 << 20) : (k = f.dom.at(k).next) {
+        guard += 1;
+        const c = f.dom.at(k);
+        if (c.run) {
+            if (std.mem.trim(u8, c.text, &std.ascii.whitespace).len > 0) return true;
+            continue;
+        }
+        if (c.cs.display != .none) return true;
+    }
+    return false;
+}
+
+/// The role of an inline element that is no render node here (an inline box of a paragraph), by
+/// its tag (takumi `role`; the roles an inline box can carry).
+fn inlineRole(f: *const Frame, el: u32) ?Role {
+    const e = f.dom.at(el);
+    if (e.kind == .text) return null;
+    const tag = e.tag;
+    if (eq(tag, "a")) {
+        const h = f.dom.attr(el, "href") orelse return null;
+        return if (h.len > 0) .link else null;
+    }
+    if (eq(tag, "strong") or eq(tag, "b")) return .strong;
+    if (eq(tag, "em") or eq(tag, "i")) return .em;
+    if (eq(tag, "code")) return .code;
+    return null;
+}
+
+/// An inline element with a role around inline-level boxes (takumi builds it as an element of
+/// its own: `<a href><img alt></a>` is `Link > Figure`).
+const InlineOpen = struct { el: u32, g: *Group, pending: std.ArrayList(Ident) = .empty };
+
+const max_inline_roles = 16;
+
+/// The inline elements with a role between inline-level box `c` and the block laying it out,
+/// outermost first (at most `max_inline_roles`, the innermost ones).
+fn inlineRoleChain(f: *const Frame, c: u32, out: *[max_inline_roles]u32) []const u32 {
+    const cn = &f.nodes.items[c];
+    if (cn.el == none or cn.kind == .anon_text or cn.kind == .anon_box) return out[0..0];
+    // the element of the block: the nearest ancestor render node that has one
+    var host: u32 = none;
+    var p = cn.parent;
+    var guard: u32 = 0;
+    while (p != none and guard < 64) : (guard += 1) {
+        const pn = &f.nodes.items[p];
+        if (pn.el != none and pn.kind != .anon_text and pn.kind != .anon_box) {
+            host = pn.el;
+            break;
+        }
+        p = pn.parent;
+    }
+    if (host == none) return out[0..0];
+    var k: usize = max_inline_roles;
+    var el = f.dom.at(cn.el).parent;
+    guard = 0;
+    while (el != none and el != host and guard < 4096) : (guard += 1) {
+        if (inlineRole(f, el) != null and k > 0) {
+            k -= 1;
+            out[k] = el;
+        }
+        el = f.dom.at(el).parent;
+    }
+    if (el != host) return out[0..0];
+    return out[k..];
+}
+
+fn closeInline(wk: *Walk, open: *std.ArrayList(*InlineOpen), keep: usize, parent: *std.ArrayList(Kid)) Error!void {
+    while (open.items.len > keep) {
+        const top = open.items[open.items.len - 1];
+        open.items.len -= 1;
+        try flushParagraph(wk, &top.pending, &top.g.kids);
+        // an empty element goes
+        if (top.g.kids.items.len == 0) continue;
+        const into = if (open.items.len > 0) &open.items[open.items.len - 1].g.kids else parent;
+        try into.append(wk.a, .{ .group = top.g });
+    }
 }
 
 fn buildChildren(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), pending: *std.ArrayList(Ident), nesting: Nesting) Error!void {
-    const f = wk.f;
-    const n = &f.nodes.items[id];
+    const n = &wk.f.nodes.items[id];
     const inner: Nesting = .{ .in_row = isRowFlex(n), .in_list = nesting.in_list, .in_figure = nesting.in_figure };
-    var c = firstKid(f, n);
-    var index: u32 = 0;
-    while (c != none) : (c = f.nodes.items[c].next) {
-        try wk.path.append(wk.a, pathIndex(f, c, index));
-        try buildNode(wk, c, parent, pending, inner);
-        wk.path.items.len -= 1;
-        index += 1;
+    const items = n.kind != .anon_text and n.kind != .anon_box and switch (n.cs.display) {
+        .flex, .inline_flex, .grid, .inline_grid, .webkit_box, .webkit_inline_box => true,
+        else => false,
+    };
+    return buildKids(wk, try liveKids(wk, id), items, parent, pending, inner);
+}
+
+/// Builds a run of sibling boxes. A table part outside a table (a cell, row, row group or
+/// caption whose parent is none: `items` false, as flex / grid items are blockified) sits in the
+/// anonymous table takumi's tree wraps the run of them in (`wrap_orphan_table_parts`).
+fn buildKids(wk: *Walk, kids: []const u32, items: bool, parent: *std.ArrayList(Kid), pending: *std.ArrayList(Ident), inner: Nesting) Error!void {
+    const f = wk.f;
+    var open: std.ArrayList(*InlineOpen) = .empty;
+    var i: usize = 0;
+    while (i < kids.len) : (i += 1) {
+        const c = kids[i];
+        if (!items and tpartOf(f, c) != .other and tpartOf(f, c) != .column) {
+            var j = i;
+            while (j < kids.len and tpartOf(f, kids[j]) != .other) j += 1;
+            try closeInline(wk, &open, 0, parent);
+            try flushParagraph(wk, pending, parent);
+            try buildTable(wk, none, kids[i..j], parent, inner);
+            i = j - 1;
+            continue;
+        }
+        var chain_buf: [max_inline_roles]u32 = undefined;
+        const chain = inlineRoleChain(f, c, &chain_buf);
+        if (chain.len > 0 or open.items.len > 0) {
+            var common: usize = 0;
+            while (common < chain.len and common < open.items.len and open.items[common].el == chain[common]) common += 1;
+            try closeInline(wk, &open, common, parent);
+            for (chain[common..]) |el| {
+                // the element ends the run of bare content before it
+                if (open.items.len > 0) {
+                    const top = open.items[open.items.len - 1];
+                    try flushParagraph(wk, &top.pending, &top.g.kids);
+                } else try flushParagraph(wk, pending, parent);
+                const io = try wk.a.create(InlineOpen);
+                io.* = .{ .el = el, .g = try wk.newGroup(inlineRole(f, el).?) };
+                try open.append(wk.a, io);
+            }
+        }
+        if (open.items.len > 0) {
+            const top = open.items[open.items.len - 1];
+            try buildNode(wk, c, &top.g.kids, &top.pending, .{ .in_row = inner.in_row, .in_list = false, .in_figure = inner.in_figure });
+        } else try buildNode(wk, c, parent, pending, inner);
     }
+    try closeInline(wk, &open, 0, parent);
 }
 
 fn buildNode(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), pending: *std.ArrayList(Ident), nesting: Nesting) Error!void {
     const n = &wk.f.nodes.items[id];
     if (n.kind != .anon_text and isTable(n.cs.display)) {
         try flushParagraph(wk, pending, parent);
-        return buildTable(wk, id, parent, nesting);
+        return buildTable(wk, id, try liveKids(wk, id), parent, nesting);
     }
     var role = try roleOf(wk, id, nesting);
     if (role == null and wk.targets.contains(id)) role = .{ .role = .p };
@@ -411,22 +720,92 @@ fn cellKind(f: *const Frame, cell: *const Node, in_header: bool, rows_left: usiz
     return .{ .role = .th, .scope = scope, .row_span = row_span, .col_span = col_span };
 }
 
-fn childCount(f: *const Frame, n: *const Node) usize {
-    var k: usize = 0;
-    var c = n.first_child;
-    while (c != none) : (c = f.nodes.items[c].next) k += 1;
-    return k;
+const TPart = enum { caption, group, row, cell, column, other };
+
+/// The table part a box is (its display; a float or an out-of-flow box is blockified).
+fn tpartOf(f: *const Frame, id: u32) TPart {
+    const n = &f.nodes.items[id];
+    if (n.kind == .anon_text or n.kind == .anon_box) return .other;
+    if (n.cs.float != .none or n.cs.position == .absolute or n.cs.position == .fixed) return .other;
+    return switch (n.cs.display) {
+        .table_caption => .caption,
+        .table_header_group, .table_row_group, .table_footer_group => .group,
+        .table_row => .row,
+        .table_cell => .cell,
+        .table_column, .table_column_group => .column,
+        else => .other,
+    };
 }
 
-/// A table's structure, one `Table` across pages (takumi `build_table`).
-fn buildTable(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), outer: Nesting) Error!void {
+/// A table part: a box of the frame, or the anonymous box takumi's tree (Blink's table fix-up)
+/// wraps `items` in.
+const TBox = struct { node: u32 = none, items: std.ArrayList(u32) = .empty };
+
+/// `kids` as the children of a table (`want` = group), a row group (row) or a row (cell): each
+/// kid of that part is a box of its own, every run of other kids is one anonymous box of that
+/// part (Blink `LayoutTable::AddChild` and its section / row counterparts).
+fn tboxes(wk: *Walk, kids: []const u32, want: TPart) Error![]TBox {
+    var out: std.ArrayList(TBox) = .empty;
+    var run_open = false;
+    for (kids) |k| {
+        const p = tpartOf(wk.f, k);
+        if (want == .group and (p == .caption or p == .column)) continue;
+        if (p == want) {
+            try out.append(wk.a, .{ .node = k });
+            run_open = false;
+            continue;
+        }
+        if (!run_open) {
+            try out.append(wk.a, .{});
+            run_open = true;
+        }
+        try out.items[out.items.len - 1].items.append(wk.a, k);
+    }
+    return out.items;
+}
+
+/// An anonymous cell around `items`: lines of text alone are the cell's own inline layout,
+/// anything else its children.
+fn anonCell(wk: *Walk, items: []const u32, in_header: bool, nesting: Nesting) Error!*Group {
     const f = wk.f;
-    const n = &f.nodes.items[id];
-    const rec = try wk.c.take(id);
+    const g = try wk.newGroup(if (in_header) .th else .td);
+    if (in_header) g.scope = .column;
+    var all_inline = true;
+    for (items) |it| {
+        const k = f.nodes.items[it].kind;
+        if (k != .anon_text and k != .anon_box) all_inline = false;
+    }
+    var children: std.ArrayList(Kid) = .empty;
+    var child_pending: std.ArrayList(Ident) = .empty;
+    if (all_inline) {
+        var annots: std.ArrayList(Ident) = .empty;
+        for (items) |it| {
+            const rec = try wk.c.take(it);
+            for (rec.labels.items) |x| try g.kids.append(wk.a, .{ .leaf = x });
+            for (rec.ids.items) |x| try g.kids.append(wk.a, .{ .leaf = x });
+            try annots.appendSlice(wk.a, rec.annots.items);
+            try buildChildren(wk, it, &children, &child_pending, nesting);
+        }
+        try flushParagraph(wk, &child_pending, &children);
+        try pushLinkWrappers(wk, annots.items, &children);
+    } else {
+        try buildKids(wk, items, false, &children, &child_pending, nesting);
+        try flushParagraph(wk, &child_pending, &children);
+    }
+    try g.kids.appendSlice(wk.a, children.items);
+    return g;
+}
+
+/// A table's structure, one `Table` across pages (takumi `build_table`). `id`: the table box,
+/// none for the anonymous table around the table parts `kids`.
+fn buildTable(wk: *Walk, id: u32, kids: []const u32, parent: *std.ArrayList(Kid), outer: Nesting) Error!void {
+    const f = wk.f;
+    var rec: Collector.Recorded = .{};
+    if (id != none) rec = try wk.c.take(id);
     var annots: std.ArrayList(Ident) = .empty;
     try annots.appendSlice(wk.a, rec.annots.items);
     const table = try wk.newGroup(.table);
-    const is_target = try wk.nameTarget(id, table);
+    const is_target = id != none and try wk.nameTarget(id, table);
     const nesting: Nesting = .{ .in_figure = outer.in_figure };
     var groups: std.ArrayList(Kid) = .empty;
 
@@ -444,18 +823,11 @@ fn buildTable(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), outer: Nesting) E
                 try tr.kids.append(wk.a, .{ .group = td });
                 try groups.append(wk.a, .{ .group = tr });
             }
-            try tableSections(wk, id, &groups, &annots, nesting);
+            try tableSections(wk, kids, &groups, &annots, nesting);
         }
-        var c = n.first_child;
-        var index: u32 = 0;
-        while (c != none) : ({
-            c = f.nodes.items[c].next;
-            index += 1;
-        }) {
+        for (kids) |c| {
             const cn = &f.nodes.items[c];
-            if (cn.kind == .anon_text or cn.cs.display != .table_caption or cn.cs.caption_side != side) continue;
-            try wk.path.append(wk.a, pathIndex(f, c, index));
-            defer wk.path.items.len -= 1;
+            if (tpartOf(f, c) != .caption or cn.cs.caption_side != side) continue;
             if (try buildElement(wk, c, .{ .role = .caption }, nesting, false)) |g| try groups.append(wk.a, .{ .group = g });
         }
     }
@@ -466,70 +838,43 @@ fn buildTable(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), outer: Nesting) E
     try pushLinkWrappers(wk, annots.items, parent);
 }
 
-fn isGroupDisplay(d: style.computed.Display) bool {
-    return d == .table_header_group or d == .table_row_group or d == .table_footer_group;
-}
-
 /// The table's sections in table order: the first header group, the bodies, the first footer
-/// group (takumi `table_sections`).
-fn tableSections(wk: *Walk, id: u32, groups: *std.ArrayList(Kid), table_annots: *std.ArrayList(Ident), nesting: Nesting) Error!void {
+/// group (takumi `table_sections`), with the anonymous row groups, rows and cells of the fix-up.
+fn tableSections(wk: *Walk, kids: []const u32, groups: *std.ArrayList(Kid), table_annots: *std.ArrayList(Ident), nesting: Nesting) Error!void {
     const f = wk.f;
-    const n = &f.nodes.items[id];
-    var head: u32 = none;
-    var foot: u32 = none;
-    var c = n.first_child;
-    while (c != none) : (c = f.nodes.items[c].next) {
-        const cn = &f.nodes.items[c];
-        if (cn.kind == .anon_text) continue;
-        if (cn.cs.display == .table_header_group and head == none) head = c;
-        if (cn.cs.display == .table_footer_group and foot == none) foot = c;
+    const secs = try tboxes(wk, kids, .group);
+    var head: ?usize = null;
+    var foot: ?usize = null;
+    for (secs, 0..) |s, i| {
+        if (s.node == none) continue;
+        const d = f.nodes.items[s.node].cs.display;
+        if (d == .table_header_group and head == null) head = i;
+        if (d == .table_footer_group and foot == null) foot = i;
     }
-    var order: std.ArrayList(u32) = .empty;
-    if (head != none) try order.append(wk.a, head);
-    c = n.first_child;
-    while (c != none) : (c = f.nodes.items[c].next) {
-        const cn = &f.nodes.items[c];
-        if (c == head or c == foot or cn.kind == .anon_text) continue;
-        if (isGroupDisplay(cn.cs.display) or cn.cs.display == .table_row) try order.append(wk.a, c);
+    var order: std.ArrayList(usize) = .empty;
+    if (head) |h| try order.append(wk.a, h);
+    for (secs, 0..) |_, i| {
+        if ((head != null and head.? == i) or (foot != null and foot.? == i)) continue;
+        try order.append(wk.a, i);
     }
-    if (foot != none) try order.append(wk.a, foot);
-    for (order.items) |sec| {
-        const sn = &f.nodes.items[sec];
-        var index: u32 = 0;
-        var k = n.first_child;
-        while (k != sec) : (k = f.nodes.items[k].next) index += 1;
-        try wk.path.append(wk.a, pathIndex(f, sec, index));
-        defer wk.path.items.len -= 1;
-        const display = sn.cs.display;
+    if (foot) |x| try order.append(wk.a, x);
+    for (order.items) |si| {
+        const sec = &secs[si];
+        const display: style.computed.Display = if (sec.node != none) f.nodes.items[sec.node].cs.display else .table_row_group;
         const in_header = display == .table_header_group;
-        // a row outside any group stands for a group of one
-        const single_row = display == .table_row;
-        const row_count: usize = if (single_row) 1 else childCount(f, sn);
-        const section_links = if (single_row) Collector.Recorded{} else try wk.c.take(sec);
+        const sec_kids = if (sec.node != none) try liveKids(wk, sec.node) else sec.items.items;
+        const row_boxes = try tboxes(wk, sec_kids, .row);
+        const section_links = if (sec.node != none) try wk.c.take(sec.node) else Collector.Recorded{};
         var rows: std.ArrayList(*Group) = .empty;
-        var row_index: usize = 0;
-        var r: u32 = if (single_row) sec else sn.first_child;
-        while (r != none) : ({
-            r = if (single_row) none else f.nodes.items[r].next;
-            row_index += 1;
-        }) {
-            const rn = &f.nodes.items[r];
-            const row_links = try wk.c.take(r);
-            if (!single_row) try wk.path.append(wk.a, pathIndex(f, r, @intCast(row_index)));
-            defer {
-                if (!single_row) wk.path.items.len -= 1;
-            }
+        for (row_boxes, 0..) |*row, row_index| {
+            const row_links = if (row.node != none) try wk.c.take(row.node) else Collector.Recorded{};
+            const row_kids = if (row.node != none) try liveKids(wk, row.node) else row.items.items;
             var cells: std.ArrayList(Kid) = .empty;
-            var cell_index: u32 = 0;
-            var cell = rn.first_child;
-            while (cell != none) : ({
-                cell = f.nodes.items[cell].next;
-                cell_index += 1;
-            }) {
-                try wk.path.append(wk.a, pathIndex(f, cell, cell_index));
-                defer wk.path.items.len -= 1;
-                const cn = &f.nodes.items[cell];
-                if (try buildElement(wk, cell, cellKind(f, cn, in_header, row_count - row_index), nesting, true)) |g| try cells.append(wk.a, .{ .group = g });
+            for (try tboxes(wk, row_kids, .cell)) |*cell| {
+                if (cell.node != none) {
+                    const cn = &f.nodes.items[cell.node];
+                    if (try buildElement(wk, cell.node, cellKind(f, cn, in_header, row_boxes.len - row_index), nesting, true)) |g| try cells.append(wk.a, .{ .group = g });
+                } else try cells.append(wk.a, .{ .group = try anonCell(wk, cell.items.items, in_header, nesting) });
             }
             if (cells.items.len > 0) {
                 try pushLinkWrappers(wk, row_links.annots.items, &cells.items[cells.items.len - 1].group.kids);
@@ -562,14 +907,14 @@ fn figureAlt(f: *const Frame, id: u32, depth: u32) ?[]const u8 {
         const alt = attrOf(f, n, "alt") orelse return null;
         return if (alt.len > 0) alt else null;
     }
-    var c = n.first_child;
-    while (c != none) : (c = f.nodes.items[c].next) {
+    var c = firstLive(f, n);
+    while (c != none) : (c = nextLive(f, c)) {
         if (figureAlt(f, c, depth + 1)) |x| return x;
     }
     return null;
 }
 
-fn listNumbering(n: *const Node) Numbering {
+fn listNumbering(f: *const Frame, n: *const Node) Numbering {
     return switch (n.cs.list_style_type) {
         .none, .string => .none,
         .ident => |s| blk: {
@@ -580,7 +925,10 @@ fn listNumbering(n: *const Node) Numbering {
                 .{ "lower-roman", .lower_roman }, .{ "upper-roman", .upper_roman },
             };
             for (table) |e| if (eq(s, e[0])) break :blk e[1];
-            break :blk .none;
+            if (eq(s, "disclosure-closed") or eq(s, "disclosure-open")) break :blk .none;
+            // a counter style takumi does not parse: its declaration is dropped there, which
+            // leaves the list the type its element starts with (`ol`: decimal, else disc)
+            break :blk if (eq(tagOf(f, n), "ol")) .decimal else .disc;
         },
     };
 }
@@ -592,7 +940,7 @@ fn roleOf(wk: *Walk, id: u32, nesting: Nesting) Error!?RoleSpec {
     if (tag.len == 0) return null;
     if (tag.len == 2 and (tag[0] == 'h' or tag[0] == 'H') and tag[1] >= '1' and tag[1] <= '6') {
         const title = try @import("interactive.zig").textContent(wk.a, f, n.el);
-        if (title.len == 0 and n.first_child == none) return null;
+        if (title.len == 0 and !hasTreeChildren(f, n.el)) return null;
         const level = try wk.headingLevel(tag[1] - '0');
         return .{ .role = .h, .level = level, .title = if (title.len > 0) title else null };
     }
@@ -611,7 +959,7 @@ fn roleOf(wk: *Walk, id: u32, nesting: Nesting) Error!?RoleSpec {
     if (eq(tag, "blockquote")) return .{ .role = .block_quote };
     if (eq(tag, "section")) return .{ .role = .sect };
     if (eq(tag, "article")) return .{ .role = .art };
-    if (eq(tag, "ul") or eq(tag, "ol")) return .{ .role = .l, .numbering = listNumbering(n) };
+    if (eq(tag, "ul") or eq(tag, "ol")) return .{ .role = .l, .numbering = listNumbering(f, n) };
     if (eq(tag, "li")) return .{ .role = .li };
     if (eq(tag, "strong") or eq(tag, "b")) return .{ .role = .strong };
     if (eq(tag, "em") or eq(tag, "i")) return .{ .role = .em };
@@ -641,6 +989,18 @@ pub fn build(c: *Collector, lang: ?[]const u8, targets: *const std.AutoHashMapUn
     var top: std.ArrayList(Kid) = .empty;
     var pending: std.ArrayList(Ident) = .empty;
     try buildNode(&wk, c.f.root, &top, &pending, .{});
+    try flushParagraph(&wk, &pending, &top);
+    // Whatever the walk did not reach still needs a parent: a marked-content sequence or an
+    // annotation outside the structure tree is a null parent-tree entry (krilla refuses to write
+    // one). It reads last, as a paragraph / a link of its own.
+    for (c.records.items) |*r| {
+        if (r.taken) continue;
+        r.taken = true;
+        if (r.kind == .annotation) {
+            try flushParagraph(&wk, &pending, &top);
+            try pushLinkWrappers(&wk, &.{r.id}, &top);
+        } else try pending.append(c.a, r.id);
+    }
     try flushParagraph(&wk, &pending, &top);
     try root.kids.appendSlice(c.a, top.items);
     return root;
