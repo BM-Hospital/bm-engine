@@ -817,3 +817,46 @@ test "text-overflow: custom marker string, block-ellipsis, rtl truncation side" 
         for (gs[1..]) |x| try t.expect(x.x > gs[0].x);
     }
 }
+
+test "font-variant-caps: OpenType caps or synthesized small caps (Blink rules)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const f = fx.fc.font(0); // Inter: no smcp
+    {
+        var l = try fx.lay("a\u{df}B", .{ .families = inter_fam, .size = 20, .caps = .small }, .{});
+        defer l.deinit(t.allocator);
+        // a -> A at round(20 * 0.7) = 14, ß -> SS at 14, B unchanged at 20
+        try t.expectEqual(@as(usize, 4), l.glyphs.len);
+        try t.expectEqual(f.glyphIndex('A'), l.glyphs[0].gid);
+        try t.expectEqual(@as(f32, 14), l.glyphs[0].size);
+        try t.expectEqual(f.glyphIndex('S'), l.glyphs[1].gid);
+        try t.expectEqual(f.glyphIndex('S'), l.glyphs[2].gid);
+        try t.expectEqual(l.glyphs[1].cluster, l.glyphs[2].cluster);
+        try t.expectEqual(f.glyphIndex('B'), l.glyphs[3].gid);
+        try t.expectEqual(@as(f32, 20), l.glyphs[3].size);
+    }
+    {
+        // font-synthesis-small-caps: none leaves the text alone
+        var l = try fx.lay("aB", .{ .families = inter_fam, .size = 20, .caps = .small, .synth_small_caps = false }, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(f.glyphIndex('a'), l.glyphs[0].gid);
+        try t.expectEqual(@as(f32, 20), l.glyphs[0].size);
+    }
+    {
+        // all-small-caps also shrinks capitals
+        var l = try fx.lay("aB", .{ .families = inter_fam, .size = 20, .caps = .all_small }, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(f32, 14), l.glyphs[1].size);
+    }
+    {
+        // Noto Sans has smcp: its own small-cap glyphs, full size; petite-caps falls back to smcp
+        var plain = try fx.lay("a", .{ .families = noto_fam, .size = 20 }, .{});
+        defer plain.deinit(t.allocator);
+        for ([_]font.Caps{ .small, .petite }) |cv| {
+            var l = try fx.lay("a", .{ .families = noto_fam, .size = 20, .caps = cv }, .{});
+            defer l.deinit(t.allocator);
+            try t.expect(l.glyphs[0].gid != plain.glyphs[0].gid);
+            try t.expectEqual(@as(f32, 20), l.glyphs[0].size);
+        }
+    }
+}

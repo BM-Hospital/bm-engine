@@ -1946,9 +1946,9 @@ test "text and font extras" {
     try T.expect(s.font_variation_settings.len == 2 and s.font_variation_settings[1].value == 80.5);
     try T.expect(s.font_variant_caps == .small_caps and s.font_variant_numeric.spacing == .tabular and s.font_variant_ligatures.common == .off and s.font_variant_position == .super);
     try T.expect(s.font_kerning == .none and s.font_optical_sizing == .none and s.font_synthesis.weight and !s.font_synthesis.style);
-    // resolved features: variants first, then settings (takumi order)
+    // resolved features: variants first, then settings (takumi order; caps are applied by the text engine)
     const feats = try s.fontFeatures(t.a());
-    const want = [_][]const u8{ "liga", "clig", "tnum", "smcp", "sups", "kern", "liga", "ss01", "cv01" };
+    const want = [_][]const u8{ "liga", "clig", "tnum", "sups", "kern", "liga", "ss01", "cv01" };
     try T.expectEqual(want.len, feats.len);
     for (want, feats) |w, f| try T.expectEqualStrings(w, &f.tag);
     // inherited

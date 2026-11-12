@@ -44,6 +44,7 @@ pub const FaceInfo = collection.FaceInfo;
 pub const instance_base = collection.instance_base;
 
 pub const TextStyle = text.TextStyle;
+pub const Caps = text.Caps;
 pub const Run = text.Run;
 pub const LineHeight = text.LineHeight;
 pub const TextAlign = text.TextAlign;
@@ -89,4 +90,5 @@ test {
     _ = @import("tests.zig");
     _ = @import("tests_shaping.zig");
     _ = @import("tests_formats.zig");
+    _ = @import("case.zig");
 }

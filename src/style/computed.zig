@@ -569,21 +569,8 @@ pub const ComputedStyle = struct {
             .normal => {},
         }
         if (ea.ruby) add(&buf, &n, "ruby");
-        switch (s.font_variant_caps) {
-            .normal => {},
-            .small_caps => add(&buf, &n, "smcp"),
-            .all_small_caps => {
-                add(&buf, &n, "c2sc");
-                add(&buf, &n, "smcp");
-            },
-            .petite_caps => add(&buf, &n, "pcap"),
-            .all_petite_caps => {
-                add(&buf, &n, "c2pc");
-                add(&buf, &n, "pcap");
-            },
-            .unicase => add(&buf, &n, "unic"),
-            .titling_caps => add(&buf, &n, "titl"),
-        }
+        // (font-variant-caps is not a feature list here: the text engine applies the caps
+        // features per face and synthesizes small caps, see font TextStyle.caps)
         switch (s.font_variant_position) {
             .sub => add(&buf, &n, "subs"),
             .super => add(&buf, &n, "sups"),

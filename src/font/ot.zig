@@ -708,6 +708,15 @@ fn findFeature(ls: LangSys, t: u32) ?[]const u8 {
     return null;
 }
 
+/// The default language system of the first of `script_tags`, DFLT, dflt, latn that the table has
+/// lists feature `t` (Blink `OpenTypeCapsSupport::SupportsOpenTypeFeature`).
+pub fn langSysHasFeature(table: []const u8, script_tags: []const u32, t: u32) bool {
+    var tp: TablePlan = .{};
+    const ls = selectLangSys(table, script_tags, 0, &tp);
+    if (ls.t.len < 6) return false;
+    return findFeature(ls, t) != null;
+}
+
 const Merged = struct { tag: u32, flags: u8, stage: u8, value: u16, mask: u32 = 0, found: bool = false };
 
 /// Compiles a plan. `feats` are processed in order; a later entry with the same tag overrides

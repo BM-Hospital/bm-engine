@@ -28,6 +28,13 @@ const cases = [
     ]) },
   { id: "fix-text-paint-order", feature: "text-stroke", title: "paint-order on stroked text (takumi 2.20 ignores it: stroke over fill)", width: 500, height: 300,
     node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 8 }, [stroked({}), stroked({ paintOrder: "stroke fill" }), stroked({ paintOrder: "stroke" })]) },
+  { id: "fix-text-small-caps", feature: "font-variant", title: "small-caps: synthesized in Inter (no smcp, uppercase at round(0.7 size), ß -> SS), font smcp in Noto Sans / Roboto", width: 700, height: 200,
+    node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 4 }, small("small-caps")) },
+  { id: "fix-text-all-small-caps", feature: "font-variant", title: "all-small-caps (capitals shrink too) and fontVariant shorthand", width: 700, height: 260,
+    node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 4 }, [...small("all-small-caps"), t("fontVariant: small-caps — Việt Nam", { fontSize: 32, color: "#334155", fontVariant: "small-caps" })]) },
+  { id: "fix-text-petite-unicase-caps", feature: "font-variant", title: "petite-caps / unicase: smcp fallback or synthesis; font-synthesis: none", width: 700, height: 420,
+    node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 4 }, [...small("petite-caps"), ...small("unicase"),
+      t("No synthesis: Hello", { fontSize: 32, color: "#111", fontVariantCaps: "small-caps", fontSynthesis: "none" })]) },
 ];
 
 export default cases;

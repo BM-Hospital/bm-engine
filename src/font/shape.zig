@@ -92,6 +92,13 @@ pub fn isCursiveScript(script: u8) bool {
     };
 }
 
+/// The face's GSUB lists feature `t` for `script` (default language system; DFLT / latn fallback).
+pub fn hasGsubFeature(comptime complex: bool, font: *const Font, script: u8, t: u32) bool {
+    var tags: [3]u32 = undefined;
+    const n = scriptTags(complex, script, &tags);
+    return ot.langSysHasFeature(font.gsub, tags[0..n], t);
+}
+
 fn scriptTags(comptime complex: bool, script: u8, out: *[3]u32) usize {
     if (!complex) {
         out[0] = switch (script) {

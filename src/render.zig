@@ -2666,6 +2666,9 @@ pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
         .user = user,
         .stretch = cs.font_stretch,
         .optical_sizing = cs.font_optical_sizing != .none,
+        // (same member order: normal, small, all-small, petite, all-petite, unicase, titling)
+        .caps = @enumFromInt(@intFromEnum(cs.font_variant_caps)),
+        .synth_small_caps = cs.font_synthesis.small_caps,
     };
     // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
     const V = @typeInfo(@TypeOf(ts.variations)).pointer.child;

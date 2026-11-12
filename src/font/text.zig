@@ -25,6 +25,7 @@ const ot = @import("ot.zig");
 const shp = @import("shape.zig");
 const bidi = @import("bidi.zig");
 const color = @import("color.zig");
+const case = @import("case.zig");
 const Font = ttf.Font;
 const FaceId = coll.FaceId;
 const FontCollection = coll.FontCollection;
@@ -50,7 +51,14 @@ pub const TextStyle = struct {
     /// font-feature-settings / font-variant-* of this run, applied after
     /// `ParagraphOptions.features` (together at most 32 entries).
     features: []const shp.FeatureSetting = &.{},
+    /// font-variant-caps: the caps features go before `features`; a face without them gets
+    /// Blink's fallback (petite -> small caps) or synthesized small caps (see `Builder.flushCaps`).
+    caps: Caps = .normal,
+    /// font-synthesis-small-caps: auto (false = none: no synthesized small caps).
+    synth_small_caps: bool = true,
 };
+
+pub const Caps = enum(u3) { normal, small, all_small, petite, all_petite, unicase, titling };
 
 /// Fallback chain for a style (variable-font instances included).
 fn matchStyle(fonts: *const FontCollection, st: TextStyle, out: []FaceId) []FaceId {
@@ -2671,7 +2679,7 @@ const Builder = struct {
 
     fn metricFor(b: *Builder, run: u16, face: FaceId, style: TextStyle) !u16 {
         for (b.metrics.items, 0..) |m, i| {
-            if (m.run == run and m.face == face) return @intCast(i);
+            if (m.run == run and m.face == face and m.size == style.size) return @intCast(i);
         }
         if (b.metrics.items.len >= 0xffff) return error.OutOfMemory;
         const f = b.fonts.font(face);
@@ -2907,6 +2915,154 @@ const Builder = struct {
     /// Shapes the pending segment and appends its glyphs: advances, kerning, spacing, flags.
     fn flush(b: *Builder, comptime complex: bool, style: TextStyle) !void {
         if (b.buf.g().len == 0) return;
+        if (style.caps != .normal) return b.flushCaps(complex, style);
+        return b.shapeOut(complex, style, b.feats[0..b.n_feats], style.size, b.seg_metric);
+    }
+
+    const CapsSupport = enum { full, fallback, none };
+    const CapsSynth = enum { none, lower, upper, both };
+    const CaseRun = enum { upper_needed, same };
+
+    fn hasFeat(comptime complex: bool, f: *const Font, script: u8, comptime t: *const [4]u8) bool {
+        return shp.hasGsubFeature(complex, f, script, ot.tag(t));
+    }
+
+    /// font-variant-caps on the pending segment: Blink's HarfBuzzShaper::ShapeSegment caps
+    /// handling (OpenTypeCapsSupport, SmallCapsIterator). A face with the caps feature gets it as
+    /// is; otherwise the text is split into runs of characters that change when uppercased and the
+    /// rest, and a run that needs synthesis is uppercased (lowercased for unicase) and shaped at
+    /// round(size * 0.7) (Blink SimpleFontData::SmallCapsFontData).
+    noinline fn flushCaps(b: *Builder, comptime complex: bool, style: TextStyle) !void {
+        const f = b.fonts.font(b.seg_face);
+        const sc = b.seg_script;
+        var support: CapsSupport = .full;
+        var synth: CapsSynth = .none;
+        switch (style.caps) {
+            .normal => {},
+            .small => if (!hasFeat(complex, f, sc, "smcp")) {
+                support = .none;
+                synth = .lower;
+            },
+            .all_small => if (!(hasFeat(complex, f, sc, "smcp") and hasFeat(complex, f, sc, "c2sc"))) {
+                support = .none;
+                synth = .both;
+            },
+            .petite => if (!hasFeat(complex, f, sc, "pcap")) {
+                if (hasFeat(complex, f, sc, "smcp")) {
+                    support = .fallback;
+                } else {
+                    support = .none;
+                    synth = .lower;
+                }
+            },
+            .all_petite => if (!(hasFeat(complex, f, sc, "pcap") and hasFeat(complex, f, sc, "c2pc"))) {
+                if (hasFeat(complex, f, sc, "smcp") and hasFeat(complex, f, sc, "c2sc")) {
+                    support = .fallback;
+                } else {
+                    support = .none;
+                    synth = .both;
+                }
+            },
+            .unicase => if (!hasFeat(complex, f, sc, "unic")) {
+                support = if (hasFeat(complex, f, sc, "smcp")) .fallback else .none;
+                synth = .upper;
+            },
+            .titling => if (!hasFeat(complex, f, sc, "titl")) {
+                support = .none;
+            },
+        }
+        const split = support != .full and style.caps != .titling and style.synth_small_caps and b.seg_level & 1 == 0;
+        if (!split) return b.shapeCaps(complex, style, support, synth, .same, false);
+        // split the segment at case changes (combining marks follow their base)
+        const saved = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
+        defer b.alloc.free(saved);
+        const n = saved.len;
+        var i: usize = 0;
+        while (i < n) {
+            var kind: ?CaseRun = null;
+            var j = i;
+            while (j < n) : (j += 1) {
+                const cp = saved[j].cp;
+                if (kind != null and uni.isCombining(cp)) continue;
+                const k: CaseRun = if (case.changesWhenUppercased(cp)) .upper_needed else .same;
+                if (kind == null) {
+                    kind = k;
+                } else if (k != kind.?) break;
+            }
+            b.buf.list.clearRetainingCapacity();
+            try b.buf.list.appendSlice(b.alloc, saved[i..j]);
+            try b.shapeCaps(complex, style, support, synth, kind orelse .same, true);
+            i = j;
+        }
+    }
+
+    /// Shapes the pending buffer as one case run of flushCaps.
+    fn shapeCaps(b: *Builder, comptime complex: bool, style: TextStyle, support: CapsSupport, synth: CapsSynth, run_case: CaseRun, allowed: bool) !void {
+        // case change (OpenTypeCapsSupport::NeedsCaseChange)
+        const to_upper = allowed and support == .none and run_case == .upper_needed and (synth == .lower or synth == .both);
+        const to_lower = allowed and support == .fallback and run_case == .same and (synth == .both or synth == .upper);
+        if (to_upper or to_lower) {
+            const src = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
+            defer b.alloc.free(src);
+            b.buf.list.clearRetainingCapacity();
+            for (src) |gl| {
+                var m: [3]u21 = undefined;
+                var k: usize = 1;
+                if (to_upper) {
+                    k = case.upper(gl.cp, &m);
+                } else m[0] = case.lower(gl.cp);
+                for (m[0..k]) |cp| try b.buf.list.append(b.alloc, .{ .cp = cp, .cluster = gl.cluster, .gid = if (cp == gl.cp) gl.gid else 0 });
+            }
+        }
+        // synthetic font (NeedsSyntheticFont)
+        const synthetic = allowed and support == .none and switch (run_case) {
+            .upper_needed => synth == .lower or synth == .both,
+            .same => synth == .upper or synth == .both,
+        };
+        // caps features (FontFeatureToUse), before the run's own features
+        var fbuf: [36]shp.FeatureSetting = undefined;
+        var nf: usize = 0;
+        const caps: Caps = switch (support) {
+            .full => style.caps,
+            .none => .normal,
+            .fallback => switch (style.caps) {
+                .all_petite => .all_small,
+                .petite => .small,
+                .unicase => if (run_case == .same) .small else .normal,
+                else => .normal,
+            },
+        };
+        const tags: []const *const [4]u8 = switch (caps) {
+            .normal => &.{},
+            .small => &.{"smcp"},
+            .all_small => &.{ "c2sc", "smcp" },
+            .petite => &.{"pcap"},
+            .all_petite => &.{ "c2pc", "pcap" },
+            .unicase => &.{"unic"},
+            .titling => &.{"titl"},
+        };
+        for (tags) |t| {
+            fbuf[nf] = .{ .tag = t.*, .value = 1 };
+            nf += 1;
+        }
+        for (b.feats[0..b.n_feats]) |ft| {
+            fbuf[nf] = ft;
+            nf += 1;
+        }
+        var size = style.size;
+        var metric = b.seg_metric;
+        if (synthetic) {
+            size = @round(style.size * 0.7);
+            var st = style;
+            st.size = size;
+            const run = if (b.seg_metric < b.metrics.items.len) b.metrics.items[b.seg_metric].run else 0;
+            metric = try b.metricFor(run, b.seg_face, st);
+        }
+        return b.shapeOut(complex, style, fbuf[0..nf], size, metric);
+    }
+
+    /// Shapes the pending buffer with features at size and appends its glyphs (spacing from style).
+    fn shapeOut(b: *Builder, comptime complex: bool, style: TextStyle, features: []const shp.FeatureSetting, size: f32, metric: u16) !void {
         const f = b.fonts.font(b.seg_face);
         const rtl = b.seg_level & 1 != 0;
         try shp.shape(complex, b.cache, f, &b.buf, .{
@@ -2914,12 +3070,12 @@ const Builder = struct {
             .rtl = rtl,
             .lang = b.opts.lang,
             .spaced = style.letter_spacing != 0,
-            .features = b.feats[0..b.n_feats],
+            .features = features,
         });
         const gs = b.buf.g();
         defer b.buf.list.clearRetainingCapacity();
         try b.glyphs.ensureUnusedCapacity(b.alloc, gs.len);
-        const scale = @as(f64, style.size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em));
+        const scale = @as(f64, size) * 65536.0 / @as(f64, @floatFromInt(f.units_per_em));
         const hang = b.hang;
         const spacing: f32 = if (complex and shp.isCursiveScript(b.seg_script)) 0 else style.letter_spacing;
         for (gs, 0..) |g, j| {
@@ -2949,7 +3105,7 @@ const Builder = struct {
                 .x_offset = if (g.x_off != 0) scaleAdvance(g.x_off, scale) else 0,
                 .y_offset = if (g.y_off != 0) scaleAdvance(g.y_off, scale) else 0,
                 .kern = kern,
-                .metric = b.seg_metric,
+                .metric = metric,
                 .flags = flags,
                 .level = b.seg_level,
                 .item = b.item,
