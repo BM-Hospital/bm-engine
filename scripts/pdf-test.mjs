@@ -752,6 +752,15 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
     const [b2, t2, r2] = order(ib, ["0 0 1 rg", "BT", "1 0 0 rg"]);
     check(b2 >= 0 && b2 < t2 && t2 < r2, "paint order: block background < text < inline-block");
   }
+
+  // 5. image-rendering: takumi-pdf writes every image without /Interpolate (viewers choose), whatever the value
+  {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8AAQv8ZQASIBQBDzgf5kLRQ3gAAAABJRU5ErkJggg==", "base64");
+    for (const mode of ["auto", "smooth", "pixelated", "crisp-edges"]) {
+      const b = await r.render(`<img src="c.png" style="width:100px;height:100px;image-rendering:${mode}">`, { ...vp, images: [{ src: "c.png", data: png }] });
+      check(/\/Subtype\/Image/.test(latin1(b)) && !/\/Interpolate/.test(latin1(b)), `image-rendering ${mode}: image without /Interpolate`);
+    }
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });
