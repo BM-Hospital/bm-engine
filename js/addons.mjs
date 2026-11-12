@@ -57,7 +57,7 @@ export async function loadWoff(input) {
     if (!loading) {
       loading = (async () => {
         const src = await bytesOf(input);
-        const inst = src instanceof WebAssembly.Module ? await WebAssembly.instantiate(src, {}) : (await WebAssembly.instantiate(src, {})).instance;
+        const inst = Object.prototype.toString.call(src) === "[object WebAssembly.Module]" ? await WebAssembly.instantiate(src, {}) : (await WebAssembly.instantiate(src, {})).instance;
         woff = inst.exports;
       })().finally(() => { loading = null; });
     }

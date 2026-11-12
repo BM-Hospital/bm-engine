@@ -175,11 +175,12 @@ await init(wasmUrl);
 profile) và đọc font bằng `fs` như ví dụ Node; điểm vào Node đọc binary từ `node_modules`, nên hãy để
 bm-engine nằm ngoài bundle phía server (`serverExternalPackages: ["bm-engine"]`) nếu cấu hình của bạn có
 bundle nó. bm-engine không có helper `ImageResponse`; hãy trả về
-`new Response(png, { headers: { "content-type": "image/png" } })`. Chưa kiểm thử.
+`new Response(png, { headers: { "content-type": "image/png" } })`. Xem trang [Next.js](./frameworks/nextjs.md)
+để biết cấu hình đầy đủ và phần đã kiểm chứng (runtime Node: có; runtime Edge: chưa có cách nạp wasm gọn).
 
 Tình trạng kiểm chứng của mục này: các dòng Vite và esbuild đã được chạy trong bài test package
-(`npm run test:pack`: `npm pack`, cài tarball, build, chạy trong Edge headless); webpack, Rollup và
-Next.js chưa được kiểm thử.
+(`npm run test:pack`: `npm pack`, cài tarball, build, chạy trong Edge headless); webpack và Rollup
+chưa được kiểm thử; Next.js có [trang riêng](./frameworks/nextjs.md).
 
 ## Edge runtime, Deno, Bun
 
@@ -207,7 +208,7 @@ export default {
 Những gì đã kiểm thử: `initSync(new WebAssembly.Module(bytes))` đã chạy trong Node, và bài test package
 resolve các điểm vào với `node --conditions=workerd` rồi khởi tạo chúng từ một `WebAssembly.Module`;
 đoạn mã trên **chưa** được chạy dưới wrangler / workerd. Kích thước nén của từng profile (gzip -9: core
-200 KiB, standard 422 KiB, full 526 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
+200 KiB, standard 435.2 KiB, full 538.2 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
 của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` nạp và khởi tạo
@@ -357,3 +358,12 @@ const png = renderer.renderSync(
 
 `renderAsDataUrl` trả về `data:image/...;base64,...` cho `png`, `jpeg`, `webp` và `ico` (không cho `raw`).
 Đọc tiếp [Tham chiếu API](api.md).
+
+
+## Xem thêm
+
+Các trang hướng dẫn đi sâu vào từng chủ đề, kèm ví dụ chạy được và ảnh kết quả:
+[Khái niệm](concepts.md) · [Style và layout](styles.md) · [HTML và Tailwind](html-and-tailwind.md) ·
+[Font](fonts.md) · [Typography](typography.md) · [Ảnh](images.md) · [Bảng và float](tables.md) ·
+[Hiệu ứng](effects.md) · [Định dạng đầu ra](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Biểu đồ](charts.md) · [Mẫu](templates.md) · [Hiệu năng](performance.md)

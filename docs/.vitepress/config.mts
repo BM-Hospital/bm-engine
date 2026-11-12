@@ -29,7 +29,14 @@ const SPECIAL: Record<string, string> = {
   "CONVENTIONS.md": "dev/conventions.md",
 };
 const rewrites: Record<string, string> = { ...SPECIAL };
-for (const f of readdirSync(path.join(SRC, "en"))) if (f.endsWith(".md") && !rewrites[`en/${f}`]) rewrites[`en/${f}`] = f;
+const walkEn = (dir: string): void => {
+  for (const f of readdirSync(path.join(SRC, "en", dir))) {
+    const rel = dir ? dir + "/" + f : f;
+    if (statSync(path.join(SRC, "en", rel)).isDirectory()) walkEn(rel);
+    else if (f.endsWith(".md") && !rewrites["en/" + rel]) rewrites["en/" + rel] = rel;
+  }
+};
+walkEn("");
 const inverse = Object.fromEntries(Object.entries(rewrites).map(([k, v]) => [v, k]));
 /** Files under docs/ copied to docs/public/data/ by prepare.mjs (downloadable from the site). */
 const DATA_FILES = new Set(["results.json", "PACKAGE_FACTS.json"]);
@@ -92,47 +99,87 @@ const devItems = [
   { text: "takumi semantics notes", link: "/dev/takumi-notes" },
   { text: "Engineering conventions", link: "/dev/conventions" },
 ];
-const sidebarEn: DefaultTheme.SidebarItem[] = [
-  { text: "Guide", items: [
-    { text: "Overview", link: "/overview" },
-    { text: "Getting started", link: "/getting-started" },
-    { text: "API reference", link: "/api" },
-    { text: "CSS & feature support", link: "/css-support" },
-    { text: "Profiles & size", link: "/profiles-and-size" },
-    { text: "Differences from takumi", link: "/differences-from-takumi" },
-  ] },
-  { text: "Benchmark", items: [
-    { text: "Benchmark summary", link: "/benchmark" },
-    { text: "Per-fixture results", link: "/results-full" },
-  ] },
-  { text: "Tools", items: [
-    { text: "Playground", link: "/playground" },
-    { text: "Building from source", link: "/building-from-source" },
-    { text: "Troubleshooting", link: "/troubleshooting" },
-  ] },
-  { text: "Developer", collapsed: true, items: devItems },
+// [slug, English title, Vietnamese title]; a group is [English title, Vietnamese title, pages, collapsed?].
+type P = [string, string, string];
+const GROUPS: [string, string, P[], boolean?][] = [
+  ["Get started", "Bắt đầu", [
+    ["overview", "Overview", "Tổng quan"],
+    ["getting-started", "Getting started", "Bắt đầu nhanh"],
+    ["concepts", "Concepts", "Khái niệm"],
+    ["playground", "Playground", "Playground"],
+  ]],
+  ["Content", "Nội dung", [
+    ["styles", "Styles & layout", "Style và layout"],
+    ["html-and-tailwind", "HTML & Tailwind", "HTML và Tailwind"],
+    ["fonts", "Fonts", "Font"],
+    ["typography", "Typography", "Typography"],
+    ["images", "Images", "Hình ảnh"],
+    ["tables", "Tables & floats", "Bảng và float"],
+    ["charts", "Charts", "Biểu đồ"],
+    ["effects", "Effects", "Hiệu ứng"],
+  ]],
+  ["Rendering", "Render", [
+    ["formats", "Output formats", "Định dạng đầu ra"],
+    ["animation", "Animation", "Hoạt ảnh"],
+    ["performance", "Performance", "Hiệu năng"],
+    ["profiles-and-size", "Profiles & size", "Profile và kích thước"],
+    ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
+  ]],
+  ["Frameworks", "Framework", [
+    ["frameworks/", "Overview", "Tổng quan"],
+    ["frameworks/nextjs", "Next.js", "Next.js"],
+    ["frameworks/nuxt-nitro", "Nuxt & Nitro", "Nuxt và Nitro"],
+    ["frameworks/nuxt", "Nuxt", "Nuxt"],
+    ["frameworks/nitro", "Nitro / h3", "Nitro / h3"],
+    ["frameworks/sveltekit", "SvelteKit", "SvelteKit"],
+    ["frameworks/astro", "Astro", "Astro"],
+    ["frameworks/tanstack-start", "TanStack Start", "TanStack Start"],
+    ["frameworks/hono-express", "Hono, Express, node:http", "Hono, Express, node:http"],
+    ["frameworks/cloudflare-workers", "Cloudflare Workers", "Cloudflare Workers"],
+    ["frameworks/deno-bun", "Deno & Bun", "Deno và Bun"],
+    ["frameworks/vite-browser", "Vite & browsers", "Vite và trình duyệt"],
+  ], true],
+  ["Reference", "Tham chiếu", [
+    ["api", "API reference", "Tham chiếu API"],
+    ["measure", "measure()", "measure()"],
+    ["css-support", "CSS & feature support", "Hỗ trợ CSS và tính năng"],
+    ["recipes", "Recipes", "Công thức"],
+    ["templates", "Templates", "Mẫu dựng sẵn"],
+  ]],
+  ["Migration", "Chuyển đổi", [
+    ["migration/from-takumi", "From takumi", "Từ takumi"],
+    ["migration/from-satori", "From Satori", "Từ Satori"],
+    ["differences-from-takumi", "Differences from takumi", "Khác biệt với takumi"],
+  ]],
+  ["Benchmark", "Benchmark", [
+    ["benchmark", "Benchmark summary", "Benchmark (tóm tắt)"],
+    ["vi:benchmark-report", "", "Benchmark — báo cáo đầy đủ"],
+    ["/results-full", "Per-fixture results", "Kết quả từng fixture"],
+  ]],
+  ["Help", "Trợ giúp", [
+    ["troubleshooting", "Troubleshooting", "Xử lý sự cố"],
+    ["building-from-source", "Building from source", "Build từ mã nguồn"],
+  ]],
 ];
-const sidebarVi: DefaultTheme.SidebarItem[] = [
-  { text: "Hướng dẫn", items: [
-    { text: "Tổng quan", link: "/vi/overview" },
-    { text: "Bắt đầu", link: "/vi/getting-started" },
-    { text: "Tham chiếu API", link: "/vi/api" },
-    { text: "Hỗ trợ CSS và tính năng", link: "/vi/css-support" },
-    { text: "Profile và kích thước", link: "/vi/profiles-and-size" },
-    { text: "Khác biệt với takumi", link: "/vi/differences-from-takumi" },
-  ] },
-  { text: "Benchmark", items: [
-    { text: "Benchmark (tóm tắt)", link: "/vi/benchmark" },
-    { text: "Benchmark — báo cáo đầy đủ", link: "/vi/benchmark-report" },
-    { text: "Kết quả từng fixture", link: "/results-full" },
-  ] },
-  { text: "Công cụ", items: [
-    { text: "Playground", link: "/vi/playground" },
-    { text: "Build từ mã nguồn", link: "/vi/building-from-source" },
-    { text: "Xử lý sự cố", link: "/vi/troubleshooting" },
-  ] },
-  { text: "Cho nhà phát triển (tiếng Anh)", collapsed: true, items: devItems },
-];
+/** Pages that do not exist (yet) are left out, so the sidebar never links to a 404. */
+function sidebar(vi: boolean): DefaultTheme.SidebarItem[] {
+  const out: DefaultTheme.SidebarItem[] = [];
+  for (const [en, viT, pages, collapsed] of GROUPS) {
+    const items: DefaultTheme.SidebarItem[] = [];
+    for (const [slug, tEn, tVi] of pages) {
+      if (slug.startsWith("/")) { items.push({ text: vi ? tVi : tEn, link: slug }); continue; }
+      if (slug.startsWith("vi:")) { if (vi) items.push({ text: tVi, link: "/vi/" + slug.slice(3) }); continue; }
+      const file = slug === "overview" ? "README.md" : slug.endsWith("/") ? slug + "index.md" : slug + ".md";
+      if (!existsSync(path.join(SRC, vi ? "vi" : "en", file))) continue;
+      items.push({ text: vi ? tVi : tEn, link: (vi ? "/vi/" : "/") + slug });
+    }
+    if (items.length) out.push({ text: vi ? viT : en, items, ...(collapsed ? { collapsed: false } : {}) });
+  }
+  out.push({ text: vi ? "Cho nhà phát triển (tiếng Anh)" : "Developer", collapsed: true, items: devItems });
+  return out;
+}
+const sidebarEn = sidebar(false);
+const sidebarVi = sidebar(true);
 
 /** Pages whose wide tables need the full width (no outline column). */
 const WIDE = new Set(["results-full.md", "vi/benchmark-report.md", "benchmark.md", "vi/benchmark.md", "profiles-and-size.md", "vi/profiles-and-size.md", "css-support.md", "vi/css-support.md"]);
@@ -143,7 +190,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: false,
   rewrites,
-  srcExclude: ["feature_table_phase*.md", "playground-app/**", "public/**", "**/node_modules/**"],
+  srcExclude: ["feature_table_phase*.md", "playground-app/**", "public/**", "examples/**", "**/node_modules/**"],
   // Only links that are legitimately outside the site (local dev servers mentioned in the docs).
   ignoreDeadLinks: [/^https?:\/\/(localhost|127\.0\.0\.1)/],
   head: [
@@ -177,7 +224,8 @@ export default defineConfig({
       lang: "en",
       themeConfig: {
         nav: [
-          { text: "Guide", link: "/getting-started", activeMatch: "^/(overview|getting-started|css-support|profiles-and-size|differences-from-takumi|building-from-source|troubleshooting)" },
+          { text: "Guide", link: "/getting-started", activeMatch: "^/(?!api$|benchmark|results-full|playground|frameworks|dev/)[a-z]" },
+          { text: "Frameworks", link: "/frameworks/", activeMatch: "^/frameworks/" },
           { text: "API", link: "/api" },
           { text: "Benchmark", link: "/benchmark", activeMatch: "^/(benchmark|results-full)" },
           { text: "Playground", link: "/playground" },
@@ -195,7 +243,8 @@ export default defineConfig({
       description: "Render cây node kiểu JSX / HTML + CSS thành PNG, JPEG, WebP, SVG và ảnh động bằng một engine WebAssembly không phụ thuộc (bản port takumi sang Zig).",
       themeConfig: {
         nav: [
-          { text: "Hướng dẫn", link: "/vi/getting-started", activeMatch: "^/vi/(overview|getting-started|css-support|profiles-and-size|differences-from-takumi|building-from-source|troubleshooting)" },
+          { text: "Hướng dẫn", link: "/vi/getting-started", activeMatch: "^/vi/(?!api$|benchmark|results-full|playground|frameworks|dev/)[a-z]" },
+          { text: "Framework", link: "/vi/frameworks/", activeMatch: "^/vi/frameworks/" },
           { text: "API", link: "/vi/api" },
           { text: "Benchmark", link: "/vi/benchmark", activeMatch: "^/vi/benchmark" },
           { text: "Playground", link: "/vi/playground" },

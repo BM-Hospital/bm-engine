@@ -57,7 +57,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | `overflow: hidden / clip` (incl. rounded clipping) | core | equivalent |
 | Tables (`display: table*`, auto / fixed layout, `colspan` / `rowspan` via HTML, `border-collapse`, `border-spacing`, captions, `empty-cells`) | standard | equivalent (8/8 fixtures; 339/352 layout oracle cases) |
 | Floats (`float`, `clear`) | standard (`floats` flag; also `full`) | equivalent; 138/138 layout oracle cases; text flows around floats (line boxes shorten beside a float and re-widen below it, floats inside inline content, RTL; 7 `float-text` fixtures at SSIM ≥ 0.9999) |
-| `display: contents` | — | no: the element and its children are not rendered |
+| `display: contents` | — | no: laid out and painted like `display: block` (the element keeps its own box, padding and background) |
 | `display: list-item` | core | laid out as a block; no list marker |
 | Writing modes (`writing-mode`) | — | no: parsed, horizontal layout only |
 
@@ -80,7 +80,7 @@ On `core`, `display: table*` lays out like `block` and `float` is ignored (no er
 | `background-color`, `background` shorthand, multiple layers | core | identical |
 | `linear-gradient`, `radial-gradient`, `conic-gradient`, `repeating-*` | core | equivalent (7/7 fixtures; inner stops may differ by 1 colour level) |
 | `background-image: url(...)`, `background-size` / `-position` / `-repeat` (incl. `space`, `round`) / `-origin` / `-clip` | core | equivalent (images fixtures) |
-| `background-clip: text` | standard | equivalent |
+| `background-clip: text` | core | equivalent |
 | Gradient interpolation space (`linear-gradient(in oklab, ...)`) | standard | identical to takumi up to 1–2 levels; ignored on core |
 | `background-blend-mode` | standard | identical |
 
@@ -120,10 +120,11 @@ On `core` the effect properties of this table that need `standard` are accepted 
 | Feature | Min. profile | Status |
 |:--|:--|:--|
 | Line breaking (UAX #14), `white-space` (all modes), `word-break`, `overflow-wrap`, `tab-size` | core | equivalent; widths and break positions match takumi (825/825 oracle cases) |
-| `text-align` (incl. `justify`), `text-indent`, `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
-| `text-overflow: ellipsis` / custom string, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3) |
+| `text-align` (incl. `justify`), `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
+| `text-indent` | — | parsed, no effect in 0.1.0 (the first line is not indented) |
+| `text-overflow: ellipsis`, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3); a custom string value (`text-overflow: " »"`) is accepted but drawn like `clip` |
 | `text-decoration` (line, style incl. `wavy`, colour, thickness), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
-| `-webkit-text-stroke`, `-webkit-text-fill-color`, `paint-order` | core | equivalent (stroke may differ by 1 level) |
+| `-webkit-text-stroke`, `-webkit-text-fill-color` | core | equivalent (stroke may differ by 1 level); `paint-order` is parsed but the stroke is always painted over the fill, as in takumi 2.20 |
 | Inline boxes with background / border / padding, `box-decoration-break` | core | equivalent; horizontal padding / border / margin of a span push the text (first / last fragment edges, `box-decoration-break: clone`) |
 | `text-wrap: balance` / `pretty` | standard | identical decisions to takumi (216/216) |
 | Synthetic bold / italic when the face is missing | core | equivalent |
@@ -250,7 +251,7 @@ property is ignored.
 | WebP lossless, GIF (first frame) | standard | supported |
 | WebP lossy (VP8; bit-exact with libwebp), animated GIF / APNG / WebP sources | full | identical to the reference decoders |
 | SVG images (`<svg>` markup, `data:image/svg+xml`, `url()` backgrounds and masks) | standard | 397/422 of takumi's SVG test files identical or equivalent |
-| SVG coverage | standard | shapes, paths, `use` / `symbol`, gradients, patterns, `clipPath`, `mask`, markers, nested `<svg>` / `<image>`, `<style>` with simple selectors, filters `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. Not supported: `<text>` inside SVG images, `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting filters, `feTile`, external references |
+| SVG coverage | standard | shapes, paths, `use` / `symbol`, gradients, patterns, `clipPath`, `mask`, markers, nested `<svg>` / `<image>`, `<style>` with simple selectors, filters `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. `<text>` is drawn with the registered fonts in a simplified model (one run per element: `x` / `y`, `font-family`, `font-size`, `font-weight`, `text-anchor`, solid `fill`; `<tspan>` content joins the parent run with the parent style; gradient-filled or stroke-only text is not drawn; see [Charts](charts.md#what-svg-text-supports)). Not supported: `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting filters, `feTile`, external references |
 | `image-rendering` | core | parsed; raster images are always resampled smoothly in 0.1.0 (`pixelated` is honoured only inside SVG) |
 | Remote URLs | — | never fetched: pass bytes through `images` |
 
@@ -278,6 +279,13 @@ As of 0.1.0 (see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status):
   wrapping in paragraphs with inline boxes / atomic inlines or beside floats; percentage padding / margin
   on inline boxes resolve to 0; a chain of nested inline-blocks is limited to about 255 levels (a clean
   "nested too deeply" error), although plain nesting supports 512.
+- **Tables and RTL** — `dir="rtl"` / `direction: rtl` on a table does not put the first column on the
+  right in 0.1.0 (see [Tables](tables.md)).
+- **Structural pseudo-classes on text nodes** — `:first-child`, `:last-child`, `:nth-child()` (and the
+  Tailwind `first:` / `last:` / `odd:` variants) match every sibling when the elements are bare `text`
+  nodes; wrap the text in containers.
+- **`measure()` and transforms** — the `transform` matrix returned by `measure()` does not include CSS
+  `transform` / `translate` / `rotate` / `scale` of the node (takumi includes them); see [measure()](measure.md).
 - **Direction in flex layout** — `direction: rtl` / `dir: "rtl"` does not reverse the main axis of a
   flex row in 0.1.0 (takumi does).
 - Not supported: `display: contents`, list markers and counters, `writing-mode`, 3D transforms,
@@ -379,10 +387,19 @@ Notes:
   `pointerEvents`, `cursor`, `userSelect`, `WebkitUserSelect`, `transitionBehavior`, `maskComposite`,
   `WebkitMaskComposite`.
 - **Parsed, no visible effect in 0.1.0** (found by inspecting which computed values the renderer
-  reads): `writingMode`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`, `unicodeBidi`,
+  reads): `writingMode`, `textIndent`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`, `unicodeBidi`,
   `fontSynthesis*` (synthesis is always on), `counterReset` / `counterIncrement` / `counterSet`,
   `listStyle*` (no markers), `transition*`; `imageRendering` only inside SVG images.
 - Properties of a feature that is compiled out of the loaded profile are accepted and ignored (for
   example `float` on `core`), except values that need a missing parser (modern colour functions on
   `core`), which are invalid.
 - Any other key is ignored silently, as are kebab-case keys in inline `style` objects.
+
+
+## See also
+
+The guide pages go deeper into each topic, with runnable examples and their rendered output:
+[Concepts](concepts.md) · [Styles and layout](styles.md) · [HTML and Tailwind](html-and-tailwind.md) ·
+[Fonts](fonts.md) · [Typography](typography.md) · [Images](images.md) · [Tables and floats](tables.md) ·
+[Effects](effects.md) · [Output formats](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Charts](charts.md) · [Templates](templates.md) · [Performance](performance.md)

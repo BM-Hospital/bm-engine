@@ -216,10 +216,11 @@ r.measureSync(
 ```
 
 `transform` is a 2D matrix in canvas coordinates (not relative to the parent), as in takumi; `runs`
-positions are relative to their node. Differences from takumi's `measure` in 0.1.0: runs carry no
-`text` field, and run heights are the line
+positions are relative to the content box of their node. Differences from takumi's `measure` in 0.1.0: runs carry no
+`text` field, CSS transforms (`transform`, `rotate`, ...) are not included in `transform` (only the
+layout position is), and run heights are the line
 height rather than the glyph extent (takumi reports e.g. `y: 0.5, height: 19.36` for the run above).
-Boxes and positions match takumi (see [Benchmark](benchmark.md)).
+Boxes and positions match takumi (see [Benchmark](benchmark.md)). More in [measure()](./measure.md).
 
 ### `renderAnimation` / `renderAnimationSync`
 
@@ -307,7 +308,7 @@ type Meta = {
   style?: Style;      // inline CSS declarations, camelCase keys
   preset?: Style;     // user-agent layer: lowest priority
   tw?: string;        // Tailwind classes (standard / full)
-  tagName?: string;   // element name for selectors and UA styles (default: div / span / img)
+  tagName?: string;   // element name for type selectors (none by default: a node without it matches no type selector; UA styles are not applied)
   className?: string; // for stylesheet selectors
   id?: string;
   attributes?: Record<string, string>; // for attribute selectors, `attr()`
@@ -424,3 +425,12 @@ bundlers). On Workers pass the module: `import woff from "bm-engine/woff.wasm"`.
 `bm-engine: invalid WOFF/WOFF2 font data` on bad input.
 
 There is no other add-on: see [Profiles and size](profiles-and-size.md#why-there-are-no-other-lazy-add-ons).
+
+
+## See also
+
+The guide pages go deeper into each topic, with runnable examples and their rendered output:
+[Concepts](concepts.md) · [Styles and layout](styles.md) · [HTML and Tailwind](html-and-tailwind.md) ·
+[Fonts](fonts.md) · [Typography](typography.md) · [Images](images.md) · [Tables and floats](tables.md) ·
+[Effects](effects.md) · [Output formats](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Charts](charts.md) · [Templates](templates.md) · [Performance](performance.md)

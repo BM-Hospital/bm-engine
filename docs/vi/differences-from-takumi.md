@@ -30,7 +30,7 @@ hành vi của takumi mà bm-engine cố ý tái hiện.
 4. **Tự tải tài nguyên từ xa.** `prepare()` của bm-engine không tải ảnh hay file `@font-face`. Truyền byte
    ảnh qua `images`, font qua `registerFont` / `fonts`.
 5. **JSX.** bm-engine nhận cây node, `{ json }` và HTML, không nhận JSX. Hãy tiếp tục dùng
-   `@takumi-rs/helpers` để chuyển: `fromJsx(element)` trả về `{ node, css }`, rồi truyền vào
+   `@takumi-rs/helpers` để chuyển: `await fromJsx(element)` (hàm async) trả về `{ node, css }`, rồi truyền vào
    `render(node, { css, ... })` (đã kiểm tra với một React element dựng tay; chưa thử với chính React).
    Không có `ImageResponse`; hãy tự bọc byte vào một `Response`.
 
@@ -114,12 +114,13 @@ trong mức nhiễu khử răng cưa.
 - **`image-rendering: pixelated`** trên ảnh raster bị bỏ qua (luôn lấy mẫu lại mượt).
 - **Emoji màu**: bm-engine vẽ được font COLR v1 (takumi thì không); vài chuỗi ZWJ chưa được gộp và thứ tự
   ưu tiên font emoji khác ở một số ký tự.
-- **Ảnh SVG**: chưa hỗ trợ `<text>` bên trong ảnh SVG và một vài filter primitive (`feTurbulence`,
-  `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, chiếu sáng, `feTile`).
+- **Ảnh SVG**: `<text>` được vẽ theo mô hình đơn giản (mỗi phần tử một run, style của `<tspan>` bị bỏ qua,
+  chỉ tô màu đặc; xem [Biểu đồ](charts.md#svg-text-hỗ-trợ-những-gì)); một vài filter primitive (`feTurbulence`,
+  `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, chiếu sáng, `feTile`) chưa được hỗ trợ.
 - **Bộ mã hoá**: file mã hoá ra khác byte (bm-engine dùng bộ mã hoá riêng; file PNG nhỏ hơn 24 %, trung
   bình nhân trên các fixture); benchmark so sánh điểm ảnh sau khi giải mã.
-- **`display: contents`** bị bộ parse style inline của takumi từ chối nhưng bm-engine chấp nhận (và không
-  vẽ).
+- **`display: contents`** bị bộ parse style inline của takumi từ chối nhưng bm-engine chấp nhận,
+  và layout cũng như vẽ phần tử đó như `display: block` (vẫn giữ box, padding và nền của chính nó).
 
 ## Chưa port
 

@@ -89,7 +89,7 @@ const htmlArticle = `<style>
 const twCard = J({
   type: "container", tw: "flex flex-col w-full h-full p-16 gap-8 bg-slate-900 justify-between", children: [
     { type: "container", tw: "flex items-center gap-4", children: [
-      { type: "container", tw: "w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-pink-600", children: [] },
+      { type: "container", tw: "w-16 h-16 rounded-full bg-linear-to-br from-orange-400 to-pink-600", children: [] },
       { type: "text", tw: "text-3xl font-semibold text-slate-100", style: { fontFamily: "Inter" }, text: "Tailwind in bm-engine" },
     ] },
     { type: "text", tw: "text-6xl font-bold text-white leading-tight tracking-tight", style: { fontFamily: "Inter" }, text: "Utility classes compiled to declarations at render time" },

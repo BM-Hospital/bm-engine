@@ -1,0 +1,8 @@
+name = "bm-engine-og"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true

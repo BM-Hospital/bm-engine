@@ -179,6 +179,6 @@ hàm màu hiện đại trên `core`. Khai báo trong stylesheet không ném l�
 | `invalid node JSON` | nguồn `{ json }` sai định dạng |
 | `unsupported format: <x>` | `format` không phải png / jpeg / webp / raw / ico |
 | `raw image data length must be width*height*4` | object ảnh RGBA có độ dài sai |
-| `renderAsDataUrl needs an encoded format` | `format: "raw"` (hoặc alias `"jpg"`) với `renderAsDataUrl` |
+| `renderAsDataUrl needs an encoded format` | `format: "raw"` với `renderAsDataUrl` (`"jpg"` vẫn dùng được: đó là bí danh của `"jpeg"`) |
 | `Frame rate N fps exceeds the maximum ...` | GIF > 50 fps, WebP / APNG > 90 fps |
 | `invalid font data` | không phải file font |

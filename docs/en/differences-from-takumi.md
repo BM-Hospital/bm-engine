@@ -30,7 +30,7 @@ the takumi behaviours bm-engine deliberately reproduces.
 4. **Fetch remote resources yourself.** bm-engine's `prepare()` does not download images or
    `@font-face` files. Pass image bytes through `images`, fonts through `registerFont` / `fonts`.
 5. **JSX.** bm-engine takes node trees, `{ json }` and HTML, not JSX. Keep using
-   `@takumi-rs/helpers` to convert: `fromJsx(element)` returns `{ node, css }`, which you pass as
+   `@takumi-rs/helpers` to convert: `await fromJsx(element)` resolves to `{ node, css }` (it is async), which you pass as
    `render(node, { css, ... })` (checked with a hand-built React element; not tested with React itself).
    There is no `ImageResponse`; wrap the bytes in a `Response` yourself.
 
@@ -114,12 +114,12 @@ within anti-aliasing noise.
 - **`image-rendering: pixelated`** on raster images is ignored (smooth resampling).
 - **Colour emoji**: bm-engine draws COLR v1 fonts (takumi does not); some ZWJ sequences are not merged
   and emoji-font preference differs for a few characters.
-- **SVG images**: `<text>` inside SVG images and a few filter primitives (`feTurbulence`, `feImage`,
+- **SVG images**: `<text>` is drawn in a simplified model (one run per element, `<tspan>` styling ignored, solid fills only; see [Charts](charts.md#what-svg-text-supports)), and a few filter primitives (`feTurbulence`, `feImage`,
   `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting, `feTile`) are not supported.
 - **Encoders**: encoded files are different bytes (bm-engine's encoders are its own; PNG files are
   24 % smaller, geometric mean over the fixtures); decoded pixels are what the benchmark compares.
-- **`display: contents`** is rejected by takumi's inline-style parser but accepted (and not rendered) by
-  bm-engine.
+- **`display: contents`** is rejected by takumi's inline-style parser but accepted by bm-engine,
+  which lays the element out and paints it like `display: block` (its own box, padding and background stay).
 
 ## Not ported
 

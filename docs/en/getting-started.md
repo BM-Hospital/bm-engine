@@ -175,11 +175,12 @@ Do **not** enable a bundler's WebAssembly-ESM integration for these files (`expe
 fonts with `fs` as in the Node example; the Node entry reads its binary from `node_modules`, so keep
 bm-engine external to the server bundle (`serverExternalPackages: ["bm-engine"]`) if your setup bundles
 it. bm-engine has no `ImageResponse` helper; return
-`new Response(png, { headers: { "content-type": "image/png" } })`. Not tested.
+`new Response(png, { headers: { "content-type": "image/png" } })`. See [Next.js](./frameworks/nextjs.md)
+for the full setup and what was verified (Node runtime: yes; Edge runtime: no clean wasm path yet).
 
 Verification status of this section: the Vite and esbuild rows were exercised by the package test
-(`npm run test:pack`: `npm pack`, install the tarball, build, run in headless Edge); webpack, Rollup and
-Next.js were not tested.
+(`npm run test:pack`: `npm pack`, install the tarball, build, run in headless Edge); webpack and Rollup
+were not tested; Next.js is covered on its [own page](./frameworks/nextjs.md).
 
 ## Edge runtimes, Deno, Bun
 
@@ -206,8 +207,8 @@ export default {
 
 What was tested: `initSync(new WebAssembly.Module(bytes))` was executed in Node, and the package test
 resolves the entries with `node --conditions=workerd` and initialises them from a `WebAssembly.Module`;
-the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 200 KiB,
-standard 422 KiB, full 526 KiB) is what counts against the Workers script-size limit of your plan. The
+the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 211.5 KiB,
+standard 435.2 KiB, full 538.2 KiB) is what counts against the Workers script-size limit of your plan. The
 WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` loads and initialises
@@ -357,3 +358,12 @@ const png = renderer.renderSync(
 
 `renderAsDataUrl` returns `data:image/...;base64,...` for `png`, `jpeg`, `webp` and `ico` (not `raw`).
 Continue with the [API reference](api.md).
+
+
+## See also
+
+The guide pages go deeper into each topic, with runnable examples and their rendered output:
+[Concepts](concepts.md) · [Styles and layout](styles.md) · [HTML and Tailwind](html-and-tailwind.md) ·
+[Fonts](fonts.md) · [Typography](typography.md) · [Images](images.md) · [Tables and floats](tables.md) ·
+[Effects](effects.md) · [Output formats](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Charts](charts.md) · [Templates](templates.md) · [Performance](performance.md)

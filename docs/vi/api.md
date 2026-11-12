@@ -218,9 +218,10 @@ r.measureSync(
 ```
 
 `transform` là ma trận 2D theo toạ độ của canvas (không tương đối với node cha), giống takumi; toạ độ của
-`runs` tương đối với chính node đó. Khác với `measure` của takumi trong 0.1.0: run không có trường
-`text`, và chiều cao run là chiều cao dòng chứ không phải phạm vi glyph (takumi báo ví dụ
-`y: 0.5, height: 19.36` cho run ở trên). Kích thước hộp và vị trí khớp takumi (xem [Benchmark](benchmark.md)).
+`runs` tương đối với content box của chính node đó. Khác với `measure` của takumi trong 0.1.0: run không có trường
+`text`, CSS transform (`transform`, `rotate`, ...) không được tính vào `transform` (chỉ có vị trí layout),
+và chiều cao run là chiều cao dòng chứ không phải phạm vi glyph (takumi báo ví dụ
+`y: 0.5, height: 19.36` cho run ở trên). Kích thước hộp và vị trí khớp takumi (xem [Benchmark](benchmark.md)). Chi tiết ở [measure()](./measure.md).
 
 ### `renderAnimation` / `renderAnimationSync`
 
@@ -307,7 +308,7 @@ type Meta = {
   style?: Style;      // inline CSS declarations, camelCase keys
   preset?: Style;     // user-agent layer: lowest priority
   tw?: string;        // Tailwind classes (standard / full)
-  tagName?: string;   // element name for selectors and UA styles (default: div / span / img)
+  tagName?: string;   // element name for type selectors (none by default: a node without it matches no type selector; UA styles are not applied)
   className?: string; // for stylesheet selectors
   id?: string;
   attributes?: Record<string, string>; // for attribute selectors, `attr()`
@@ -424,3 +425,12 @@ hãy truyền module: `import woff from "bm-engine/woff.wasm"`. Giá trị `buil
 khi đầu vào hỏng.
 
 Không có add-on nào khác: xem [Profile và kích thước](profiles-and-size.md#vì-sao-không-có-add-on-tải-lười-nào-khác).
+
+
+## Xem thêm
+
+Các trang hướng dẫn đi sâu vào từng chủ đề, kèm ví dụ chạy được và ảnh kết quả:
+[Khái niệm](concepts.md) · [Style và layout](styles.md) · [HTML và Tailwind](html-and-tailwind.md) ·
+[Font](fonts.md) · [Typography](typography.md) · [Ảnh](images.md) · [Bảng và float](tables.md) ·
+[Hiệu ứng](effects.md) · [Định dạng đầu ra](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Biểu đồ](charts.md) · [Mẫu](templates.md) · [Hiệu năng](performance.md)

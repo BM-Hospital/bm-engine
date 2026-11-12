@@ -177,6 +177,6 @@ functions on `core`. Stylesheet declarations do not throw; they are dropped.
 | `invalid node JSON` | malformed `{ json }` source |
 | `unsupported format: <x>` | `format` is not png / jpeg / webp / raw / ico |
 | `raw image data length must be width*height*4` | RGBA image object with the wrong length |
-| `renderAsDataUrl needs an encoded format` | `format: "raw"` (or the `"jpg"` alias) with `renderAsDataUrl` |
+| `renderAsDataUrl needs an encoded format` | `format: "raw"` with `renderAsDataUrl` (`"jpg"` works: it is an alias of `"jpeg"`) |
 | `Frame rate N fps exceeds the maximum ...` | GIF > 50 fps, WebP / APNG > 90 fps |
 | `invalid font data` | not a font file |

@@ -58,7 +58,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | `overflow: hidden / clip` (kể cả cắt theo góc bo) | core | equivalent |
 | Bảng (`display: table*`, layout auto / fixed, `colspan` / `rowspan` qua HTML, `border-collapse`, `border-spacing`, caption, `empty-cells`) | standard | equivalent (8/8 fixture; 339/352 ca oracle layout) |
 | Float (`float`, `clear`) | standard (cờ `floats`; cả `full`) | equivalent; 138/138 ca oracle layout; chữ chảy quanh float (hộp dòng ngắn lại cạnh float và nở lại bên dưới, float trong nội dung inline, RTL; 7 fixture `float-text` đạt SSIM ≥ 0.9999) |
-| `display: contents` | — | không: phần tử và các con của nó không được vẽ |
+| `display: contents` | — | không: được dàn trang và vẽ như `display: block` (phần tử vẫn giữ box, padding và nền của nó) |
 | `display: list-item` | core | layout như block; không có ký hiệu đầu dòng (list marker) |
 | Chế độ viết (`writing-mode`) | — | không: parse được, chỉ layout theo chiều ngang |
 
@@ -81,7 +81,7 @@ Trên `core`, `display: table*` được layout như `block` và `float` bị b�
 | `background-color`, shorthand `background`, nhiều lớp nền | core | identical |
 | `linear-gradient`, `radial-gradient`, `conic-gradient`, `repeating-*` | core | equivalent (7/7 fixture; các điểm dừng bên trong có thể lệch 1 mức màu) |
 | `background-image: url(...)`, `background-size` / `-position` / `-repeat` (kể cả `space`, `round`) / `-origin` / `-clip` | core | equivalent (các fixture ảnh) |
-| `background-clip: text` | standard | equivalent |
+| `background-clip: text` | core | equivalent |
 | Không gian nội suy gradient (`linear-gradient(in oklab, ...)`) | standard | trùng takumi trong phạm vi 1–2 mức; bị bỏ qua trên core |
 | `background-blend-mode` | standard | identical |
 
@@ -121,10 +121,11 @@ Trên `core`, các thuộc tính hiệu ứng cần `standard` trong bảng này
 | Tính năng | Profile tối thiểu | Trạng thái |
 |:--|:--|:--|
 | Ngắt dòng (UAX #14), `white-space` (mọi chế độ), `word-break`, `overflow-wrap`, `tab-size` | core | equivalent; bề rộng và vị trí ngắt dòng khớp takumi (825/825 ca oracle) |
-| `text-align` (kể cả `justify`), `text-indent`, `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
-| `text-overflow: ellipsis` / chuỗi tùy ý, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3) |
+| `text-align` (kể cả `justify`), `line-height`, `letter-spacing`, `word-spacing`, `text-transform` | core | equivalent |
+| `text-indent` | — | parse được nhưng không có tác dụng trong 0.1.0 (dòng đầu không thụt vào) |
+| `text-overflow: ellipsis`, `line-clamp` / `-webkit-line-clamp` | core | equivalent (3/3); giá trị chuỗi tùy ý (`text-overflow: " »"`) được chấp nhận nhưng vẽ như `clip` |
 | `text-decoration` (line, style kể cả `wavy`, màu, độ dày), `text-underline-offset` / `-position`, `text-decoration-skip-ink` | core | equivalent |
-| `-webkit-text-stroke`, `-webkit-text-fill-color`, `paint-order` | core | equivalent (nét viền có thể lệch 1 mức) |
+| `-webkit-text-stroke`, `-webkit-text-fill-color` | core | equivalent (nét viền có thể lệch 1 mức); `paint-order` parse được nhưng nét viền luôn vẽ đè lên phần tô, giống takumi 2.20 |
 | Hộp inline có nền / viền / padding, `box-decoration-break` | core | equivalent; padding / viền / margin ngang của span đẩy chữ (mép fragment đầu / cuối, `box-decoration-break: clone`) |
 | `text-wrap: balance` / `pretty` | standard | quyết định ngắt dòng trùng takumi (216/216) |
 | Tự tạo đậm / nghiêng (synthetic) khi thiếu face | core | equivalent |
@@ -252,7 +253,7 @@ tính `animation` bị bỏ qua.
 | WebP lossless, GIF (khung đầu) | standard | có hỗ trợ |
 | WebP lossy (VP8; trùng từng bit với libwebp), nguồn GIF / APNG / WebP động | full | trùng các bộ giải mã tham chiếu |
 | Ảnh SVG (markup `<svg>`, `data:image/svg+xml`, nền và mask dạng `url()`) | standard | 397/422 file SVG thử nghiệm của takumi identical hoặc equivalent |
-| Phạm vi SVG | standard | hình cơ bản, path, `use` / `symbol`, gradient, pattern, `clipPath`, `mask`, marker, `<svg>` / `<image>` lồng nhau, `<style>` với selector đơn giản, filter `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. Chưa hỗ trợ: `<text>` trong ảnh SVG, `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, filter chiếu sáng, `feTile`, tham chiếu ra ngoài |
+| Phạm vi SVG | standard | hình cơ bản, path, `use` / `symbol`, gradient, pattern, `clipPath`, `mask`, marker, `<svg>` / `<image>` lồng nhau, `<style>` với selector đơn giản, filter `feGaussianBlur`, `feOffset`, `feFlood`, `feColorMatrix`, `feComposite`, `feMerge`, `feBlend`, `feDropShadow`, `feComponentTransfer`. `<text>` được vẽ bằng font đã đăng ký theo mô hình đơn giản (mỗi phần tử một run: `x` / `y`, `font-family`, `font-size`, `font-weight`, `text-anchor`, `fill` màu đặc; nội dung `<tspan>` nối vào run cha với style của cha; chữ tô gradient hoặc chỉ có stroke không được vẽ; xem [Biểu đồ](charts.md#svg-text-hỗ-trợ-những-gì)). Chưa hỗ trợ: `feTurbulence`, `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, filter chiếu sáng, `feTile`, tham chiếu ra ngoài |
 | `image-rendering` | core | parse được; ảnh raster luôn được lấy mẫu lại mượt trong 0.1.0 (`pixelated` chỉ có tác dụng bên trong SVG) |
 | URL từ xa | — | không bao giờ tải về: truyền byte qua `images` |
 
@@ -279,6 +280,13 @@ Tình trạng ở 0.1.0 (xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết t
   `text-wrap: balance / pretty` quay về ngắt dòng tham lam trong đoạn có hộp inline / inline nguyên tử hoặc
   cạnh float; padding / margin theo % trên hộp inline được tính bằng 0; chuỗi inline-block lồng nhau giới hạn
   khoảng 255 cấp (lỗi "nested too deeply" rõ ràng), trong khi lồng thường hỗ trợ 512.
+- **Bảng và RTL** — `dir="rtl"` / `direction: rtl` trên bảng chưa đưa cột đầu tiên sang bên phải ở bản
+  0.1.0 (xem [Bảng](tables.md)).
+- **Pseudo-class cấu trúc trên text node** — `:first-child`, `:last-child`, `:nth-child()` (và các variant
+  Tailwind `first:` / `last:` / `odd:`) khớp với mọi anh em khi các phần tử là `text` node trần; hãy bọc
+  text trong container.
+- **`measure()` và transform** — ma trận `transform` do `measure()` trả về không gồm `transform` /
+  `translate` / `rotate` / `scale` CSS của node (takumi có tính); xem [measure()](measure.md).
 - **Hướng chữ trong flex layout** — `direction: rtl` / `dir: "rtl"` chưa đảo trục chính của hàng flex
   trong 0.1.0 (takumi có đảo).
 - Chưa hỗ trợ: `display: contents`, ký hiệu đầu dòng và counter, `writing-mode`, transform 3D,
@@ -380,7 +388,7 @@ Ghi chú:
   `pointerEvents`, `cursor`, `userSelect`, `WebkitUserSelect`, `transitionBehavior`, `maskComposite`,
   `WebkitMaskComposite`.
 - **Parse được nhưng chưa có tác dụng thấy được trong 0.1.0** (xác định bằng cách kiểm tra renderer đọc
-  những giá trị computed nào): `writingMode`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`,
+  những giá trị computed nào): `writingMode`, `textIndent`, `hyphens` / `WebkitHyphens`, `lineBreak`, `textAlignLast`,
   `unicodeBidi`, `fontSynthesis*` (luôn tự tạo đậm / nghiêng), `counterReset` / `counterIncrement` /
   `counterSet`, `listStyle*` (không có ký hiệu đầu dòng), `transition*`; `imageRendering` chỉ có tác dụng
   bên trong ảnh SVG.
@@ -388,3 +396,12 @@ Ghi chú:
   trên `core`), trừ các giá trị cần bộ parse không có mặt (hàm màu hiện đại trên `core`), vốn bị coi là
   không hợp lệ.
 - Mọi khoá khác đều bị bỏ qua im lặng, kể cả khoá kebab-case trong object `style` inline.
+
+
+## Xem thêm
+
+Các trang hướng dẫn đi sâu vào từng chủ đề, kèm ví dụ chạy được và ảnh kết quả:
+[Khái niệm](concepts.md) · [Style và layout](styles.md) · [HTML và Tailwind](html-and-tailwind.md) ·
+[Font](fonts.md) · [Typography](typography.md) · [Ảnh](images.md) · [Bảng và float](tables.md) ·
+[Hiệu ứng](effects.md) · [Định dạng đầu ra](formats.md) · [Animation](animation.md) · [measure()](measure.md) ·
+[Biểu đồ](charts.md) · [Mẫu](templates.md) · [Hiệu năng](performance.md)

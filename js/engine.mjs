@@ -1,4 +1,6 @@
 // bm-engine internal: the JS binding around one bm_engine.wasm instance.
+/** True for a WebAssembly.Module from any realm (Next.js Edge, vm contexts, iframes), where `instanceof` fails. */
+const isWasmModule = (x) => Object.prototype.toString.call(x) === "[object WebAssembly.Module]";
 //
 // `createBinding(defaultWasm?)` returns `{ init, initSync, Renderer, features, ... }` bound to its own
 // module instance. Every public entry creates exactly one binding when it is first evaluated:
@@ -159,9 +161,9 @@ export function createBinding(defaultWasm) {
   /** Synchronously instantiate from bytes or a compiled WebAssembly.Module (or `{ module }`). */
   function initSync(input) {
     if (wasm) return wasm;
-    if (input && typeof input === "object" && "module" in input && !(input instanceof WebAssembly.Module)) input = input.module;
+    if (input && typeof input === "object" && "module" in input && !isWasmModule(input)) input = input.module;
     if (input == null) throw new Error(NEEDS_INPUT.replace("init()", "initSync()"));
-    const mod = input instanceof WebAssembly.Module ? input : new WebAssembly.Module(input);
+    const mod = isWasmModule(input) ? input : new WebAssembly.Module(input);
     return adopt(new WebAssembly.Instance(mod, {}));
   }
 
@@ -192,7 +194,7 @@ export function createBinding(defaultWasm) {
       }
       input = await input.arrayBuffer();
     }
-    if (input instanceof WebAssembly.Module) return adopt(await WebAssembly.instantiate(input, {}));
+    if (isWasmModule(input)) return adopt(await WebAssembly.instantiate(input, {}));
     const { instance } = await WebAssembly.instantiate(input, {});
     return adopt(instance);
   }

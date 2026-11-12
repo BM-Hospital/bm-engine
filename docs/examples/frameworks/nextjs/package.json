@@ -1,0 +1,7 @@
+{
+  "//": "Verified by hand: copy this folder to a scratch dir, copy Inter-Regular.ttf / Inter-Bold.ttf to fonts/, npm i --ignore-scripts <bm-engine tarball> next@16.4.6 react react-dom, next build, next start, fetch /og, /opengraph-image, /og-edge.",
+  "name": "bm-engine-nextjs-check",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "next build", "start": "next start" }
+}
