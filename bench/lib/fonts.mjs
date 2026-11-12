@@ -20,6 +20,7 @@ export const FONTS = [
 const REF_FONTS = path.join(ROOT_DIR, "ref", "takumi", "assets", "fonts");
 export const OPTIONAL_FONTS = [
   { name: "Noto Color Emoji", file: "NotoColorEmoji.ttf", path: path.join(REF_FONTS, "noto-sans", "NotoColorEmoji.ttf"), weight: 400, style: "normal" },
+  { name: "Twemoji Mozilla", file: "TwemojiMozilla-colr.woff2", path: path.join(REF_FONTS, "twemoji", "TwemojiMozilla-colr.woff2"), weight: 400, style: "normal" },
 ].filter((x) => existsSync(x.path));
 export const hasOptionalFont = (name) => OPTIONAL_FONTS.some((x) => x.name === name);
 /** Restrict to a list of family names (case.fonts); undefined = all (optional fonts only when named). */

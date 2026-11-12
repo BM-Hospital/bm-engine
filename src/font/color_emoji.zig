@@ -124,7 +124,8 @@ pub fn scanEmoji(cps: []const u21) Cluster {
             vs = true;
             i += 1;
         }
-        if (i < cps.len and cps[i] == 0x20E3) return .{ .len = i + 1, .emoji_presentation = true };
+        // (Blink: a keycap without VS16 is a text-presentation sequence; takumi draws "1" + U+20E3 from the text font)
+        if (i < cps.len and cps[i] == 0x20E3) return .{ .len = i + 1, .emoji_presentation = vs };
         if (vs) return .{ .len = 2, .emoji_presentation = true };
         return .{ .len = 0, .emoji_presentation = false };
     }

@@ -37,4 +37,24 @@ const cases = [
       t("No synthesis: Hello", { fontSize: 32, color: "#111", fontVariantCaps: "small-caps", fontSynthesis: "none" })]) },
 ];
 
+// emoji sequences (Twemoji Mozilla COLR from the takumi clone; FIXTEXT_EMOJI="Noto Color Emoji" for the CBDT
+// font, whose bitmap scaling differs slightly from takumi): only listed when the font is present
+const EMOJI = process.env.FIXTEXT_EMOJI || "Twemoji Mozilla";
+if (hasOptionalFont(EMOJI)) {
+  const EF = ["Inter", EMOJI];
+  const em = (text, extra = {}) => t(text, { fontFamily: "Inter", fontSize: 32, color: "#111", ...extra });
+  cases.push(
+    { id: "fix-text-emoji-zwj", feature: "emoji", title: "ZWJ sequences shape as one glyph (GSUB ligature with ZWJ components)", width: 500, height: 120, fonts: EF,
+      node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 6 }, [em("ZWJ 👩‍💻 👨‍👩‍👧")]) },
+    { id: "fix-text-emoji-flags-skin", feature: "emoji", title: "regional-indicator pair, tag-sequence flag, skin-tone modifier", width: 500, height: 120, fonts: EF,
+      node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 6 }, [em("🇻🇳 🏴󠁧󠁢󠁥󠁮󠁧󠁿 👍🏽")]) },
+    { id: "fix-text-emoji-keycap-vs", feature: "emoji", title: "keycap with VS16 (emoji) / without (text + .notdef, as takumi), VS16 / VS15 heart", width: 500, height: 120, fonts: EF,
+      node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 6 }, [em("Keys 1️⃣ 1⃣ ❤️ ❤︎")]) },
+    { id: "fix-text-emoji-spacing", feature: "emoji", title: "letter-spacing goes after whole emoji clusters", width: 500, height: 120, fonts: EF,
+      node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 6 }, [em("a👩‍💻b🇻🇳c👍🏽d", { letterSpacing: 8 })]) },
+    { id: "fix-text-emoji-wrap", feature: "emoji", title: "wrapping never splits an emoji sequence", width: 300, height: 160, fonts: EF,
+      node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 6 }, [em("🇻🇳👩‍💻👍🏽❤️", { width: 70, fontSize: 24 })]) },
+  );
+}
+
 export default cases;

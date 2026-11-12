@@ -263,7 +263,7 @@ pub const Renderer = struct {
         while (it.next()) |g| self.gpa.free(g.data);
         self.glyphs.clearRetainingCapacity();
         self.glyph_bytes = 0;
-        if (comptime config.enable_color_fonts) {
+        if (comptime config.enable_color_fonts or config.enable_bitmap_glyphs) {
             var ci = self.color_glyphs.valueIterator();
             while (ci.next()) |g| g.pix.deinit(self.gpa);
             self.color_glyphs.clearRetainingCapacity();
@@ -2153,7 +2153,7 @@ pub const Frame = struct {
             .boxes = try f.paragraphBoxes(),
         };
         const p = try f.a.create(font.Paragraph);
-        p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
+        p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts or config.enable_bitmap_glyphs }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
         return p;
     }
 

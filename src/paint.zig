@@ -27,6 +27,8 @@ const ptable = @import("paint_table.zig");
 
 /// Optional features (the integrator points these at `config.zig`).
 pub const enable_color_fonts = @import("config.zig").enable_color_fonts;
+/// Colour glyphs of some kind are drawn (COLR needs `enable_color_fonts`, bitmaps either flag).
+pub const enable_color_glyphs = enable_color_fonts or @import("config.zig").enable_bitmap_glyphs;
 pub const enable_svg = @import("config.zig").enable_svg;
 /// clip-path, mask-image, mix-/background-blend-mode, backdrop-filter, isolation.
 pub const enable_effects = @import("config.zig").enable_effects;

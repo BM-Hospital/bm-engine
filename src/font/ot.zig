@@ -1337,9 +1337,13 @@ const Ctx = struct {
                 var pos: [max_context]u32 = undefined;
                 // fast reject on the second component (HarfBuzz does the same): valid when
                 // the next glyph is one no ligature could skip over
+                // (HarfBuzz matches "always" here: a skippable-maybe glyph such as ZWJ, which
+                // a ligature may list as a component, stops the fast path)
                 var second: u32 = 0x1_0000;
-                if (c.next(c.idx, c.props)) |j| {
-                    if (c.maySkip(&gs[j], c.props, false) == .no) second = gs[j].gid;
+                {
+                    var j = c.idx + 1;
+                    while (j < gs.len and c.maySkip(&gs[j], c.props, false) == .yes) j += 1;
+                    if (j < gs.len and c.maySkip(&gs[j], c.props, false) == .no) second = gs[j].gid;
                 }
                 var k: u32 = 0;
                 while (k < nl) : (k += 1) {

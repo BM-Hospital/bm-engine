@@ -637,15 +637,19 @@ pub const Paragraph = struct {
         defer alloc.free(text);
         var mk: Marker = .{ .on = true, .size = st.size, .user = st.user };
         if (text.len == 0) return mk;
-        var sub = try initCore(feat, alloc, fonts, &.{.{ .text = text, .style = st }}, .{
-            .white_space = .pre,
-            .direction = opts.direction,
-            .lang = opts.lang,
-            .features = opts.features,
-            .shape_cache = opts.shape_cache,
-            .strut = st,
-            .line_height = opts.line_height,
-        });
+        // (the block options, minus everything about lines: one unwrapped, preserved line)
+        var so = opts;
+        so.max_width = null;
+        so.text_align = .left;
+        so.white_space = .pre;
+        so.max_lines = null;
+        so.ellipsis = false;
+        so.ellipsis_text = null;
+        so.clamp_text = null;
+        so.strut = st;
+        so.text_wrap = .wrap;
+        so.boxes = &.{};
+        var sub = try initCore(feat, alloc, fonts, &.{.{ .text = text, .style = st }}, so);
         defer sub.deinit();
         var tl = try sub.layout(alloc, null);
         defer tl.deinit(alloc);
@@ -663,7 +667,7 @@ pub const Paragraph = struct {
         return mk;
     }
 
-    fn initCore(comptime feat: Features, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
+    noinline fn initCore(comptime feat: Features, alloc: std.mem.Allocator, fonts: *const FontCollection, runs: []const Run, opts: ParagraphOptions) !Paragraph {
         const complex = feat.complex;
         var total: usize = 0;
         for (runs) |r| total += r.text.len;
@@ -2216,7 +2220,7 @@ pub const Paragraph = struct {
         }
     };
 
-    fn putEllipsis(self: *const Paragraph, out: *std.ArrayList(PositionedGlyph), x_in: f32, baseline: f32, cluster: u32, clamp: bool) f32 {
+    noinline fn putEllipsis(self: *const Paragraph, out: *std.ArrayList(PositionedGlyph), x_in: f32, baseline: f32, cluster: u32, clamp: bool) f32 {
         const mk = if (clamp) &self.clamp_ell else &self.ell;
         if (mk.glyphs.len > 0) {
             for (mk.glyphs) |g| {
@@ -2294,27 +2298,40 @@ fn markerText(alloc: std.mem.Allocator, raw: []const u8) ![]u8 {
             continue;
         }
         after_break = false;
-        n += std.unicode.utf8Encode(cp, out[n..][0..4]) catch 0;
+        n += encodeUtf8(cp, out[n..][0..4]);
     }
     return alloc.dupe(u8, out[0..n]);
 }
 
+/// UTF-8 encoding of a scalar value (surrogates never reach here: decoders yield U+FFFD).
+fn encodeUtf8(cp: u21, out: *[4]u8) usize {
+    if (cp < 0x80) {
+        out[0] = @intCast(cp);
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = @intCast(0xC0 | (cp >> 6));
+        out[1] = @intCast(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = @intCast(0xE0 | (cp >> 12));
+        out[1] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = @intCast(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = @intCast(0xF0 | (cp >> 18));
+    out[1] = @intCast(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = @intCast(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = @intCast(0x80 | (cp & 0x3F));
+    return 4;
+}
+
 /// One UTF-8 character of `s` at `i.*` (U+FFFD for a malformed sequence); advances `i`.
 fn decodeAt(s: []const u8, i: *usize) u21 {
-    const l = std.unicode.utf8ByteSequenceLength(s[i.*]) catch {
-        i.* += 1;
-        return 0xFFFD;
-    };
-    if (i.* + l > s.len) {
-        i.* += 1;
-        return 0xFFFD;
-    }
-    const cp = std.unicode.utf8Decode(s[i.*..][0..l]) catch {
-        i.* += 1;
-        return 0xFFFD;
-    };
-    i.* += l;
-    return cp;
+    const d = uni.decodeUtf8(s, i.*);
+    i.* += d.len;
+    return d.cp;
 }
 
 const hard_break_cp: u21 = '\n';
@@ -2558,6 +2575,8 @@ const Builder = struct {
     /// Running starter of the current cluster (for composition-aware font fallback).
     starter: u21 = 0,
     prev_cp: u21 = 0,
+    /// GB11 state for `prev_cp` (see `unicode.clusterPrev`)
+    prev_pict: bool = false,
     /// Inline item counter (style run x bidi run).
     item: u16 = 0,
     /// Features of the current style run (`ParagraphOptions.features` + `TextStyle.features`).
@@ -2847,7 +2866,7 @@ const Builder = struct {
                     b.starter = c.cp;
                 }
             }
-            b.prev_cp = c.cp;
+            b.prev_cp = uni.clusterPrev(complex, &b.prev_pict, c.cp);
             var metric = primary_metric;
             if (face != faces[0]) metric = try b.metricFor(c.run, face, style);
             // script: strong characters decide, the rest follow

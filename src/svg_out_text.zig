@@ -18,8 +18,8 @@ const ptext = @import("paint_text.zig");
 const pborder = @import("paint_border.zig");
 const so = @import("svg_out.zig");
 const sborder = @import("svg_out_border.zig");
-const color = if (pm.enable_color_fonts) @import("font/color.zig") else struct {};
-const cex = if (pm.enable_color_fonts) @import("font/color_example.zig") else struct {};
+const color = if (pm.enable_color_glyphs) @import("font/color.zig") else struct {};
+const cex = if (pm.enable_color_glyphs) @import("font/color_example.zig") else struct {};
 
 const S = so.S;
 const Ctx = pm.Ctx;
@@ -86,8 +86,10 @@ const Synth = struct { italic: bool, bold: bool, colored: bool };
 fn synthOf(s: *S, rcs: *const CS, g: *const font.PositionedGlyph) Synth {
     const fc = s.f.r.fonts.face(g.face);
     var sy: Synth = .{ .italic = rcs.font_style != .normal and !fc.italic, .bold = rcs.font_weight >= 600 and fc.weight < 600, .colored = false };
-    if (comptime pm.enable_color_fonts) {
-        if (color.glyphKind(&fc.font, g.gid) != .none) sy = .{ .italic = false, .bold = false, .colored = true };
+    if (comptime pm.enable_color_glyphs) {
+        const k = color.glyphKind(&fc.font, g.gid);
+        // (bitmap-only builds draw COLR glyphs from their plain outlines)
+        if (k == .bitmap_png or (pm.enable_color_fonts and k != .none)) sy = .{ .italic = false, .bold = false, .colored = true };
     }
     return sy;
 }
@@ -244,7 +246,7 @@ noinline fn paintGlyphPhase(s: *S, tl: *const font.TextLayout, x: f32, y: f32, r
 
 /// COLR / bitmap glyph: rendered like the painter (glyph-sized pixmap) and embedded as a PNG.
 noinline fn paintColorGlyph(s: *S, g: *const font.PositionedGlyph, gx: f32, gy: f32, fg: Color) Error!void {
-    if (comptime !pm.enable_color_fonts) return;
+    if (comptime !pm.enable_color_glyphs) return;
     if (fg.a == 0 or !(g.size > 0) or g.size > 400) return;
     const fnt = s.f.r.fonts.font(g.face);
     const ct = color.ColorTables.init(fnt);
@@ -261,7 +263,7 @@ noinline fn paintColorGlyph(s: *S, g: *const font.PositionedGlyph, gx: f32, gy: 
         .bitmap_png => if (ct.bitmap(g.gid, g.size)) |bm| {
             _ = cex.drawBitmapGlyph(s.a, &pix, bm, g.size, fx, fy, null) catch return error.OutOfMemory;
         },
-        .colr_v0, .colr_v1 => {
+        .colr_v0, .colr_v1 => if (comptime pm.enable_color_fonts) {
             _ = cex.drawColrGlyph(s.a, &pix, fnt, &ct, g.gid, g.size, fx, fy, 0, .{ .r = fg.r, .g = fg.g, .b = fg.b, .a = 255 }, pix.bounds(), null) catch return error.OutOfMemory;
         },
         else => return,
