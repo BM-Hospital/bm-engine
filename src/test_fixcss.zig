@@ -49,3 +49,14 @@ test "measure(): transforms compose like takumi (exact quarter turns, exact f32 
     out = try r.measure("{\"type\":\"container\",\"style\":{\"display\":\"flex\",\"width\":100,\"height\":50,\"rotate\":\"30deg\",\"transformOrigin\":\"0 0\"}}", opts);
     try expectContains(out, "\"transform\":[0.866025388240814208984375,0.5,-0.5,0.866025388240814208984375,0,0]");
 }
+
+test "renderSvg draws at device pixel ratio 1 whatever the option says (takumi RenderOptions::svg)" {
+    if (!@import("config.zig").enable_render_svg) return error.SkipZigTest;
+    const r = try newRenderer();
+    defer r.destroy();
+    const node = "{\"type\":\"container\",\"style\":{\"display\":\"flex\",\"width\":100,\"height\":50,\"backgroundColor\":\"red\",\"padding\":10},\"children\":[{\"type\":\"text\",\"text\":\"Hi\"}]}";
+    const one = try std.testing.allocator.dupe(u8, try r.renderSvg(.json, node, "{\"width\":200,\"height\":100}"));
+    defer std.testing.allocator.free(one);
+    const two = try r.renderSvg(.json, node, "{\"width\":200,\"height\":100,\"devicePixelRatio\":2}");
+    try std.testing.expectEqualStrings(one, two);
+}

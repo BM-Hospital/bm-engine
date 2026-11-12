@@ -656,7 +656,9 @@ pub const Renderer = struct {
     noinline fn renderSvgImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
         const a = self.arena.allocator();
-        const opts = try self.parseOptions(opts_json);
+        var opts = try self.parseOptions(opts_json);
+        // takumi `RenderOptions::svg`: SVG output always draws at a device pixel ratio of 1
+        opts.dpr = 1;
         self.time_ms = opts.time_ms;
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
