@@ -754,6 +754,34 @@ const rt = @import("../render.zig");
 const font_mod = @import("../font/font.zig");
 const ptext = @import("../paint_text.zig");
 
+/// bm-engine bundles no font, while takumi-pdf always has its bundled last-resort font (Geist):
+/// with no font registered at all the text engine shapes nothing, so text would vanish without
+/// a trace. A frame whose paragraphs hold text other than white space then fails the render (or
+/// measure), naming the first characters; `blank` (`uncoveredText: "blank"`) asked for nothing to
+/// be drawn and keeps going.
+pub fn requireFont(f: *const rt.Frame, blank: bool) rt.Error!void {
+    if (blank) return;
+    for (f.r.fonts.faces.items) |fc| if (fc.active) return;
+    var u: Uncovered = .{};
+    for (f.nodes.items) |n| {
+        const p = n.para orelse continue;
+        const t = rt.Frame.paragraphText(p);
+        var i: usize = 0;
+        while (i < t.len) {
+            const d = uni.decodeUtf8(t, i);
+            i += d.len;
+            const cp = d.cp;
+            if (cp <= 0x20 or cp == 0x7f or cp == 0x85 or cp == 0xa0 or (cp >= 0x2000 and cp <= 0x200a) or
+                cp == 0x2028 or cp == 0x2029 or cp == 0x202f or cp == 0x205f or cp == 0x3000 or uni.isZeroWidth(cp)) continue;
+            try u.record(f.a, cp);
+        }
+    }
+    if (try u.noFontMessage(f.a)) |msg| {
+        f.r.setErr("", msg); // (as detail: a prefix is cut at 128 bytes)
+        return error.Invalid;
+    }
+}
+
 /// Which pass of a run the seam draws (takumi: `begin_shadow` / glyphs / `background-clip`
 /// mask).
 pub const Pass = union(enum) {

@@ -71,6 +71,7 @@ pub fn buildFrame(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.V
     if (area) |ar| f.setPaged(ar[0], ar[1]);
     if (subst) |s| s.install(f);
     try f.prepare(kind, source);
+    try @import("text.zig").requireFont(f, o.uncovered_text == .blank);
     return f;
 }
 

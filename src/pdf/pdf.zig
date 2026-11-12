@@ -136,6 +136,7 @@ fn buildFrameEx(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind,
         f.setPaged(ar.width, ar.height);
     }
     try f.prepare(kind, source);
+    try @import("text.zig").requireFont(&f, o.uncovered_text == .blank);
     return f;
 }
 
@@ -255,6 +256,20 @@ test "renderPdf: not supported without the flag, a page of the requested size wi
     try std.testing.expectError(error.Invalid, r.renderPdf(.json, "{\"type\":\"container\",\"style\":{\"width\":\"banana\"}}", ""));
     try std.testing.expectError(error.Invalid, r.renderPdf(.json, node, "{\"backgroundColor\":\"notacolor\"}"));
     try std.testing.expectEqualStrings("backgroundColor is not a color: notacolor", r.err);
+}
+
+test "renderPdf: text while no font is registered fails, naming it (bm-engine bundles no font)" {
+    if (comptime !config.enable_pdf) return;
+    const r = Renderer.create(std.testing.allocator).?;
+    defer r.destroy();
+    const node = "{\"type\":\"text\",\"text\":\"Hi\"}";
+    const vp = "{\"viewport\":{\"width\":100,\"height\":50}}";
+    try std.testing.expectError(error.Invalid, r.renderPdf(.json, node, vp));
+    try std.testing.expect(std.mem.indexOf(u8, r.err, "No font is registered to draw H (U+0048), i (U+0069). bm-engine bundles no font") != null);
+    try std.testing.expectError(error.Invalid, r.measurePdf(.json, node, ""));
+    // `uncoveredText: "blank"` asked for nothing to be drawn; a tree without text needs no font
+    _ = try r.renderPdf(.json, node, "{\"viewport\":{\"width\":100,\"height\":50},\"uncoveredText\":\"blank\"}");
+    _ = try r.renderPdf(.json, "{\"type\":\"text\",\"text\":\" \\n \"}", vp);
 }
 
 /// Renders `node` (JSON) on a viewport page with uncompressed streams (tests).

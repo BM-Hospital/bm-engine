@@ -492,7 +492,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
 // ---- module-level API
 {
   const { render, measure, prepare } = pdfMod;
-  isPdf(await render(node, { viewport: { width: 50, height: 50 } }), "module-level render", [37.5, 37.5]);
+  isPdf(await render(sized, { viewport: { width: 50, height: 50 } }), "module-level render", [37.5, 37.5]);
   check((await measure(sized)).height === 30, "module-level measure");
   check((await prepare(html)) instanceof pdfMod.Prepared, "module-level prepare");
 }
@@ -672,6 +672,46 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
   check(JSON.stringify(boxes) === JSON.stringify([[420, 595], [595, 420], [420, 595]]), `named pages: A5, A5 landscape (named), A5: ${JSON.stringify(boxes)}`);
   const same = await r.render(`<style>@page { size: A5 } .w { page: auto }</style><p>one</p><div class="w">two</div>`);
   check(mediaBoxes(same).length === 1, "named pages: page: auto does not break");
+}
+
+// ---- regressions of known bugs (behaviour checked against the published takumi-pdf 0.20.0)
+{
+  const { inflateSync } = await import("node:zlib");
+  /** The page content streams of the file, inflated, as latin1 text. */
+  const content = (bytes) => {
+    const s = latin1(bytes); const out = [];
+    let at = 0;
+    for (;;) {
+      const i = s.indexOf("stream\n", at); if (i < 0) break;
+      const j = s.indexOf("\nendstream", i); if (j < 0) break;
+      const dict = s.slice(s.lastIndexOf("obj", i), i);
+      if (/FlateDecode/.test(dict) && !/Subtype|Length1|Type\/|XRef|ObjStm/.test(dict)) {
+        try { const t = inflateSync(Buffer.from(bytes.subarray(i + 7, j))).toString("latin1"); if (!t.slice(0, 64).includes("\0")) out.push(t); } catch {}
+      }
+      at = j + 10;
+    }
+    return out.join("\n");
+  };
+  const textOf = (bytes, name) => {
+    const file = path.join(tmp, name + ".pdf");
+    writeFileSync(file, bytes);
+    const t = spawnSync("pdftotext", ["-raw", "-enc", "UTF-8", file, "-"], { encoding: "utf8" });
+    if (t.error && t.error.code === "ENOENT") { pdftotextMissing = true; return null; }
+    return t.stdout.replace(/\s+/g, " ").trim();
+  };
+  const inter = new Uint8Array(readFileSync(path.join(root, "assets", "fonts", "Inter-Regular.ttf")));
+  const vp = { viewport: { width: 320, height: 120 } };
+
+  // 1. no font registered at all: takumi-pdf draws its bundled Geist font, bm-engine bundles none and fails
+  //    the render naming the characters (unless uncoveredText is "blank")
+  const noFont = /No font is registered to draw H \(U\+0048\), e \(U\+0065\), l \(U\+006C\), o \(U\+006F\)\. bm-engine bundles no font/;
+  await rejects(() => new PdfRenderer().render("<p>Hello</p>"), noFont, "no font: PdfRenderer.render fails");
+  await rejects(() => pdfMod.render("<p>Hello</p>"), noFont, "no font: module-level render fails");
+  await rejects(async () => new PdfRenderer().renderSync("<p>Hello</p>"), noFont, "no font: renderSync fails");
+  await rejects(() => new PdfRenderer().measure("<p>Hello</p>"), noFont, "no font: measure fails");
+  await rejects(() => new PdfRenderer().render("<p>x</p>", { footer: "<p>Hello</p>" }), noFont, "no font: text in a band fails");
+  isPdf(await new PdfRenderer().render("<p>Hello</p>", { ...vp, uncoveredText: "blank" }), "no font: uncoveredText blank draws nothing");
+  isPdf(await new PdfRenderer().render(`<div style="width:10px;height:10px;background:red"> </div>`, vp), "no font: a document without text renders");
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });
