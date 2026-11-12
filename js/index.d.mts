@@ -120,7 +120,10 @@ export type NodeMetadata = {
   preset?: Style;
   /** Tailwind utility classes (`tw` feature: standard / full) */
   tw?: string;
-  /** element name for selectors and UA styles */
+  /**
+   * element name, used only to match type selectors (`p { ... }`, `div > span`) in `css`; it does NOT apply
+   * the HTML user-agent default styles of that element to a node tree (set them in `style` / `preset`)
+   */
   tagName?: string;
   className?: string;
   id?: string;
@@ -234,7 +237,7 @@ export type MeasuredTextRun = { text?: string; x: number; y: number; width: numb
 export type MeasuredNode = {
   width: number;
   height: number;
-  /** 2D affine matrix [a, b, c, d, e, f] in canvas coordinates (e, f = absolute position), like takumi */
+  /** transform: 2D affine matrix [a, b, c, d, e, f] of the node relative to the canvas, not to its parent (e, f = its absolute position) */
   transform: [number, number, number, number, number, number];
   children: MeasuredNode[];
   runs: MeasuredTextRun[];

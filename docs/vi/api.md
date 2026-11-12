@@ -200,7 +200,7 @@ Chỉ dàn layout, không vẽ, và trả về cây `MeasuredNode`:
 ```ts
 type MeasuredNode = {
   width: number; height: number;                                  // border box, device px (1/64 px precision)
-  transform: [a: number, b: number, c: number, d: number, e: number, f: number]; // 2D matrix in canvas coordinates
+  transform: [a: number, b: number, c: number, d: number, e: number, f: number]; // 2D matrix of the node relative to the canvas
   children: MeasuredNode[];
   runs: { x: number; y: number; width: number; height: number; text?: string }[]; // text line runs, relative to the node
 };
@@ -217,10 +217,9 @@ r.measureSync(
 //   { width: 20, height: 20, transform: [1,0,0,1,105.40625,10], children: [], runs: [] } ] }
 ```
 
-`transform` là ma trận 2D theo toạ độ của canvas (không tương đối với node cha), giống takumi; toạ độ của
+`transform` là ma trận 2D của node so với canvas (không tương đối với node cha); toạ độ của
 `runs` tương đối với content box của chính node đó. Khác với `measure` của takumi trong 0.1.0: run không có trường
-`text`, CSS transform (`transform`, `rotate`, ...) không được tính vào `transform` (chỉ có vị trí layout),
-và chiều cao run là chiều cao dòng chứ không phải phạm vi glyph (takumi báo ví dụ
+`text`, và chiều cao run là chiều cao dòng chứ không phải phạm vi glyph (takumi báo ví dụ
 `y: 0.5, height: 19.36` cho run ở trên). Kích thước hộp và vị trí khớp takumi (xem [Benchmark](benchmark.md)). Chi tiết ở [measure()](./measure.md).
 
 ### `renderAnimation` / `renderAnimationSync`
@@ -308,7 +307,7 @@ type Meta = {
   style?: Style;      // inline CSS declarations, camelCase keys
   preset?: Style;     // user-agent layer: lowest priority
   tw?: string;        // Tailwind classes (standard / full)
-  tagName?: string;   // element name for type selectors (none by default: a node without it matches no type selector; UA styles are not applied)
+  tagName?: string;   // element name, only for matching type selectors in `css` (none by default: a node without it matches no type selector); it does NOT apply HTML user-agent default styles to node trees
   className?: string; // for stylesheet selectors
   id?: string;
   attributes?: Record<string, string>; // for attribute selectors, `attr()`

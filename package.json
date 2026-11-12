@@ -89,21 +89,41 @@
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_engine.wasm"
     },
+    "./wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm?module"
+    },
     "./core.wasm": {
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_engine.core.wasm"
+    },
+    "./core.wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.core.wasm?module"
     },
     "./standard.wasm": {
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_engine.standard.wasm"
     },
+    "./standard.wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.standard.wasm?module"
+    },
     "./full.wasm": {
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_engine.wasm"
     },
+    "./full.wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.wasm?module"
+    },
     "./woff.wasm": {
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_woff.wasm"
+    },
+    "./woff.wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_woff.wasm?module"
     },
     "./package.json": "./package.json"
   },
@@ -120,6 +140,7 @@
     "js/node.mjs",
     "js/native.mjs",
     "js/node-native.mjs",
+    "js/wasm-file.mjs",
     "js/native.d.mts",
     "js/core.mjs",
     "js/core.d.mts",
@@ -154,10 +175,12 @@
     "build:standard": "node scripts/build.mjs --profile=standard",
     "build:full": "node scripts/build.mjs --profile=full",
     "build:manifest": "node scripts/build.mjs --manifest",
-    "verify": "node scripts/build.mjs --verify",
+    "verify": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify",
     "test": "node scripts/build.mjs --test",
     "test:pack": "node scripts/pack-test.mjs",
     "build:native": "node scripts/build-native.mjs",
+    "build:npm": "node scripts/npm-platform-packages.mjs",
+    "version:set": "node scripts/npm-platform-packages.mjs --set-version",
     "test:native": "node bench/native-tests.mjs",
     "playground": "node docs/playground-app/serve.mjs",
     "docs:prepare": "node docs/.vitepress/prepare.mjs",
@@ -165,10 +188,20 @@
     "docs:build": "npm run docs:prepare && vitepress build docs",
     "docs:preview": "vitepress preview docs --port 4173",
     "docs": "npm run docs:dev",
-    "prepublishOnly": "node scripts/build.mjs --verify && node scripts/pack-test.mjs"
+    "prepublishOnly": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify && node scripts/pack-test.mjs"
   },
   "devDependencies": {
     "binaryen": "^132.0.0",
     "vitepress": "^1.6.4"
+  },
+  "optionalDependencies": {
+    "bm-engine-win32-x64-msvc": "0.1.0",
+    "bm-engine-win32-arm64-msvc": "0.1.0",
+    "bm-engine-linux-x64-gnu": "0.1.0",
+    "bm-engine-linux-x64-musl": "0.1.0",
+    "bm-engine-linux-arm64-gnu": "0.1.0",
+    "bm-engine-linux-arm64-musl": "0.1.0",
+    "bm-engine-darwin-x64": "0.1.0",
+    "bm-engine-darwin-arm64": "0.1.0"
   }
 }

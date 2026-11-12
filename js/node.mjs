@@ -13,13 +13,18 @@
 //
 // Which wasm binary:
 //   1. $BM_WASM (a file path) if set;
-//   2. else $BM_PROFILE = core | standard | full selects bm_engine.<profile>.wasm next to this file;
+//   2. else $BM_PROFILE = core | standard | full selects bm_engine.<profile>.wasm of the package;
 //   3. else, in a source checkout only (../build.zig exists), a fresh local build ../zig-out/bin/bm_engine.wasm;
-//   4. else bm_engine.wasm next to this file (the full profile; what the npm package ships).
+//   4. else bm_engine.wasm of the package (the full profile; what the npm package ships).
+// "Of the package" = the first readable of (js/wasm-file.mjs): next to this module (import.meta.url), the
+// package resolved with createRequire (bm-engine/<subpath>), <cwd>/node_modules/bm-engine/js/. The later ones
+// matter when a bundler moved this module away from its package (Next.js without serverExternalPackages,
+// esbuild --bundle without --external:bm-engine) but node_modules is still there at run time.
 // Fixed-profile entries with their own instances: bm-engine/core, /standard, /full (node-<profile>.mjs).
 import { readFileSync, existsSync } from "node:fs";
 import * as bm from "./index.mjs";
 import { nativeBinding, nativeError } from "./native.mjs";
+import { readPackageWasm, packageFile } from "./wasm-file.mjs";
 
 const env = (typeof process !== "undefined" && process.env) || {};
 const want = String(env.BM_ENGINE_BACKEND || "").toLowerCase();
@@ -27,23 +32,28 @@ if (want && want !== "wasm" && want !== "native") throw new Error(`bm-engine: BM
 const native = want === "native" || (!want && !env.BM_WASM && !env.BM_PROFILE) ? nativeBinding() : null;
 if (!native && want === "native") throw new Error(`bm-engine: BM_ENGINE_BACKEND=native, but the native addon is not available (${nativeError()})`);
 
-const profile = env.BM_PROFILE && env.BM_PROFILE !== "full" ? env.BM_PROFILE : null;
-const packaged = new URL("./bm_engine.wasm", import.meta.url);
-const dev = existsSync(new URL("../build.zig", import.meta.url)) ? [new URL("../zig-out/bin/bm_engine.wasm", import.meta.url)] : [];
-const candidates = env.BM_WASM ? [env.BM_WASM]
-  : profile ? [new URL(`./bm_engine.${profile}.wasm`, import.meta.url)]
-  : [...dev, packaged];
-
 if (!native) {
+  const profile = env.BM_PROFILE && env.BM_PROFILE !== "full" ? env.BM_PROFILE : null;
   let bytes;
-  for (const url of candidates) {
+  if (env.BM_WASM) {
     try {
-      bytes = readFileSync(url);
-      break;
-    } catch {}
+      bytes = readFileSync(env.BM_WASM);
+    } catch (e) {
+      throw new Error(`bm-engine: BM_WASM=${env.BM_WASM} cannot be read (${e && e.message})`);
+    }
+  } else {
+    if (!profile) {
+      // a source checkout: prefer the fresh local build
+      const checkout = packageFile("../build.zig");
+      const dev = checkout && existsSync(checkout) ? packageFile("../zig-out/bin/bm_engine.wasm") : null;
+      if (dev) {
+        try {
+          bytes = readFileSync(dev);
+        } catch {}
+      }
+    }
+    bytes ??= readPackageWasm(profile ? `bm_engine.${profile}.wasm` : "bm_engine.wasm");
   }
-  if (!bytes) throw new Error(`bm-engine: ${candidates.map(String).join(" / ")} not found${dev.length ? " (run `node scripts/build.mjs`)" : ""}`);
-
   bm.initSync(bytes);
 }
 

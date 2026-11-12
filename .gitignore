@@ -11,3 +11,7 @@ docs/public/playground-app/
 docs/public/data/
 .vercel
 native/dist/
+npm/*/*.node
+npm/*/LICENSE-*
+npm/*/NOTICE
+npm/*/THIRD-PARTY-NOTICES.md

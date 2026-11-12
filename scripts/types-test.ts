@@ -6,6 +6,7 @@ import init, {
   Renderer,
   features,
   setGlyphCacheMaxBytes,
+  backend,
   type Node,
   type ContainerNode,
   type TextNode,
@@ -29,6 +30,9 @@ import fullInit, { Renderer as FullRenderer, wasmUrl } from "bm-engine/full";
 import { loadWoff, decodeWoff } from "bm-engine/woff";
 import coreWasm from "bm-engine/core.wasm";
 import woffWasm from "bm-engine/woff.wasm";
+import coreWasmModule from "bm-engine/core.wasm?module"; // Next.js Edge / webpack `?module` form
+import * as native from "bm-engine/native";
+import nativeInit, { Renderer as NativeRenderer, backend as nativeBackend } from "bm-engine/native";
 
 declare const bytes: Uint8Array;
 
@@ -120,4 +124,17 @@ async function main(): Promise<void> {
   // @ts-expect-error features are read-only
   features.css = true;
 }
+function backends(): void {
+  const b: "wasm" | "native" = backend;
+  const nb: "wasm" | "native" = nativeBackend;
+  const cb: "wasm" | "native" = core.backend;
+  // @ts-expect-error backend is a closed union
+  const bad: "gpu" = backend;
+  const m: WebAssembly.Module = coreWasmModule;
+  core.initSync(coreWasmModule);
+  const nr = new NativeRenderer();
+  const png: Uint8Array = nr.renderSync({ type: "text", text: "native" });
+  void b; void nb; void cb; void bad; void m; void png; void nativeInit; void native.features.css;
+}
+void backends;
 void main;

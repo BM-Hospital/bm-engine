@@ -17,7 +17,25 @@
 //   tsc-bundler / tsc-node16   scripts/types-test.ts against the installed typings (typescript@5)
 //   vite-build   vite build of two pages (bm-engine/core + init(); bm-engine + init(full.wasm?url)) + woff add-on
 //   vite-browser the built pages in headless Edge / Chrome (puppeteer-core): PNG rendered, no console errors
-//   esbuild      esbuild bundles for the browser and for workerd (sanity: no node:fs import, builds cleanly)
+//   esbuild      esbuild bundles for the browser and for workerd (sanity: no node:fs import, builds cleanly; no
+//                trace of the native loader in them, also for `bm-engine` itself; vite-build checks the same)
+// Native addon (skipped when native/dist/<host> is not built; --skip-native skips them):
+//   pack-platform          the 8 platform packages generated (scripts/npm-platform-packages.mjs --out) and packed:
+//                          exact file lists, versions = root version = optionalDependencies; the main tarball has no .node
+//   install-native         main tarball + npm overrides mapping every bm-engine-<name> to its tarball (= published):
+//                          npm installs only the host's package (os / cpu / libc)
+//   native-default         backend "native"; PNG, async render, SVG, measure byte-identical to bm-engine/full (wasm)
+//   native-env             BM_ENGINE_BACKEND=wasm / =native
+//   native-subpath         bm-engine/native with the addon installed
+//   native-worker          4 worker_threads importing bm-engine: native in each, same bytes as the main thread
+//   fallback-corrupt       the installed .node replaced by another arch's / another OS's binary, truncated, empty,
+//                          text: wasm, same bytes, nothing printed; BM_ENGINE_BACKEND=native names the reason
+//   esbuild-node           esbuild --platform=node: --external:bm-engine, bundled ESM, bundled CJS -> native; the CJS
+//                          bundle alone (no node_modules): a clear error, and BM_WASM makes it work
+//   fallback-missing       main only (optional packages unavailable): wasm, same bytes; forced native and
+//                          bm-engine/native fail with clear messages
+//   fallback-omit-optional npm i --omit=optional with the packages available: wasm
+//   fallback-foreign-pkg   another OS's platform package force-installed (npm i --force): wasm
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, copyFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -46,6 +64,8 @@ function run(cmd, argv, opts = {}) {
   return { ok: r.status === 0, out: (r.stdout || "") + (r.stderr || ""), status: r.status };
 }
 const tail = (s, n = 25) => s.trim().split("\n").slice(-n).join("\n");
+/** Strings that only the Node.js side (js/native.mjs, js/wasm-file.mjs) contains: never in a browser bundle. */
+const NATIVE_MARKERS = ["bm-engine-win32-x64-msvc", "bm-engine-linux-x64-gnu", "process.dlopen", "createRequire", "node:module", "BM_ENGINE_NATIVE_PATH", "readPackageWasm"];
 const kb = (n) => (n / 1024).toFixed(1) + " KiB";
 
 // ------------------------------------------------------------------ manifest + pack
@@ -57,6 +77,7 @@ const kb = (n) => (n / 1024).toFixed(1) + " KiB";
 if (!args.keep) rmSync(dir, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 let tarball;
+let mainPack = null;
 {
   const r = run("npm", ["pack", "--json", "--pack-destination", dir], { cwd: root });
   let info;
@@ -73,10 +94,12 @@ let tarball;
     const forbidden = files.filter((f) => /^(src|bench|ref|assets|docs|playground|zig-out|examples|scripts)\//.test(f));
     // every exports target must be in the tarball
     const targets = [];
-    const walk = (v) => { if (typeof v === "string") targets.push(v.replace(/^\.\//, "")); else if (v && typeof v === "object") Object.values(v).forEach(walk); };
+    const walk = (v) => { if (typeof v === "string") targets.push(v.replace(/^\.\//, "").replace(/\?.*$/, "")); else if (v && typeof v === "object") Object.values(v).forEach(walk); };
     walk(pkg.exports);
     const unresolved = targets.filter((t) => !files.includes(t));
-    const ok = !stray.length && !missing.length && !forbidden.length && !unresolved.length;
+    forbidden.push(...files.filter((f) => f.endsWith(".node"))); // native addons ship in the platform packages only
+    mainPack = { file: p.filename, files: files.length, size: p.size, unpacked: p.unpackedSize };
+    const ok =!stray.length && !missing.length && !forbidden.length && !unresolved.length;
     record("pack", ok, `${p.filename}: ${files.length} files, packed ${kb(p.size)}, unpacked ${kb(p.unpackedSize)}` +
       (stray.length ? `; unexpected: ${stray.join(", ")}` : "") + (missing.length ? `; missing: ${missing.join(", ")}` : "") +
       (forbidden.length ? `; forbidden: ${forbidden.join(", ")}` : "") + (unresolved.length ? `; exports targets not packed: ${unresolved.join(", ")}` : ""));
@@ -325,7 +348,14 @@ import wasmUrl from "bm-engine/full.wasm?url";
     const sizes = assets.map((f) => `${f} ${kb(statSync(path.join(web, "dist", "assets", f)).size)}`);
     const wasms = assets.filter((f) => f.endsWith(".wasm"));
     viteOk = r.ok && wasms.some((f) => f.startsWith("bm_engine.core")) && wasms.some((f) => f.startsWith("bm_engine")) && wasms.some((f) => f.startsWith("bm_woff"));
-    record("vite-build", viteOk, `${vv}; assets: ${sizes.join(", ")}` + (r.ok ? "" : "\n" + tail(r.out)) + (/warn/i.test(r.out) ? "\n      vite output: " + tail(r.out, 6) : ""));
+    // the browser bundles must not contain the native loader or any Node.js module
+    const leaks = assets.filter((f) => f.endsWith(".js")).flatMap((f) => {
+      const code = readFileSync(path.join(web, "dist", "assets", f), "utf8");
+      return NATIVE_MARKERS.filter((m) => code.includes(m)).map((m) => `${f}: ${m}`);
+    });
+    if (leaks.length) viteOk = false;
+    record("vite-build", viteOk, `${vv}; assets: ${sizes.join(", ")}` + (leaks.length ? `; NATIVE LOADER IN BROWSER BUNDLE: ${leaks.join(", ")}` : "; no native loader / node: module in the bundles") +
+      (r.ok ? "" : "\n" + tail(r.out)) + (/warn/i.test(r.out) ? "\n      vite output: " + tail(r.out, 6) : ""));
   }
 }
 
@@ -388,7 +418,7 @@ if (installed && !args["skip-esbuild"]) {
   else {
     const esbuild = createRequire(esbuildPkg)("esbuild");
     const entry = path.join(app, "esb-entry.mjs");
-    writeFileSync(entry, `import { init, Renderer } from "bm-engine/core";\nimport { loadWoff } from "bm-engine/woff";\nexport { init, Renderer, loadWoff };\n`);
+    writeFileSync(entry, `import { init, Renderer } from "bm-engine/core";\nimport { loadWoff } from "bm-engine/woff";\nimport * as main from "bm-engine";\nexport { init, Renderer, loadWoff, main };\n`);
     const out = [];
     let ok = true;
     for (const [label, conditions, platform] of [["browser", [], "browser"], ["workerd", ["workerd", "worker"], "neutral"]]) {
@@ -397,17 +427,257 @@ if (installed && !args["skip-esbuild"]) {
           mainFields: ["module", "main"], outfile: path.join(app, "esb-" + label + ".js") });
         const code = r.outputFiles[0].text;
         const staticFs = /^import .* from ["']node:/m.test(code);
+        const leaks = NATIVE_MARKERS.filter((m) => code.includes(m));
         const warns = r.warnings.map((w) => w.text);
-        if (staticFs) ok = false;
-        out.push(`${label}: ${kb(code.length)}${staticFs ? " STATIC node: import!" : ""}${warns.length ? " warnings: " + warns.join("; ") : ""}`);
+        if (staticFs || leaks.length) ok = false;
+        out.push(`${label}: ${kb(code.length)}${staticFs ? " STATIC node: import!" : ""}${leaks.length ? " NATIVE LOADER: " + leaks.join(",") : ""}${warns.length ? " warnings: " + warns.join("; ") : ""}`);
       } catch (e) { ok = false; out.push(`${label}: ${e.message.split("\n")[0]}`); }
     }
     record("esbuild", ok, `esbuild ${esbuild.version}; ${out.join("; ")} (esbuild does not emit new URL() assets: pass the wasm to init())`);
   }
 }
 
+// ------------------------------------------------------------------ native: platform packages and install scenarios
+// The platform packages are generated from native/dist (scripts/npm-platform-packages.mjs --out, so the repository's
+// npm/ is not touched) and packed. "Published" is simulated with npm `overrides` mapping every bm-engine-<name>
+// to its local tarball: npm then reads os / cpu / libc from the tarballs and installs only the matching one,
+// exactly as from the registry. Only the host's binary can be executed.
+const PROBE = String.raw`
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const font = readFileSync(process.argv[2]);
+const sha = (b) => createHash("sha256").update(b).digest("hex").slice(0, 16);
+const node = { type: "container", style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center",
+  backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)", borderRadius: 24 },
+  children: [{ type: "text", text: "native?", style: { fontFamily: "Inter", fontSize: 40, color: "white" } }] };
+const o = { width: 320, height: 160 };
+const run = async (m) => {
+  const r = new m.Renderer();
+  r.registerFont({ name: "Inter", data: font });
+  const png = r.renderSync(node, o);
+  return { backend: m.backend, png: sha(png), async: sha(await r.render(node, o)), svg: sha(await r.renderSvg(node, o)),
+    measure: sha(JSON.stringify(await r.measure(node, o))), features: Object.values(m.features).filter(Boolean).length };
+};
+const out = await run(await import(process.argv[3] || "bm-engine"));
+if (process.argv[4] === "full") out.full = await run(await import("bm-engine/full"));
+console.log(JSON.stringify(out));
+`;
+const WORKER_PROBE = String.raw`
+import { Worker } from "node:worker_threads";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const font = readFileSync(process.argv[2]);
+const code = 'const { parentPort, workerData } = require("node:worker_threads");' +
+  '(async () => { const m = await import("bm-engine"); const r = new m.Renderer(); r.registerFont({ name: "Inter", data: workerData });' +
+  'const png = await r.render({ type: "text", text: "worker", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 });' +
+  'parentPort.postMessage({ backend: m.backend, png }); })().catch((e) => parentPort.postMessage({ error: String(e) }));';
+const m = await import("bm-engine");
+const r = new m.Renderer(); r.registerFont({ name: "Inter", data: font });
+const main = createHash("sha256").update(r.renderSync({ type: "text", text: "worker", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 })).digest("hex");
+const results = await Promise.all(Array.from({ length: 4 }, () => new Promise((res, rej) => {
+  const w = new Worker(code, { eval: true, workerData: font });
+  w.once("message", (msg) => { w.terminate(); res(msg); });
+  w.once("error", rej);
+})));
+const same = results.every((x) => !x.error && createHash("sha256").update(x.png).digest("hex") === main);
+console.log(JSON.stringify({ main: m.backend, workers: results.map((x) => x.error || x.backend), same }));
+`;
+const ESB_APP = String.raw`
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { Renderer, backend } from "bm-engine";
+const r = new Renderer();
+r.registerFont({ name: "Inter", data: readFileSync(process.argv[2]) });
+const png = r.renderSync({ type: "text", text: "bundled", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 });
+console.log(JSON.stringify({ backend, png: createHash("sha256").update(png).digest("hex").slice(0, 16) }));
+`;
+const probe = (cwd, argv = [], env = {}, script = "probe.mjs") => {
+  const r = spawnSync(process.execPath, [script, FONT, ...argv], { cwd, encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "", BM_ENGINE_NATIVE_PATH: "", BM_WASM: "", BM_PROFILE: "", ...env } });
+  let json = null;
+  try { json = JSON.parse(r.stdout.trim().split("\n").pop()); } catch {}
+  const stderr = (r.stderr || "").trim();
+  // the thrown message (not the source excerpt Node prints above it)
+  const err = (stderr.split("\n").find((l) => /^\w*Error: /.test(l)) || stderr.split("\n")[0] || "").trim();
+  return { status: r.status, json, stderr, err };
+};
+const show = (p) => (p.json ? JSON.stringify(p.json) : `exit ${p.status}: ${p.err}`);
+const installedPlatforms = (a) => (existsSync(path.join(a, "node_modules")) ? readdirSync(path.join(a, "node_modules")).filter((n) => n.startsWith("bm-engine-")) : []);
+const newApp = (name, extra = {}) => {
+  const a = path.join(dir, name);
+  rmSync(a, { recursive: true, force: true });
+  mkdirSync(a, { recursive: true });
+  writeFileSync(path.join(a, "package.json"), JSON.stringify({ name: "bm-engine-" + name, private: true, type: "module", ...extra }, null, 2));
+  writeFileSync(path.join(a, "probe.mjs"), PROBE);
+  return a;
+};
+
+const { PLATFORMS } = await import(pathToFileURL(path.join(root, "scripts", "npm-platform-packages.mjs")).href);
+const { nativeNames } = await import(pathToFileURL(path.join(root, "js", "native.mjs")).href);
+const host = nativeNames()[0];
+const hostBuilt = host && existsSync(path.join(root, "native", "dist", host, `bm-engine.${host}.node`));
+const platformTgz = {};
+const platformSizes = [];
+if (!tarball || args["skip-native"]) record("native", null, args["skip-native"] ? "--skip-native" : "no main tarball");
+else if (!hostBuilt) record("native", null, `native/dist/${host ?? "<none for this platform>"} is not built (npm run build:native); install scenarios skipped`);
+else {
+  // ---- generate + pack the platform packages
+  const npmOut = path.join(dir, "npm");
+  rmSync(npmOut, { recursive: true, force: true });
+  const g = run(process.execPath, [path.join(root, "scripts", "npm-platform-packages.mjs"), `--out=${npmOut}`, "--allow-missing"], { cwd: root });
+  const problems = g.ok ? [] : [tail(g.out, 6)];
+  const tgzDir = path.join(dir, "platform-tgz");
+  mkdirSync(tgzDir, { recursive: true });
+  for (const name of Object.keys(PLATFORMS)) {
+    if (!existsSync(path.join(npmOut, name, "package.json"))) continue;
+    const r = run("npm", ["pack", "--json", "--pack-destination", tgzDir], { cwd: path.join(npmOut, name) });
+    let info;
+    try { info = JSON.parse(r.out.slice(r.out.indexOf("[")))[0]; } catch {}
+    if (!r.ok || !info) { problems.push(`${name}: npm pack failed ${tail(r.out, 3)}`); continue; }
+    const files = info.files.map((f) => f.path).sort();
+    const want = ["LICENSE-APACHE", "LICENSE-MIT", "NOTICE", "README.md", "THIRD-PARTY-NOTICES.md", `bm-engine.${name}.node`, "package.json"].sort();
+    if (JSON.stringify(files) !== JSON.stringify(want)) problems.push(`${name}: files ${files.join(",")}`);
+    const pj = JSON.parse(readFileSync(path.join(npmOut, name, "package.json"), "utf8"));
+    if (pj.version !== pkg.version || pkg.optionalDependencies?.[pj.name] !== pkg.version) problems.push(`${name}: version ${pj.version} / optionalDependency ${pkg.optionalDependencies?.[pj.name]} != ${pkg.version}`);
+    platformTgz[name] = path.join(tgzDir, info.filename);
+    platformSizes.push(`${name} ${kb(info.size)}`);
+  }
+  record("pack-platform", problems.length === 0 && platformTgz[host] !== undefined, `${Object.keys(platformTgz).length} platform tarballs: ${platformSizes.join(", ")}` +
+    (mainPack ? `; main ${mainPack.file}: ${mainPack.files} files, ${kb(mainPack.size)}, no .node` : "") + (problems.length ? "; " + problems.join("; ") : ""));
+}
+
+if (platformTgz[host]) {
+  const overrides = Object.fromEntries(Object.entries(platformTgz).map(([n, f]) => [`bm-engine-${n}`, "file:" + f.replace(/\\/g, "/")]));
+  // ---- (a) main + platform packages "published": npm picks the host's
+  const appN = newApp("app-native", { overrides });
+  const inst = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: appN });
+  const got = installedPlatforms(appN);
+  const instOk = inst.ok && got.length === 1 && got[0] === `bm-engine-${host}`;
+  record("install-native", instOk, instOk ? `npm installed only bm-engine-${host} of ${Object.keys(platformTgz).length} optional platform packages` : `installed: ${got.join(", ") || "none"}; ${tail(inst.out, 5)}`);
+  let ref = null;
+  if (instOk) {
+    const p = probe(appN, ["bm-engine", "full"]);
+    const j = p.json;
+    const ok = p.status === 0 && j && j.backend === "native" && j.full.backend === "wasm" && j.png === j.async && j.png === j.full.png &&
+      j.svg === j.full.svg && j.measure === j.full.measure && j.features === 18 && !p.stderr;
+    ref = j;
+    record("native-default", ok, ok ? `backend native; PNG / async PNG / SVG / measure byte-identical to bm-engine/full (wasm) ${j.png}` : show(p));
+
+    // ---- (c) forcing
+    const pw = probe(appN, [], { BM_ENGINE_BACKEND: "wasm" });
+    const pn = probe(appN, [], { BM_ENGINE_BACKEND: "native" });
+    const envOk = pw.json?.backend === "wasm" && pw.json?.png === j?.png && pn.json?.backend === "native";
+    record("native-env", envOk, `BM_ENGINE_BACKEND=wasm -> ${show(pw)}; =native -> ${pn.json?.backend ?? show(pn)}`);
+
+    // ---- (d) bm-engine/native present
+    const ps = probe(appN, ["bm-engine/native"]);
+    record("native-subpath", ps.json?.backend === "native" && ps.json?.png === j?.png, `bm-engine/native with the addon: ${show(ps)}`);
+
+    // ---- (g) worker_threads
+    writeFileSync(path.join(appN, "worker-probe.mjs"), WORKER_PROBE);
+    const pwk = probe(appN, [], {}, "worker-probe.mjs");
+    record("native-worker", pwk.json?.main === "native" && pwk.json.workers.every((b) => b === "native") && pwk.json.same === true, show(pwk));
+
+    // ---- (e) corrupted / incompatible .node in the installed platform package -> wasm, silently
+    const target = path.join(appN, "node_modules", `bm-engine-${host}`, `bm-engine.${host}.node`);
+    const good = readFileSync(target);
+    const [hostOs, hostArch] = [PLATFORMS[host].os, PLATFORMS[host].cpu];
+    const pickFile = (pred) => { const n = Object.keys(platformTgz).find((x) => x !== host && pred(PLATFORMS[x])); return n ? [n, readFileSync(path.join(dir, "npm", n, `bm-engine.${n}.node`))] : null; };
+    const wrongArch = pickFile((q) => q.os === hostOs && q.cpu !== hostArch);
+    const otherOs = pickFile((q) => q.os !== hostOs && q.cpu === hostArch);
+    const cases = [
+      ...(wrongArch ? [[`wrong arch (${wrongArch[0]} binary)`, wrongArch[1]]] : []),
+      ...(otherOs ? [[`other OS (${otherOs[0]} binary)`, otherOs[1]]] : []),
+      ["truncated (first 64 KiB)", good.subarray(0, 65536)],
+      ["empty file", new Uint8Array(0)],
+      ["text file", Buffer.from("not a shared library\n")],
+    ];
+    const rows = [];
+    let corruptOk = true;
+    try {
+      for (const [label, bytes] of cases) {
+        writeFileSync(target, bytes);
+        const pc = probe(appN);
+        const pf = probe(appN, [], { BM_ENGINE_BACKEND: "native" });
+        const ok = pc.status === 0 && pc.json?.backend === "wasm" && pc.json.png === j?.png && !pc.stderr &&
+          pf.status !== 0 && new RegExp(`BM_ENGINE_BACKEND=native, but the native addon is not available \\(bm-engine-${host}: `).test(pf.stderr);
+        if (!ok) corruptOk = false;
+        rows.push(`${label}: ${ok ? "wasm, same bytes, silent" : "FAILED " + show(pc) + " / forced: " + pf.err}`);
+      }
+    } finally {
+      writeFileSync(target, good);
+    }
+    record("fallback-corrupt", corruptOk, rows.join("; "));
+
+    // ---- (f) esbuild --platform=node bundles of an app importing bm-engine
+    const esbuildPkg = path.join(app, "node_modules", "esbuild", "package.json");
+    if (args["skip-esbuild"] || !existsSync(esbuildPkg)) record("esbuild-node", null, "esbuild not installed");
+    else {
+      const esbuild = createRequire(esbuildPkg)("esbuild");
+      writeFileSync(path.join(appN, "esb-app.mjs"), ESB_APP);
+      const rows = [];
+      let ok = true;
+      const variants = [["--external:bm-engine, esm", { format: "esm", external: ["bm-engine"] }, "dist/ext.mjs", "native"],
+        ["bundled, esm", { format: "esm" }, "dist/bundle.mjs", "native"],
+        ["bundled, cjs", { format: "cjs" }, "dist/bundle.cjs", "native"]];
+      for (const [label, o, out, want] of variants) {
+        try {
+          const b = await esbuild.build({ entryPoints: [path.join(appN, "esb-app.mjs")], bundle: true, platform: "node", outfile: path.join(appN, out), logLevel: "silent", ...o });
+          const pr = probe(appN, [], {}, out);
+          const good = pr.status === 0 && pr.json?.backend === want && !pr.stderr;
+          if (!good) ok = false;
+          rows.push(`${label}: ${show(pr)}${b.warnings.length ? " (esbuild warnings: " + b.warnings.map((w) => w.text).join("; ") + ")" : ""}`);
+        } catch (e) { ok = false; rows.push(`${label}: build error ${e.message.split("\n")[0]}`); }
+      }
+      // the CommonJS bundle alone in a directory without node_modules: no addon, no wasm file -> a clear error, not a crash
+      const lone = path.join(dir, "lone-bundle");
+      rmSync(lone, { recursive: true, force: true });
+      mkdirSync(lone, { recursive: true });
+      if (existsSync(path.join(appN, "dist", "bundle.cjs"))) {
+        copyFileSync(path.join(appN, "dist", "bundle.cjs"), path.join(lone, "bundle.cjs"));
+        const pl = probe(lone, [], {}, "bundle.cjs");
+        const clear = pl.status !== 0 && /cannot find bm_engine\.wasm .*keep the package external/.test(pl.stderr);
+        if (!clear) ok = false;
+        rows.push(`cjs bundle without node_modules: ${clear ? "clear error (cannot find bm_engine.wasm ... keep the package external)" : show(pl)}`);
+        const pe = probe(lone, [], { BM_WASM: path.join(root, "js", "bm_engine.wasm") }, "bundle.cjs");
+        if (pe.json?.backend !== "wasm") ok = false;
+        rows.push(`same + BM_WASM: ${show(pe)}`);
+      }
+      record("esbuild-node", ok, rows.join("; "));
+    }
+  }
+
+  // ---- (b) main only: the optional packages are missing (here: never published -> 404, as on an unsupported platform)
+  if (installed) {
+    writeFileSync(path.join(app, "probe.mjs"), PROBE);
+    const pm = probe(app);
+    const pf = probe(app, [], { BM_ENGINE_BACKEND: "native" });
+    const ps = probe(app, ["bm-engine/native"]);
+    const ok = installedPlatforms(app).length === 0 && pm.status === 0 && pm.json?.backend === "wasm" && (!ref || pm.json.png === ref.png) && !pm.stderr &&
+      pf.status !== 0 && new RegExp(`BM_ENGINE_BACKEND=native, but the native addon is not available \\(bm-engine-${host}: not installed`).test(pf.stderr) &&
+      ps.status !== 0 && new RegExp(`bm-engine/native: the native addon is not available .*Install the optional package bm-engine-${host}`).test(ps.stderr);
+    record("fallback-missing", ok, `no platform package: ${show(pm)}${ref && pm.json?.png === ref.png ? " (same bytes as native)" : ""}; forced native: ${pf.err}; bm-engine/native: ${ps.err.slice(0, 200)}`);
+  }
+
+  // ---- (b) --omit=optional with the packages available
+  const appO = newApp("app-omit", { overrides });
+  const io = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", "--omit=optional", tarball], { cwd: appO });
+  const po = io.ok ? probe(appO) : null;
+  record("fallback-omit-optional", io.ok && installedPlatforms(appO).length === 0 && po?.json?.backend === "wasm" && !po.stderr,
+    io.ok ? `npm i --omit=optional: platform packages ${installedPlatforms(appO).join(", ") || "none"}; ${show(po)}` : tail(io.out, 5));
+
+  // ---- (e) a platform package of another OS force-installed (and the host's missing)
+  const foreign = Object.keys(platformTgz).find((n) => PLATFORMS[n].os !== PLATFORMS[host].os);
+  if (foreign) {
+    const appF = newApp("app-foreign");
+    const fi = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", "--force", tarball, platformTgz[foreign]], { cwd: appF });
+    const pff = fi.ok ? probe(appF) : null;
+    record("fallback-foreign-pkg", fi.ok && installedPlatforms(appF).includes(`bm-engine-${foreign}`) && pff?.json?.backend === "wasm" && !pff.stderr,
+      fi.ok ? `npm i --force bm-engine-${foreign}: installed ${installedPlatforms(appF).join(", ")}; ${show(pff)}` : tail(fi.out, 5));
+  }
+}
+
 // ------------------------------------------------------------------ summary
-const w = Math.max(...results.map((r) => r.name.length));
+const w =Math.max(...results.map((r) => r.name.length));
 console.log("\n| test | result | detail |\n|:--|:--|:--|");
 for (const r of results) console.log(`| ${r.name.padEnd(w)} | ${r.ok === null ? "SKIP" : r.ok ? "PASS" : "FAIL"} | ${r.detail.split("\n")[0].replace(/\|/g, "/")} |`);
 const failed = results.filter((r) => r.ok === false);

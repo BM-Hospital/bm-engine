@@ -1,9 +1,9 @@
-// bm-engine/standard on Node.js / Bun / Deno: the standard profile (bm_engine.standard.wasm), read from next to this file and
+// bm-engine/standard on Node.js / Bun / Deno: the standard profile (bm_engine.standard.wasm), read from the package (js/wasm-file.mjs: survives bundling) and
 // initialised synchronously on import (shares ./standard.mjs's module instance). Same API as ./index.mjs.
-import { readFileSync } from "node:fs";
+import { readPackageWasm } from "./wasm-file.mjs";
 import { initSync } from "./standard.mjs";
 
-initSync(readFileSync(new URL("./bm_engine.standard.wasm", import.meta.url)));
+initSync(readPackageWasm("bm_engine.standard.wasm"));
 
 export * from "./standard.mjs";
 export { default } from "./standard.mjs";

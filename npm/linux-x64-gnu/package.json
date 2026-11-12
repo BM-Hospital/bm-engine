@@ -1,0 +1,44 @@
+{
+  "name": "bm-engine-linux-x64-gnu",
+  "version": "0.1.0",
+  "description": "bm-engine native Node-API addon for Linux x64, glibc 2.17+. Installed automatically by bm-engine as an optional dependency; do not depend on it directly.",
+  "keywords": [
+    "bm-engine",
+    "napi",
+    "native-addon"
+  ],
+  "license": "(MIT OR Apache-2.0)",
+  "author": "AUTHOR_NAME",
+  "homepage": "https://github.com/OWNER/bm-engine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/bm-engine.git",
+    "directory": "npm/linux-x64-gnu"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/bm-engine/issues"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "main": "bm-engine.linux-x64-gnu.node",
+  "files": [
+    "bm-engine.linux-x64-gnu.node",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

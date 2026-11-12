@@ -11,12 +11,24 @@
 // linux-arm64-musl | darwin-x64 | darwin-arm64. On Linux the C library is detected (glibc / musl); the other
 // variant is tried when the detected one does not load.
 //
+// Bundlers and output tracing: 1 and 2 are opened with process.dlopen (not a module request, so bundlers and
+// file tracers ignore them: they are never part of an installed package). 3 is `require("bm-engine-<name>")`
+// with a literal package name per platform on `createRequire(import.meta.url)`, the form @vercel/nft follows
+// (Next.js with webpack + serverExternalPackages, Vercel functions of other frameworks), so the installed platform
+// package is traced into deployments. The webpackIgnore / turbopackIgnore comments stop bundlers from trying to
+// bundle the packages (Turbopack fails the build on the ones that are not installed; a .node file cannot be
+// bundled anyway): the require happens at run time. Next.js 16 + Turbopack honours the comment in its own output
+// tracing too, so there the platform package is added with outputFileTracingIncludes (docs: frameworks/nextjs).
+// When the module is bundled into a CommonJS file (no import.meta.url) the require is based on __filename, then
+// on the working directory; whatever fails, the caller falls back to wasm.
+//
 // Design, build and the internal addon interface: docs/NATIVE.md.
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBinding, builtInWoffDecoder } from "./engine.mjs";
+import { moduleBase } from "./wasm-file.mjs";
 
 /** Interface version of the addon this file understands (src/native.zig `abi_version`). */
 export const NATIVE_ABI = 1;
@@ -61,6 +73,39 @@ export function nativeNames() {
   return [];
 }
 
+/**
+ * require() of the platform package `bm-engine-<name>`. Written the way file tracers (@vercel/nft) recognise: `createRequire(import.meta.url)` assigned to a `require`
+ * in the same scope as one literal request per package. Do not "simplify" into a template string or pass
+ * `require` around: the platform package would silently disappear from traced deployments. Throws when
+ * import.meta.url is unusable (a CommonJS bundle); the caller then uses requirePlatformPackageFrom().
+ */
+function requirePlatformPackage(name) {
+  const require = createRequire(import.meta.url);
+  switch (name) {
+    case "win32-x64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-win32-x64-msvc");
+    case "win32-arm64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-win32-arm64-msvc");
+    case "linux-x64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-x64-gnu");
+    case "linux-x64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-x64-musl");
+    case "linux-arm64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-arm64-gnu");
+    case "linux-arm64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-arm64-musl");
+    case "darwin-x64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-darwin-x64");
+    case "darwin-arm64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-darwin-arm64");
+  }
+  throw new Error(`no package for ${name}`);
+}
+
+/** The same from moduleBase() (a bundle's __filename, or the working directory). Not traced; a fallback. */
+function requirePlatformPackageFrom(base, name) {
+  return createRequire(base)(`bm-engine-${name}`);
+}
+
+/** Loads a `.node` file by path (process.dlopen: what require() does for `.node`, without a module request). */
+function dlopen(file) {
+  const m = { exports: {} };
+  proc.dlopen(m, file);
+  return m.exports;
+}
+
 let loaded; // undefined = not tried yet; null = unavailable
 const errors = [];
 
@@ -69,22 +114,31 @@ export function loadNative() {
   if (loaded !== undefined) return loaded;
   loaded = null;
   try {
-    const require = createRequire(import.meta.url);
     const names = nativeNames();
     if (names.length === 0) errors.push(`no native build for ${proc.platform}-${proc.arch}`);
-    const candidates = [];
+    const candidates = []; // [label, load()]
     const forced = proc.env.BM_ENGINE_NATIVE_PATH;
-    if (forced) candidates.push(resolve(forced)); // (relative to the working directory)
-    else {
-      for (const name of names) {
-        const dev = fileURLToPath(new URL(`../native/dist/${name}/bm-engine.${name}.node`, import.meta.url));
-        if (existsSync(dev)) candidates.push(dev);
+    if (forced) {
+      const file = resolve(forced); // (relative to the working directory)
+      candidates.push([file, () => dlopen(file)]);
+    } else {
+      let here = null;
+      try { here = fileURLToPath(moduleBase()); } catch {}
+      for (const name of here ? names : []) {
+        const dev = resolve(here, "..", "..", "native", "dist", name, `bm-engine.${name}.node`);
+        if (existsSync(dev)) candidates.push([dev, () => dlopen(dev)]);
       }
-      for (const name of names) candidates.push(`bm-engine-${name}`);
-    }
-    for (const id of candidates) {
+      let metaUrl = false;
       try {
-        const addon = require(id);
+        metaUrl = String(import.meta.url).startsWith("file:");
+      } catch {}
+      for (const name of names) {
+        candidates.push([`bm-engine-${name}`, () => (metaUrl ? requirePlatformPackage(name) : requirePlatformPackageFrom(moduleBase(), name))]);
+      }
+    }
+    for (const [id, load] of candidates) {
+      try {
+        const addon = load();
         if (!addon || addon.abi !== NATIVE_ABI || typeof addon.run !== "function") {
           errors.push(`${id}: addon interface version ${addon && addon.abi}, expected ${NATIVE_ABI}`);
           continue;
@@ -92,7 +146,8 @@ export function loadNative() {
         loaded = addon;
         break;
       } catch (e) {
-        errors.push(`${id}: ${e && e.code === "MODULE_NOT_FOUND" ? "not installed" : String(e && e.message).split("\n")[0]}`);
+        const missing = e && e.code === "MODULE_NOT_FOUND" && String(e.message).includes(id);
+        errors.push(`${id}: ${missing ? "not installed" : String(e && e.message).split("\n")[0]}`);
       }
     }
   } catch (e) {
