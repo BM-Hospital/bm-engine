@@ -70,8 +70,9 @@ pub fn rotation(deg_in: f32) Affine {
         s = @floatCast(sc[0]);
         c = @floatCast(sc[1]);
     } else {
-        const m = @mod(qt, 4.0);
-        const k: u8 = if (m >= 0 and m < 4) @intFromFloat(m) else 0;
+        // qt is a whole number in [0, 4] here (deg is in [0, 360]); integer arithmetic keeps LLVM from
+        // expanding a float remainder into a fused multiply-subtract on aarch64.
+        const k: u8 = if (qt >= 0 and qt <= 4) @intCast(@as(u32, @intFromFloat(qt)) % 4) else 0;
         switch (k) {
             0 => {},
             1 => {
