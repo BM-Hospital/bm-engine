@@ -78,6 +78,7 @@ pub const table = [_]Op{
     .{ .name = "unregisterFont", .run = unregisterFont },
     .{ .name = "clearFonts", .run = clearFonts },
     .{ .name = "woffDecode", .renderer = false, .run = woffDecode },
+    .{ .name = "mathProbe", .renderer = false, .run = mathProbe },
 };
 
 /// `arg0` of the source-taking ops: 0 = JSON node tree, 1 = HTML markup (as the wasm ABI).
@@ -122,6 +123,40 @@ fn unregisterFont(c: *Call) Error!void {
 
 fn clearFonts(c: *Call) Error!void {
     c.r.?.clearFonts();
+}
+
+/// Test hook for src/native/libm.zig (bench/native-tests.mjs "libm"): applies the rounding builtin
+/// `arg0` (0 floor, 1 ceil, 2 trunc, 3 round, 4 x mod y as `@rem`) to the f32 (`arg1` = 0) or f64
+/// (`arg1` = 1) values in attachments[0].data (pairs for 4) and returns the results. The builtins
+/// compile to the instructions / runtime calls the engine itself uses on this target.
+fn mathProbe(c: *Call) Error!void {
+    if (c.attachments.len != 1) return c.fail("mathProbe expects one buffer");
+    const in = c.attachments[0].data;
+    const out = try c.gpa.alloc(u8, in.len);
+    c.result = out;
+    c.owned = true;
+    inline for (.{ f32, f64 }, 0..) |T, ti| {
+        if (c.arg1 == ti) {
+            const n = in.len / @sizeOf(T);
+            const U = if (T == f32) u32 else u64;
+            var i: usize = 0;
+            while (i < n) : (i += 1) {
+                const x: T = @bitCast(std.mem.readInt(U, in[i * @sizeOf(T) ..][0..@sizeOf(T)], .little));
+                var y: T = 0;
+                if (c.arg0 == 4) {
+                    if (i + 1 < n) y = @bitCast(std.mem.readInt(U, in[(i + 1) * @sizeOf(T) ..][0..@sizeOf(T)], .little));
+                }
+                const v: T = switch (c.arg0) {
+                    0 => @floor(x),
+                    1 => @ceil(x),
+                    2 => @trunc(x),
+                    3 => @round(x),
+                    else => if (y != 0 and y == y and x == x and !std.math.isInf(x)) @rem(x, y) else 0,
+                };
+                std.mem.writeInt(U, out[i * @sizeOf(T) ..][0..@sizeOf(T)], @bitCast(v), .little);
+            }
+        }
+    }
 }
 
 /// attachments[0].data = a WOFF / WOFF2 file; result = the sfnt (same decoder as bm_woff.wasm).

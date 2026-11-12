@@ -35,6 +35,9 @@ const builtin = @import("builtin");
 const napi = @import("native/napi.zig");
 const os = @import("native/os.zig");
 const ops = @import("native/ops.zig");
+comptime {
+    _ = @import("native/libm.zig"); // floor / ceil / trunc / round / fmod: never the platform libm's
+}
 const render = @import("render.zig");
 /// Feature switches, visible to modules as `@import("root").bm_config` (see src/font/ttf.zig).
 pub const bm_config = @import("config.zig");
@@ -143,9 +146,9 @@ const StackMode = enum(u32) {
     inline_ = 3,
 };
 
-/// Stack the engine is guaranteed for one call. Measured worst case (512-level trees, deepest
-/// accepted JSON / HTML / CSS nesting; bench/native-tests.mjs "stack") is far below; see docs/NATIVE.md.
-const default_stack_need: usize = 2 << 20;
+/// Stack the engine is guaranteed for one call: about 4x the measured worst case (770 KiB for the
+/// deepest accepted trees on x86-64 ReleaseFast; bench/native-tests.mjs "stack"; docs/NATIVE.md).
+const default_stack_need: usize = 3 << 20;
 /// Default cap of one renderer's memory.
 const default_max_bytes: usize = if (@sizeOf(usize) >= 8) 4 << 30 else std.math.maxInt(usize);
 
@@ -677,6 +680,49 @@ fn jsTune(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
     return undefinedValue(env);
 }
 
+/// Floating-point guard: the engine's output must equal the wasm build's bit for bit, so a multiply
+/// followed by an add must stay two correctly rounded operations (wasm has no fused multiply-add).
+/// Zig compiles in strict float mode (no `contract` flag reaches LLVM) and x86-64 baseline has no FMA
+/// instruction; this checks, on the machine the addon is loaded on, that the compiled code really
+/// rounds twice. The operands come through volatile reads so nothing is folded at compile time.
+/// A violation makes module registration fail, and the JS loader falls back to the wasm build.
+noinline fn floatsAreStrict() bool {
+    var in32 = [3]f32{ 1.0 + 0x1p-13, 1.0 - 0x1p-13, -1.0 };
+    var in64 = [3]f64{ 1.0 + 0x1p-27, 1.0 - 0x1p-27, -1.0 };
+    const p32: *volatile [3]f32 = &in32;
+    const p64: *volatile [3]f64 = &in64;
+    // exact product = 1 - 2^-26 (2^-54): rounds to 1.0, so the sum is 0; a fused operation gives -2^-26 (-2^-54)
+    const r32 = p32[0] * p32[1] + p32[2];
+    const r64 = p64[0] * p64[1] + p64[2];
+    // the same through 4-wide vectors (what the auto-vectoriser / @Vector code would use)
+    var v_in = [3]@Vector(4, f32){ @splat(1.0 + 0x1p-13), @splat(1.0 - 0x1p-13), @splat(-1.0) };
+    const pv: *volatile [3]@Vector(4, f32) = &v_in;
+    const rv = pv[0] * pv[1] + pv[2];
+    return r32 == 0 and r64 == 0 and @reduce(.And, rv == @as(@Vector(4, f32), @splat(0)));
+}
+
+/// x86-64 artifacts are compiled for x86-64-v2 (build.zig): refuse to register on a CPU without
+/// SSE3, SSSE3, SSE4.1, SSE4.2, POPCNT or CMPXCHG16B, so that JavaScript falls back to the wasm build
+/// instead of the process dying on an illegal instruction. Called before anything else.
+noinline fn cpuIsSupported() bool {
+    if (builtin.cpu.arch != .x86_64) return true;
+    var eax: u32 = undefined;
+    var ebx: u32 = undefined;
+    var ecx: u32 = undefined;
+    var edx: u32 = undefined;
+    asm volatile ("cpuid"
+        : [_] "={eax}" (eax),
+          [_] "={ebx}" (ebx),
+          [_] "={ecx}" (ecx),
+          [_] "={edx}" (edx),
+        : [_] "{eax}" (@as(u32, 1)),
+          [_] "{ecx}" (@as(u32, 0)),
+    );
+    // CPUID.1:ECX  bit 0 SSE3, 9 SSSE3, 13 CMPXCHG16B, 19 SSE4.1, 20 SSE4.2, 23 POPCNT
+    const need: u32 = (1 << 0) | (1 << 9) | (1 << 13) | (1 << 19) | (1 << 20) | (1 << 23);
+    return ecx & need == need;
+}
+
 fn finalizeInstance(_: Env, data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
     os.allocator.destroy(instanceOf(data));
 }
@@ -696,7 +742,9 @@ fn addNumber(env: Env, obj: Value, name: [*:0]const u8, n: u32) bool {
 /// Module registration: called once per environment that loads the addon (context-aware: no
 /// static `napi_module`, all state per environment).
 export fn napi_register_module_v1(env: Env, exports: Value) callconv(.c) Value {
+    if (!cpuIsSupported()) return null;
     if (!napi.load()) return null;
+    if (!floatsAreStrict()) return throwError(env, "this build fuses floating-point operations; refusing to load", false);
     const inst = os.allocator.create(Instance) catch return null;
     inst.* = .{ .stack_low = os.stackLow() };
     if (api.napi_set_instance_data(env, inst, finalizeInstance, null) != .ok) {

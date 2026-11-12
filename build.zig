@@ -97,10 +97,13 @@ pub fn build(b: *std.Build) void {
 /// (src/native.zig, docs/NATIVE.md) as `zig-out/native/bm-engine.<platform>-<arch>[-<abi>].node`.
 /// All eight release targets are cross-compiled by scripts/build-native.mjs.
 fn addNative(b: *std.Build, target_in: std.Build.ResolvedTarget, flags: *std.Build.Step.Options) void {
-    // Always the baseline CPU of the architecture (never the build host's): the binary must run on
-    // every machine, and x86-64 baseline has no FMA, so no multiply-add can ever be fused there.
+    // A fixed CPU level per architecture, never the build host's. x86-64: x86-64-v2 (SSE4.2, SSSE3,
+    // POPCNT; no AVX and no FMA, so no multiply-add can ever be fused there). The SSE2-only baseline
+    // makes the pixel loops slower than the wasm build under V8; a CPU older than v2 is detected when
+    // the addon registers (src/native.zig `cpuIsSupported`) and gets the wasm build instead.
+    // arm64: the architecture baseline (NEON).
     var query = target_in.query;
-    query.cpu_model = .baseline;
+    query.cpu_model = if (target_in.result.cpu.arch == .x86_64) .{ .explicit = &std.Target.x86.cpu.x86_64_v2 } else .baseline;
     const target = b.resolveTargetQuery(query);
     const t = target.result;
     const optimize = b.option(std.builtin.OptimizeMode, "native-optimize", "addon optimize mode (default fast)") orelse .fast;

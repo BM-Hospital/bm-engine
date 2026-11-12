@@ -66,7 +66,6 @@ pub const Api = struct {
     napi_delete_async_work: *const fn (Env, AsyncWork) callconv(.c) Status,
     napi_adjust_external_memory: *const fn (Env, i64, *i64) callconv(.c) Status,
     napi_set_instance_data: *const fn (Env, ?*anyopaque, ?Finalize, ?*anyopaque) callconv(.c) Status,
-    napi_get_instance_data: *const fn (Env, *?*anyopaque) callconv(.c) Status,
 };
 
 const is_windows = builtin.os.tag == .windows;

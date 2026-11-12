@@ -126,7 +126,18 @@ pub fn stackLow() usize {
             var addr: ?*anyopaque = null;
             var size: usize = 0;
             if (posix_stack.pthread_attr_getstack(&attr, &addr, &size) != 0) return 0;
-            return @intFromPtr(addr);
+            var low = @intFromPtr(addr);
+            const linux = std.os.linux;
+            if (low != 0 and linux.getpid() == linux.gettid()) {
+                // The initial thread's stack grows on demand, down to RLIMIT_STACK below its top. glibc
+                // already answers with that extent; musl only with the part mapped so far.
+                var lim: linux.rlimit = undefined;
+                var max: usize = 8 << 20;
+                if (linux.getrlimit(.STACK, &lim) == 0 and lim.cur != linux.RLIM.INFINITY and lim.cur <= 1 << 30) max = @intCast(lim.cur);
+                const by_limit = (low + size) -| max;
+                if (by_limit != 0 and by_limit < low) low = by_limit;
+            }
+            return low;
         },
         .macos => {
             const self = std.c.pthread_self();
@@ -145,10 +156,47 @@ pub inline fn stackLeft(low: usize) usize {
     return if (low != 0 and sp > low and sp - low < (1 << 30)) sp - low else 0;
 }
 
+const win_thread = struct {
+    extern "kernel32" fn CreateThread(attr: ?*anyopaque, stack: usize, start: *const fn (?*anyopaque) callconv(.winapi) u32, param: ?*anyopaque, flags: u32, id: ?*u32) callconv(.winapi) ?*anyopaque;
+    extern "kernel32" fn WaitForSingleObject(h: *anyopaque, ms: u32) callconv(.winapi) u32;
+    extern "kernel32" fn CloseHandle(h: *anyopaque) callconv(.winapi) c_int;
+    /// `stack` is the reserved size (not the initial commit)
+    const STACK_SIZE_PARAM_IS_A_RESERVATION: u32 = 0x00010000;
+    const INFINITE: u32 = 0xffffffff;
+};
+
 /// Runs `f(arg)` on a new thread whose stack is `stack_bytes` and waits for it. False when the
-/// thread cannot be created.
+/// thread cannot be created. (Plain CreateThread / pthread_create rather than std.Thread, which
+/// brings thread-local storage and a signal stack into the shared object.)
 pub fn runOnThread(stack_bytes: usize, comptime f: anytype, arg: anytype) bool {
-    const t = std.Thread.spawn(.{ .stack_size = stack_bytes }, f, .{arg}) catch return false;
-    t.join();
-    return true;
+    const Arg = @TypeOf(arg);
+    // whole 64 KiB units: a multiple of every page size (pthread_attr_setstacksize insists on Darwin)
+    const size = std.mem.alignForward(usize, @max(stack_bytes, 64 << 10), 64 << 10);
+    if (is_windows) {
+        const T = struct {
+            fn start(p: ?*anyopaque) callconv(.winapi) u32 {
+                f(@as(Arg, @ptrCast(@alignCast(p.?))));
+                return 0;
+            }
+        };
+        const h = win_thread.CreateThread(null, size, T.start, arg, win_thread.STACK_SIZE_PARAM_IS_A_RESERVATION, null) orelse return false;
+        _ = win_thread.WaitForSingleObject(h, win_thread.INFINITE);
+        _ = win_thread.CloseHandle(h);
+        return true;
+    } else {
+        const T = struct {
+            fn start(p: ?*anyopaque) callconv(.c) ?*anyopaque {
+                f(@as(Arg, @ptrCast(@alignCast(p.?))));
+                return null;
+            }
+        };
+        var attr: std.c.pthread_attr_t = undefined;
+        if (std.c.pthread_attr_init(&attr) != .SUCCESS) return false;
+        defer _ = std.c.pthread_attr_destroy(&attr);
+        if (std.c.pthread_attr_setstacksize(&attr, size) != .SUCCESS) return false;
+        var thread: std.c.pthread_t = undefined;
+        if (std.c.pthread_create(&thread, &attr, T.start, arg) != .SUCCESS) return false;
+        _ = std.c.pthread_join(thread, null);
+        return true;
+    }
 }
