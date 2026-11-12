@@ -74,4 +74,29 @@ const rtl = [
   },
 ];
 
-export default [rtl].flat();
+// ------------------------------------------------------------------------------------------------ text-indent
+const LOREM = "Layout engines place floats first and then let every line box of the surrounding text take whatever inline space is left beside them.";
+const tiCss = `p { width: 300px; background: #f1f5f9; margin: 0 0 8px }`;
+const indent = [
+  {
+    id: "fix-layout-text-indent", feature: "text-indent", title: "text-indent: length, percentage, negative (hanging punctuation idiom), with text-align center / right / justify", width: 420, height: 330,
+    node: page(tiCss, `<p style="text-indent:40px">${LOREM}</p><p style="text-indent:10%">Ten percent indent here.</p><p style="text-indent:-20px;padding-left:20px">${LOREM}</p><p style="text-indent:40px;text-align:center">centered indent</p><p style="text-indent:40px;text-align:right">right indent</p><p style="text-indent:40px;text-align:justify">${LOREM}</p>`),
+  },
+  {
+    id: "fix-layout-text-indent-keywords", feature: "text-indent", title: "text-indent: right-to-left paragraph, each-line, hanging, hanging each-line, first line beside a float", width: 420, height: 330,
+    node: page(tiCss, `<p style="text-indent:40px;direction:rtl">rtl indent ${LOREM}</p><p style="text-indent:40px each-line">each<br>line<br>here</p><p style="text-indent:40px hanging">hanging ${LOREM}</p><p style="text-indent:30px"><span style="float:left;width:40px;height:30px;background:red"></span>float ${LOREM}</p><p style="text-indent:2em hanging each-line">hang each<br>line two ${LOREM}</p>`),
+  },
+  {
+    id: "fix-layout-text-indent-sizing", feature: "text-indent", title: "text-indent in intrinsic sizes (shrink-to-fit inline-blocks, min-content), inheritance into nested blocks, with text-wrap: balance, ellipsis, a flex item", width: 420, height: 300,
+    node: page(tiCss + `.s { display: inline-block; background: #fde047; margin-bottom: 6px }`, `<div><span class="s" style="text-indent:30px">shrink to fit</span></div><div><span class="s" style="text-indent:-10px;margin-left:20px">negative fit</span></div><div><span class="s" style="text-indent:30px;width:min-content">min content width words</span></div><div style="text-indent:25px;width:300px;background:#f1f5f9">first text<div style="background:#bae6fd">nested block inherits</div></div><p style="text-indent:50px;text-wrap:balance">A headline that should be balanced across its lines nicely indeed</p><p style="text-indent:50px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${LOREM}</p><p style="text-indent:20px;display:flex">flex item text <span>span</span></p>`),
+  },
+  {
+    id: "fix-layout-text-indent-node", feature: "text-indent", title: "textIndent on text nodes (px, percentage) and inherited `hanging` through a block container", width: 420, height: 200,
+    node: { type: "container", style: { display: "flex", flexDirection: "column", width: "100%", height: "100%", backgroundColor: "#fff", padding: 12, fontFamily: "Inter", fontSize: 16 }, children: [
+      { type: "text", text: "Text node with indent that wraps onto another line for sure yes.", style: { textIndent: 30, width: 300, backgroundColor: "#eee" } },
+      { type: "text", text: "pct indent text node", style: { textIndent: "25%", backgroundColor: "#ddd" } },
+      { type: "container", style: { display: "block", textIndent: "3em hanging", width: 200 }, children: [{ type: "text", text: "inherited hanging indent through a block container" }] }] },
+  },
+];
+
+export default [rtl, indent].flat();

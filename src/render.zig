@@ -1190,6 +1190,9 @@ pub const Frame = struct {
     /// so far (built as children of the paragraph's node once it exists).
     box_base: u32 = 0,
     pend_objs: std.ArrayList(PendingObj) = .empty,
+    /// The next paragraph made is an anonymous block that is not the first child of its container:
+    /// it has no first formatted line for `text-indent` (Blink: CanContainFirstFormattedLine)
+    no_indent: bool = false,
     /// A line layout could not be allocated during the layout pass.
     layout_oom: bool = false,
 
@@ -1832,6 +1835,7 @@ pub const Frame = struct {
             return;
         }
         var pending: std.ArrayList(font.Run) = .empty;
+        const not_first = f.nodes.items[parent].first_child != none;
         const saved_base = f.box_base;
         const saved_box = f.cur_box;
         const saved_objs = f.pend_objs;
@@ -1848,6 +1852,7 @@ pub const Frame = struct {
             try f.collectRuns(c, &pending, depth + 1, cs);
         }
         const objs = f.pend_objs.items;
+        f.no_indent = not_first;
         if (objs.len == 0) return f.flushRuns(&pending, cs, parent);
         // inline-level boxes: an anonymous inline formatting context holding them as children
         const id = try f.openAnonBox(cs, parent);
@@ -2111,7 +2116,9 @@ pub const Frame = struct {
     noinline fn makeParagraph(f: *Frame, runs: []const font.Run, cs: *const CS) Error!*font.Paragraph {
         const ws = whiteSpaceOf(cs);
         const clip = cs.overflow_x != .visible;
-        const opts: font.ParagraphOptions = .{
+        const indent = !f.no_indent;
+        f.no_indent = false;
+        var opts: font.ParagraphOptions = .{
             .text_align = switch (cs.text_align) {
                 .start => .start,
                 .end => .end,
@@ -2149,6 +2156,13 @@ pub const Frame = struct {
             .shape_cache = &f.r.shape_cache,
             .boxes = try f.paragraphBoxes(),
         };
+        if (indent and (cs.text_indent.px != 0 or cs.text_indent.pct != 0 or cs.text_indent.calc != null)) {
+            const ti = cs.text_indent;
+            opts.indent = ti.resolve(0);
+            opts.indent_pct = if (ti.calc == null) ti.pct else ti.resolve(1) - opts.indent;
+            opts.indent_each_line = cs.text_indent_flags & 1 != 0;
+            opts.indent_hanging = cs.text_indent_flags & 2 != 0;
+        }
         const p = try f.a.create(font.Paragraph);
         p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
         return p;

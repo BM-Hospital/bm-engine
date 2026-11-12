@@ -89,4 +89,5 @@ test {
     _ = @import("tests.zig");
     _ = @import("tests_shaping.zig");
     _ = @import("tests_formats.zig");
+    _ = @import("tests_inline_layout.zig");
 }
