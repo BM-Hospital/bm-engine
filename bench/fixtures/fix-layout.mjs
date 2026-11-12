@@ -99,4 +99,45 @@ const indent = [
   },
 ];
 
-export default [rtl, indent].flat();
+// ------------------------------------------------------------------------------------------------ inline box edges in bidi lines
+const RLO = "‮", PDF = "‬", LRE = "‪";
+const bxCss = `
+  .s { background: #fde047; border-left: 4px solid #dc2626; border-right: 4px solid #2563eb; padding-left: 10px; padding-right: 2px; margin-left: 8px }
+  .u { background: #bae6fd; border-left: 3px solid #16a34a; padding: 0 3px 0 6px }
+`;
+const bidiBoxes = [
+  {
+    id: "fix-layout-inline-rtl-box", feature: "inline-bidi", title: "direction: rtl inline boxes around left-to-right text: the left / right edges stay on their sides; first / last fragments when wrapping; nested boxes of both directions; box-decoration-break: clone", width: 420, height: 260,
+    node: page(bxCss, `
+      <p>ltr <span class="s" dir="rtl">box rtl dir</span> after</p>
+      <p dir="rtl">in rtl <span class="s">box in rtl para</span> after</p>
+      <p dir="rtl" style="width:150px">in rtl <span class="s">box in rtl para wrapping lines</span> after</p>
+      <p>ltr <span class="s" dir="rtl">outer <span class="u">inner rtl</span> tail <span class="u" dir="ltr">inner ltr</span></span> after</p>
+      <p style="width:170px">ltr <span class="s" dir="rtl">an rtl box wrapping over three lines of ltr text here</span> after</p>
+      <p dir="rtl" style="width:170px"><span class="s" style="box-decoration-break:clone">cloned rtl box wrapping over lines</span></p>
+    `),
+  },
+  {
+    id: "fix-layout-inline-bidi-fragments", feature: "inline-bidi", title: "inline boxes in bidi-reordered lines (RLO overrides): edges at the visual ends, a box split in two fragments by reordering, an atomic inline inside, empty boxes", width: 420, height: 230,
+    node: page(bxCss, `
+      <p>abc ${RLO}def <span class="s">ghi jkl</span> mno${PDF} pqr</p>
+      <p>abc <span class="s">in ${RLO}REV ERSED${PDF} out</span> pqr</p>
+      <p>abc <span class="s">in ${RLO}REV</span> ERSED${PDF} out pqr</p>
+      <p>one ${RLO}two <span class="s">three ${LRE}four five${PDF} six</span> seven${PDF} eight</p>
+      <p>img ${RLO}aa <span class="s">bb <span style="display:inline-block;width:20px;height:10px;background:red"></span> cc</span> dd${PDF} ee</p>
+      <p>empty <span class="s" dir="rtl"></span> box <span class="s"></span>${RLO}x<span class="s"></span>y${PDF}</p>
+    `),
+  },
+  {
+    id: "fix-layout-inline-bidi-wrap", feature: "inline-bidi", title: "bidi-reordered boxes wrapping over lines, nested and vertically shifted boxes, underline, justified right-to-left paragraph with a box", width: 420, height: 300,
+    node: page(bxCss + `p { width: 200px; background: #f1f5f9 }`, `
+      <p>abc ${RLO}def <span class="s">ghi jkl mno pqr stu vwx</span> yz${PDF} end of it</p>
+      <p dir="rtl">abc <span class="s">${RLO}reversed box text wrapping${PDF} then ltr words wrap</span> end</p>
+      <p>x ${RLO}<span class="s">a <span class="u">b c</span> d</span> e <span class="u" style="vertical-align:super;font-size:10px">sup</span>${PDF} y</p>
+      <p style="text-align:right">r ${RLO}<span class="s" style="text-decoration:underline">under line</span>${PDF} z</p>
+      <p style="text-align:justify" dir="rtl">just <span class="s">ify these words in a right to left paragraph</span> with a box inside it ok</p>
+    `),
+  },
+];
+
+export default [rtl, indent, bidiBoxes].flat();

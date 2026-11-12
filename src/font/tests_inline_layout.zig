@@ -94,3 +94,44 @@ test "text-indent: first line, each-line, hanging, percentages, intrinsic sizes"
         try t.expectApproxEqAbs(@as(f32, 200 - 25), l.lines[0].x + l.lines[0].width, 1.0 / 64.0 + 0.001);
     }
 }
+
+test "inline box edges are placed visually: rtl box around ltr text, box split by bidi reordering" {
+    var fx = try Fx.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = fam, .size = 16 };
+    {
+        // direction: rtl box (start edge = right side, 6 px; end edge = left side, 22 px with an 8 px
+        // margin) in a left-to-right line: the left side stays on the left
+        const boxes = [_]font.InlineBox{.{ .style = st, .start = 6, .end = 22, .margin_end = 8, .rtl = true, .decorated = true }};
+        var p = try font.Paragraph.init(t.allocator, &fx.fc, &.{ .{ .text = "ab ", .style = st }, .{ .text = "cd", .style = st, .box = 0 }, .{ .text = " ef", .style = st } }, .{ .boxes = &boxes });
+        defer p.deinit();
+        var l = try p.layout(t.allocator, 400);
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.boxes.len);
+        const f = l.boxes[0];
+        try t.expect(f.rtl and f.first and f.last);
+        // glyphs: a b space | c d | space e f
+        const x_c = l.glyphs[3].x;
+        const x_sp = l.glyphs[5].x;
+        try t.expectApproxEqAbs(x_c - 22 + 8, f.x0, 0.02);
+        // (the border box ends where the text after it starts: the right side has no margin)
+        try t.expectApproxEqAbs(x_sp, f.x1, 0.02);
+        try t.expectApproxEqAbs(l.segments[0].x1 + 22, x_c, 0.02);
+    }
+    {
+        // an ltr box whose content is cut in two by an override: two fragments, the left edge on the
+        // leftmost, the right edge on the rightmost
+        const boxes = [_]font.InlineBox{.{ .style = st, .start = 5, .end = 7, .decorated = true }};
+        var p = try font.Paragraph.init(t.allocator, &fx.fc, &.{ .{ .text = "a ", .style = st }, .{ .text = "in \u{202e}REV", .style = st, .box = 0 }, .{ .text = " ERSED\u{202c} out", .style = st } }, .{ .boxes = &boxes });
+        defer p.deinit();
+        var l = try p.layout(t.allocator, 400);
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 2), l.boxes.len);
+        const a = l.boxes[0];
+        const b = l.boxes[1];
+        try t.expect(a.x1 < b.x0);
+        try t.expect(a.first and !a.last and !b.first and b.last);
+        // line width: all the text plus both edges, as when the box is contiguous
+        try t.expectApproxEqAbs(p.maxContentWidth(), l.lines[0].width, 1.0 / 64.0 + 0.001);
+    }
+}

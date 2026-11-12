@@ -132,6 +132,10 @@ pub const InlineBox = struct {
     /// The box paints something (background, border): its fragments are wanted in
     /// `TextLayout.boxes` even when it does not affect the layout.
     decorated: bool = false,
+    /// `direction: rtl` on the box: its inline-start edge is its right one (`start` / `end` are
+    /// logical). On a line the edges are placed visually (Blink's box fragments): the left edge left of
+    /// the box's leftmost content, the right edge right of its rightmost.
+    rtl: bool = false,
 };
 
 pub const LineHeight = union(enum) {
@@ -468,6 +472,7 @@ const BoxInfo = struct {
     margin_end: f32 = 0,
     face: FaceId = 0,
     clone: bool = false,
+    rtl: bool = false,
 };
 
 const ObjInfo = struct { box: u32, valign: VerticalAlign };
@@ -556,6 +561,8 @@ pub const Paragraph = struct {
     has_clone: bool = false,
     /// `opts.indent` / `opts.indent_pct` is set (text-indent)
     has_indent: bool = false,
+    /// Some inline box is `direction: rtl` (its edges need visual placement on every line).
+    has_rtl_box: bool = false,
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -674,6 +681,7 @@ pub const Paragraph = struct {
         errdefer alloc.free(p.metrics);
         p.objs = try b.objs.toOwnedSlice(alloc);
         p.has_clone = b.cx and b.has_clone;
+        p.has_rtl_box = b.cx and b.has_rtl_box;
         p.boxes = b.boxes;
         p.run_box = b.run_box;
         return p;
@@ -1436,8 +1444,11 @@ pub const Paragraph = struct {
         line: u32 = 0,
         frag_start: usize = 0,
         oom: bool = false,
+        /// layout only: the visual box fragments of the current line (`visualRanges`)
+        vr: std.ArrayList(VRange) = .empty,
 
         fn deinit(cx: *Cx) void {
+            cx.vr.deinit(cx.alloc);
             cx.dy.deinit(cx.alloc);
             cx.tmp.deinit(cx.alloc);
             cx.pending.deinit(cx.alloc);
@@ -1462,6 +1473,116 @@ pub const Paragraph = struct {
 
     inline fn trunc64(v: f32) f32 {
         return @trunc(v * 64.0) * (1.0 / 64.0);
+    }
+
+    /// A box fragment in visual order: `frag` (index into the fragment list) covers the visual items
+    /// [a, b] of the line; `left` / `right` = the edge (margin + border + padding) placed before `a` /
+    /// after `b`, `left_m` / `right_m` its margin part.
+    const VRange = struct { frag: u32, box: u32, a: u32, b: u32, left: f32 = 0, left_m: f32 = 0, right: f32 = 0, right_m: f32 = 0 };
+
+    fn endsAt(cx: *const Cx, v: u32) bool {
+        for (cx.vr.items) |r| {
+            if (r.b == v) return true;
+        }
+        return false;
+    }
+
+    /// Places the line-right edges of the fragments ending at visual item `v` (inner boxes first).
+    fn edgesAfter(cx: *const Cx, frags: []BoxFragment, v: u32, x_in: f32) f32 {
+        var x = x_in;
+        var k = cx.vr.items.len;
+        while (k > 0) {
+            k -= 1;
+            const r = cx.vr.items[k];
+            if (r.b != v) continue;
+            x += r.right;
+            if (r.frag < frags.len) frags[r.frag].x1 = x - r.right_m;
+        }
+        return x;
+    }
+
+    /// Is visual item `v` of line `li` content of inline box `box` (a glyph that is laid out, an atomic
+    /// inline; with `edges`: an edge marker of the box itself, for a box without content on the line)?
+    fn inBox(self: *const Paragraph, li: *const LineInfo, order: ?[]const u32, v: u32, tail: u32, box: u32, edges: bool) bool {
+        const gi = li.start + (if (order) |o| o[v] else v);
+        const g = self.glyphs[gi];
+        var b: u32 = 0;
+        if (g.flags & ShapedGlyph.SPECIAL != 0) {
+            if (g.gid <= Special.close) return edges and g.cluster == box;
+            if (edges or g.gid != Special.atomic or g.metric >= self.objs.len) return false;
+            b = self.objs[g.metric].box;
+        } else {
+            if (edges or gi >= tail or g.flags & ShapedGlyph.HARD_BREAK != 0 or g.metric >= self.metrics.len) return false;
+            const r = self.metrics[g.metric].run;
+            if (r < self.run_box.len) b = self.run_box[r];
+        }
+        while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) {
+            if (b == box) return true;
+        }
+        return false;
+    }
+
+    /// Blink's box fragments of a line whose items are in visual order (`order`, null = logical): the
+    /// content of a box that is not contiguous after bidi reordering makes one fragment per run of
+    /// items; the box's line-left edge goes to its leftmost fragment, the line-right edge to the
+    /// rightmost (`InlineLayoutStateStack::UpdateAfterReorder`), where line-left is the start edge of
+    /// an ltr box and the end edge of an rtl one. Fills `cx.vr` (sorted by box: outer boxes first) and
+    /// adds the extra fragments to `frags`. Returns false when the line is left to the logical path.
+    noinline fn visualRanges(self: *const Paragraph, cx: *Cx, frags: *std.ArrayList(BoxFragment), alloc: std.mem.Allocator, frag_start: usize, li: *const LineInfo, order: ?[]const u32, tail: u32) !bool {
+        cx.vr.clearRetainingCapacity();
+        const count = li.end - li.start;
+        const n_fr = frags.items.len - frag_start;
+        // (bounded work on hostile input: boxes x items x nesting)
+        if (n_fr == 0 or n_fr > 4096 or @as(u64, n_fr) * count > (1 << 18)) return false;
+        var fi: usize = 0;
+        while (fi < n_fr) : (fi += 1) {
+            const f0 = frags.items[frag_start + fi];
+            const box = f0.box + 1;
+            if (box >= self.boxes.len) continue;
+            const bi = self.boxes[box];
+            const first_r = cx.vr.items.len;
+            var pass: u8 = 0;
+            while (pass < 2 and cx.vr.items.len == first_r) : (pass += 1) {
+                var v: u32 = 0;
+                while (v < count) {
+                    if (!self.inBox(li, order, v, tail, box, pass == 1)) {
+                        v += 1;
+                        continue;
+                    }
+                    const a = v;
+                    while (v < count and self.inBox(li, order, v, tail, box, pass == 1)) v += 1;
+                    var fidx = frag_start + fi;
+                    if (cx.vr.items.len != first_r) {
+                        fidx = frags.items.len;
+                        try frags.append(alloc, f0);
+                    }
+                    try cx.vr.append(cx.alloc, .{ .frag = @intCast(fidx), .box = box, .a = a, .b = v - 1 });
+                }
+            }
+            const rs = cx.vr.items[first_r..];
+            if (rs.len == 0) continue;
+            const l_has = if (bi.rtl) f0.last else f0.first;
+            const r_has = if (bi.rtl) f0.first else f0.last;
+            if (l_has) {
+                rs[0].left = if (bi.rtl) bi.end else bi.start;
+                rs[0].left_m = if (bi.rtl) bi.margin_end else bi.margin_start;
+            }
+            if (r_has) {
+                rs[rs.len - 1].right = if (bi.rtl) bi.start else bi.end;
+                rs[rs.len - 1].right_m = if (bi.rtl) bi.margin_start else bi.margin_end;
+            }
+            for (rs, 0..) |r, k| {
+                const hl = l_has and k == 0;
+                const hr = r_has and k == rs.len - 1;
+                const f = &frags.items[r.frag];
+                f.rtl = bi.rtl;
+                f.first = if (bi.rtl) hr else hl;
+                f.last = if (bi.rtl) hl else hr;
+                f.x0 = std.math.inf(f32);
+                f.x1 = -std.math.inf(f32);
+            }
+        }
+        return cx.vr.items.len != 0;
     }
 
     /// Aligns the pending descendants of stack entry `idx` (`text-top` / `text-bottom` against
@@ -1934,6 +2055,13 @@ pub const Paragraph = struct {
                     k -= 1;
                     const g = self.glyphs[li.start + k];
                     lv[k] = g.level;
+                    if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid <= Special.close) {
+                        // inline box edges are opaque to reordering: they take the level after them
+                        // (Blink: the placeholder of an empty box)
+                        lv[k] = if (k + 1 < count) lv[k + 1] else base_level;
+                        if (lv[k] != 0) visual = true;
+                        continue;
+                    }
                     // L1: tabs, and white space before them / at the line end, take the paragraph level
                     if (g.flags & ShapedGlyph.TAB != 0) {
                         lv[k] = base_level;
@@ -1960,7 +2088,11 @@ pub const Paragraph = struct {
                     } else if (q.flags & ShapedGlyph.SPACE == 0) break;
                 }
             }
-            if (cplx and self.has_clone) {
+            // lines with reordered runs or right-to-left boxes: the box edges are placed visually
+            var ve = false;
+            if (cplx and (visual or self.has_rtl_box) and frags.items.len > frag_start)
+                ve = try self.visualRanges(cx_.?, frags, alloc, frag_start, &li, if (visual) order[0..count] else null, tail);
+            if (cplx and self.has_clone and !ve) {
                 // start edges of the cloned boxes continued from the previous line (outer first)
                 const cx = cx_.?;
                 var k: usize = @min(cx.n_cont, cx.tmp.items.len);
@@ -1983,6 +2115,12 @@ pub const Paragraph = struct {
             var prev_item: u32 = 0xffff_ffff;
             var v: usize = 0;
             while (v < count) : (v += 1) {
+                if (ve and v > 0 and endsAt(cx_.?, @intCast(v - 1))) {
+                    // line-right edges of the fragments that ended with the previous item
+                    if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                    seg_run = 0xffff_ffff;
+                    x = edgesAfter(cx_.?, frags.items, @intCast(v - 1), x);
+                }
                 const gi = li.start + (if (visual) order[v] else @as(u32, @intCast(v)));
                 const g = self.glyphs[gi];
                 if (self.multi_run and g.item != prev_item) {
@@ -1995,19 +2133,32 @@ pub const Paragraph = struct {
                     const slot = cx.n_cont + (gi - li.start);
                     if (slot < cx.dy.items.len) dy = cx.dy.items[slot];
                     const run: u32 = if (g.flags & ShapedGlyph.SPECIAL != 0) 0xffff_fffe else if (g.metric < self.metrics.len) self.metrics[g.metric].run else 0;
+                    if (ve) {
+                        // fragments starting at this item: their line-left edges, outer boxes first
+                        var opened = false;
+                        for (cx.vr.items) |r| {
+                            if (r.a != @as(u32, @intCast(v))) continue;
+                            if (!opened and seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                            opened = true;
+                            frags.items[r.frag].x0 = x + r.left_m;
+                            x += r.left;
+                        }
+                        if (opened) seg_run = 0xffff_ffff;
+                    }
                     if (run != seg_run) {
                         // close the open segment
-                        if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                        if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, if (ve) &.{} else frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                         seg_g0 = out.items.len;
                         seg_x0 = x;
                         seg_run = run;
                         seg_dy = dy;
                     }
                     if (g.flags & ShapedGlyph.SPECIAL != 0) {
-                        const adv = self.advanceOf(g, x - line_x, m.flow);
-                        const fr = frags.items[frag_start..];
+                        // (visual placement: the edge markers take no room where they are)
+                        const adv = if (ve and g.gid <= Special.close) 0 else self.advanceOf(g, x - line_x, m.flow);
+                        const fr: []BoxFragment = if (ve) &.{} else frags.items[frag_start..];
                         switch (g.gid) {
-                            Special.open, Special.close => if (g.cluster < self.boxes.len and g.cluster != 0) {
+                            Special.open, Special.close => if (!ve and g.cluster < self.boxes.len and g.cluster != 0) {
                                 const bi = self.boxes[g.cluster];
                                 const is_open = g.gid == Special.open;
                                 const rtl_run = g.level & 1 != 0;
@@ -2059,10 +2210,15 @@ pub const Paragraph = struct {
                     x += mt.hyphen_adv - g.kern;
                 }
             }
+            if (ve and count > 0 and endsAt(cx_.?, @intCast(count - 1))) {
+                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                seg_run = 0xffff_ffff;
+                x = edgesAfter(cx_.?, frags.items, @intCast(count - 1), x);
+            }
             if (cplx) {
-                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
+                if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, if (ve) &.{} else frags.items[frag_start..], seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                 // end edges of the cloned boxes that continue on the next line (inner first)
-                if (self.has_clone and li.end < self.glyphs.len) {
+                if (self.has_clone and !ve and li.end < self.glyphs.len) {
                     var b = self.boxBefore(li.end);
                     while (b != 0) : (b = self.boxes[b].parent) {
                         const bi = self.boxes[b];
@@ -2449,6 +2605,7 @@ const Builder = struct {
     hang: bool = true,
     nowrap: bool = false,
     has_clone: bool = false,
+    has_rtl_box: bool = false,
     base_level: u8 = 0,
 
     /// Resolves `ParagraphOptions.boxes` and decides whether the paragraph needs the inline box
@@ -2481,6 +2638,8 @@ const Builder = struct {
                 bi.clone = s.clone and (e[0] != 0 or e[1] != 0);
                 if (bi.clone) b.has_clone = true;
             }
+            bi.rtl = s.rtl;
+            if (s.rtl) b.has_rtl_box = true;
             ib[k] = bi;
             if (s.decorated or bi.valign != .baseline or bi.start != 0 or bi.end != 0 or bi.normal_lh != ib[0].normal_lh or
                 (!bi.normal_lh and (bi.ascent != ib[0].ascent or bi.descent != ib[0].descent))) cx = true;

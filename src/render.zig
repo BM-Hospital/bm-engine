@@ -2086,6 +2086,7 @@ pub const Frame = struct {
                 .start = edge[@intFromBool(rtl)],
                 .end = edge[@intFromBool(!rtl)],
                 .margin_start = mar[@intFromBool(rtl)],
+                .rtl = rtl,
                 .margin_end = mar[@intFromBool(!rtl)],
                 .clone = cs.box_decoration_break == .clone,
                 .decorated = cs.resolveColor(cs.background_color).a != 0 or cs.background_image.len > 0 or bw[0] > 0 or bw[1] > 0 or bw[2] > 0 or bw[3] > 0,
