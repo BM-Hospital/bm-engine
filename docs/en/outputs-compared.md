@@ -3,15 +3,17 @@
 [English](outputs-compared.md) · [Tiếng Việt](../vi/outputs-compared.md)
 
 takumi's documentation is split into three sections — **Image**, **PDF** and **Paint** — because takumi
-ships three outputs, as three separate packages, on top of one layout engine. bm-engine ports only the
-first of them. This page explains what each takumi output is for, what bm-engine covers today, and how
-to get close to the other two with bm-engine plus other tools.
+ships three outputs, as three separate packages, on top of one layout engine. bm-engine ports the first
+two: Image, and PDF in its separate `pdf` profile ([PDF output](pdf.md)). This page explains what each
+takumi output is for, what bm-engine covers today, and how to get close to Paint with bm-engine plus
+other tools.
 
 ::: info Verification status
 The takumi descriptions were checked against the takumi sources and docs in the repository's reference
 copy (`ref/takumi`: the `takumi-core`, `takumi-raster`, `takumi-svg`, `takumi-pdf`, `takumi-pdf-js` and
 `takumi-paint` crates / packages and `docs/content/docs/{pdf,paint}`); takumi code was not executed. The
-bm-engine statements were checked by searching `js/` and `src/` and by running the APIs mentioned.
+bm-engine statements were checked by searching `js/` and `src/` and by running the APIs mentioned. The PDF
+row reflects the PDF port added after the 0.1.0 image engine.
 :::
 
 ## One layout engine, three outputs
@@ -36,7 +38,7 @@ bm-engine statements were checked by searching `js/` and `src/` and by running t
 | npm package | `takumi-js`, `@takumi-rs/wasm`, `@takumi-rs/core` | `takumi-pdf` | `takumi-paint` |
 | You get | encoded image bytes (or an SVG string, or an animation) | a PDF file | a JavaScript object tree you draw yourself |
 | Typical use | Open Graph cards, thumbnails, social images | invoices, reports, tickets, certificates | editable slides (PPTX), Canvas / Skia / native drawing, custom renderers |
-| bm-engine | **ported** (raster, SVG, animation) | **not available** | **not available** (only `measure()`) |
+| bm-engine | **ported** (raster, SVG, animation) | **ported** as the `pdf` profile, with [known limitations](pdf.md#known-limitations) | **not available** (only `measure()`) |
 
 ### Image
 
@@ -73,16 +75,19 @@ Checked in the bm-engine 0.1.0 sources and typings:
 | Raster output (PNG, JPEG, WebP, raw RGBA, ICO) | yes — `render` / `renderSync`, `renderAsDataUrl` |
 | SVG output | yes — `renderSvg` / `renderSvgSync` (`full` profile); text as glyph outlines, images embedded as `data:` URLs |
 | Animated output | yes — `renderAnimation` (`full`): animated WebP, APNG, GIF |
-| PDF output | **no** — no PDF writer exists in `src/` or `js/` (the only "PDF" in the source is the Unicode bidi control character U+202C POP DIRECTIONAL FORMATTING) |
-| Pagination / fragmentation across pages | **no** — one canvas per render |
+| PDF output | **yes** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): paged output with real text and subset fonts, headers / footers, links, bookmarks, metadata, attachments, tagged PDF and PDF/A. Not in `core`, `standard` or `full`. See [PDF output](pdf.md) |
+| Pagination / fragmentation across pages | **yes, in the `pdf` profile** — content flows across pages, with `break-*`, `orphans` / `widows`, repeated table headers and `@page`. The image render is still one canvas per render |
 | Paint tree | **no** — there is no API that returns drawing commands, colours, gradients or glyphs |
 | Layout boxes | yes — `measure()` returns the box tree: border-box `width` / `height`, a 2D `transform` (absolute position), `children`, and text line `runs` (`x`, `y`, `width`, `height`; no text, no font, no glyph positions) |
 
 ## Workarounds (not built in)
 
-None of these are bm-engine features; they combine bm-engine with other tools.
+The first entry points at the built-in PDF output; the rest combine bm-engine with other tools.
 
 ### A PDF from bm-engine output
+
+Use the `pdf` profile: [PDF output](pdf.md). If you cannot load it (for example you must stay on `core`,
+`standard` or `full`), these older routes still work:
 
 - **One image per page.** Render each page as PNG at print resolution (an A4 page at 150 dpi is
   1240 × 1754 px; render `width: 1240, height: 1754` with `devicePixelRatio` scaling your 96-dpi CSS layout
@@ -90,11 +95,8 @@ None of these are bm-engine features; they combine bm-engine with other tools.
   Text is not selectable and files are large; fine for certificates or tickets, poor for long documents.
 - **SVG per page.** `renderSvg` gives vector output; SVG-to-PDF converters (librsvg's `rsvg-convert`,
   Inkscape, svg2pdf libraries) keep shapes sharp. Text is still outlines, not selectable.
-- **You paginate.** bm-engine does not split content across pages. Use `measure()` to find where blocks
+- **You paginate.** The image profiles do not split content across pages. Use `measure()` to find where blocks
   end and decide page breaks yourself, or render each page from its own node tree.
-
-If you need selectable text, links, PDF/A or attachments, use a real PDF engine (takumi-pdf, a headless
-browser, or a PDF library) — bm-engine cannot produce them.
 
 ### A paint tree from `measure()`
 
@@ -129,5 +131,5 @@ of everything, render with bm-engine and draw the image.
 | An SVG version of the same card | bm-engine `full` + `renderSvg` |
 | Short animations | bm-engine `full` + `renderAnimation` |
 | Text-fitting, layout checks before rendering | bm-engine `measure()` |
-| Multi-page documents with selectable text | takumi-pdf or another PDF engine |
+| Multi-page documents with selectable text | bm-engine `pdf` profile (or takumi-pdf, or another PDF engine) |
 | Editable slides / your own renderer with full style information | takumi-paint |

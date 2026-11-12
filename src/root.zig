@@ -17,4 +17,27 @@ test {
     _ = @import("font/font.zig");
     _ = @import("raster/raster.zig");
     _ = @import("codec/codec.zig");
+    _ = @import("test_paged.zig");
+    _ = @import("pdf/options.zig");
+    _ = @import("pdf/pdf.zig");
+    _ = @import("pdf/writer.zig");
+    _ = @import("pdf/emit_geom.zig");
+    _ = @import("pdf/emit_surface.zig");
+    _ = @import("pdf/emit_shading.zig");
+    _ = @import("pdf/emit_device.zig");
+    _ = @import("pdf/emit_image.zig");
+    _ = @import("pdf/emit.zig");
+    _ = @import("pdf/text.zig");
+    _ = @import("pdf/interactive.zig");
+    _ = @import("pdf/metadata.zig");
+    _ = @import("pdf/attach.zig");
+    _ = @import("pdf/counters.zig");
+    _ = @import("pdf/bands.zig");
+    _ = @import("pdf/paged.zig");
+    _ = @import("pdf/page_rules.zig");
+    _ = @import("pdf/emit_svg.zig");
+    _ = @import("pdf/conform.zig");
+    _ = @import("pdf/tags.zig");
+    _ = @import("pdf/markers.zig");
+    _ = @import("pdf/page_names.zig");
 }

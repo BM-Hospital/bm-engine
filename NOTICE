@@ -28,5 +28,11 @@ THIRD-PARTY-NOTICES.md:
   - emoji-segmenter ...................... Apache License 2.0 (Copyright 2019 Google LLC)
   - Brotli static dictionary ............. MIT (Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors)
   - Taffy ................................ MIT (Copyright (c) 2018 Visly Inc.)
+  - krilla (PDF output) .................. MIT OR Apache-2.0 (Copyright (c) 2024 Laurenz Stampfl), with notices for code
+                                            it takes from resvg (MPL 2.0), typst, svg2pdf and vello
+  - subsetter (PDF font subsetting) ...... MIT, with ttf-parser (Copyright (c) 2018 Yevhenii Reizner) and fonttools
+                                            (Copyright (c) 2017 Just van Rossum), both MIT
+  - pdf-writer, xmp-writer (PDF output) .. MIT OR Apache-2.0
+  - Compact ICC Profiles, sRGB v4 ........ CC0 1.0 (Clinton Ingram / saucecontrol); src/pdf/srgb-v4.icc
 
 No font files are distributed with the package. Fonts you register at run time keep their own licenses.

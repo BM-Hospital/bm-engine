@@ -2,8 +2,8 @@
 
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
-bm-engine is compiled into three binaries with different feature sets so that you only download what you
-use: `core` (454.5 KiB), `standard` (877.5 KiB) and `full` (1 099.8 KiB), against 4 234.9 KiB for
+bm-engine is compiled into three binaries (and a fourth, `pdf`, for PDF output) with different feature sets so that you only download what you
+use: `core` (454.9 KiB), `standard` (878.1 KiB) and `full` (1 100.9 KiB), against 4 234.9 KiB for
 takumi 2.20's wasm. This page lists what each profile contains, what each optional feature costs, what a
 smaller profile does with input it cannot handle, how to make a custom build, and why only WOFF is
 available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1024 bytes.
@@ -12,9 +12,10 @@ available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1
 
 | Build | Raw | gzip -9 | brotli (q11) | vs. takumi raw |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | 9.3× smaller |
-| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | 4.8× smaller |
-| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | 3.9× smaller |
+| `core` — `bm_engine.core.wasm` | 454.9 KiB | 211.6 KiB | 180.4 KiB | 9.3× smaller |
+| `standard` — `bm_engine.standard.wasm` | 878.1 KiB | 435.5 KiB | 374.6 KiB | 4.8× smaller |
+| `full` — `bm_engine.wasm` | 1 100.9 KiB | 538.3 KiB | 453.7 KiB | 3.8× smaller |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 520.8 KiB | 746.0 KiB | 612.5 KiB | 2.8× smaller |
 | WOFF add-on — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
@@ -48,6 +49,13 @@ import nothing from the host.
 | CSS animations at `timeMs`, `renderAnimation`, animated image sources (`animation`) | | | ✓ |
 | Lossy WebP decode, animated GIF / APNG / WebP codecs, ICO output (`extraCodecs`) | | | ✓ |
 | `renderSvg` (`renderSvg`) | | | ✓ |
+
+### The `pdf` profile
+
+`bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
+CSS paged-media properties ([PDF output](pdf.md)). It is the only binary with PDF; `features.pdf` is `true` there
+and `false` in the others. It adds about 0.4 MB to `full`. It is not part of the table below because `pdf` is
+not a feature of `core`, `standard` or `full`.
 
 ## Marginal cost per feature
 
@@ -115,7 +123,7 @@ Every feature is a compile-time flag; the profiles are presets. With Zig 0.17.x
 
 ```sh
 # a preset
-zig build -Dprofile=core            # core | standard | full (default)
+zig build -Dprofile=core            # core | standard | full (default) | pdf (= full + PDF output)
 
 # a preset plus / minus single features
 zig build -Dprofile=core -Dcss=true -Dtw=true
@@ -127,7 +135,7 @@ node scripts/build.mjs -- -Dtables=false
 
 Flags: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects`, `modern_color`,
 `tables`, `floats`, `webp_gif_decode`, `text_wrap_balance`, `color_fonts`, `complex_text`,
-`animation`, `extra_codecs`, `render_svg`. Other build options: `-Dwasm-optimize=small|fast|safe|debug`
+`animation`, `extra_codecs`, `render_svg`, `pdf`. Other build options: `-Dwasm-optimize=small|fast|safe|debug`
 (default `small`), `-Dstrip=false`, `-Dstack-kib=<n>` (default 1024). The output lands in
 `zig-out/bin/bm_engine.wasm`; load it with `init(bytes)` / `initSync(bytes)`, or in Node with
 `BM_WASM=path/to/bm_engine.wasm` and the `bm-engine` entry. `features` reports exactly the flags the

@@ -26,6 +26,8 @@ const cfg = struct {
     const generated = if (on) root.bm_config.enable_generated_content else true;
     const tables = if (on) root.bm_config.enable_tables else true;
     const variable_fonts = if (on) root.bm_config.enable_variable_fonts else true;
+    /// paged output: `break-*` / `page-break-*` / `widows` / `orphans`
+    const pdf = if (!on) true else if (@hasDecl(root.bm_config, "enable_pdf")) root.bm_config.enable_pdf else false;
 };
 
 pub const Prop = enum(u16) {
@@ -134,6 +136,9 @@ pub const Prop = enum(u16) {
     boxDecorationBreak,
     boxShadow,
     boxSizing,
+    breakAfter,
+    breakBefore,
+    breakInside,
     captionSide,
     clear,
     clipPath,
@@ -251,6 +256,7 @@ pub const Prop = enum(u16) {
     objectPosition,
     opacity,
     order,
+    orphans,
     outline,
     outlineColor,
     outlineOffset,
@@ -273,6 +279,9 @@ pub const Prop = enum(u16) {
     paddingLeft,
     paddingRight,
     paddingTop,
+    pageBreakAfter,
+    pageBreakBefore,
+    pageBreakInside,
     paintOrder,
     placeContent,
     placeItems,
@@ -318,6 +327,7 @@ pub const Prop = enum(u16) {
     visibility,
     whiteSpace,
     whiteSpaceCollapse,
+    widows,
     width,
     willChange,
     wordBreak,
@@ -546,6 +556,11 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .captionSide => &.{fr("caption_side")},
         .emptyCells => &.{fr("empty_cells")},
         .boxDecorationBreak, .WebkitBoxDecorationBreak => &.{fr("box_decoration_break")},
+        .breakBefore, .pageBreakBefore => &.{fr("break_before")},
+        .breakAfter, .pageBreakAfter => &.{fr("break_after")},
+        .breakInside, .pageBreakInside => &.{fr("break_inside")},
+        .widows => &.{fr("widows")},
+        .orphans => &.{fr("orphans")},
         .listStyle => &.{ fr("list_style_type"), fr("list_style_position"), fr("list_style_image") },
         .listStyleType => &.{fr("list_style_type")},
         .listStylePosition => &.{fr("list_style_position")},
@@ -609,7 +624,7 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
 
 pub fn isInherited(p: Prop) bool {
     return switch (p) {
-        .WebkitTextStroke, .WebkitTextStrokeColor, .WebkitTextStrokeWidth, .color, .direction, .font, .fontFamily, .fontSize, .fontStyle, .fontWeight, .imageRendering, .letterSpacing, .lineHeight, .overflowWrap, .wordWrap, .tabSize, .textAlign, .textIndent, .textShadow, .textTransform, .textWrap, .textWrapMode, .textWrapStyle, .visibility, .whiteSpace, .whiteSpaceCollapse, .wordBreak, .wordSpacing, .borderCollapse, .borderSpacing, .captionSide, .emptyCells, .listStyle, .listStyleType, .listStylePosition, .listStyleImage, .writingMode, .textAlignLast, .hyphens, .WebkitHyphens, .lineBreak, .textDecorationSkipInk, .textUnderlineOffset, .textUnderlinePosition, .WebkitTextFillColor, .paintOrder, .fontStretch, .fontVariationSettings, .fontFeatureSettings, .fontVariant, .fontVariantLigatures, .fontVariantNumeric, .fontVariantCaps, .fontVariantPosition, .fontVariantEastAsian, .fontKerning, .fontOpticalSizing, .fontSynthesis, .fontSynthesisWeight, .fontSynthesisStyle, .fontSynthesisSmallCaps => true,
+        .WebkitTextStroke, .WebkitTextStrokeColor, .WebkitTextStrokeWidth, .color, .direction, .font, .fontFamily, .fontSize, .fontStyle, .fontWeight, .imageRendering, .letterSpacing, .lineHeight, .overflowWrap, .wordWrap, .tabSize, .textAlign, .textIndent, .textShadow, .textTransform, .textWrap, .textWrapMode, .textWrapStyle, .visibility, .whiteSpace, .whiteSpaceCollapse, .wordBreak, .wordSpacing, .borderCollapse, .borderSpacing, .captionSide, .emptyCells, .listStyle, .listStyleType, .listStylePosition, .listStyleImage, .writingMode, .textAlignLast, .hyphens, .WebkitHyphens, .lineBreak, .textDecorationSkipInk, .textUnderlineOffset, .textUnderlinePosition, .WebkitTextFillColor, .paintOrder, .fontStretch, .fontVariationSettings, .fontFeatureSettings, .fontVariant, .fontVariantLigatures, .fontVariantNumeric, .fontVariantCaps, .fontVariantPosition, .fontVariantEastAsian, .fontKerning, .fontOpticalSizing, .fontSynthesis, .fontSynthesisWeight, .fontSynthesisStyle, .fontSynthesisSmallCaps, .widows, .orphans => true,
         else => false,
     };
 }
@@ -1396,6 +1411,8 @@ fn bgRepeatItem(l: *Lexer) Error!?[2]c.BgRepeat {
 fn bgBox(t: Token, allow_text: bool) ?c.BgBox {
     const b = tok.kw(c.BgBox, t) orelse return null;
     if (b == .text and !allow_text) return null;
+    // (`border-area`, PDF build only, is a `background-clip` value, as `text`)
+    if (comptime @hasField(c.BgBox, "border_area")) if (b == .border_area and !allow_text) return null;
     return b;
 }
 
@@ -2142,6 +2159,10 @@ fn kwEntryOf(comptime p: Prop) ?KwEntry {
         .captionSide => ke(c.CaptionSide, fr("caption_side")),
         .emptyCells => ke(c.EmptyCells, fr("empty_cells")),
         .boxDecorationBreak, .WebkitBoxDecorationBreak => ke(c.BoxDecorationBreak, fr("box_decoration_break")),
+        // (the legacy `page-break-*` properties are aliases, as in takumi; `always` = `page`)
+        .breakBefore, .pageBreakBefore => if (cfg.pdf) ke(c.BreakBetween, fr("break_before")) else null,
+        .breakAfter, .pageBreakAfter => if (cfg.pdf) ke(c.BreakBetween, fr("break_after")) else null,
+        .breakInside, .pageBreakInside => if (cfg.pdf) ke(c.BreakInside, fr("break_inside")) else null,
         .isolation => ke(c.Isolation, fr("isolation")),
         .unicodeBidi => ke(c.UnicodeBidi, fr("unicode_bidi")),
         .writingMode => ke(c.WritingMode, fr("writing_mode")),
@@ -3477,6 +3498,14 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
                 if (!t.isIdent("hanging") and !t.isIdent("each-line")) return bad;
             }
         },
+        .widows, .orphans => if (comptime cfg.pdf) {
+            // an integer >= 1 (takumi's MinLines)
+            const v = try need(i32, values.integer(l.next()));
+            if (v < 1) return bad;
+            const lines: u8 = @intCast(@min(v, 255));
+            if (p == .widows) s.widows = lines else s.orphans = lines;
+        } else ignoreRest(l),
+        .breakBefore, .breakAfter, .breakInside, .pageBreakBefore, .pageBreakAfter, .pageBreakInside => ignoreRest(l),
         .tabSize => s.tab_size = try parseTabSize(cx, l.next()),
         .textDecoration => try parseTextDecoration(cx, l),
         .textDecorationLine => s.text_decoration_line = try need(c.DecorationLine, try decoLine(l)),

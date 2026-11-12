@@ -28,6 +28,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 - [Animation](#animation)
 - [Ảnh và SVG](#ảnh-và-svg)
 - [Chữ phức, bidi, emoji](#chữ-phức-bidi-emoji)
+- [Trang giấy (profile `pdf`)](#trang-giấy-profile-pdf)
 - [Các hạn chế đã biết](#các-hạn-chế-đã-biết)
 - [Phụ lục: danh sách thuộc tính được hỗ trợ](#phụ-lục-danh-sách-thuộc-tính-được-hỗ-trợ)
 
@@ -59,7 +60,7 @@ chưa hỗ trợ. Profile tối thiểu là bản build nhỏ nhất có chứa 
 | Bảng (`display: table*`, layout auto / fixed, `colspan` / `rowspan` qua HTML, `border-collapse`, `border-spacing`, caption, `empty-cells`) | standard | equivalent (8/8 fixture; 339/352 ca oracle layout) |
 | Float (`float`, `clear`) | standard (cờ `floats`; cả `full`) | equivalent; 138/138 ca oracle layout; chữ chảy quanh float (hộp dòng ngắn lại cạnh float và nở lại bên dưới, float trong nội dung inline, RTL; 7 fixture `float-text` đạt SSIM ≥ 0.9999) |
 | `display: contents` | — | không: được dàn trang và vẽ như `display: block` (phần tử vẫn giữ box, padding và nền của nó) |
-| `display: list-item` | core | layout như block; không có ký hiệu đầu dòng (list marker) |
+| `display: list-item` | core | layout như block; không có ký hiệu đầu dòng (list marker) trong đầu ra raster / SVG ([profile `pdf`](pdf.md) vẽ ký hiệu trong đầu ra PDF) |
 | Chế độ viết (`writing-mode`) | — | không: parse được, chỉ layout theo chiều ngang |
 
 Trên `core`, `display: table*` được layout như `block` và `float` bị bỏ qua (không báo lỗi).
@@ -269,6 +270,19 @@ tính `animation` bị bỏ qua.
 Trên `core` và `standard`, chữ viết phải-sang-trái và chữ phức được shape bằng shaper OpenType mặc định
 theo thứ tự logic (không sắp xếp lại).
 
+## Trang giấy (profile `pdf`)
+
+Chỉ `bm-engine/pdf` nhận biết những mục này; mọi profile khác bỏ qua chúng (xem [Phân trang](pdf-pagination.md)).
+
+| Tính năng | Trạng thái |
+|:--|:--|
+| `break-before`, `break-after`, `break-inside`, `page-break-before` / `-after` / `-inside` | parse `auto`, `avoid`, `avoid-page`, `avoid-column`, `page`, `always`, `column`, `left`, `right`, `recto`, `verso`; `left`, `right`, `recto`, `verso` ngắt trang mà không chèn trang trắng |
+| `orphans`, `widows` | số nguyên từ 1 trở lên, được kế thừa, mặc định 2 |
+| Tailwind `break-before-*`, `break-inside-*`, `break-after-*` | trong trường / thuộc tính `tw` |
+| `@page` với `size`, `margin*`, `:first`, `:left`, `:right` | đọc từ tùy chọn `css` và `<style>` của HTML; trang có tên (`page`, `@page tên`) hoạt động; nội dung chỉ được dàn một lần ở một chiều rộng, nên trang có tên với chiều rộng khác không được dàn lại và các quy tắc `:first` / `:left` / `:right` làm đổi chiều rộng bị bỏ |
+| `position: fixed` | lặp lại trên mọi trang |
+| `background-clip: border-area` | chỉ ở profile pdf |
+
 ## Các hạn chế đã biết
 
 Tình trạng ở 0.1.0 (xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết trạng thái cuối cùng):
@@ -291,7 +305,7 @@ Tình trạng ở 0.1.0 (xem [docs/BENCHMARK.md](../BENCHMARK.md) để biết t
   trong 0.1.0 (takumi có đảo).
 - Chưa hỗ trợ: `display: contents`, ký hiệu đầu dòng và counter, `writing-mode`, transform 3D,
   `filter: url()` / `clip-path: url()`, cú pháp màu tương đối, `outline-offset` theo %, `@apply`,
-  `animate-*` của Tailwind, animation trên pseudo-element, xuất PDF.
+  `animate-*` của Tailwind, animation trên pseudo-element. (Đầu ra PDF chỉ có ở [profile `pdf`](pdf.md) riêng; nó vẽ ký hiệu danh sách trong đầu ra PDF.)
 - Các sai khác 1 mức còn lại: phần trong của gradient, viền nét đứt trên góc bo, chữ bị xoay,
   `text-stroke`.
 

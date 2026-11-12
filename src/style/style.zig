@@ -2118,3 +2118,35 @@ test "fuzz: parsers never crash" {
         _ = computeEx(a, &ctx, &parent, null, &vd, null, &d) catch {};
     }
 }
+
+test "fragmentation properties (paged output)" {
+    const root = @import("root");
+    // (parsed only with the PDF feature; accepted and ignored without it)
+    const on = if (@hasDecl(root, "bm_config")) (@hasDecl(root.bm_config, "enable_pdf") and root.bm_config.enable_pdf) else true;
+    var t = TestCx.init();
+    defer t.deinit();
+    const s = try css(&t, null, "break-before: page; break-after: avoid-page; break-inside: avoid; widows: 3; orphans: 4");
+    if (!on) {
+        try T.expect(s.break_before == .auto and s.break_inside == .auto and s.widows == 2 and s.orphans == 2);
+        return;
+    }
+    try T.expect(s.break_before == .page and s.break_after == .avoid_page and s.break_inside == .avoid);
+    try T.expect(s.widows == 3 and s.orphans == 4);
+    try T.expect(s.break_before.forcesPage() and s.break_after.avoidsPage() and s.break_inside.avoidsPage());
+    // the legacy aliases, and `always` as `page`
+    const l = try css(&t, null, "page-break-before: always; page-break-after: left; page-break-inside: avoid");
+    try T.expect(l.break_before == .always and l.break_before.forcesPage() and l.break_after == .left and l.break_inside == .avoid);
+    try T.expect((try t.one("breakBefore", "recto")).break_before.forcesPage());
+    try T.expect(!(try t.one("breakBefore", "column")).break_before.forcesPage());
+    try T.expect(!(try t.one("breakAfter", "avoid-column")).break_after.avoidsPage());
+    try T.expect(!(try t.one("breakInside", "avoid-column")).break_inside.avoidsPage());
+    try T.expect((try t.one("pageBreakInside", "avoid")).break_inside == .avoid);
+    // widows / orphans: integers >= 1, inherited
+    try t.bad("widows", "0");
+    try t.bad("orphans", "-2");
+    try t.bad("widows", "2.5");
+    try t.bad("orphans", "auto");
+    try t.bad("breakBefore", "sometimes");
+    const child = try css(&t, &s, "color: red");
+    try T.expect(child.widows == 3 and child.orphans == 4 and child.break_before == .auto and child.break_inside == .auto);
+}

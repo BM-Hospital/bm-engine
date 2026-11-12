@@ -1,12 +1,15 @@
-// Verifies outputs-compared.md: the measure() walk, a print-resolution page render, and that no PDF / paint API exists.
+// Verifies outputs-compared.md: the measure() walk, a print-resolution page render, that no paint-tree API exists and
+// that the default (full) build has no PDF writer (PDF output is the separate bm-engine/pdf profile).
 import assert from "node:assert/strict";
 import * as bm from "bm-engine";
 import { getRenderer, card } from "./lib/og.mjs";
 import { check, done, pngSize } from "./lib/util.mjs";
 
-await check("no PDF or paint-tree API in the public exports / Renderer", () => {
+await check("no paint-tree API in the public exports / Renderer; the full build has no PDF writer", () => {
   const names = [...Object.keys(bm), ...Object.getOwnPropertyNames(bm.Renderer.prototype)];
-  assert.deepEqual(names.filter((n) => /pdf|paint/i.test(n)), []);
+  assert.deepEqual(names.filter((n) => /paint/i.test(n)), []);
+  assert.equal(bm.features.pdf, false);
+  assert.throws(() => new bm.Renderer().renderPdfSync({ type: "container" }), /renderPdf is not supported by this build/);
   return names.filter((n) => n !== "constructor").sort().join(", ");
 });
 

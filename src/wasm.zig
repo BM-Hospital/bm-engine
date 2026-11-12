@@ -129,10 +129,26 @@ export fn bm_render_svg(r: *Renderer, kind: u32, src: [*]const u8, src_len: usiz
     return 0;
 }
 
+/// takumi-pdf `render`: like bm_render_svg (kind 0 = JSON node tree, 1 = HTML; `opts` = the PdfRenderOptions
+/// JSON; attachment bytes registered beforehand with bm_put_image under their `dataRef` ids), the result
+/// (bm_result_*) is a PDF file. Fails ("renderPdf is not supported by this build") without `-Dpdf`.
+export fn bm_render_pdf(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    const k: render.SourceKind = if (kind == 1) .html else .json;
+    _ = r.renderPdf(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+
+/// takumi-pdf `measure`: result (bm_result_*) is `{"width":..,"height":..}` JSON (CSS px). Same build gate.
+export fn bm_measure_pdf(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    const k: render.SourceKind = if (kind == 1) .html else .json;
+    _ = r.measurePdf(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+
 /// Optional features compiled into this binary (bit mask, see src/config.zig `feature_bits`):
 /// bit 0 css, 1 tw, 2 html, 3 svg, 4 woff, 5 variable_fonts, 6 cff, 7 effects, 8 modern_color,
 /// 9 tables, 10 floats, 11 webp_gif_decode, 12 text_wrap_balance, 13 color_fonts, 14 complex_text,
-/// 15 animation, 16 extra_codecs, 17 render_svg.
+/// 15 animation, 16 extra_codecs, 17 render_svg, 18 pdf.
 export fn bm_features() u32 {
     return bm_config.feature_bits;
 }

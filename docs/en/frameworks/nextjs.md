@@ -187,7 +187,7 @@ hoisting changes, pnpm or monorepos). Prefer the Node.js runtime unless you need
 Edge, test the deployed route, not only `next start`.
 :::
 
-Size matters on Edge: the `core` binary is 454.5 KiB raw (about 210 KiB gzip) and fonts add their own
+Size matters on Edge: the `core` binary is 454.9 KiB raw (about 210 KiB gzip) and fonts add their own
 size; see [Profiles and size](../profiles-and-size.md).
 
 ## Coming from `next/og`

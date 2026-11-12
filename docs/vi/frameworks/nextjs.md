@@ -188,7 +188,7 @@ khi cách hoisting thay đổi, với pnpm hoặc monorepo). Hãy ưu tiên Node
 Edge. Nếu deploy lên Edge, hãy thử route đã deploy, không chỉ `next start`.
 :::
 
-Kích thước quan trọng trên Edge: binary `core` nặng 454.5 KiB thô (khoảng 210 KiB gzip) và font còn cộng
+Kích thước quan trọng trên Edge: binary `core` nặng 454.9 KiB thô (khoảng 210 KiB gzip) và font còn cộng
 thêm kích thước của chúng; xem [Profile và kích thước](../profiles-and-size.md).
 
 ## Chuyển từ `next/og`

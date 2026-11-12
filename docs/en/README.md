@@ -10,7 +10,8 @@ with Getting started; the API reference and the CSS support matrix are the pages
 | [Getting started](getting-started.md) | Install, Node.js, browsers, bundlers, Workers / Deno / Bun, choosing a profile, fonts, images, output formats |
 | [API reference](api.md) | `init`, `features`, `Renderer` and every method, node format, render options, errors, limits, memory model, WOFF add-on |
 | [CSS and feature support](css-support.md) | Feature matrix with minimum profile and equivalence status, Tailwind, HTML, SVG, animations, known gaps, every supported property |
-| [Profiles and size](profiles-and-size.md) | What `core` / `standard` / `full` contain, sizes, per-feature cost, custom builds, the WOFF add-on |
+| [PDF output](pdf.md) | `bm-engine/pdf`: pages, margins, `measure`, the `pdf` profile; then [Pagination](pdf-pagination.md), [Headers, footers and counters](pdf-headers-footers.md), [Links, bookmarks, metadata, attachments](pdf-links-metadata.md), [Fonts in PDF](pdf-fonts.md), [Accessibility and archival](pdf-accessibility.md) |
+| [Profiles and size](profiles-and-size.md) | What `core` / `standard` / `full` / `pdf` contain, sizes, per-feature cost, custom builds, the WOFF add-on |
 | [Differences from takumi](differences-from-takumi.md) | Migration guide, API and rendering differences, takumi behaviours reproduced on purpose |
 | [Benchmark](benchmark.md) | Speed, size, memory and pixel equivalence against takumi 2.20, and how to reproduce |
 | [Building from source](building-from-source.md) | Zig toolchain, build / test / fuzz commands, repository layout, contributing |

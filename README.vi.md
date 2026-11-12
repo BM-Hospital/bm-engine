@@ -2,12 +2,12 @@
 
 [English](README.md) · [Tiếng Việt](README.vi.md)
 
-Render cây node, HTML và Tailwind/CSS thành PNG, JPEG, WebP, ICO, RGBA thô, SVG và WebP / APNG / GIF động
+Render cây node, HTML và Tailwind/CSS thành PNG, JPEG, WebP, ICO, RGBA thô, SVG, WebP / APNG / GIF động và PDF nhiều trang
 bằng một engine WebAssembly không phụ thuộc thư viện nào. bm-engine là bản port bộ render
 [takumi](https://github.com/kane50613/takumi) (2.20, viết bằng Rust) sang Zig 0.17: nó nhận cùng định dạng
 node, cùng tùy chọn render và API của takumi, và đã được đối chiếu với takumi trên từng fixture. Nó chạy
 trên Node.js, trình duyệt, bundler, Bun, Deno và các edge runtime như Cloudflare Workers, và được phát
-hành theo ba profile build để bạn chỉ nạp những tính năng mình dùng.
+hành theo ba profile build (và một profile `pdf` cho đầu ra PDF) để bạn chỉ nạp những tính năng mình dùng.
 
 Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWNER/bm-engine/tree/main/docs/vi`).
 
@@ -16,8 +16,8 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
 Đo so với `@takumi-rs/wasm` 2.20.0 trên 200 fixture dùng chung (Node 26, i3-10100; chi tiết ở
 [docs/vi/benchmark.md](docs/vi/benchmark.md)):
 
-- **Nhỏ**: wasm `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB (brotli 180 / 375 / 453 KiB),
-  so với 4 234.9 KiB của takumi — nhỏ hơn 9.3× / 4.8× / 3.9×. Module **không có import nào** (không
+- **Nhỏ**: wasm `core` 454.9 KiB, `standard` 878.1 KiB, `full` 1 100.9 KiB (brotli 180 / 375 / 454 KiB),
+  so với 4 234.9 KiB của takumi — nhỏ hơn 9.3× / 4.8× / 3.8×. Module **không có import nào** (không
   WASI, không glue wasm-bindgen) và wrapper JS không có dependency.
 - **Đầu ra giống nhau**: 74 fixture trùng từng byte, 126 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
   mép khử răng cưa), 1 fixture gần giống, 0 fixture khác. Layout của `measure()` khớp takumi tới 0.001 px.
@@ -78,13 +78,34 @@ document.querySelector("img").src = URL.createObjectURL(new Blob([png], { type: 
 Trên Cloudflare Workers, import binary như một module rồi truyền vào: `import wasm from "bm-engine/full.wasm";
 initSync(wasm)`. Xem [Bắt đầu](docs/vi/getting-started.md) cho bundler, Workers, Deno và Bun.
 
+## Bắt đầu nhanh (PDF)
+
+```js
+import { readFileSync, writeFileSync } from "node:fs";
+import { PdfRenderer } from "bm-engine/pdf"; // profile pdf: full + đầu ra PDF
+
+const pdf = new PdfRenderer();
+pdf.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") });
+
+const bytes = await pdf.render(
+  `<h1 style="font-family: Inter">Quarterly report</h1><p style="font-family: Inter">Selectable text.</p>`,
+  { size: "a4", margin: 36, footer: `<span style="font: 10px Inter">Page <span class="pageNumber"></span></span>` },
+);
+writeFileSync("report.pdf", bytes);
+```
+
+Nội dung chảy qua nhiều trang; hỗ trợ header, footer, bộ đếm trang, liên kết, bookmark, metadata, tệp đính
+kèm, PDF có thẻ (PDF/UA) và PDF/A. Xem [Đầu ra PDF](docs/vi/pdf.md).
+
 ## Các profile
 
 | Profile | Import | wasm (thô / brotli) | Thêm |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 454.5 / 180.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
-| `standard` | `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 099.8 / 453.4 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
+| `core` | `bm-engine/core` | 454.9 / 180.4 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
+| `standard` | `bm-engine/standard` | 878.1 / 374.6 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 100.9 / 453.7 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
+
+| `pdf` | `bm-engine/pdf` | khoảng 1.5 MB thô | `full` + đầu ra PDF: phân trang, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ, PDF/A. Xem [Đầu ra PDF](docs/vi/pdf.md) |
 
 Một add-on 84 KiB (`bm-engine/woff`) giúp `core` đọc được WOFF / WOFF2. `features` cho biết binary đang
 nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles-and-size.md).
@@ -94,6 +115,7 @@ nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles
 - [Bắt đầu](docs/vi/getting-started.md): cài đặt, Node / trình duyệt / bundler / Workers, profile, font, ảnh, định dạng
 - [Tham chiếu API](docs/vi/api.md): `init`, `Renderer`, định dạng node, tùy chọn, lỗi, giới hạn, bộ nhớ
 - [Hỗ trợ CSS và tính năng](docs/vi/css-support.md): ma trận tính năng và mọi thuộc tính được hỗ trợ
+- [Đầu ra PDF](docs/vi/pdf.md): trang, [phân trang](docs/vi/pdf-pagination.md), [header và footer](docs/vi/pdf-headers-footers.md), [liên kết và metadata](docs/vi/pdf-links-metadata.md), [font](docs/vi/pdf-fonts.md), [PDF/UA và PDF/A](docs/vi/pdf-accessibility.md)
 - [Profile và kích thước](docs/vi/profiles-and-size.md) · [Khác biệt với takumi / chuyển đổi](docs/vi/differences-from-takumi.md)
 - [Benchmark](docs/vi/benchmark.md) · [Build từ mã nguồn](docs/vi/building-from-source.md) · [Playground](docs/vi/playground.md) · [Xử lý sự cố](docs/vi/troubleshooting.md)
 - Tài liệu cho nhà phát triển: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (báo cáo đầy đủ)](docs/BENCHMARK.md)
@@ -110,8 +132,11 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
 - **Không kèm font.** takumi có sẵn Geist; bm-engine không vẽ chữ nào cho tới khi bạn đăng ký font.
 - **Không truy cập mạng.** Ảnh từ xa và URL trong `@font-face` không bao giờ được tải (`prepare()` cũng
   không tải); hãy truyền bytes qua `images` và `registerFont`.
-- **Không có JSX, không có `ImageResponse`, không có PDF, không có binding native.** Chuyển JSX bằng
+- **Không có JSX, không có `ImageResponse`, không có binding native.** Chuyển JSX bằng
   `@takumi-rs/helpers`.
+- **PDF là một profile riêng** (`bm-engine/pdf`, khoảng 1.5 MB thô) và là bản port của `takumi-pdf` với một số
+  khác biệt đã biết: nội dung chỉ được dàn một lần ở một chiều rộng (trang có tên với chiều rộng khác không được dàn lại), `list-style-image` không được hỗ trợ, PDF/A được kiểm tra nhưng chưa được chứng nhận, và không có
+  bước `needs` (xem [Đầu ra PDF → Hạn chế đã biết](docs/vi/pdf.md#hạn-chế-đã-biết)).
 - **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; inline nguyên tử và padding của
   span inline tham gia ngắt dòng). Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
   block-in-inline, thứ tự vẽ float chỉ xấp xỉ, `text-wrap: balance` cạnh float hoặc inline nguyên tử, padding

@@ -367,11 +367,11 @@ expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 })
 
 ## Profiles in one paragraph
 
-The engine is compiled into three binaries: `core` (node trees, inline styles, static TrueType fonts,
-PNG / JPEG images; 454.5 KiB), `standard` (adds stylesheets, Tailwind, HTML, SVG images, WOFF2,
+The engine is compiled into three binaries for images (and a fourth, `pdf`, that adds PDF output; see [PDF output](pdf.md)): `core` (node trees, inline styles, static TrueType fonts,
+PNG / JPEG images; 454.9 KiB), `standard` (adds stylesheets, Tailwind, HTML, SVG images, WOFF2,
 variable and CFF fonts, effects such as clip-path and blend modes, modern colours, tables, floats;
-877.5 KiB) and `full` (adds bidi and complex scripts, colour emoji, CSS animations and
-`renderAnimation`, `renderSvg`, extra codecs; 1 099.8 KiB). On Node.js, `bm-engine` loads `full`;
+878.1 KiB) and `full` (adds bidi and complex scripts, colour emoji, CSS animations and
+`renderAnimation`, `renderSvg`, extra codecs; 1 100.9 KiB). On Node.js, `bm-engine` loads `full`;
 `bm-engine/core` and `bm-engine/standard` load the smaller ones. `features` tells you what the loaded
 binary can do:
 

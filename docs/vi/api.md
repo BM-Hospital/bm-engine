@@ -23,8 +23,8 @@ Mọi hành vi mô tả ở đây đều đã được kiểm tra bằng cách c
 
 ## Các export của module
 
-Mọi điểm vào (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`) export cùng các tên
-và sở hữu một instance wasm. Xem [Các điểm vào của package](getting-started.md#các-điểm-vào-của-package).
+Mọi điểm vào (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/pdf`) export cùng
+các tên và sở hữu một instance wasm; `bm-engine/pdf` thêm `PdfRenderer` và các hàm tạo bộ đếm trang ([Đầu ra PDF](pdf.md)). Xem [Các điểm vào của package](getting-started.md#các-điểm-vào-của-package).
 
 | Export | Loại |
 |:--|:--|
@@ -34,7 +34,7 @@ và sở hữu một instance wasm. Xem [Các điểm vào của package](gettin
 | `features` | `Readonly<Features>` |
 | `Prepared` | lớp mờ (opaque) của các handle do `prepare()` trả về (bạn không tự tạo được) |
 | `setGlyphCacheMaxBytes` | không làm gì, để tương thích takumi |
-| `profile` | `"core" \| "standard" \| "full"` (chỉ có ở điểm vào theo profile) |
+| `profile` | `"core" \| "standard" \| "full" \| "pdf"` (chỉ có ở điểm vào theo profile) |
 | `wasmUrl` | `() => URL` (chỉ có ở điểm vào theo profile) |
 
 ### `init`
@@ -85,10 +85,11 @@ Một object gồm các giá trị boolean mô tả binary đang nạp; tất c�
 | `animation` | CSS animation (`timeMs`), `renderAnimation`, ảnh nguồn động | | | ✓ |
 | `extraCodecs` | giải mã WebP lossy, giải mã và mã hoá GIF / APNG / WebP động, xuất ICO | | | ✓ |
 | `renderSvg` | `renderSvg()` | | | ✓ |
+| `pdf` | `renderPdf()` / `measurePdf()` (đầu ra PDF) | | | `false` ở `full`; `true` chỉ ở `bm-engine/pdf`, nơi mọi tính năng khác cũng có |
 
 ### `profile` và `wasmUrl`
 
-Chỉ có trên `bm-engine/core`, `/standard` và `/full`: `profile` là tên profile của điểm vào; `wasmUrl()`
+Chỉ có trên `bm-engine/core`, `/standard`, `/full` và `/pdf`: `profile` là tên profile của điểm vào; `wasmUrl()`
 trả về URL mà `init()` nạp theo mặc định (`new URL("./bm_engine[.<profile>].wasm", import.meta.url)`) và
 ném lỗi ở nơi không dùng được `import.meta.url`.
 
@@ -192,6 +193,12 @@ nhúng font, chữ không chọn/copy được). `format` và `quality` bị b�
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });
 // '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">...'
 ```
+
+### `renderPdf` / `measurePdf` và các bản `*Sync`
+
+Mọi `Renderer` đều có `renderPdf(source, options)` và `measurePdf(source, options)`, nhưng chỉ `bm-engine/pdf` chứa bộ ghi PDF;
+ở mọi build khác chúng ném `bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")`.
+Các tùy chọn được mô tả ở [Đầu ra PDF](pdf.md); `PdfRenderer` trong `bm-engine/pdf` là cách gọi thông thường.
 
 ### `measure` / `measureSync`
 

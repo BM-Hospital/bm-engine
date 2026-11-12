@@ -6,7 +6,7 @@
 nào. Trang này đi qua mọi đầu ra mà bm-engine 0.1.0 tạo được — PNG, JPEG, WebP, RGBA thô, ICO, data URL,
 tài liệu SVG và (ở trang riêng) ảnh động — mỗi định dạng xử lý độ trong suốt và `quality` ra sao,
 `devicePixelRatio` và kích thước canvas tác động lẫn nhau thế nào, profile nào có bộ mã hoá nào, và
-benchmark nói gì về tốc độ và dung lượng file. Mọi đoạn mã dưới đây đều nằm trong
+benchmark nói gì về tốc độ và dung lượng file. Tài liệu PDF có các trang riêng, bắt đầu từ [Đầu ra PDF](pdf.md). Mọi đoạn mã dưới đây đều nằm trong
 `docs/examples/formats.mjs`, và ảnh bên dưới mỗi đoạn là đầu ra thật của nó.
 
 ## Tổng quan
@@ -342,6 +342,7 @@ try {
 | ICO | | | ✓ |
 | `renderSvg()` | | | ✓ |
 | `renderAnimation()` (WebP / APNG / GIF) | | | ✓ |
+| PDF (`renderPdf()`, `bm-engine/pdf`) | | | không có trong `full`: xem [Đầu ra PDF](pdf.md) |
 
 Trên profile nhỏ hơn, các đầu ra chỉ có ở `full` ném lỗi rõ ràng:
 

@@ -23,8 +23,9 @@ Behaviour described here was checked by running it; error messages are quoted ve
 
 ## Module exports
 
-Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`) exports the same
-names and owns one wasm instance. See [Package entry points](getting-started.md#package-entry-points).
+Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/pdf`) exports the
+same names and owns one wasm instance; `bm-engine/pdf` adds `PdfRenderer` and the page counter helpers
+([PDF output](pdf.md)). See [Package entry points](getting-started.md#package-entry-points).
 
 | Export | Kind |
 |:--|:--|
@@ -34,7 +35,7 @@ names and owns one wasm instance. See [Package entry points](getting-started.md#
 | `features` | `Readonly<Features>` |
 | `Prepared` | opaque class of `prepare()` handles (not constructible by you) |
 | `setGlyphCacheMaxBytes` | no-op, for takumi compatibility |
-| `profile` | `"core" \| "standard" \| "full"` (profile entries only) |
+| `profile` | `"core" \| "standard" \| "full" \| "pdf"` (profile entries only) |
 | `wasmUrl` | `() => URL` (profile entries only) |
 
 ### `init`
@@ -84,10 +85,11 @@ A frozen-shape object of booleans describing the loaded binary; all `false` befo
 | `animation` | CSS animations (`timeMs`), `renderAnimation`, animated image sources | | | ✓ |
 | `extraCodecs` | lossy WebP decode, animated GIF / APNG / WebP decode and encode, ICO output | | | ✓ |
 | `renderSvg` | `renderSvg()` | | | ✓ |
+| `pdf` | `renderPdf()` / `measurePdf()` (PDF output) | | | `false` in `full`; `true` only in `bm-engine/pdf`, which has every other feature too |
 
 ### `profile` and `wasmUrl`
 
-Only on `bm-engine/core`, `/standard` and `/full`: `profile` is the entry's profile name; `wasmUrl()`
+Only on `bm-engine/core`, `/standard`, `/full` and `/pdf`: `profile` is the entry's profile name; `wasmUrl()`
 returns the URL `init()` loads by default (`new URL("./bm_engine[.<profile>].wasm", import.meta.url)`)
 and throws where `import.meta.url` is not usable.
 
@@ -190,6 +192,12 @@ the text is not selectable). `format` and `quality` are ignored.
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });
 // '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">...'
 ```
+
+### `renderPdf` / `measurePdf` and the `*Sync` twins
+
+Every `Renderer` has `renderPdf(source, options)` and `measurePdf(source, options)`, but only `bm-engine/pdf` contains the
+PDF writer; on any other build they throw `bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")`.
+The options are described in [PDF output](pdf.md); `PdfRenderer` in `bm-engine/pdf` is the usual way to call them.
 
 ### `measure` / `measureSync`
 

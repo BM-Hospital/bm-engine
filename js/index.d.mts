@@ -13,6 +13,8 @@ declare global {
   }
 }
 
+import type { PdfMeasureOptions, PdfRenderOptions, MeasuredSize } from "./pdf-types.mjs";
+
 export type ByteBuf = Uint8Array | ArrayBuffer | ArrayBufferView;
 /**
  * A fresh Uint8Array that owns its ArrayBuffer (`Uint8Array<ArrayBuffer>` on TypeScript 5.7+, so it can be passed
@@ -304,6 +306,8 @@ export type Features = {
   extraCodecs: boolean;
   /** renderSvg */
   renderSvg: boolean;
+  /** renderPdf / measurePdf (the pdf build: bm-engine/pdf) */
+  pdf: boolean;
 };
 export declare const features: Readonly<Features>;
 
@@ -337,6 +341,12 @@ export declare class Renderer {
   /** SVG document output (`renderSvg` feature: the full profile; otherwise throws) */
   renderSvgSync(source: Source | Prepared, options?: RenderOptions): string;
   renderSvg(source: Source | Prepared, options?: RenderOptions): Promise<string>;
+  /** takumi-pdf output: a PDF file (`pdf` feature: bm-engine/pdf; otherwise throws "renderPdf is not supported by this build"). */
+  renderPdfSync(source: Source | Prepared, options?: PdfRenderOptions): OutputBytes;
+  renderPdf(source: Source | Prepared, options?: PdfRenderOptions): Promise<OutputBytes>;
+  /** takumi-pdf `measure`: laid-out size in CSS px at the page width (`pdf` feature). */
+  measurePdfSync(source: Source | Prepared, options?: PdfMeasureOptions): MeasuredSize;
+  measurePdf(source: Source | Prepared, options?: PdfMeasureOptions): Promise<MeasuredSize>;
   /** Layout only. */
   measureSync(source: Source | Prepared, options?: RenderOptions): MeasuredNode;
   measure(source: Source | Prepared, options?: RenderOptions): Promise<MeasuredNode>;

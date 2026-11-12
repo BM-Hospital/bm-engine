@@ -25,8 +25,8 @@ package; những đoạn dành cho runtime không chạy thử được ở đâ
 npm install bm-engine
 ```
 
-Package không có dependency và không có install script. Bên trong gồm ba binary WebAssembly build sẵn
-(`core`, `standard`, `full`), add-on WOFF tùy chọn, một wrapper ESM không phụ thuộc gì và các khai báo
+Package không có dependency và không có install script. Bên trong gồm bốn binary WebAssembly build sẵn
+(`core`, `standard`, `full` và `pdf`, thêm đầu ra PDF), add-on WOFF tùy chọn, một wrapper ESM không phụ thuộc gì và các khai báo
 TypeScript. Package chỉ phát hành dạng ES module (xem [CommonJS](#commonjs)).
 
 ## Các điểm vào của package
@@ -37,6 +37,7 @@ TypeScript. Package chỉ phát hành dạng ES module (xem [CommonJS](#commonjs
 | `bm-engine/full` | `full`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.wasm` nằm cạnh module (hoặc truyền vào) |
 | `bm-engine/standard` | `standard`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.standard.wasm` |
 | `bm-engine/core` | `core`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.core.wasm` |
+| `bm-engine/pdf` | `pdf` (= `full` + đầu ra PDF), tự khởi tạo khi import; xem [Đầu ra PDF](pdf.md) | `await init()` tự tìm `bm_engine.pdf.wasm` |
 | `bm-engine/woff` | `loadWoff()` / `decodeWoff()` — add-on WOFF | như bên trái |
 | `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | các binary thô, dùng cho import asset của bundler và import module trên Workers | như bên trái |
 
@@ -208,7 +209,7 @@ export default {
 Những gì đã kiểm thử: `initSync(new WebAssembly.Module(bytes))` đã chạy trong Node, và bài test package
 resolve các điểm vào với `node --conditions=workerd` rồi khởi tạo chúng từ một `WebAssembly.Module`;
 đoạn mã trên **chưa** được chạy dưới wrangler / workerd. Kích thước nén của từng profile (gzip -9: core
-200 KiB, standard 435.2 KiB, full 538.2 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
+211.6 KiB, standard 435.5 KiB, full 538.3 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
 của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` nạp và khởi tạo
@@ -219,9 +220,9 @@ của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.w
 
 | Profile | wasm thô / brotli | Chọn khi |
 |:--|:--|:--|
-| `core` | 454.5 / 180.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
-| `standard` | 877.5 / 374.5 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
-| `full` | 1 099.8 / 453.4 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
+| `core` | 454.9 / 180.4 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
+| `standard` | 878.1 / 374.6 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
+| `full` | 1 100.9 / 453.7 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
 
 Chi tiết, kể cả việc profile nhỏ xử lý ra sao với đầu vào nó không hỗ trợ, nằm ở
 [Profile và kích thước](profiles-and-size.md). Lúc chạy, `features` cho biết binary đang nạp có gì:

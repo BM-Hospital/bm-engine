@@ -25,7 +25,7 @@ Measured on an Intel Core i3-10100, Windows 11, Node 26.13, `full` profile, agai
 | og-card / blog-card / stress (3000 × 2000) PNG, phase-2 run | 9.23 / 16.47 / 24.00 ms | 13.41 / 31.14 / 36.71 ms |
 | wasm memory after 50 og-card PNG renders | 11.6 MiB | 10.6 MiB |
 | Peak process RSS | 89.1 MiB | 107.9 MiB |
-| wasm download, brotli: core / standard / full | 180.3 / 374.5 / 453.4 KiB | 1 409.3 KiB |
+| wasm download, brotli: core / standard / full | 180.4 / 374.6 / 453.7 KiB | 1 409.3 KiB |
 
 Absolute times depend on the machine; the ratios are more stable. PNG rendering was faster than takumi
 in 191/191 cases and raw rendering in 171/191.
@@ -110,9 +110,9 @@ share:
 
 | Profile | wasm raw / brotli | Use it for |
 |:--|--:|:--|
-| `bm-engine/core` | 454.5 / 180.3 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
-| `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
-| `bm-engine/full` (and `bm-engine` on Node) | 1 099.8 / 453.4 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
+| `bm-engine/core` | 454.9 / 180.4 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
+| `bm-engine/standard` | 878.1 / 374.6 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
+| `bm-engine/full` (and `bm-engine` on Node) | 1 100.9 / 453.7 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
 
 Size matters in browsers and on edge runtimes with a script-size limit; on a Node server the difference
 is a few hundred KiB read once at startup. Check the loaded profile at startup instead of discovering a
@@ -361,7 +361,7 @@ await pool.close();
   took 20.4 ms.
 - **Cache the binary.** The file names do not change between releases of the same version, so serve
   them with long-lived caching tied to the package version (or let your bundler fingerprint them).
-- **Load the smallest profile** that covers your templates — the download is 180 KiB (core) to 453 KiB
+- **Load the smallest profile** that covers your templates — the download is 180 KiB (core) to 454 KiB
   (full) with brotli.
 - **Initialise early** (`await init()` when the app starts, not on the first click) and keep one
   renderer for the page's lifetime.

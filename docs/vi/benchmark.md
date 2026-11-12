@@ -40,9 +40,9 @@ bm-engine vẫn dùng nhiều hơn takumi 9 % bộ nhớ wasm và chậm hơn �
 
 | Bản build | Thô | gzip -9 | brotli | so với takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 454.5 KiB | 211.5 KiB | 180.3 KiB | nhỏ hơn 9.3× |
-| `standard` | 877.5 KiB | 435.2 KiB | 374.5 KiB | nhỏ hơn 4.8× |
-| `full` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | nhỏ hơn 3.9× |
+| `core` | 454.9 KiB | 211.6 KiB | 180.4 KiB | nhỏ hơn 9.3× |
+| `standard` | 878.1 KiB | 435.5 KiB | 374.6 KiB | nhỏ hơn 4.8× |
+| `full` | 1 100.9 KiB | 538.3 KiB | 453.7 KiB | nhỏ hơn 3.8× |
 | Add-on WOFF | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | giai đoạn 1 (một bản duy nhất) | 320.9 KiB | 147.1 KiB | 126.5 KiB | nhỏ hơn 13.2× |
 

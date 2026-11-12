@@ -156,8 +156,8 @@ The CDN form is untested until the package is published. Check that the CDN send
 
 | Profile | wasm brotli | When |
 |:--|--:|:--|
-| `core` | 180.3 KiB | node trees, inline styles, TTF, PNG / JPEG images |
-| `standard` | 374.5 KiB | + HTML, CSS, Tailwind, SVG, WOFF2, effects, tables |
-| `full` | 453.4 KiB | + complex scripts, colour emoji, animation, `renderSvg` |
+| `core` | 180.4 KiB | node trees, inline styles, TTF, PNG / JPEG images |
+| `standard` | 374.6 KiB | + HTML, CSS, Tailwind, SVG, WOFF2, effects, tables |
+| `full` | 453.7 KiB | + complex scripts, colour emoji, animation, `renderSvg` |
 
 Fonts are often the biggest download; subset them. See [Profiles and size](../profiles-and-size.md).

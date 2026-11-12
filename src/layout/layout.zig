@@ -76,6 +76,10 @@ pub const InlineBand = tree.InlineBand;
 pub const Options = tree.Options;
 pub const Error = tree.Error;
 pub const max_depth = tree.max_depth;
+/// Pagination of a computed tree for paged (PDF) output; needs the PDF feature (`fragment.enabled`).
+pub const fragment = @import("fragment.zig");
+pub const Breaks = style.Breaks;
+pub const BreakBetween = style.BreakBetween;
 
 test {
     _ = @import("tests.zig");
@@ -83,4 +87,5 @@ test {
     _ = @import("tests_inline.zig");
     _ = @import("tests_float.zig");
     _ = @import("tests_flow.zig");
+    _ = @import("tests_fragment.zig");
 }

@@ -120,7 +120,26 @@ fn isSpace(ch: u8) bool {
 // `tw_*` entries are the element-local variables takumi composes through; they are never emitted.
 // Entries from `outline_style` on are not in Tailwind's list (no rank).
 
-pub const P = enum(u8) {
+/// Paged output (PDF feature; everything on in standalone tests): the `break-before-*` / `break-inside-*` /
+/// `break-after-*` utilities (Tailwind v4; takumi's `tw` has none, but its `break-*` properties are what
+/// takumi-pdf paginates by). Without the feature the properties are not even in `P`.
+const tw_pdf = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config")) (@hasDecl(root.bm_config, "enable_pdf") and root.bm_config.enable_pdf) else true;
+};
+
+pub const P = if (tw_pdf) P_all else without(P_all, "break_");
+
+fn without(comptime E: type, comptime prefix: []const u8) type {
+    @setEvalBranchQuota(50_000);
+    var names: []const [:0]const u8 = &.{};
+    for (@typeInfo(E).@"enum".field_names) |n| {
+        if (!std.mem.startsWith(u8, n, prefix)) names = names ++ .{n};
+    }
+    return @Enum(u8, .exhaustive, names, &std.simd.iota(u8, names.len));
+}
+
+const P_all = enum(u8) {
     visibility,
     position,
     inset,
@@ -168,6 +187,9 @@ pub const P = enum(u8) {
     list_style_position,
     list_style_type,
     list_style_image,
+    break_before,
+    break_inside,
+    break_after,
     grid_auto_columns,
     grid_auto_flow,
     grid_auto_rows,
@@ -988,8 +1010,31 @@ const fixed_pack = pack(&.{
     fx("backdrop-sepia", "tw-backdrop-sepia:sepia(100%);backdrop-filter:\x01B"),
 });
 
+/// Paged output only (`tw_pdf`): `all` breaks every fragmentation context, i.e. the page.
+const fixed_pdf_pack = if (tw_pdf) pack(&.{
+    fx("break-before-auto", "break-before:auto"),
+    fx("break-before-avoid", "break-before:avoid"),
+    fx("break-before-all|break-before-page", "break-before:page"),
+    fx("break-before-avoid-page", "break-before:avoid-page"),
+    fx("break-before-left", "break-before:left"),
+    fx("break-before-right", "break-before:right"),
+    fx("break-before-column", "break-before:column"),
+    fx("break-inside-auto", "break-inside:auto"),
+    fx("break-inside-avoid", "break-inside:avoid"),
+    fx("break-inside-avoid-page", "break-inside:avoid-page"),
+    fx("break-inside-avoid-column", "break-inside:avoid-column"),
+    fx("break-after-auto", "break-after:auto"),
+    fx("break-after-avoid", "break-after:avoid"),
+    fx("break-after-all|break-after-page", "break-after:page"),
+    fx("break-after-avoid-page", "break-after:avoid-page"),
+    fx("break-after-left", "break-after:left"),
+    fx("break-after-right", "break-after:right"),
+    fx("break-after-column", "break-after:column"),
+}) else "";
+
 /// The declaration bytes of the fixed utility `tok`.
 fn findFixed(tok: []const u8) ?[]const u8 {
+    if (comptime tw_pdf) if (findPacked(fixed_pdf_pack, tok)) |d| return d;
     return findPacked(fixed_pack, tok);
 }
 
@@ -1977,6 +2022,18 @@ test "basic utilities" {
     try expectCss("unknown-class foo bg-brand z-10", "");
     try expectCss("rounded", "border-radius:0.25rem");
     try expectCss("truncate", "text-overflow:ellipsis;white-space:nowrap;overflow:hidden");
+}
+
+test "break utilities (paged output)" {
+    if (comptime !tw_pdf) {
+        try expectCss("break-before-page break-inside-avoid break-after-avoid-page", "");
+        return;
+    }
+    // (Tailwind's property order: ... display ... list-style, break-before, break-inside, break-after, grid ...)
+    try expectCss("flex break-after-avoid-page break-inside-avoid break-before-page", "display:flex;break-before:page;break-inside:avoid;break-after:avoid-page");
+    try expectCss("break-before-all break-after-column", "break-before:page;break-after:column");
+    try expectCss("break-inside-avoid-column break-after-left", "break-inside:avoid-column;break-after:left");
+    try expectCss("break-before-sometimes break-inside-page", "");
 }
 
 test "negatives" {

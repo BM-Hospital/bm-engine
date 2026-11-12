@@ -2,8 +2,8 @@
 
 [English](../en/profiles-and-size.md) · [Tiếng Việt](profiles-and-size.md)
 
-bm-engine được biên dịch thành ba binary với tập tính năng khác nhau để bạn chỉ phải tải những gì mình
-dùng: `core` (454.5 KiB), `standard` (877.5 KiB) và `full` (1 099.8 KiB), so với 4 234.9 KiB của bản wasm
+bm-engine được biên dịch thành ba binary (và binary thứ tư, `pdf`, cho đầu ra PDF) với tập tính năng khác nhau để bạn chỉ phải tải những gì mình
+dùng: `core` (454.9 KiB), `standard` (878.1 KiB) và `full` (1 100.9 KiB), so với 4 234.9 KiB của bản wasm
 takumi 2.20. Trang này liệt kê nội dung từng profile, chi phí của từng tính năng tùy chọn, cách một
 profile nhỏ xử lý đầu vào nó không hỗ trợ, cách tự build bản riêng, và lý do chỉ có WOFF được tách thành
 add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 1024 byte.
@@ -12,9 +12,10 @@ add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 
 
 | Bản build | Gốc | gzip -9 | brotli (q11) | so với takumi (gốc) |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | nhỏ hơn 9.3× |
-| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | nhỏ hơn 4.8× |
-| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | nhỏ hơn 3.9× |
+| `core` — `bm_engine.core.wasm` | 454.9 KiB | 211.6 KiB | 180.4 KiB | nhỏ hơn 9.3× |
+| `standard` — `bm_engine.standard.wasm` | 878.1 KiB | 435.5 KiB | 374.6 KiB | nhỏ hơn 4.8× |
+| `full` — `bm_engine.wasm` | 1 100.9 KiB | 538.3 KiB | 453.7 KiB | nhỏ hơn 3.8× |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 1 520.8 KiB | 746.0 KiB | 612.5 KiB | nhỏ hơn 2.8× |
 | Add-on WOFF — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
@@ -48,6 +49,13 @@ import gì từ môi trường chạy.
 | CSS animation tại `timeMs`, `renderAnimation`, nguồn ảnh động (`animation`) | | | ✓ |
 | Giải mã WebP lossy, codec GIF / APNG / WebP động, xuất ICO (`extraCodecs`) | | | ✓ |
 | `renderSvg` (`renderSvg`) | | | ✓ |
+
+### Profile `pdf`
+
+`bm_engine.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
+các thuộc tính CSS paged-media ([Đầu ra PDF](pdf.md)). Đây là binary duy nhất có PDF; `features.pdf` là `true` ở đó và
+`false` ở các binary khác. Nó thêm khoảng 0.4 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
+tính năng của `core`, `standard` hay `full`.
 
 ## Chi phí biên của từng tính năng
 
@@ -114,7 +122,7 @@ Mỗi tính năng là một cờ lúc biên dịch; các profile chỉ là bộ 
 
 ```sh
 # a preset
-zig build -Dprofile=core            # core | standard | full (default)
+zig build -Dprofile=core            # core | standard | full (default) | pdf (= full + đầu ra PDF)
 
 # a preset plus / minus single features
 zig build -Dprofile=core -Dcss=true -Dtw=true
@@ -126,7 +134,7 @@ node scripts/build.mjs -- -Dtables=false
 
 Các cờ: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects`, `modern_color`,
 `tables`, `floats`, `webp_gif_decode`, `text_wrap_balance`, `color_fonts`, `complex_text`,
-`animation`, `extra_codecs`, `render_svg`. Các tùy chọn build khác: `-Dwasm-optimize=small|fast|safe|debug`
+`animation`, `extra_codecs`, `render_svg`, `pdf`. Các tùy chọn build khác: `-Dwasm-optimize=small|fast|safe|debug`
 (mặc định `small`), `-Dstrip=false`, `-Dstack-kib=<n>` (mặc định 1024). Kết quả nằm ở
 `zig-out/bin/bm_engine.wasm`; nạp nó bằng `init(bytes)` / `initSync(bytes)`, hoặc trong Node dùng
 `BM_WASM=path/to/bm_engine.wasm` với entry `bm-engine`. `features` báo đúng các cờ mà binary được build.

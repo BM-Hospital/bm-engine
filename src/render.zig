@@ -403,7 +403,7 @@ pub const Renderer = struct {
         self.arena.reset();
     }
 
-    fn beginCall(self: *Renderer) void {
+    pub fn beginCall(self: *Renderer) void {
         self.result = "";
         self.err = "";
         self.arena.reset();
@@ -662,6 +662,38 @@ pub const Renderer = struct {
         var out: std.ArrayList(u8) = .empty;
         try @import("svg_out.zig").write(&f, &out);
         self.result = out.items;
+        return self.result;
+    }
+
+    /// takumi-pdf `render`: the frame as a PDF file (see pdf/pdf.zig). Fails with a clear error when compiled out.
+    pub fn renderPdf(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        if (comptime !config.enable_pdf) {
+            self.beginCall();
+            self.setErr("renderPdf is not supported by this build", "");
+            return error.Invalid;
+        }
+        return self.renderPdfImpl(kind, source, opts_json);
+    }
+
+    noinline fn renderPdfImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        self.beginCall();
+        self.result = try @import("pdf/pdf.zig").render(self, kind, source, opts_json);
+        return self.result;
+    }
+
+    /// takumi-pdf `measure`: `{"width","height"}` of the source laid out like a page band (pdf/pdf.zig).
+    pub fn measurePdf(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        if (comptime !config.enable_pdf) {
+            self.beginCall();
+            self.setErr("measurePdf is not supported by this build", "");
+            return error.Invalid;
+        }
+        return self.measurePdfImpl(kind, source, opts_json);
+    }
+
+    noinline fn measurePdfImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        self.beginCall();
+        self.result = try @import("pdf/pdf.zig").measure(self, kind, source, opts_json);
         return self.result;
     }
 
@@ -1065,7 +1097,7 @@ fn percentDecode(a: Allocator, payload: []const u8) ?[]const u8 {
 }
 
 /// Payload bytes of a `data:` URI (base64 decoded, or percent-decoded), in `a`.
-fn decodeDataUri(a: Allocator, src: []const u8) ?[]const u8 {
+pub fn decodeDataUri(a: Allocator, src: []const u8) ?[]const u8 {
     const comma = std.mem.indexOfScalar(u8, src, ',') orelse return null;
     const meta = src[5..comma];
     const payload = src[comma + 1 ..];
@@ -1192,6 +1224,8 @@ pub const Frame = struct {
     pend_objs: std.ArrayList(PendingObj) = .empty,
     /// A line layout could not be allocated during the layout pass.
     layout_oom: bool = false,
+    // (the paged-layout state, PDF feature only, is `tree.paged`: `layout.fragment.PagedState`. A field here,
+    // even a zero-size one, perturbs the struct layout and grows the other builds.)
 
     pub const Pseudo = struct { cs: *const CS, text: []const u8 };
 
@@ -1214,13 +1248,19 @@ pub const Frame = struct {
         return css.keyframes(&f.cssx.m, name);
     }
 
-    fn prepare(f: *Frame, kind: SourceKind, source: []const u8) Error!void {
+    pub fn prepare(f: *Frame, kind: SourceKind, source: []const u8) Error!void {
         const o = f.opts;
         f.ctx = .{
             .dpr = o.dpr,
             .viewport_w = if (o.width) |w| @floatFromInt(w) else 0,
             .viewport_h = if (o.height) |h| @floatFromInt(h) else 0,
             .root_font_size = 16 * o.dpr,
+        };
+        if (comptime layout.fragment.enabled) if (f.tree.paged.page_h > 0) {
+            // paged (takumi-pdf `PageFrame::column`): viewport units take the page area, fixed boxes
+            // position against it, the block size is unbounded (`opts.height` is null)
+            f.ctx.viewport_w = f.tree.paged.page_w;
+            f.ctx.viewport_h = f.tree.paged.page_h;
         };
         f.dom = .{ .lang = o.lang, .max_depth = max_node_depth };
         switch (kind) {
@@ -1241,12 +1281,18 @@ pub const Frame = struct {
                 f.dom.fromHtml(f.a, html, &doc) catch |e| return f.domError(e);
             },
         }
+        // (PDF page counters fill their class hooks here: src/pdf/counters.zig)
+        if (comptime layout.fragment.enabled) if (f.tree.paged.dom_hook) |hook| try hook(f.tree.paged.dom_ctx, @ptrCast(f));
         if (comptime config.enable_css) {
             try f.prepareCss();
         } else if (nonEmpty(o.css) or nonEmpty(o.stylesheets)) {
             return f.fail("the `css` option is not supported by this build", "");
         }
         try f.styleTree(f.dom.root, null, 0);
+        // (PDF list markers: src/pdf/markers.zig, gated by `listMarkers`)
+        if (comptime config.enable_pdf) if (f.listMarkers()) try @import("pdf/markers.zig").generate(f);
+        // (PDF: named pages, the `page` property: src/pdf/page_names.zig)
+        if (comptime config.enable_pdf) if (f.tree.paged.pdf) try @import("pdf/page_names.zig").collect(f);
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
 
@@ -1266,7 +1312,12 @@ pub const Frame = struct {
             f.tree.appendChild(f.lroot, lr) catch return error.OutOfMemory;
         }
         const avail: [2]layout.AvailableSpace = .{
-            if (o.width) |w| .{ .definite = @floatFromInt(w) } else .max_content,
+            // (paged: the page area's exact width, takumi-pdf's `PageSizer` area, not the integral
+            // viewport)
+            pw: {
+                if (comptime layout.fragment.enabled) if (f.tree.paged.page_h > 0) break :pw .{ .definite = f.tree.paged.page_w };
+                break :pw if (o.width) |w| .{ .definite = @floatFromInt(w) } else .max_content;
+            },
             if (o.height) |h| .{ .definite = @floatFromInt(h) } else .max_content,
         };
         f.tree.compute(f.lroot, avail, f, measureCb, .{ .quantize64 = true, .baseline = baselineCb, .inline_fn = inlineCb }) catch |e| switch (e) {
@@ -1274,6 +1325,12 @@ pub const Frame = struct {
             else => return f.fail("node tree is nested too deeply", ""),
         };
         if (f.layout_oom) return error.OutOfMemory;
+        if (comptime layout.fragment.enabled) if (f.tree.paged.page_h > 0) {
+            // (any length of content, even none, makes pages: the canvas is one page area)
+            f.canvas_w = o.width orelse 1;
+            f.canvas_h = @intFromFloat(@max(1, @min(@ceil(f.tree.paged.page_h), 16384)));
+            return;
+        };
         const rl = f.tree.layout(lr);
         const cw: f32 = if (o.width) |w| @floatFromInt(w) else @floor(rl.x + rl.w + rl.margin.right + 0.5);
         const ch: f32 = if (o.height) |h| @floatFromInt(h) else @floor(rl.y + rl.h + rl.margin.bottom + 0.5);
@@ -1281,6 +1338,16 @@ pub const Frame = struct {
         if (cw > 16384 or ch > 16384 or cw * ch > 40.0e6) return f.fail("canvas too large", "");
         f.canvas_w = @intFromFloat(cw);
         f.canvas_h = @intFromFloat(ch);
+    }
+
+    /// THE gate of list markers (`display: list-item`, src/pdf/markers.zig; PDF builds only): the
+    /// frames a PDF is drawn from generate them. Returning true here gives every frame of a PDF
+    /// build its markers (the raster / SVG painters would then draw a symbol marker as the blank
+    /// it holds: only the PDF text painter paints its shape, emit_text.zig `paintSymbol`); builds
+    /// without the PDF feature also need markers.zig compiled in and its state moved out of
+    /// `layout.fragment.PagedState`.
+    fn listMarkers(f: *const Frame) bool {
+        return f.tree.paged.pdf;
     }
 
     fn addNode(f: *Frame, n: Node) Error!u32 {
@@ -1418,7 +1485,7 @@ pub const Frame = struct {
 
     /// Cascade layers of element `i`: preset (UA) < presentation hints < tw utilities < stylesheet
     /// rules < inline style. Returns the count written to `layers` (room for one extra layer).
-    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[6]style.Layer) Error!usize {
+    pub fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[6]style.Layer) Error!usize {
         const a = f.a;
         const el = f.dom.at(i);
         var n: usize = 0;
@@ -1561,7 +1628,14 @@ pub const Frame = struct {
             while (true) switch (it.stage) {
                 0 => {
                     it.stage = 1;
-                    if (e.before != none) return .{ .ps = e.before };
+                    if (e.before != none) {
+                        // (PDF: a list marker goes before the `::before` box, chained, see markers.zig)
+                        if (comptime config.enable_pdf) if (@import("pdf/markers.zig").chainedBefore(it.f, e.before) != none) {
+                            it.cur = e.before;
+                            it.stage = 5;
+                        };
+                        return .{ .ps = e.before };
+                    }
                 },
                 1 => {
                     it.stage = 2;
@@ -1580,7 +1654,16 @@ pub const Frame = struct {
                     it.stage = 4;
                     if (e.after != none) return .{ .ps = e.after };
                 },
-                else => return null,
+                else => {
+                    if (comptime config.enable_pdf) if (it.stage == 5) {
+                        const mk = @import("pdf/markers.zig");
+                        const nx = mk.chainedBefore(it.f, it.cur);
+                        it.cur = nx;
+                        if (mk.chainedBefore(it.f, nx) == none) it.stage = 1;
+                        return .{ .ps = nx };
+                    };
+                    return null;
+                },
             };
         }
     };
@@ -1740,6 +1823,7 @@ pub const Frame = struct {
         const ps = f.pseudos.items[p];
         const id = try f.addNode(.{ .kind = .text, .cs = ps.cs, .parent = parent });
         f.nodes.items[id].para = try f.soloParagraph(ps.text, ps.cs);
+        if (comptime config.enable_pdf) try @import("pdf/markers.zig").onBuilt(f, p, id);
         return id;
     }
 
@@ -2149,9 +2233,39 @@ pub const Frame = struct {
             .shape_cache = &f.r.shape_cache,
             .boxes = try f.paragraphBoxes(),
         };
+        if (comptime config.enable_pdf) {
+            // PDF: the paragraph keeps the text its glyph clusters index (ToUnicode / ActualText)
+            const pt = try f.a.create(ParaWithText);
+            // (a frame a PDF is drawn from places its glyphs as takumi does: text.zig `item_origin`)
+            var popts = opts;
+            popts.item_origin = f.tree.paged.pdf;
+            pt.p = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, popts) catch return error.OutOfMemory;
+            var total: usize = 0;
+            for (runs) |r| total += if (r.object == null) r.text.len else 0;
+            const t = try f.a.alloc(u8, total);
+            var at: usize = 0;
+            for (runs) |r| if (r.object == null) {
+                @memcpy(t[at..][0..r.text.len], r.text);
+                at += r.text.len;
+            };
+            pt.text = t;
+            return &pt.p;
+        }
         const p = try f.a.create(font.Paragraph);
         p.* = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts }, f.a, &f.r.fonts, runs, opts) catch return error.OutOfMemory;
         return p;
+    }
+
+    /// (PDF feature) A paragraph allocated together with its text (`paragraphText`).
+    const ParaWithText = struct { p: font.Paragraph, text: []const u8 };
+
+    /// The text a paragraph's glyph clusters are byte offsets into: the concatenated,
+    /// text-transformed texts of its non-object runs, exactly as given to the text engine. Kept
+    /// only with the PDF feature ("" otherwise). `para` must be a node's `para`.
+    pub fn paragraphText(para: *const font.Paragraph) []const u8 {
+        if (comptime !config.enable_pdf) return "";
+        const pt: *const ParaWithText = @alignCast(@fieldParentPtr("p", para));
+        return pt.text;
     }
 
     // ---- layout tree
@@ -2171,6 +2285,18 @@ pub const Frame = struct {
         // (a block of text: its lines shorten beside floats)
         if (n.kind == .text and (n.cs.display == .block or n.cs.display == .@"inline")) st.is_inline_content = true;
         if (n.kind == .image and st.aspect_ratio == null and n.img_ratio > 0) st.aspect_ratio = n.img_ratio;
+        if (comptime layout.fragment.enabled) {
+            // anonymous boxes take only the line counts of their block (never break-before / after /
+            // inside); a replaced element is monolithic (takumi-core `is_monolithic`: `is_replaced`)
+            if (n.kind == .anon_text or n.kind == .anon_box) {
+                st.breaks.widows = n.cs.widows;
+                st.breaks.orphans = n.cs.orphans;
+            }
+            if (n.kind == .image) st.breaks.monolithic = true;
+            if (comptime config.enable_pdf) if (n.el != none and n.kind != .anon_text and n.kind != .anon_box) {
+                st.breaks.page = @import("pdf/page_names.zig").idOf(f, n.el);
+            };
+        }
         if (n.el != none) {
             if (comptime config.enable_tables) tableSpans(&f.dom, n.el, &st);
             if (n.parent != none and (st.grid_column.start == .auto or st.grid_column.end == .auto or st.grid_row.start == .auto or st.grid_row.end == .auto)) {
@@ -2405,6 +2531,214 @@ pub const Frame = struct {
         n.tl = tl;
         n.tl_w = cw;
         return tl;
+    }
+
+    // ---- paged layout (PDF feature; see layout/fragment.zig)
+    //
+    // Use (the PDF emitter's document loop):
+    //   f.setPaged(content_w, content_h);           // before prepare
+    //   try f.prepare(kind, source);                // lays out at the page width, unbounded height
+    //   const pages = try f.paginate(.{ .page_height = content_h });
+    //   for (pages.pages, 0..) |pg, i| {
+    //       // window [pg.top, pg.top + pg.height) of the frame, its top at the page content box top,
+    //       // clipped to the content box: paint the root (paintNode(f.root, 0, 0)) translated by -pg.top
+    //       for (pages.repeatsOf(i)) |r| {
+    //           const o = f.repeatOrigin(r);        // paint subtree o.id at (o.ox, o.oy), same translation
+    //       }
+    //   }
+    // Text needs nothing more: `textLayout` returns the lines already moved by the pagination
+    // (`lineDy`), so glyphs, decorations, inline boxes, shadows and `RunIter` follow them.
+    // `paintPageRaster` is the reference implementation through the raster painter. The state lives in
+    // `f.tree.paged` (`layout.fragment.PagedState`; `void` without the PDF feature); `f.paginated()` reads it.
+
+    /// The pagination result, null before `paginate` (and always without the PDF feature).
+    pub fn paginated(f: *const Frame) ?*const layout.fragment.Pages {
+        if (comptime !layout.fragment.enabled) return null;
+        if (f.tree.paged.pages) |*p| return p;
+        return null;
+    }
+
+    pub const PageLayout = struct {
+        /// block size of the page area of every page
+        page_height: f32,
+        /// per-page block sizes (`@page :first`, bands): overrides `page_height`
+        page_height_fn: ?layout.fragment.PageHeightFn = null,
+        ctx: *anyopaque = undefined,
+        max_pages: u32 = 20_000,
+    };
+
+    /// Before `prepare`: lay the frame out for pages whose page area (content box) is
+    /// `page_w` x `page_h` px (the first page's when they vary). The layout width is `page_w`
+    /// truncated to whole px (takumi's `Viewport` is integral), the block size is unbounded; `vw` /
+    /// `vh` resolve against the page area and `position: fixed` boxes against the first page's area
+    /// (takumi-pdf `PageFrame::column` / `page_root`).
+    pub fn setPaged(f: *Frame, page_w: f32, page_h: f32) void {
+        if (comptime !layout.fragment.enabled) return;
+        f.tree.paged.page_w = page_w;
+        f.tree.paged.page_h = page_h;
+        f.opts.width = @intFromFloat(std.math.clamp(page_w, 1, 16384));
+        f.opts.height = null;
+    }
+
+    /// After `prepare` (with `setPaged`): breaks the frame into pages. Rewrites the layout in place
+    /// into stitched space (page i = frame y range [pages[i].top, + height)) and moves the lines of
+    /// text that a break pushed down (`textLayout` returns them moved). Call once.
+    pub fn paginate(f: *Frame, o: PageLayout) Error!*const layout.fragment.Pages {
+        if (comptime layout.fragment.enabled) {
+            f.tree.paged.height_fn = o.page_height_fn;
+            f.tree.paged.height_ctx = o.ctx;
+            const pages = layout.fragment.paginate(&f.tree, f.a, f.lroot, .{
+                .page_height = o.page_height,
+                .page_height_fn = if (o.page_height_fn != null) pageHeightCb else null,
+                .ctx = @ptrCast(f),
+                .lines_fn = linesCb,
+                .max_pages = o.max_pages,
+            }) catch |e| return switch (e) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.TooManyPages => f.fail("too many pages", ""),
+                error.InvalidPageSize => f.fail("invalid page size", ""),
+            };
+            if (f.layout_oom) return error.OutOfMemory;
+            f.tree.paged.pages = pages;
+            try f.applyLineShifts(&f.tree.paged.pages.?);
+            return &f.tree.paged.pages.?;
+        } else return f.fail("paged layout is not supported by this build", "");
+    }
+
+    fn pageHeightCb(ctx: *anyopaque, page: u32, name: u32) f32 {
+        const f: *Frame = @ptrCast(@alignCast(ctx));
+        if (comptime !layout.fragment.enabled) return 0;
+        return f.tree.paged.height_fn.?(f.tree.paged.height_ctx, page, name);
+    }
+
+    /// `layout.fragment.LinesFn`: the line boxes of a text leaf / inline formatting context, from its
+    /// border-box top (none for images and other leaves without text).
+    fn linesCb(ctx: *anyopaque, lid: layout.NodeId) []const layout.fragment.LineBox {
+        const f: *Frame = @ptrCast(@alignCast(ctx));
+        if (comptime !layout.fragment.enabled) return &.{};
+        if (lid >= f.lid_node.items.len) return &.{};
+        const id = f.lid_node.items[lid];
+        if (id == none or f.nodes.items[id].para == null) return &.{};
+        const l = f.tree.layout(lid);
+        const cw = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
+        const tl = (f.textLayout(id, cw) catch {
+            f.layout_oom = true;
+            return &.{};
+        }) orelse return &.{};
+        const y0 = l.border.top + l.padding.top;
+        const out = &f.tree.paged.lines;
+        out.clearRetainingCapacity();
+        out.ensureTotalCapacity(f.a, tl.lines.len) catch {
+            f.layout_oom = true;
+            return &.{};
+        };
+        for (tl.lines) |ln| out.appendAssumeCapacity(.{ .top = y0 + ln.top, .bottom = y0 + ln.top + ln.height });
+        return out.items;
+    }
+
+    /// Replaces the line layout of every node with line shifts by a copy whose lines (and their
+    /// glyphs, run segments, inline box fragments and atomic inline positions) sit `lineDy` lower.
+    noinline fn applyLineShifts(f: *Frame, pages: *const layout.fragment.Pages) Error!void {
+        const shifts = pages.line_shifts;
+        var i: usize = 0;
+        while (i < shifts.len) {
+            var j = i + 1;
+            while (j < shifts.len and shifts[j].node == shifts[i].node) j += 1;
+            defer i = j;
+            const lid = shifts[i].node;
+            if (lid >= f.lid_node.items.len or f.lid_node.items[lid] == none) continue;
+            const n = &f.nodes.items[f.lid_node.items[lid]];
+            const src = n.tl orelse continue;
+            const tl = try f.a.create(font.TextLayout);
+            tl.* = src.*;
+            tl.lines = try f.a.dupe(font.Line, src.lines);
+            tl.glyphs = try f.a.dupe(font.PositionedGlyph, src.glyphs);
+            tl.segments = try f.a.dupe(font.Segment, src.segments);
+            tl.boxes = try f.a.dupe(font.BoxFragment, src.boxes);
+            tl.objects = try f.a.dupe(font.ObjectPos, src.objects);
+            const dys = try f.a.alloc(f32, tl.lines.len);
+            for (dys, 0..) |*d, k| d.* = pages.lineDy(lid, @intCast(k));
+            for (tl.lines, dys) |*ln, d| {
+                if (d == 0) continue;
+                ln.top += d;
+                ln.baseline += d;
+                const g1 = @min(ln.glyph_end, tl.glyphs.len);
+                if (ln.glyph_start < g1) for (tl.glyphs[ln.glyph_start..g1]) |*g| {
+                    g.y += d;
+                };
+                tl.height = @max(tl.height, ln.top + ln.height);
+            }
+            for (tl.segments) |*s| s.baseline += if (s.line < dys.len) dys[s.line] else 0;
+            for (tl.boxes) |*b| b.baseline += if (b.line < dys.len) dys[b.line] else 0;
+            for (tl.objects) |*ob| ob.y += if (ob.line < dys.len) dys[ob.line] else 0;
+            n.tl = tl;
+        }
+    }
+
+    /// Block shift of line `line` of paragraph node `id` made by `paginate` (0 when not paged).
+    /// Informational: `textLayout` already returns the moved lines; painters must not add it again.
+    pub fn lineDy(f: *const Frame, id: u32, line: u32) f32 {
+        if (comptime !layout.fragment.enabled) return 0;
+        if (f.tree.paged.pages) |*pages| return pages.lineDy(f.nodes.items[id].lid, line);
+        return 0;
+    }
+
+    /// Where to paint a repeat (`Pages.repeatsOf`): render node `id` painted as a child at origin
+    /// (`ox`, `oy`) = the border-box origin of its parent in stitched space, moved by `r.dy`; i.e.
+    /// `paintNode(id, ox, oy)` under the same page translation as the root.
+    pub fn repeatOrigin(f: *const Frame, r: layout.fragment.Repeat) struct { id: u32, ox: f32, oy: f32 } {
+        var ox: f32 = 0;
+        var oy: f32 = r.dy;
+        var cur = f.tree.nodes.items[r.node].parent;
+        var guard: u32 = 0;
+        while (cur < f.tree.nodes.items.len and guard < layout.max_depth + 8) : (guard += 1) {
+            const l = f.tree.layout(cur);
+            ox += l.x;
+            oy += l.y;
+            if (cur == f.lroot) break;
+            cur = f.tree.nodes.items[cur].parent;
+        }
+        const id = if (r.node < f.lid_node.items.len) f.lid_node.items[r.node] else none;
+        return .{ .id = id, .ox = ox, .oy = oy };
+    }
+
+    /// Reference "paint a page" through the raster painter (tests, and the recipe the PDF emitter
+    /// follows): page `i` of a paginated frame as a page-area-sized pixmap. The painter has no
+    /// public offset entry, so the painted root's layout position is moved for the call: the frame
+    /// translated by -page.top (the pixmap bounds are the page clip), then every repeat of the page
+    /// (repeated table headers / footers, fixed boxes) painted at `repeatOrigin`.
+    pub fn paintPageRaster(f: *Frame, i: u32) Error!raster.Pixmap {
+        if (comptime !layout.fragment.enabled) return f.fail("paged layout is not supported by this build", "");
+        if (f.tree.paged.pages == null) return f.fail("not paginated", "");
+        const pages = &f.tree.paged.pages.?;
+        if (i >= pages.pages.len) return f.fail("no such page", "");
+        const pg = pages.pages[i];
+        var pm = raster.Pixmap.init(f.a, f.canvas_w, @intFromFloat(@max(1, @ceil(pg.height)))) catch return error.OutOfMemory;
+        @memset(pm.data, 0);
+        const saved_root = f.root;
+        defer f.root = saved_root;
+        // the frame
+        try f.paintShifted(f.root, 0, -pg.top, &pm);
+        // the repeats, in the same page translation
+        for (pages.repeatsOf(i)) |r| {
+            const o = f.repeatOrigin(r);
+            if (o.id == none) continue;
+            f.root = o.id;
+            try f.paintShifted(o.id, o.ox, o.oy - pg.top, &pm);
+        }
+        return pm;
+    }
+
+    /// `paint.paintFrame` of the subtree of render node `id` as if its parent's border-box origin
+    /// were (ox, oy) (`f.root` must be `id`).
+    fn paintShifted(f: *Frame, id: u32, ox: f32, oy: f32, pm: *raster.Pixmap) Error!void {
+        const l = &f.tree.layouts.items[f.nodes.items[id].lid];
+        const saved = l.*;
+        defer l.* = saved;
+        // (the root is painted at its own layout position; a wrapper ICB node sits at 0, 0)
+        l.x += ox;
+        l.y += oy;
+        try paint.paintFrame(f, pm);
     }
 
     // ---- measure() output
@@ -2985,7 +3319,24 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     }
     s.grid_column = .{ .start = gridLine(cs.grid_column_start), .end = gridLine(cs.grid_column_end) };
     s.grid_row = .{ .start = gridLine(cs.grid_row_start), .end = gridLine(cs.grid_row_end) };
+    if (comptime layout.fragment.enabled) s.breaks = .{
+        .before = breakBetween(cs.break_before),
+        .after = breakBetween(cs.break_after),
+        .avoid_inside = cs.break_inside.avoidsPage(),
+        .clone = cs.box_decoration_break == .clone,
+        // (takumi-core `is_monolithic`: a `line-clamp` box; replaced elements: `layoutNode`)
+        .monolithic = cs.line_clamp > 0,
+        .widows = @max(cs.widows, 1),
+        .orphans = @max(cs.orphans, 1),
+    };
     return s;
+}
+
+/// `break-before` / `break-after` for the fragmentation pass (avoid-column -> auto).
+fn breakBetween(b: style.computed.BreakBetween) layout.BreakBetween {
+    if (b.forcesPage()) return .page;
+    if (b.avoidsPage()) return .avoid;
+    return if (b == .column) .column else .auto;
 }
 
 /// grid-template-areas larger than the track list: the extra explicit tracks take grid-auto-* sizes.
@@ -3022,7 +3373,7 @@ pub fn strutFrom(m: EmMetrics, size: f32, lh: style.computed.LineHeight) [3]f32 
 }
 
 /// Metrics of the primary font of `cs` (first face the font matcher returns), Geist's without fonts.
-fn emMetrics(fonts: *const font.FontCollection, cs: *const CS) EmMetrics {
+pub fn emMetrics(fonts: *const font.FontCollection, cs: *const CS) EmMetrics {
     var buf: [4]font.FaceId = undefined;
     const faces = fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &buf);
     if (faces.len == 0) return geist_em;

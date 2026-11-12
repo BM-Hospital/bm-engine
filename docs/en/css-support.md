@@ -28,6 +28,7 @@ the feature; `full` contains everything. The complete list of property names is 
 - [Animations](#animations)
 - [Images and SVG](#images-and-svg)
 - [Complex scripts, bidi, emoji](#complex-scripts-bidi-emoji)
+- [Paged media (`pdf` profile)](#paged-media-pdf-profile)
 - [Known gaps](#known-gaps)
 - [Appendix: supported property names](#appendix-supported-property-names)
 
@@ -58,7 +59,7 @@ the feature; `full` contains everything. The complete list of property names is 
 | Tables (`display: table*`, auto / fixed layout, `colspan` / `rowspan` via HTML, `border-collapse`, `border-spacing`, captions, `empty-cells`) | standard | equivalent (8/8 fixtures; 339/352 layout oracle cases) |
 | Floats (`float`, `clear`) | standard (`floats` flag; also `full`) | equivalent; 138/138 layout oracle cases; text flows around floats (line boxes shorten beside a float and re-widen below it, floats inside inline content, RTL; 7 `float-text` fixtures at SSIM ≥ 0.9999) |
 | `display: contents` | — | no: laid out and painted like `display: block` (the element keeps its own box, padding and background) |
-| `display: list-item` | core | laid out as a block; no list marker |
+| `display: list-item` | core | laid out as a block; no list marker in raster / SVG output (the [`pdf` profile](pdf.md) paints markers in PDF output) |
 | Writing modes (`writing-mode`) | — | no: parsed, horizontal layout only |
 
 On `core`, `display: table*` lays out like `block` and `float` is ignored (no error).
@@ -267,6 +268,19 @@ property is ignored.
 On `core` and `standard`, right-to-left and complex scripts are shaped with the default OpenType
 shaper in logical order (no reordering).
 
+## Paged media (`pdf` profile)
+
+These are recognised only by `bm-engine/pdf`; every other profile ignores them (see [Pagination](pdf-pagination.md)).
+
+| Feature | Status |
+|:--|:--|
+| `break-before`, `break-after`, `break-inside`, `page-break-before` / `-after` / `-inside` | `auto`, `avoid`, `avoid-page`, `avoid-column`, `page`, `always`, `column`, `left`, `right`, `recto`, `verso` parse; `left`, `right`, `recto`, `verso` break the page without a blank page |
+| `orphans`, `widows` | integers of at least 1, inherited, default 2 |
+| Tailwind `break-before-*`, `break-inside-*`, `break-after-*` | in the `tw` field / attribute |
+| `@page` with `size`, `margin*`, `:first`, `:left`, `:right` | read from the `css` option and HTML `<style>`; named pages (`page`, `@page name`) work; content is laid out once at one width, so a named page of another width is not re-flowed and `:first` / `:left` / `:right` rules that change the width are dropped |
+| `position: fixed` | repeated on every page |
+| `background-clip: border-area` | pdf profile only |
+
 ## Known gaps
 
 As of 0.1.0 (see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status):
@@ -290,7 +304,7 @@ As of 0.1.0 (see [docs/BENCHMARK.md](../BENCHMARK.md) for the final status):
   flex row in 0.1.0 (takumi does).
 - Not supported: `display: contents`, list markers and counters, `writing-mode`, 3D transforms,
   `filter: url()` / `clip-path: url()`, relative colour syntax, `outline-offset` in %, `@apply`,
-  Tailwind `animate-*`, animations on pseudo-elements, PDF output.
+  Tailwind `animate-*`, animations on pseudo-elements. (PDF output exists only in the separate [`pdf` profile](pdf.md); it paints list markers in PDF output.)
 - Remaining one-level differences: gradient interior, dashed borders on rounded corners, rotated text,
   `text-stroke`.
 

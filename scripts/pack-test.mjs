@@ -8,8 +8,9 @@
 //   manifest     js/build-manifest.json matches the wasm files (scripts/build.mjs --verify --allow-placeholders)
 //   pack         npm pack: the tarball holds exactly the whitelisted files
 //   install      npm i --ignore-scripts <tarball> into <dir>/app (type: module)
-//   node-esm     bm-engine, /core, /standard, /full on Node: render PNG with each profile, features per
-//                profile, separate instances, renderSvg, measure, init idempotency, WOFF add-on on core
+//   node-esm     bm-engine, /core, /standard, /full, /pdf on Node: render PNG with each profile, features per
+//                profile, separate instances, renderSvg, measure, init idempotency, WOFF add-on on core,
+//                renderPdf on /pdf (starts with %PDF-) and its "not supported by this build" rejection on /full
 //   node-cjs     a CommonJS file: await import("bm-engine"), and require("bm-engine") (require(esm), Node >= 20.19)
 //   workerd-sim  node --conditions=workerd: bm-engine/core + init(WebAssembly.Module) from bm-engine/core.wasm,
 //                the neutral bm-engine entry's error without an argument, loadWoff(module)
@@ -123,6 +124,7 @@ const main = await import("bm-engine");
 const core = await import("bm-engine/core");
 const standard = await import("bm-engine/standard");
 const full = await import("bm-engine/full");
+const pdf = await import("bm-engine/pdf");
 const log = [];
 assert.match(import.meta.resolve("bm-engine"), /\/js\/node\.mjs$/);
 assert.match(import.meta.resolve("bm-engine/core"), /\/js\/node-core\.mjs$/);
@@ -142,7 +144,18 @@ const count = (m) => Object.values(m.features).filter(Boolean).length;
 assert.equal(count(core), 0, "core has no optional features");
 assert.equal(count(standard), 13, "standard features");
 assert.equal(standard.features.renderSvg, false);
-assert.equal(count(full), 18, "full has every feature");
+assert.equal(count(full), 18, "full has every feature but pdf");
+assert.equal(count(pdf), 19, "pdf = full + pdf");
+assert.equal(pdf.features.pdf, true); assert.equal(full.features.pdf, false); assert.equal(pdf.profile, "pdf");
+assert.match(import.meta.resolve("bm-engine/pdf"), /\/js\/node-pdf\.mjs$/);
+{
+  const rp = new pdf.PdfRenderer();
+  const bytes = await rp.render(node, { size: "a4" });
+  assert.equal(new TextDecoder("latin1").decode(bytes.subarray(0, 5)), "%PDF-");
+  assert.deepEqual(await rp.measure({ type: "container", style: { width: 10, height: 5 } }), { width: 10, height: 5 });
+  await assert.rejects(new full.Renderer().renderPdf(node), /renderPdf is not supported by this build/);
+  log.push("pdf: " + bytes.length + " B PDF");
+}
 assert.deepEqual({ ...main.features }, { ...full.features }, "bm-engine (node) = full");
 assert.notEqual(core.features, full.features, "separate instances");
 assert.equal(core.profile, "core"); assert.equal(full.profile, "full");

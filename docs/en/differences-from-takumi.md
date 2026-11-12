@@ -77,7 +77,7 @@ after converting the JSX with `fromJsx` (see step 5).
 | Area | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / module format | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, ESM only (CommonJS via `require(esm)`), WebAssembly only — no native binding |
-| Binary | one 4.2 MB wasm | three profiles (454.5 KiB – 1.07 MiB) + WOFF add-on; `features` reports the loaded one |
+| Binary | one 4.2 MB wasm | three profiles (454.9 KiB – 1.08 MiB), a `pdf` profile (about 1.5 MB) + WOFF add-on; `features` reports the loaded one |
 | Wasm imports | wasm-bindgen glue | none |
 | Sync API | wrapper methods are async | every method has a `*Sync` twin; async methods resolve immediately |
 | `registerFont` | returns `Promise<RegisteredFamily[]>` (wrapper) | returns `RegisteredFamily[]` synchronously for bytes / `{ data: bytes }`; a `Promise` only for URLs and lazy data |
@@ -90,7 +90,7 @@ after converting the JSX with `fromJsx` (see step 5).
 | `drawDebugBorder`, `dithering` | supported | accepted and ignored |
 | `measure` result | runs include `text`, glyph-box heights | same tree, boxes and positions; runs have no `text` and use the line height (see [API](api.md#measure--measuresync)) |
 | `renderSvg` | takumi-svg | ported (full profile): same structure, glyphs as outlines, no font embedding |
-| PDF (`takumi-pdf`) | separate package | not ported |
+| PDF (`takumi-pdf`) | separate package (`takumi-pdf`) | ported as the `pdf` profile, `bm-engine/pdf`: `PdfRenderer`, `render`, `measure`, `prepare`, `PageNumber`, `TotalPages`, `TargetPageNumber`; differences [below](#pdf-output) |
 | `ImageResponse`, JSX `render()` (`takumi-js`) | available | not provided; use `@takumi-rs/helpers` + `new Response(...)` |
 | `memoryBytes()` | — | added: current wasm memory size |
 | Errors | `Error` with takumi messages | `Error` with `bm-engine: ` prefix; messages differ in wording |
@@ -121,12 +121,43 @@ within anti-aliasing noise.
 - **`display: contents`** is rejected by takumi's inline-style parser but accepted by bm-engine,
   which lays the element out and paints it like `display: block` (its own box, padding and background stay).
 
+## PDF output
+
+`bm-engine/pdf` ports `takumi-pdf` (see [PDF output](pdf.md)). The option names, defaults, validation rules and
+most error messages are takumi-pdf's. The differences:
+
+- **Separate profile.** PDF output is only in `bm-engine/pdf`; `renderPdf` on any other build throws.
+- **No `needs` pass.** `prepare` fetches nothing and `@font-face` files are not downloaded: pass image bytes in
+  `images` and fonts in `fonts` / `registerFont`.
+- **List markers** are painted in PDF output (paged and `viewport`, with `Lbl` structure elements), not in raster
+  or SVG output. `list-style-image` is not supported, and an item that starts with a flex, grid, table or image box
+  gets no marker.
+- **Stacking order** follows CSS painting order as takumi's does; no difference is known in the compared fixtures.
+- **`@page`**: named pages work (the `page` property, `@page name`, per-page size, margins and page-area height),
+  but the content is laid out once at the unnamed pages' width: a named page of another width gets its size and the
+  content keeps its width from the left margin, and `:first` / `:left` / `:right` rules that change the width
+  are dropped. See [Pagination](pdf-pagination.md#named-pages).
+- **Blank pages for `left` / `right` breaks** are not inserted.
+- **PDF/A** is validated with krilla's main rules, but not its length and nesting limits, and no external validator
+  has run on the output.
+- **Fonts**: the subset font programs are not always byte-identical to takumi-pdf's.
+- **Counters in generated content** (`counter(page)`, `target-counter()`) do not work, as in takumi.
+
+Against takumi-pdf's 89 golden PDFs (`node scripts/pdf-compare.mjs`, which renders each fixture with the built
+`js/bm_engine.pdf.wasm` and compares the page content operator by operator): 73 are identical, 3 match within
+0.01 of a unit, and 13 differ, with no render errors. The object layout is identical in all 89 files, the embedded
+font programs in 42, and the structure trees in 88. The 13 differences are: glyph outline coordinate precision in
+text shadow, stroke and `background-clip: text` fixtures (5), text decoration dash width (1), tiny kerning
+adjustments and link rectangles in the three `report-*` fixtures (3), a bitmap-glyph shadow mask (1), a page-counter
+placeholder width (1), and two page-rule fixtures whose pages have different widths (named pages; a landscape
+`:first` page). The invoice fixtures, repeated table headers and footers, and list fixtures are identical. These
+numbers are from one run at the time of writing and change with the build.
+
 ## Not ported
 
-- PDF output (`takumi-pdf`, a separate product of ~43 500 lines of Rust).
 - Native N-API binding (`@takumi-rs/core`).
 - Network access of any kind (`prepare` fetching, `@font-face` URLs).
-- Counters in `content`, list markers, `@apply`, Tailwind `animate-*`, animations on pseudo-elements,
+- Counters in `content`, `@apply`, Tailwind `animate-*`, animations on pseudo-elements,
   `clip-path: url()`, relative colour syntax, `outline-offset` in %.
 
 ## takumi behaviours bm-engine reproduces on purpose
@@ -152,7 +183,7 @@ renders the same:
 - Missing images paint nothing and do not throw.
 - Tailwind: takumi's utility table, sort order and variant set (no `hover:`, `dark:`, `z-*`, `ring-*`,
   ...); the alphabetically later of two conflicting colour classes wins.
-- Stylesheets: takumi's lossy parsing (`@page`, `@container`, `@scope`, ... are dropped), dynamic
+- Stylesheets: takumi's lossy parsing (`@page`, `@container`, `@scope`, ... are dropped from the cascade; the `pdf` profile reads `@page` separately for the page size and margins), dynamic
   pseudo-classes never match, `@media` against the canvas size in CSS px, unsupported media features
   make the whole query false.
 - Animations: integer-ms timeline, applied at t = 0 by default, `animation-play-state` ignored,

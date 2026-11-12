@@ -43,9 +43,9 @@ still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Pe
 
 | Build | Raw | gzip -9 | brotli | vs. takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 454.5 KiB | 211.5 KiB | 180.3 KiB | 9.3× smaller |
-| `standard` | 877.5 KiB | 435.2 KiB | 374.5 KiB | 4.8× smaller |
-| `full` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | 3.9× smaller |
+| `core` | 454.9 KiB | 211.6 KiB | 180.4 KiB | 9.3× smaller |
+| `standard` | 878.1 KiB | 435.5 KiB | 374.6 KiB | 4.8× smaller |
+| `full` | 1 100.9 KiB | 538.3 KiB | 453.7 KiB | 3.8× smaller |
 | WOFF add-on | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | phase 1 (single build) | 320.9 KiB | 147.1 KiB | 126.5 KiB | 13.2× smaller |
 

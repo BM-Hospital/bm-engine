@@ -20,8 +20,8 @@ The build script finds Zig through the `ZIG` environment variable, falling back 
 ```sh
 npm install                        # root dev dependency: binaryen (wasm-opt)
 
-node scripts/build.mjs             # core + standard + full + WOFF add-on: zig build (optimize=small) + wasm-opt -Oz
-node scripts/build.mjs --profile=core          # one profile (core | standard | full)
+node scripts/build.mjs             # core + standard + full + pdf + WOFF add-on: zig build (optimize=small) + wasm-opt -Oz
+node scripts/build.mjs --profile=core          # one profile (core | standard | full | pdf)
 node scripts/build.mjs -- -Dtables=false       # extra zig options for every profile (marked "custom" in the manifest)
 node scripts/build.mjs --manifest  # rewrite js/build-manifest.json from the wasm files in js/
 node scripts/build.mjs --verify    # check js/*.wasm against the manifest (run by prepublishOnly)
@@ -29,7 +29,7 @@ node scripts/build.mjs --test      # zig build test (also: npm test)
 ```
 
 Outputs: `js/bm_engine.core.wasm`, `js/bm_engine.standard.wasm`, `js/bm_engine.wasm` (full),
-`js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, optimised), `js/build-manifest.json` (profile,
+`js/bm_engine.pdf.wasm` (full + PDF output), `js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, optimised), `js/build-manifest.json` (profile,
 size, sha256 and feature bits per file) and a size table written to `bench/out/sizes.json`.
 
 Plain Zig commands:
@@ -42,7 +42,7 @@ zig build addons                            # only the add-on modules
 zig build test --summary all                # native unit tests of every module
 ```
 
-Options: `-Dprofile=core|standard|full`, one `-D<feature>=true|false` per feature (list in
+Options: `-Dprofile=core|standard|full|pdf`, one `-D<feature>=true|false` per feature (list in
 [Profiles and size](profiles-and-size.md#custom-builds)), `-Dwasm-optimize=small|fast|safe|debug`,
 `-Dstrip=false`, `-Dstack-kib=<n>` (shadow stack, default 1024).
 

@@ -15,6 +15,10 @@ carries the notices those sources require. No third-party font files are distrib
 7. emoji-segmenter: Apache License 2.0
 8. Brotli: MIT
 9. Taffy: MIT
+10. krilla (PDF output): MIT OR Apache-2.0, with the notices of code krilla takes from resvg (MPL 2.0), typst, svg2pdf and vello
+11. subsetter (PDF font subsetting): MIT, with ttf-parser and fonttools (MIT)
+12. pdf-writer and xmp-writer (PDF output): MIT OR Apache-2.0
+13. Compact ICC Profiles, sRGB v4 (PDF/A output): CC0 1.0
 
 ## 1. Chromium (Blink) and Skia
 
@@ -781,8 +785,161 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+## 10. krilla
+
+The PDF output (`src/pdf/`, the `pdf` build profile) is a port of takumi's `takumi-pdf`, which vendors
+[krilla](https://github.com/LaurenzV/krilla) 0.8.2 (MIT OR Apache-2.0). The drawing model and content-stream
+operators (`emit_surface.zig`, `content.zig`), the CID and Type 3 font handling (`font_embed.zig`,
+`font_objects.zig`, `type3.zig`, `text.zig`), the tagged-PDF serialisation (`tags.zig`, `tagdoc.zig`), the
+PDF/A and PDF/UA validators and ICC handling (`conform.zig`) and the document, outline, annotation and metadata
+parts (`interactive.zig`, `metadata.zig`, `attach.zig`) follow krilla's Rust sources and byte layout. The copy of
+krilla that takumi vendors carries this notice (the MIT licence text of krilla's authors):
+
+```text
+MIT License
+
+Copyright (c) 2024 Laurenz Stampfl
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+krilla 0.8.2 also ships this acknowledgement of code it takes from other projects. bm-engine's Zig files follow
+krilla's structure and can contain translations of the parts named here:
+
+- [`resvg`](https://github.com/RazrFalcon/resvg), available under the Mozilla Public License 2.0
+  (<https://www.mozilla.org/MPL/2.0/>): the `content_draw_path` method of krilla.
+- [`typst`](https://github.com/typst/typst), Apache License 2.0: the `GroupByKey` struct, the `SliceExt` trait, the
+  `Prehashed` struct, the implementation of `SipHashable`, the implementation of writing CID-keyed fonts and of
+  writing PDF metadata.
+- [`svg2pdf`](https://github.com/typst/svg2pdf), Apache License 2.0: krilla's SVG conversion (bm-engine's SVG-to-PDF
+  path, `emit_svg.zig`, follows takumi-pdf's `svg.rs`, not this code).
+- [`vello`](https://github.com/linebender/vello), Apache License 2.0: the logic for bitmap glyphs.
+
+The full Apache License 2.0 text is in `LICENSE-APACHE`.
+
+## 11. subsetter (with ttf-parser and fonttools)
+
+The font subsetter (`src/pdf/subset.zig`, `subset_cff.zig`) is a port of the
+[subsetter](https://github.com/typst/subsetter) crate 0.2.6, vendored in takumi-pdf, including its
+`variable-fonts` feature. subsetter's notice (MIT) and the notices for the code it takes from other projects:
+
+```text
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+ttf-parser: code from [ttf-parser](https://github.com/RazrFalcon/ttf-parser) was used or adapted in subsetter for
+its Reader, Writer, `LazyArray16` and `LazyArray16Iter`, the `name` and `hmtx` table parsing, and most of the `cff`
+parsing logic (`calc_subroutine_bias`, `SIDMetadata`, `CIDMetadata`, `RealNumber`, `Index`, `IndexSize`,
+`OffsetSize`, `FDSelect`, `ArgumentStack`, the Top DICT and Font DICT, `DictionaryParser`).
+
+```text
+MIT License
+
+Copyright (c) 2018 Yevhenii Reizner
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+fonttools: code from [fonttools](https://github.com/fonttools/fonttools) was used or adapted in subsetter for the
+charstring `Decompiler`.
+
+```text
+MIT License
+
+Copyright (c) 2017 Just van Rossum
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 12. pdf-writer and xmp-writer
+
+The PDF object model and file serialisation in `src/pdf/writer.zig` follow
+[pdf-writer](https://github.com/typst/pdf-writer) 0.15, and the XMP packet in `src/pdf/metadata.zig` follows
+[xmp-writer](https://github.com/typst/xmp-writer) 0.3, the two crates takumi-pdf (through krilla) builds on. Both
+are published by their authors (the Typst project) under MIT OR Apache-2.0; bm-engine follows their structure and
+byte layout and carries no copy of them. The Apache License 2.0 text is in
+`LICENSE-APACHE`.
+
+## 13. Compact ICC Profiles (sRGB v4)
+
+`src/pdf/srgb-v4.icc` (480 bytes), embedded in PDF/A output as the sRGB colour space and output intent, is the
+sRGB v4 profile of [Compact ICC Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles) by Clinton Ingram
+(saucecontrol), as shipped with takumi-pdf (`icc/sRGB-v4.icc`). The profile is released under
+[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain dedication; the profile's
+copyright tag reads "CC0"). No attribution is required; it is given here as credit.
+
 ## Acknowledgements (behaviour matched; no code or data taken)
 
+- kurbo: the cubic-to-quadratic conversion used when the PDF font subsetter instances variable glyphs
+  (`src/pdf/subset.zig`) uses the same tolerance and splitting rule as kurbo's `to_quads(0.025)`.
+- Blink (LayoutNG) fragmentation, through takumi-core: `src/layout/fragment.zig` follows the break rules of
+  `fragmentation_utils.cc` and `block_layout_algorithm.cc`; Blink's notice is in section 1.
 - skrifa / FreeType: CFF and variable-font outline arithmetic is written to give identical results.
 - zlib / miniz: DEFLATE encoder heuristics (lazy matching, `TOO_FAR`, Huffman length limiting).
 - jpeg-encoder (the Rust crate takumi uses): two-pass optimised Huffman tables.

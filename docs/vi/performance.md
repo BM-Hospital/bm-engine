@@ -25,7 +25,7 @@ giữ bộ nhớ ổn định và chia việc cho các worker thread. Số liệ
 | PNG og-card / blog-card / stress (3000 × 2000), lượt chạy giai đoạn 2 | 9.23 / 16.47 / 24.00 ms | 13.41 / 31.14 / 36.71 ms |
 | Bộ nhớ wasm sau 50 lần render PNG og-card | 11.6 MiB | 10.6 MiB |
 | Peak RSS của tiến trình | 89.1 MiB | 107.9 MiB |
-| Dung lượng tải wasm, brotli: core / standard / full | 180.3 / 374.5 / 453.4 KiB | 1 409.3 KiB |
+| Dung lượng tải wasm, brotli: core / standard / full | 180.4 / 374.6 / 453.7 KiB | 1 409.3 KiB |
 
 Thời gian tuyệt đối phụ thuộc máy; các tỉ lệ ổn định hơn. Render PNG nhanh hơn takumi ở 191/191 ca và
 render raw ở 171/191 ca.
@@ -108,9 +108,9 @@ Ba binary khác nhau về dung lượng tải và về khả năng, chứ không
 
 | Profile | wasm raw / brotli | Dùng cho |
 |:--|--:|:--|
-| `bm-engine/core` | 454.5 / 180.3 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
-| `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
-| `bm-engine/full` (và `bm-engine` trên Node) | 1 099.8 / 453.4 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
+| `bm-engine/core` | 454.9 / 180.4 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
+| `bm-engine/standard` | 878.1 / 374.6 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
+| `bm-engine/full` (và `bm-engine` trên Node) | 1 100.9 / 453.7 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
 
 Dung lượng quan trọng trong trình duyệt và trên edge runtime có giới hạn kích thước script; trên server
 Node, khác biệt chỉ là vài trăm KiB đọc một lần khi khởi động. Hãy kiểm tra profile đã nạp ngay khi khởi
@@ -356,7 +356,7 @@ await pool.close();
   Trong lượt chạy Edge headless của benchmark, compile + instantiate dạng streaming mất 20.4 ms.
 - **Cache binary.** Tên file không đổi giữa các bản phát hành cùng phiên bản, nên hãy phục vụ chúng với cache
   dài hạn gắn với phiên bản package (hoặc để bundler gắn dấu vân tay vào tên file).
-- **Nạp profile nhỏ nhất** đủ cho template của bạn — dung lượng tải từ 180 KiB (core) tới 453 KiB (full)
+- **Nạp profile nhỏ nhất** đủ cho template của bạn — dung lượng tải từ 180 KiB (core) tới 454 KiB (full)
   với brotli.
 - **Khởi tạo sớm** (`await init()` khi ứng dụng khởi động, không đợi cú nhấp đầu tiên) và giữ một renderer
   suốt vòng đời trang.

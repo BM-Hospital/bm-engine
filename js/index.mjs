@@ -34,6 +34,7 @@
 //   renderAsDataUrl                works (raw rejected)
 //   renderSvg                      works (builds with `render_svg`: the full profile); renderSvgSync twin
 //   measure                        works
+//   (takumi-pdf)                   renderPdf / measurePdf (+ Sync twins): builds with `pdf`, i.e. bm-engine/pdf (js/pdf.mjs)
 //   prepare(source, options)       returns a prepared handle; `render`/`renderAsDataUrl`/`measure` accept it and
 //                                  merge its options. NOTE: unlike takumi it fetches nothing (no `needs` pass):
 //                                  remote images / @font-face files must be passed as `images` / fonts

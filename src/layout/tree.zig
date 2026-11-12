@@ -504,6 +504,10 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// statistics of the last `compute`: number of MeasureFn invocations / node computations (cache misses)
         measure_calls: u32 = 0,
         node_computes: u32 = 0,
+        /// Paged output (PDF feature only, else `void`): see `fragment.PagedState`. While `paged.page_h` > 0,
+        /// `position: fixed` boxes resolve against an initial containing block that tall (the page area)
+        /// although the tree is laid out with an unbounded available height.
+        paged: if (st.frag_enabled) @import("fragment.zig").PagedState else void = if (st.frag_enabled) .{} else {},
 
         /// All memory (nodes, layouts, caches, scratch) comes from `alloc`; a per-render arena is the expected choice.
         pub fn init(alloc: std.mem.Allocator) Self {
@@ -1112,7 +1116,17 @@ pub fn TreeWith(comptime cfg: Config) type {
                     off[1] += l.y;
                     if (a == self.root or self.nodes.items[a].parent == no_node) {
                         // initial containing block
-                        area = .{ -off[0], -off[1], orElse(viewport[0], l.w), orElse(viewport[1], l.h) };
+                        var vw = viewport[0];
+                        var vh = viewport[1];
+                        if (comptime st.frag_enabled) {
+                            // takumi-pdf lays a repeated fixed box out on its own against the page area as an
+                            // integral `Viewport` (`print_viewport`: width and height truncated to whole px)
+                            if (self.paged.page_h > 0 and self.nodes.items[e.node].style.position == .fixed) {
+                                vw = @trunc(self.paged.page_w);
+                                vh = @trunc(self.paged.page_h);
+                            }
+                        }
+                        area = .{ -off[0], -off[1], orElse(vw, l.w), orElse(vh, l.h) };
                         break;
                     }
                     a = self.nodes.items[a].parent;

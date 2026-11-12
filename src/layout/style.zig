@@ -205,6 +205,35 @@ pub const Placement = struct {
 
 pub const GridAutoFlow = enum(u8) { row, column, row_dense, column_dense };
 
+/// Pagination (fragment.zig) is compiled with the PDF feature only (`config.enable_pdf` through the root
+/// module; on in standalone module tests). With it off `Breaks` is empty and `Style` does not grow.
+pub const frag_enabled: bool = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config") and @hasDecl(root.bm_config, "enable_pdf")) root.bm_config.enable_pdf else true;
+};
+/// `break-before` / `break-after` for paged output. `avoid` = avoid | avoid-page; `page` = page | always |
+/// left | right | recto | verso; `column` = column (no page break, but it outranks `avoid` when the values
+/// of adjoining boxes are joined, as in Blink); avoid-column maps to `auto`.
+pub const BreakBetween = enum(u8) { auto, avoid, column, page };
+/// Fragmentation inputs of a box (only read by `fragment.paginate`).
+pub const Breaks = if (frag_enabled) struct {
+    before: BreakBetween = .auto,
+    after: BreakBetween = .auto,
+    /// `break-inside: avoid | avoid-page`
+    avoid_inside: bool = false,
+    /// `box-decoration-break: clone` (carried for the painter; the layout slices)
+    clone: bool = false,
+    /// never split across pages (replaced content, `line-clamp` boxes); measured leaves without line
+    /// boxes and atomic inline boxes are monolithic anyway
+    monolithic: bool = false,
+    /// inherited `widows` / `orphans` of the block container that owns the lines (>= 1)
+    widows: u8 = 2,
+    orphans: u8 = 2,
+    /// the `page` property: a page name id (0 = `auto`, the parent's), the caller's numbering; a
+    /// change of used page name between block siblings forces a page break (Blink's named pages)
+    page: u32 = 0,
+} else struct {};
+
 pub const Style = struct {
     display: Display = .flex,
     position: Position = .relative,
@@ -295,6 +324,9 @@ pub const Style = struct {
     /// Distance from the baseline up to the line where `vertical-align: middle` items are centred
     /// (CSS: half the x-height of the container's font). null = unknown: the middle of the strut is used.
     strut_middle: ?f32 = null,
+
+    /// pagination inputs (empty unless the PDF feature is compiled in)
+    breaks: Breaks = .{},
 };
 
 pub const AvailableSpace = union(enum) {

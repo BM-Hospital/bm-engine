@@ -7,8 +7,8 @@
 
 Đo trên bản build cuối (sau `wasm-opt`), so với `@takumi-rs/wasm` 2.20.0.
 
-- **Kích thước (KiB, raw / gzip -9 / brotli):** core 454.5 / 211.5 / 180.3; standard 877.5 / 435.2 / 374.5; full 1 099.8 / 538.2 / 453.4;
-  add-on WOFF 84.2 / 67.7 / 65.5; takumi-wasm 2.20: 4 234.9 / 1 860.9 / 1 409.3. So với takumi (raw): core nhỏ hơn 9.3×, standard 4.8×, full 3.9×.
+- **Kích thước (KiB, raw / gzip -9 / brotli):** core 454.9 / 211.6 / 180.4; standard 878.1 / 435.5 / 374.6; full 1 100.9 / 538.3 / 453.7;
+  add-on WOFF 84.2 / 67.7 / 65.5; takumi-wasm 2.20: 4 234.9 / 1 860.9 / 1 409.3. So với takumi (raw): core nhỏ hơn 9.3×, standard 4.8×, full 3.8×.
   (Số giai đoạn 2: 428.5 / 849.6 / 1 070.0 và 9.9× / 5.0× / 4.0×.) Công việc dòng inline thêm khoảng 26–30 KB cho mỗi profile.
 - **Tương đương:** **200 fixture: 74 identical, 126 equivalent, 0 close, 0 different, 0 lỗi** (giai đoạn 2: 184 = 74 / 109 / 1 close).
   Ca `layout2-float-wrap` trước đây "close" nay là equivalent. Cổng layout measure-tree: 197/197 ca không-transform khớp takumi trong 0.001 px.
@@ -55,9 +55,9 @@ Khoảng trống còn lại ở layout inline:
 
 | Cấu hình | raw KiB | gzip -9 | brotli | so với takumi (4 234.9 KiB) | Gồm |
 |:--|--:|--:|--:|:--|:--|
-| `core` | **454.5** | 211.5 | 180.3 | nhỏ hơn 9.3× | node JSON + style inline, var()/calc, flex/grid/block/absolute, hàng inline, TTF/TTC tĩnh + OpenType shaper mặc định, viền mọi kiểu/outline/trang trí chữ, PNG/JPEG vào, PNG/JPEG/WebP/raw ra |
-| `standard` | **877.5** | 435.2 | 374.5 | nhỏ hơn 4.8× | core + stylesheet/selector, Tailwind, HTML, ảnh SVG, WOFF/WOFF2, font biến thiên, CFF, clip-path/mask/blend/backdrop, màu oklch/lab/color-mix, bảng, float, WebP/GIF vào, text-wrap balance |
-| `full` (mặc định) | **1 099.8** | 538.2 | 453.4 | nhỏ hơn 3.9× | standard + chữ phức (bidi, Ả Rập, Hebrew, Indic, Thái), emoji màu, animation + renderAnimation, VP8 lossy, ảnh động, ICO, renderSvg |
+| `core` | **454.9** | 211.6 | 180.4 | nhỏ hơn 9.3× | node JSON + style inline, var()/calc, flex/grid/block/absolute, hàng inline, TTF/TTC tĩnh + OpenType shaper mặc định, viền mọi kiểu/outline/trang trí chữ, PNG/JPEG vào, PNG/JPEG/WebP/raw ra |
+| `standard` | **878.1** | 435.5 | 374.6 | nhỏ hơn 4.8× | core + stylesheet/selector, Tailwind, HTML, ảnh SVG, WOFF/WOFF2, font biến thiên, CFF, clip-path/mask/blend/backdrop, màu oklch/lab/color-mix, bảng, float, WebP/GIF vào, text-wrap balance |
+| `full` (mặc định) | **1 100.9** | 538.3 | 453.7 | nhỏ hơn 3.8× | standard + chữ phức (bidi, Ả Rập, Hebrew, Indic, Thái), emoji màu, animation + renderAnimation, VP8 lossy, ảnh động, ICO, renderSvg |
 | add-on `bm_woff.wasm` | 84.2 | 67.7 | 65.5 | — | giải mã WOFF/WOFF2 tải theo yêu cầu cho bản core |
 | giai đoạn 1 (một bản duy nhất) | 320.9 | 147.1 | 126.5 | nhỏ hơn 13.2× | tập tính năng giai đoạn 1 |
 
@@ -170,7 +170,7 @@ cache glyph) trong cùng bộ nhớ tuyến tính — cần một dynamic linker
 
 ## Chưa port / còn khác takumi sau giai đoạn 2
 
-- **PDF: không port.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust: phân trang, nhúng/cắt font, form tương tác — một sản phẩm khác.
+- **PDF: không có trong các profile `core` / `standard` / `full` và không nằm trong benchmark này.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust. Sau giai đoạn đo này, bm-engine đã thêm nó thành profile `pdf` riêng (`bm-engine/pdf`; xem [Đầu ra PDF](en/pdf.md) và [bản tiếng Việt](vi/pdf.md)). Các con số speed / size / SSIM trong báo cáo này chỉ nói về đầu ra ảnh; đầu ra PDF chưa được benchmark về tốc độ và kích thước.
 - **Dòng inline:** float + chữ và chữ trong dòng hỗn hợp đã xong ở giai đoạn 3; các khoảng trống còn lại nằm trong mục "Giai đoạn 3" ở đầu file.
 - **Shaping:** Indic chỉ kiểm chứng Devanagari + Bengali (các hệ khác dùng shaper mặc định); chuỗi emoji ZWJ có ca chưa gộp thành một glyph; ưu tiên font emoji khác takumi ở vài ca (©️, VS15).
 - **SVG:** `<text>` chỉ qua hook; thiếu feTurbulence/feImage/feMorphology/feConvolveMatrix/feDisplacementMap/lighting/feTile; bảng SVG trong font chưa vẽ.
@@ -314,7 +314,7 @@ Không có fixture nhưng đã biết:
   (Ả Rập, Devanagari…), không định vị dấu (mark positioning; tiếng Việt dựng sẵn NFC thì ổn), ngắt dòng là tập con
   UAX #14 (CJK chỉ được test ở mức đơn vị).
 - **CSS**: không stylesheet/selector/cascade (`css`, `className`, `@media`), không `var()`, không animation/keyframes
-  (`timeMs`, `renderAnimation`), không HTML đầu vào, không `renderSvg`, không PDF, không bảng (table), float, list marker.
+  (`timeMs`, `renderAnimation`), không HTML đầu vào, không `renderSvg`, không PDF (về sau đã thêm thành profile `pdf` riêng), không bảng (table), float, list marker.
   Thuộc tính logic (`margin-inline`…), `grid-template-areas`, tên đường lưới, `outline` (parse nhưng chưa vẽ),
   `drop-shadow()`, `filter: url()`, `backdrop-filter` chưa có.
 - **Ảnh**: không giải mã WebP lossy (VP8), GIF/APNG chỉ khung đầu; ảnh lớn được cache cả bản gốc lẫn bản thu nhỏ
