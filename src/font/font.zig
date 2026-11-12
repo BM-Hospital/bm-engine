@@ -45,6 +45,7 @@ pub const instance_base = collection.instance_base;
 
 pub const TextStyle = text.TextStyle;
 pub const Caps = text.Caps;
+pub const case = @import("case.zig");
 pub const Run = text.Run;
 pub const LineHeight = text.LineHeight;
 pub const TextAlign = text.TextAlign;

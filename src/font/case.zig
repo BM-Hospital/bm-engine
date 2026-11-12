@@ -33,10 +33,25 @@ pub fn upperSimple(cp: u21) u21 {
     return lookup(&data.upper, cp);
 }
 
-/// Simple lowercase mapping.
+/// Simple lowercase mapping: the inverse of the uppercase runs (minus the excluded duplicate
+/// sources), corrected by `lower_extra`. Linear in the number of runs; only used by unicase.
 pub fn lower(cp: u21) u21 {
     if (cp < 0x80) return if (cp >= 'A' and cp <= 'Z') cp + 32 else cp;
-    return lookup(&data.lower, cp);
+    for (data.lower_extra) |e| {
+        if (e[0] == cp) return @intCast(e[1]);
+    }
+    for (data.upper) |r| {
+        const src: i64 = @as(i64, cp) - r[1];
+        if (src < 0) continue;
+        const start: i64 = r[0] >> 11;
+        const count: i64 = ((r[0] >> 1) & 0x3ff) + 1;
+        const stride: i64 = if (r[0] & 1 != 0) 2 else 1;
+        if (src < start or src >= start + count * stride or @mod(src - start, stride) != 0) continue;
+        var excluded = false;
+        for (data.lower_exclude) |x| excluded = excluded or x == src;
+        if (!excluded) return @intCast(src);
+    }
+    return cp;
 }
 
 /// Full uppercase mapping of `cp` into `out` (1 to 3 code points, e.g. U+00DF -> "SS"); returns the
@@ -48,7 +63,7 @@ pub fn upper(cp: u21, out: *[3]u21) usize {
                 var n: usize = 0;
                 for (e[1..]) |v| {
                     if (v == 0) break;
-                    out[n] = @intCast(v & 0x1FFFFF);
+                    out[n] = v;
                     n += 1;
                 }
                 return n;
