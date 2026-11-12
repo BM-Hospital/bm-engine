@@ -10,3 +10,4 @@ docs/.vitepress/cache/
 docs/public/playground-app/
 docs/public/data/
 .vercel
+native/dist/

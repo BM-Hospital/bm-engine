@@ -89,4 +89,55 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
+
+    addNative(b, native_target, flags);
+}
+
+/// `zig build native -Dtarget=<triple> [-Dnative-optimize=fast|safe|small|debug]`: the Node-API addon
+/// (src/native.zig, docs/NATIVE.md) as `zig-out/native/bm-engine.<platform>-<arch>[-<abi>].node`.
+/// All eight release targets are cross-compiled by scripts/build-native.mjs.
+fn addNative(b: *std.Build, target_in: std.Build.ResolvedTarget, flags: *std.Build.Step.Options) void {
+    // Always the baseline CPU of the architecture (never the build host's): the binary must run on
+    // every machine, and x86-64 baseline has no FMA, so no multiply-add can ever be fused there.
+    var query = target_in.query;
+    query.cpu_model = .baseline;
+    const target = b.resolveTargetQuery(query);
+    const t = target.result;
+    const optimize = b.option(std.builtin.OptimizeMode, "native-optimize", "addon optimize mode (default fast)") orelse .fast;
+    const strip = b.option(bool, "native-strip", "strip the addon's debug info (default true)") orelse true;
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/native.zig"),
+        .target = target,
+        .optimize = optimize,
+        .strip = strip,
+        .unwind_tables = .none,
+        .single_threaded = false,
+        .pic = true,
+        // Windows: no C runtime at all (kernel32 only). Elsewhere libc gives malloc and pthreads.
+        .link_libc = t.os.tag != .windows,
+    });
+    mod.addOptions("build_options", flags);
+    const lib = b.addLibrary(.{ .linkage = .dynamic, .name = "bm_engine_node", .root_module = mod });
+    // The napi_* symbols come from the host executable at load time: undefined in the shared object
+    // (ELF) / `-undefined dynamic_lookup` (Mach-O). Windows resolves them at run time (src/native/napi.zig).
+    lib.linker_allow_shlib_undefined = true;
+    const platform = switch (t.os.tag) {
+        .windows => "win32",
+        .macos => "darwin",
+        else => @tagName(t.os.tag),
+    };
+    const arch = switch (t.cpu.arch) {
+        .x86_64 => "x64",
+        .aarch64 => "arm64",
+        else => @tagName(t.cpu.arch),
+    };
+    // npm naming (as napi-rs): win32 packages are called "-msvc" whatever toolchain built the DLL.
+    const abi = switch (t.os.tag) {
+        .windows => "-msvc",
+        .linux => if (t.abi.isMusl()) "-musl" else "-gnu",
+        else => "",
+    };
+    const file = b.fmt("bm-engine.{s}-{s}{s}.node", .{ platform, arch, abi });
+    const install = b.addInstallFileWithDir(lib.getEmittedBin(), .{ .custom = "native" }, file);
+    b.step("native", "Build the Node-API addon (zig-out/native/*.node)").dependOn(&install.step);
 }
