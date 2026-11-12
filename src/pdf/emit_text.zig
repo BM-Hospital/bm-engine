@@ -208,11 +208,21 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
     const sw = rcs.webkit_text_stroke_width;
     const scol = rcs.resolveColor(rcs.webkit_text_stroke_color);
     const para_text = if (n.para) |pp| render.Frame.paragraphText(pp) else "";
+    // the line's overflow marker is a run of its own whose text is its glyphs' characters, not
+    // the hidden text it stands in for (takumi-pdf draws it as a separate text run)
+    var mk0: u32 = 0;
+    var mk1: u32 = 0;
+    if (lineOf(tl, run.g0)) |li| {
+        mk0 = tl.lines[li].marker0;
+        mk1 = tl.lines[li].marker1;
+    }
     var i = run.g0;
     while (i < run.g1) {
         const g0 = &tl.glyphs[i];
+        const in_marker = i >= mk0 and i < mk1;
+        const stop = if (in_marker) mk1 else if (mk1 > mk0 and i < mk0) mk0 else run.g1;
         var j = i + 1;
-        while (j < run.g1 and tl.glyphs[j].size == g0.size) j += 1;
+        while (j < run.g1 and j < stop and tl.glyphs[j].size == g0.size) j += 1;
         const fc = e.f.r.fonts.face(g0.face);
         const colored = coloredFace(e, g0.face);
         const tr: TextRun = .{
@@ -223,7 +233,7 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
             .glyphs = tl.glyphs[i..j],
             .x = x,
             .y = y,
-            .text = if (o.with_paint) para_text else "",
+            .text = if (o.with_paint and !in_marker) para_text else "",
             .baseline = run.baseline,
             .fill = dev.filtered(e.filter, fill_raw),
             .stroke = if (sw > 0 and scol.a != 0) .{ .width = sw, .color = dev.filtered(e.filter, scol) } else null,

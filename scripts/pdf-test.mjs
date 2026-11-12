@@ -761,6 +761,19 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
       check(/\/Subtype\/Image/.test(latin1(b)) && !/\/Interpolate/.test(latin1(b)), `image-rendering ${mode}: image without /Interpolate`);
     }
   }
+
+  // 6. text-overflow markers are text of their own (extractable as the marker), the hidden text is not drawn
+  {
+    const W = (s) => `<div style="padding:4px"><div style="width:120px;white-space:nowrap;overflow:hidden;font-family:Inter;text-overflow:${s}">Hello wonderful world of text</div></div>`;
+    const ir = new PdfRenderer();
+    ir.registerFont({ name: "Inter", data: inter });
+    const t1 = textOf(await ir.render(W("ellipsis"), { viewport: { width: 200, height: 80 } }), "ellipsis");
+    if (t1 !== null) check(/^Hello wonder(…|\.\.\.)$/.test(t1), `text-overflow ellipsis extracts as the marker: ${JSON.stringify(t1)}`);
+    const t2 = textOf(await ir.render(W("'[more]'"), { viewport: { width: 200, height: 80 } }), "custom_marker");
+    if (t2 !== null) check(t2 === "Hello wo[more]", `text-overflow string extracts as the marker: ${JSON.stringify(t2)}`);
+    const clip = content(await ir.render(W("ellipsis"), { viewport: { width: 200, height: 80 }, tagged: false }));
+    check(/re\nW\nn/.test(clip), "an overflow box clips its own text");
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });

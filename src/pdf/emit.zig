@@ -331,8 +331,18 @@ pub const Emitter = struct {
         return true;
     }
 
-    /// The content of the box at (`x`, `y`), queued for its context's content phase.
+    /// The content of the box at (`x`, `y`), queued for its context's content phase, under the
+    /// box's own overflow clip (takumi's `contents` property state; none visible: nothing).
     noinline fn queueContent(e: *Emitter, id: u32, x: f32, y: f32) Error!void {
+        const n = &e.f.nodes.items[id];
+        const saved = e.clips.items.len;
+        defer e.clips.items.len = saved;
+        if (n.kind != .anon_text and (n.cs.overflow_x != .visible or n.cs.overflow_y != .visible)) {
+            const c = e.ctx();
+            const g = pm.Painter.geomOf(n.cs, e.f.tree.layout(n.lid), x, y, &c);
+            if (!try e.overflowPath(n.cs, &g)) return;
+            try e.recordClip(&e.path, .nonzero);
+        }
         try e.enqueue(&e.content_q, id, x, y, 0, false);
     }
 
@@ -1058,6 +1068,13 @@ pub const Emitter = struct {
     /// `overflow` other than visible: the (rounded) padding box, or a band unbounded along an
     /// axis that does not clip (takumi `ClipKind::Shape`). False: nothing inside can show.
     noinline fn pushOverflow(e: *Emitter, cs: *const CS, g: *const Geom) Error!bool {
+        if (!try e.overflowPath(cs, g)) return false;
+        try e.clipTo(&e.path, .nonzero);
+        return true;
+    }
+
+    /// The overflow clip of a box as `e.path`; false = nothing inside is visible.
+    noinline fn overflowPath(e: *Emitter, cs: *const CS, g: *const Geom) Error!bool {
         const pr = g.padRect();
         const xclip = cs.overflow_x != .visible;
         const yclip = cs.overflow_y != .visible;
@@ -1073,7 +1090,6 @@ pub const Emitter = struct {
             if (!(pr.w > 0) or !(pr.h > 0)) return false;
             try dev.addRRectAt(e.a, &e.path, pr, g.padRadii(), g.bx.x, g.bx.y);
         }
-        try e.clipTo(&e.path, .nonzero);
         return true;
     }
 
