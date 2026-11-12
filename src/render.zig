@@ -1497,6 +1497,18 @@ pub const Frame = struct {
             if (f.opts.font_families.len > 0 and cs.font_family.len == 0) cs.font_family = f.opts.font_families;
             f.ctx.root_font_size = cs.font_size;
         }
+        if (cs.display == .contents and !el.run) {
+            // display: contents (css-display-3 §2.5; a container is skipped by `Items`): the root element
+            // is a block after all, a replaced element generates nothing, a text element keeps only its
+            // text (its box properties go, the inherited ones stay)
+            if (parent_cs == null) {
+                cs.display = .block;
+            } else if (el.kind == .image) {
+                cs.display = .none;
+            } else if (el.kind == .text) {
+                try f.textOnly(cs, &diag);
+            }
+        }
         el.cs = cs;
         if (el.run or el.kind == .image) return;
         if (comptime config.enable_css or config.enable_tw) {
@@ -1510,6 +1522,13 @@ pub const Frame = struct {
                 el.own = @intCast(f.pseudos.items.len - 1);
             }
         }
+    }
+
+    /// Replaces `cs` by the style of an anonymous inline box inheriting from it.
+    noinline fn textOnly(f: *Frame, cs: *CS, diag: *style.Diagnostics) Error!void {
+        const inh = try f.a.create(CS);
+        inh.* = cs.*;
+        cs.* = style.compute(f.a, &f.ctx, inh, null, null, diag) catch |e| return f.styleFail(e, diag);
     }
 
     /// Creates the `::before` / `::after` box of element `i` when a stylesheet rule or a Tailwind
@@ -1555,38 +1574,57 @@ pub const Frame = struct {
     const PendingObj = struct { item: Item, lang: []const u8, boxed: bool };
 
     /// Iterates `::before`, own text (text elements with generated content), children, `::after`.
+    /// A `display: contents` child generates no box: its own items take its place (css-display-3 §2.5),
+    /// to any depth; `own` is the element whose items are being listed (stackless: the DOM links lead
+    /// back up).
     const Items = struct {
         f: *const Frame,
         el: u32,
         stage: u8 = 0,
         cur: u32 = none,
+        own: u32 = none,
 
         fn next(it: *Items) ?Item {
-            const e = it.f.dom.at(it.el);
-            while (true) switch (it.stage) {
-                0 => {
-                    it.stage = 1;
-                    if (e.before != none) return .{ .ps = e.before };
-                },
-                1 => {
-                    it.stage = 2;
-                    it.cur = e.first;
-                    if (e.own != none) return .{ .ps = e.own };
-                },
-                2 => {
-                    if (it.cur != none) {
-                        const c = it.cur;
-                        it.cur = it.f.dom.at(c).next;
-                        return .{ .el = c };
-                    }
-                    it.stage = 3;
-                },
-                3 => {
-                    it.stage = 4;
-                    if (e.after != none) return .{ .ps = e.after };
-                },
-                else => return null,
-            };
+            if (it.own == none) it.own = it.el;
+            while (true) {
+                const e = it.f.dom.at(it.own);
+                switch (it.stage) {
+                    0 => {
+                        it.stage = 1;
+                        if (e.before != none) return .{ .ps = e.before };
+                    },
+                    1 => {
+                        it.stage = 2;
+                        it.cur = e.first;
+                        if (e.own != none) return .{ .ps = e.own };
+                    },
+                    2 => {
+                        if (it.cur != none) {
+                            const c = it.cur;
+                            const ce = it.f.dom.at(c);
+                            if (ce.kind == .container and !ce.run and ce.cs.display == .contents) {
+                                it.own = c;
+                                it.stage = 0;
+                                continue;
+                            }
+                            it.cur = ce.next;
+                            return .{ .el = c };
+                        }
+                        it.stage = 3;
+                    },
+                    3 => {
+                        it.stage = 4;
+                        if (e.after != none) return .{ .ps = e.after };
+                    },
+                    else => {
+                        if (it.own == it.el or e.parent == none) return null;
+                        // back in the parent of the `display: contents` element, after it
+                        it.cur = e.next;
+                        it.own = e.parent;
+                        it.stage = 2;
+                    },
+                }
+            }
         }
     };
 
