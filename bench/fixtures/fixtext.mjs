@@ -26,6 +26,8 @@ const cases = [
       clamp({ lineClamp: 2, textOverflow: '" »"' }), clamp({ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, textOverflow: '" »"' }),
       clamp({ lineClamp: '2 " >"' }),
     ]) },
+  { id: "fix-text-paint-order", feature: "text-stroke", title: "paint-order on stroked text (takumi 2.20 ignores it: stroke over fill)", width: 500, height: 300,
+    node: root({ backgroundColor: "#fff", padding: 10, flexDirection: "column", gap: 8 }, [stroked({}), stroked({ paintOrder: "stroke fill" }), stroked({ paintOrder: "stroke" })]) },
 ];
 
 export default cases;
