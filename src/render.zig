@@ -1200,6 +1200,8 @@ pub const Frame = struct {
     box_base: u32 = 0,
     pend_objs: std.ArrayList(PendingObj) = .empty,
     ifc: Ifc = .{},
+    /// inline boxes re-opened by block-in-inline splits so far (see `max_split_boxes`)
+    split_boxes: u32 = 0,
     /// direction of the block whose paragraph is being made (`paragraphBoxes`)
     ifc_rtl: bool = false,
     /// The next paragraph made is an anonymous block that is not the first child of its container:
@@ -2006,6 +2008,8 @@ pub const Frame = struct {
         };
     }
 
+    const max_split_boxes = 8192;
+
     /// Block-in-inline (CSS 2.1 §9.2.1.1): `item` is a block-level box inside the inline boxes that are
     /// open (`cur_box` and its ancestors). The paragraph collected so far ends with those boxes open
     /// (no end edge), the block becomes a child of the block container, and a new paragraph continues
@@ -2026,8 +2030,11 @@ pub const Frame = struct {
         const first_node: u32 = @intCast(f.nodes.items.len);
         try f.buildItem(item, f.ifc.parent, f.ifc.depth + 1);
         if (first_node < f.nodes.items.len) f.nodes.items[first_node].bii = true;
-        // the continuation: the same chain of boxes, outer first
+        // the continuation: the same chain of boxes, outer first (bounded work on hostile input: once
+        // the splits of a render have re-opened this many boxes, what follows continues unboxed)
         const new_base: u32 = @intCast(boxes.items.len);
+        if (f.split_boxes + n_open > max_split_boxes) n_open = 0;
+        f.split_boxes += n_open;
         var k: u32 = n_open;
         var prev: u32 = none;
         while (k > 0) {
