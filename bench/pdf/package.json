@@ -1,0 +1,24 @@
+{
+  "name": "bm-bench-pdf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "External validation, visual equivalence and benchmark of bm-engine's PDF output against takumi-pdf",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "validate": "node validate.mjs",
+    "visual": "node visual.mjs",
+    "bench": "node bench.mjs",
+    "bench:quick": "node bench.mjs --quick",
+    "report": "node report.mjs"
+  },
+  "dependencies": {
+    "takumi-pdf": "0.20.0",
+    "pdfjs-dist": "6.5.438",
+    "@napi-rs/canvas": "1.1.1",
+    "@hyzyla/pdfium": "3.0.0",
+    "mupdf": "1.28.6",
+    "pngjs": "7.0.0",
+    "pixelmatch": "8.0.0"
+  }
+}

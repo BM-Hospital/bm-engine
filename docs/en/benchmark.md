@@ -10,6 +10,78 @@ cases (0.45× takumi's time), raw rendering in 229/250 (0.63×); cold start is 2
 still uses 9 % more wasm memory than takumi and is slower on a few raw cases. Per-fixture numbers:
 [RESULTS_FULL.md](../RESULTS_FULL.md) and [results.json](../results.json).
 
+## PDF output (phase 6)
+
+`bm-engine/pdf` measured against takumi-pdf on the same machine, Node.js, fonts, images and inputs: **bm-native**
+(the Node-API addon, sync and async API), **bm-wasm** (`bm_engine.pdf.wasm`, the `pdf` profile) and **takumi-pdf**
+(npm `takumi-pdf`, wasm only; no native build is published). The corpus is the inputs of takumi-pdf's 89 goldens, the
+documents of the [PDF guide](pdf/index.md) and stress documents of 1, 10, 100 and 500 pages. Every table is generated
+from [results-pdf.json](../results-pdf.json) by `node bench/pdf/bench.mjs`; the PDFs are checked by external
+validators (`node bench/pdf/validate.mjs`: qpdf, pdfcpu, poppler, MuPDF, pdf.js, veraPDF) and compared visually with
+takumi-pdf's (`node bench/pdf/visual.mjs`). Render times are warm, engines interleaved per document, in several passes;
+cold start, memory, event loop, scaling and throughput run one fresh process per point.
+
+<!-- pdf-bench:summary -->
+- **Render time, bm-native vs takumi-pdf:** sync 0.30× [0.31× / 0.30× / 0.31×] (faster on 112/112, 0.12×–0.97×); async 0.32× [0.32× / 0.31× / 0.32×] (faster on 112/112, 0.12×–0.94×). Below 1× = bm takes less time; in brackets the same ratio per pass.
+- **bm-wasm vs takumi-pdf (both wasm):** 0.49× [0.50× / 0.49× / 0.49×] (faster on 107/112, 0.20×–1.36×). **bm-native vs bm-wasm (sync):** 0.62× [0.61× / 0.61× / 0.62×] (faster on 112/112, 0.38×–0.77×).
+- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 284 / 206 / 28 / error; bm-wasm 108 / 89 / 14 / error; takumi-pdf 29 / 46 / 75 / 83.
+- **Identity:** bm-native == bm-wasm 113/114 documents, same error on both: 1.
+- **Validators:** bm-native 104/113 PDFs without any error or warning (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 101/113.
+- **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 79, equivalent 30, different 3, close 1 (113 documents, pdfium + mupdf).
+- **Noise:** absolute geomeans moved between passes by bm-native:sync 10.1 %, bm-native:async 10.2 %, bm-wasm:sync 10.2 %, bm-wasm:async 11.6 %, takumi-pdf:async 12.9 % ⚠; read the ratios (measured interleaved).
+<!-- /pdf-bench:summary -->
+
+<!-- pdf-bench:speed -->
+| Variant | geomean ms | per pass | spread |
+|:--|--:|--:|--:|
+| bm-native:sync | 1.08 | 1.05 / 1.16 / 1.15 | 10.1 % ⚠ |
+| bm-native:async | 1.13 | 1.09 / 1.20 / 1.21 | 10.2 % ⚠ |
+| bm-wasm:sync | 1.75 | 1.71 / 1.90 / 1.85 | 10.2 % ⚠ |
+| bm-wasm:async | 1.66 | 1.62 / 1.82 / 1.75 | 11.6 % ⚠ |
+| takumi-pdf:async | 3.56 | 3.40 / 3.89 / 3.79 | 12.9 % ⚠ |
+
+| Ratio (time) | geomean | per pass | faster | range | spread |
+|:--|--:|--:|--:|--:|--:|
+| bm-native:sync / takumi-pdf:async | 0.30× | 0.31× / 0.30× / 0.31× | 112/112 | 0.12×–0.97× | 3.0 % |
+| bm-native:async / takumi-pdf:async | 0.32× | 0.32× / 0.31× / 0.32× | 112/112 | 0.12×–0.94× | 4.1 % |
+| bm-wasm:sync / takumi-pdf:async | 0.49× | 0.50× / 0.49× / 0.49× | 107/112 | 0.20×–1.36× | 3.1 % |
+| bm-native:sync / bm-wasm:sync | 0.62× | 0.61× / 0.61× / 0.62× | 112/112 | 0.38×–0.77× | 1.8 % |
+| bm-native:async / bm-native:sync | 1.05× | 1.04× / 1.03× / 1.05× | 25/112 | 0.88×–1.39× | 2.1 % |
+
+Warm render time per document (fonts registered beforehand, the output kept in memory), 112 documents, 3 pass(es); variants interleaved in rotating order every round.
+<!-- /pdf-bench:speed -->
+
+<!-- pdf-bench:scale -->
+| Pages | bm-native ms | pages/s | size | peak RSS | bm-wasm ms | pages/s | size | peak RSS | takumi-pdf ms | pages/s | size | peak RSS |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 3.50 ms | 283.7 | 27 KiB | 60 MiB | 9.30 ms | 107.9 | 27 KiB | 85 MiB | 34.9 ms | 28.6 | 27 KiB | 111 MiB |
+| 10 | 48.5 ms | 206.3 | 99 KiB | 75 MiB | 112 ms | 89.0 | 99 KiB | 89 MiB | 219 ms | 45.6 | 58 KiB | 119 MiB |
+| 100 | 3,553 ms | 28.1 | 4,530 KiB | 571 MiB | 7,147 ms | 14.0 | 4,530 KiB | 669 MiB | 1,341 ms | 74.6 | 426 KiB | 135 MiB |
+| 500 | error: bm-engine: out of memory |  |  | 2,433 MiB | error: bm-engine: out of memory |  |  | 2,098 MiB | 6,015 ms | 83.1 | 2,186 KiB | 191 MiB |
+
+One render of the stress document (per page: heading, paragraphs, a 14-row table, an image; `break-after: page`) in a fresh process per point; warmed with the 1-page document. Super-linearity (time per page at 100 pages / at 10 pages; 1× = linear): bm-native 7.33×, bm-wasm 6.36×, takumi-pdf 0.61×.
+<!-- /pdf-bench:scale -->
+
+<!-- pdf-bench:equiv -->
+| Engine | PDFs | clean | errors | warnings | bm-only | shared with takumi-pdf | veraPDF |
+|:--|--:|--:|--:|--:|--:|--:|--:|
+| bm-native | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
+
+Validators: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Semantics (pdf.js: text per page, links, outline, attachments, tags, metadata) identical to takumi-pdf in 101/113 documents.
+
+| Rasteriser | identical | equivalent | close | different |
+|:--|--:|--:|--:|--:|
+| pdfium | 73 | 35 | 2 | 3 |
+| mupdf | 69 | 39 | 2 | 3 |
+| best of the rasterisers | 79 | 30 | 1 | 3 |
+
+bm-native vs takumi-pdf, same rasteriser, 96 and 144 dpi, 113 documents (worst page counts). bm's PDF vs bm's own image render of the same tree (viewport documents, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+
+bm-native == bm-wasm byte for byte: 113/114 (+1 with the same error on both). Render errors: stress/500p bm-native: bm-engine: out of memory; stress/500p bm-wasm: bm-engine: out of memory.
+<!-- /pdf-bench:equiv -->
+
 ## Native Node.js addon (phase 4)
 
 Since phase 4, `bm-engine` on Node.js runs as a native addon when one is installed for the platform, with the

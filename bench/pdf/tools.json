@@ -1,0 +1,91 @@
+{
+  "comment": "External tools of bench/pdf, downloaded by `node bench/pdf/setup.mjs` into bench/pdf/tools/<name>/ (gitignored). Every download is checked against `sha256` (pinned here) and, when the publisher publishes one, against the publisher's checksum fetched from `checksum.url` at setup time. Nothing is installed: archives are only extracted, and only the listed binaries are executed.",
+  "tools": {
+    "qpdf": {
+      "version": "12.4.2",
+      "what": "qpdf --check, --json structure dump, --check-linearization",
+      "url": "https://github.com/qpdf/qpdf/releases/download/v12.4.2/qpdf-12.4.2-msvc64.zip",
+      "file": "qpdf-12.4.2-msvc64.zip",
+      "sha256": "db87077e683630c1217e0e8f9a20a9749d952ab676e881c3689187763a5de25d",
+      "checksum": {
+        "kind": "sha256-list",
+        "url": "https://github.com/qpdf/qpdf/releases/download/v12.4.2/qpdf-12.4.2.sha256",
+        "note": "qpdf-12.4.2.sha256 is published next to the release assets (with a sigstore bundle)"
+      },
+      "extract": "zip",
+      "bin": {
+        "qpdf": "qpdf-12.4.2-msvc64/bin/qpdf.exe"
+      }
+    },
+    "pdfcpu": {
+      "version": "0.16.4",
+      "what": "pdfcpu validate -mode strict (Go, independent parser)",
+      "url": "https://github.com/pdfcpu/pdfcpu/releases/download/v0.16.4/pdfcpu_0.16.4_Windows_x86_64.zip",
+      "file": "pdfcpu_0.16.4_Windows_x86_64.zip",
+      "sha256": "faf6c51d6f54d96a8c1ad5beee02143460b8ae97bd9630cbab1a253adaa43558",
+      "checksum": {
+        "kind": "sha256-list",
+        "url": "https://github.com/pdfcpu/pdfcpu/releases/download/v0.16.4/checksums.txt"
+      },
+      "extract": "zip",
+      "bin": {
+        "pdfcpu": "pdfcpu_0.16.4_Windows_x86_64/pdfcpu.exe"
+      }
+    },
+    "jre": {
+      "version": "Eclipse Temurin 21.0.13+9 JRE (x64 Windows, hotspot)",
+      "what": "Java runtime for veraPDF only (portable zip, never installed; JAVA_HOME / PATH untouched)",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
+      "file": "OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
+      "sha256": "2332c0b4cff6bed722da3567c91d5e47568bcba863fa4945d0a8d6fc76158628",
+      "checksum": {
+        "kind": "sha256-file",
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip.sha256.txt"
+      },
+      "extract": "zip",
+      "bin": {
+        "java": "jdk-21.0.13+9-jre/bin/java.exe"
+      }
+    },
+    "verapdf": {
+      "version": "1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central)",
+      "what": "veraPDF PDF/A-1b..4 and PDF/UA-1/-2 validation (run with the portable JRE: java -cp <jar> org.verapdf.apps.GreenfieldCliWrapper)",
+      "url": "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/greenfield-apps-1.28.2.jar",
+      "file": "greenfield-apps-1.28.2.jar",
+      "sha256": "687d4d8bcfec48c9f7e931cf78ed061f1eeccfba55d4cdc000ba9b4d8aa46ce6",
+      "checksum": {
+        "kind": "sha1-file",
+        "url": "https://repo1.maven.org/maven2/org/verapdf/apps/greenfield-apps/1.28.2/greenfield-apps-1.28.2.jar.sha1",
+        "note": "Maven Central publishes SHA-1 (and a PGP .asc) only; the SHA-256 is pinned here after the SHA-1 check"
+      },
+      "extract": null,
+      "bin": {
+        "jar": "greenfield-apps-1.28.2.jar"
+      }
+    },
+    "poppler": {
+      "version": "26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0)",
+      "what": "pdfinfo, pdffonts, pdftoppm (poppler Splash rasteriser), pdftotext",
+      "url": "https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip",
+      "file": "Release-26.09.0-0.zip",
+      "sha256": "7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0",
+      "checksum": {
+        "kind": "github-digest",
+        "url": "https://api.github.com/repos/oschwartz10612/poppler-windows/releases/tags/v26.09.0-0",
+        "note": "the SHA-256 digest GitHub publishes for the release asset"
+      },
+      "extract": "zip",
+      "bin": {
+        "pdfinfo": "poppler-26.09.0/Library/bin/pdfinfo.exe",
+        "pdffonts": "poppler-26.09.0/Library/bin/pdffonts.exe",
+        "pdftoppm": "poppler-26.09.0/Library/bin/pdftoppm.exe",
+        "pdftotext": "poppler-26.09.0/Library/bin/pdftotext.exe"
+      }
+    }
+  },
+  "notTools": {
+    "mupdf": "mupdf-1.28.5-windows.zip (https://casper.mupdf.com/downloads/archive/mupdf-1.28.5-windows.zip, sha256 13476a53e84f5527983158acb6442c7853b3cdc022f3b24880780dcfba1fcc99, no publisher checksum) was tried: its mutool.exe does not start on this Windows 11 machine (STATUS_DLL_NOT_FOUND, 0xC0000135: api-ms-win-crt-utility-l1-1-0.dll), i.e. it needs the Visual C++ / UCRT redistributable installed system-wide, which this setup must not do. MuPDF is used through the official mupdf npm package (wasm, same engine: parse warnings + rasteriser) instead.",
+    "veraPDFInstaller": "software.verapdf.org/releases/verapdf-installer.zip is an IzPack installer; not needed: the shaded greenfield-apps CLI jar is published on Maven Central and runs as is with the portable JRE.",
+    "pac": "PAC (PDF Accessibility Checker) is a Windows GUI application without a CLI: not usable headless."
+  }
+}

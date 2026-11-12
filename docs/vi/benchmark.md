@@ -12,6 +12,78 @@ trên 250 fixture dùng chung (i3-10100, Windows 11, Node 26.13, ngày 2026-11-1
 render PNG nhanh hơn ở 248/250 ca đo thời gian (0.45× thời gian của takumi), render raw nhanh hơn ở 229/250 ca (0.63×); cold start nhanh hơn 2.5× (78.1 so với 193.8 ms); binary nhỏ hơn 4–9×.
 bm-engine vẫn dùng nhiều hơn takumi 9 % bộ nhớ wasm và chậm hơn ở vài ca raw.
 
+## Đầu ra PDF (giai đoạn 6)
+
+`bm-engine/pdf` được đo cùng takumi-pdf trên cùng máy, Node.js, font, ảnh và đầu vào: **bm-native** (addon Node-API,
+API sync và async), **bm-wasm** (`bm_engine.pdf.wasm`, profile `pdf`) và **takumi-pdf** (npm `takumi-pdf`, chỉ có
+wasm; không có bản native nào được phát hành). Bộ tài liệu gồm đầu vào của 89 golden của takumi-pdf, các tài liệu
+trong [hướng dẫn PDF](pdf/index.md) và tài liệu stress 1, 10, 100, 500 trang. Mọi bảng được sinh từ
+[results-pdf.json](../results-pdf.json) bởi `node bench/pdf/bench.mjs`; các PDF được kiểm tra bằng công cụ bên ngoài
+(`node bench/pdf/validate.mjs`: qpdf, pdfcpu, poppler, MuPDF, pdf.js, veraPDF) và so sánh hình ảnh với takumi-pdf
+(`node bench/pdf/visual.mjs`). Thời gian render đo khi đã nóng, các engine chạy xen kẽ trong từng tài liệu, qua
+nhiều lượt; khởi động lạnh, bộ nhớ, event loop, theo số trang và thông lượng: mỗi điểm chạy trong một tiến trình mới.
+
+<!-- pdf-bench:summary -->
+- **Thời gian render, bm-native so với takumi-pdf:** sync 0,30× [0,31× / 0,30× / 0,31×] (nhanh hơn ở 112/112, 0,12×–0,97×); async 0,32× [0,32× / 0,31× / 0,32×] (nhanh hơn ở 112/112, 0,12×–0,94×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
+- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,49× [0,50× / 0,49× / 0,49×] (nhanh hơn ở 107/112, 0,20×–1,36×). **bm-native vs bm-wasm (sync):** 0,62× [0,61× / 0,61× / 0,62×] (nhanh hơn ở 112/112, 0,38×–0,77×).
+- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 284 / 206 / 28 / lỗi; bm-wasm 108 / 89 / 14 / lỗi; takumi-pdf 29 / 46 / 75 / 83.
+- **Trùng byte:** bm-native == bm-wasm 113/114 tài liệu, cùng lỗi ở cả hai: 1.
+- **Bộ kiểm tra:** bm-native 104/113 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 101/113.
+- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 79, equivalent 30, different 3, close 1 (113 tài liệu, pdfium + mupdf).
+- **Nhiễu:** geomean tuyệt đối lệch giữa các lượt bm-native:sync 10,1 %, bm-native:async 10,2 %, bm-wasm:sync 10,2 %, bm-wasm:async 11,6 %, takumi-pdf:async 12,9 % ⚠; hãy đọc tỉ lệ (đo xen kẽ).
+<!-- /pdf-bench:summary -->
+
+<!-- pdf-bench:speed -->
+| Biến thể | geomean ms | từng lượt | độ lệch |
+|:--|--:|--:|--:|
+| bm-native:sync | 1,08 | 1,05 / 1,16 / 1,15 | 10,1 % ⚠ |
+| bm-native:async | 1,13 | 1,09 / 1,20 / 1,21 | 10,2 % ⚠ |
+| bm-wasm:sync | 1,75 | 1,71 / 1,90 / 1,85 | 10,2 % ⚠ |
+| bm-wasm:async | 1,66 | 1,62 / 1,82 / 1,75 | 11,6 % ⚠ |
+| takumi-pdf:async | 3,56 | 3,40 / 3,89 / 3,79 | 12,9 % ⚠ |
+
+| Tỉ lệ (thời gian) | geomean | từng lượt | nhanh hơn | khoảng | độ lệch |
+|:--|--:|--:|--:|--:|--:|
+| bm-native:sync / takumi-pdf:async | 0,30× | 0,31× / 0,30× / 0,31× | 112/112 | 0,12×–0,97× | 3,0 % |
+| bm-native:async / takumi-pdf:async | 0,32× | 0,32× / 0,31× / 0,32× | 112/112 | 0,12×–0,94× | 4,1 % |
+| bm-wasm:sync / takumi-pdf:async | 0,49× | 0,50× / 0,49× / 0,49× | 107/112 | 0,20×–1,36× | 3,1 % |
+| bm-native:sync / bm-wasm:sync | 0,62× | 0,61× / 0,61× / 0,62× | 112/112 | 0,38×–0,77× | 1,8 % |
+| bm-native:async / bm-native:sync | 1,05× | 1,04× / 1,03× / 1,05× | 25/112 | 0,88×–1,39× | 2,1 % |
+
+Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trước, đầu ra giữ trong bộ nhớ), 112 tài liệu, 3 lượt; các biến thể chạy xen kẽ, đổi thứ tự mỗi vòng.
+<!-- /pdf-bench:speed -->
+
+<!-- pdf-bench:scale -->
+| Trang | bm-native ms | trang/s | kích thước | RSS đỉnh | bm-wasm ms | trang/s | kích thước | RSS đỉnh | takumi-pdf ms | trang/s | kích thước | RSS đỉnh |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 3,50 ms | 283,7 | 27 KiB | 60 MiB | 9,30 ms | 107,9 | 27 KiB | 85 MiB | 34,9 ms | 28,6 | 27 KiB | 111 MiB |
+| 10 | 48,5 ms | 206,3 | 99 KiB | 75 MiB | 112 ms | 89,0 | 99 KiB | 89 MiB | 219 ms | 45,6 | 58 KiB | 119 MiB |
+| 100 | 3.553 ms | 28,1 | 4.530 KiB | 571 MiB | 7.147 ms | 14,0 | 4.530 KiB | 669 MiB | 1.341 ms | 74,6 | 426 KiB | 135 MiB |
+| 500 | lỗi: bm-engine: out of memory |  |  | 2.433 MiB | lỗi: bm-engine: out of memory |  |  | 2.098 MiB | 6.015 ms | 83,1 | 2.186 KiB | 191 MiB |
+
+Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 7,33×, bm-wasm 6,36×, takumi-pdf 0,61×.
+<!-- /pdf-bench:scale -->
+
+<!-- pdf-bench:equiv -->
+| Engine | PDF | sạch | lỗi | cảnh báo | bm-only | chung với takumi-pdf | veraPDF |
+|:--|--:|--:|--:|--:|--:|--:|--:|
+| bm-native | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
+
+Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 101/113 tài liệu.
+
+| Bộ raster | identical | equivalent | close | different |
+|:--|--:|--:|--:|--:|
+| pdfium | 73 | 35 | 2 | 3 |
+| mupdf | 69 | 39 | 2 | 3 |
+| tốt nhất trong các bộ raster | 79 | 30 | 1 | 3 |
+
+bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 113 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+
+bm-native == bm-wasm từng byte: 113/114 (+1 cùng lỗi ở cả hai). Lỗi render: stress/500p bm-native: bm-engine: out of memory; stress/500p bm-wasm: bm-engine: out of memory.
+<!-- /pdf-bench:equiv -->
+
 ## Addon native cho Node.js (giai đoạn 4)
 
 Từ giai đoạn 4, `bm-engine` trên Node.js chạy bằng addon native khi có addon cho nền tảng, và tự động quay về bản
