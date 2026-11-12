@@ -698,6 +698,16 @@ pub const Emitter = struct {
     /// The fragment of a box (frame y range `y0`..`y1`) the current pass paints: its part on the
     /// pass's page, or, on this page's own pass, a box on none of the pages the passes visit;
     /// null: none.
+    /// Whether a piece of paint spanning frame y range `y0`..`y1` (untransformed) is drawn by this
+    /// pass on this page: its part on the pass's page, inside this page's window (takumi paints a
+    /// table's collapsed borders per fragment, so a page draws only the borders it shows).
+    pub noinline fn pieceShows(e: *const Emitter, y0: f32, y1: f32) bool {
+        if (!e.plain()) return true;
+        if (e.pass == null) return !e.window.excludes(@floor(y0), @ceil(y1));
+        const fr = e.passFragment(y0, y1) orelse return false;
+        return !e.window.excludes(@floor(fr.s0), @ceil(fr.s1));
+    }
+
     noinline fn passFragment(e: *const Emitter, y0: f32, y1: f32) ?PassFragment {
         const r = e.pass orelse return .{ .win = e.window, .s0 = y0, .s1 = y1 };
         if (e.onPage(r, y0, y1)) {

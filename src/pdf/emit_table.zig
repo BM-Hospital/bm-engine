@@ -641,6 +641,8 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
             const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);
             const y2 = @max(roundPx(fy + @as(f32, @floatFromInt(bsz)) / 64), y1);
             _ = ctx;
+            // (a page of a paginated document draws the borders on it, once)
+            if (!p.pieceShows(@min(y1, y2), @max(y1, y2))) continue;
             try border.paintSideRect(&p.d, if (inline_axis) 0 else 3, x1, y1, x2, y2, b.styleAt(index), b.color(index));
         }
         prev_row = @as(usize, sec.start) + sec.n_rows;
