@@ -321,14 +321,8 @@ noinline fn itemWidth(t: anytype, c: *S, ch: u32) Error!f32 {
     const cn = &t.nodes.items[ch];
     t.rbox(&c.cb, &cn.style, c.parent);
     const cb = &c.cb;
-    {
-        // ORACLE QUIRK: takumi resolves the percentage part of an atomic inline's margins to 0
-        // (CSS: against the containing block's width). Remove this block to get the CSS behaviour.
-        const m: [4]st.Dim = .{ cn.style.margin.left, cn.style.margin.top, cn.style.margin.right, cn.style.margin.bottom };
-        for (m, 0..) |d, i| {
-            if (d.hasPercent()) cb.margin[i] = t.qt(orElse(tr.resolveDim(d, 0), 0));
-        }
-    }
+    // (percentage margins resolve against the containing block width, as in CSS / Chrome; takumi takes
+    // their percentage part as 0)
     c.ckh = maxO(clampO(cb.size[1], cb.min[1], cb.max[1]), cb.pb[1]);
     var w = cb.size[0];
     if (!has(w)) {

@@ -107,7 +107,9 @@ pub const GlyphMask = struct { x: i32, y: i32, w: u32, h: u32, data: []u8 };
 pub const ColorGlyphEntry = struct { pix: raster.Pixmap, ox: i32, oy: i32 };
 
 /// An inline box (tagged inline element or generated box) enclosing text runs of a paragraph.
-pub const InlineBox = struct { cs: *const CS, parent: u32 };
+/// `paint_cs`: for a box with percentage padding, a copy of `cs` with the padding resolved against the
+/// percentage base (`paint_base`) of the line layout that will be painted.
+pub const InlineBox = struct { cs: *const CS, parent: u32, paint_cs: ?*const CS = null, paint_base: f32 = 0 };
 
 /// Iterates the painted runs of a line layout: maximal glyph sequences of one source run and one
 /// face on one line, with their horizontal extent and baseline.
@@ -1623,9 +1625,9 @@ pub const Frame = struct {
     fn hasInlineEdges(cs: *const CS) bool {
         const bw = cs.usedBorderWidths();
         for ([2]usize{ 1, 3 }) |k| {
-            if (bw[k] > 0 or cs.padding[k].resolve(0) != 0) return true;
+            if (bw[k] > 0 or cs.padding[k].resolve(0) != 0 or cs.padding[k].pct != 0) return true;
             switch (cs.margin[k]) {
-                .lp => |lp| if (lp.resolve(0) != 0) return true,
+                .lp => |lp| if (lp.resolve(0) != 0 or lp.pct != 0) return true,
                 else => {},
             }
         }
@@ -2064,16 +2066,30 @@ pub const Frame = struct {
             const bw = cs.usedBorderWidths();
             var edge: [2]f32 = undefined;
             var mar: [2]f32 = undefined;
+            const rtl = cs.direction == .rtl;
+            // percentage margins / padding resolve against the containing block width at layout time
+            // (Chrome; takumi takes them as 0)
+            var parts: font.EdgeParts = .{};
+            var has_pct = false;
             // (sides 3 = left, 1 = right)
             for ([2]usize{ 3, 1 }, 0..) |side, k| {
-                const m: f32 = switch (cs.margin[side]) {
-                    .lp => |lp| lp.resolve(0),
-                    else => 0,
+                const mlp: style.LP = switch (cs.margin[side]) {
+                    .lp => |lp| lp,
+                    else => .{},
                 };
+                const plp = cs.padding[side];
+                const m = mlp.resolve(0);
                 mar[k] = @trunc(m * 64) / 64;
-                edge[k] = mar[k] + @trunc(bw[side] * 64) / 64 + @trunc(@max(cs.padding[side].resolve(0), 0) * 64) / 64;
+                edge[k] = mar[k] + @trunc(bw[side] * 64) / 64 + @trunc(@max(plp.resolve(0), 0) * 64) / 64;
+                // [inline start, inline end]
+                const e: usize = @intFromBool((k == 1) != rtl);
+                parts.margin[e] = m;
+                parts.margin_pct[e] = mlp.resolve(1) - m;
+                parts.padding[e] = plp.resolve(0);
+                parts.padding_pct[e] = plp.resolve(1) - parts.padding[e];
+                parts.border[e] = bw[side];
+                if (parts.margin_pct[e] != 0 or parts.padding_pct[e] != 0) has_pct = true;
             }
-            const rtl = cs.direction == .rtl;
             o.* = .{
                 .parent = if (ib.parent == none or ib.parent < f.box_base) font.no_box else ib.parent - f.box_base,
                 .style = textStyle(cs, 0),
@@ -2087,6 +2103,7 @@ pub const Frame = struct {
                 .end = edge[@intFromBool(!rtl)],
                 .margin_start = mar[@intFromBool(rtl)],
                 .rtl = rtl,
+                .pct = if (has_pct) parts else null,
                 .margin_end = mar[@intFromBool(!rtl)],
                 .clone = cs.box_decoration_break == .clone,
                 .decorated = cs.resolveColor(cs.background_color).a != 0 or cs.background_image.len > 0 or bw[0] > 0 or bw[1] > 0 or bw[2] > 0 or bw[3] > 0,
@@ -2270,6 +2287,8 @@ pub const Frame = struct {
             };
         }
         const p = n.para orelse return .{ known[0] orelse 0, known[1] orelse 0 };
+        // (percentage edges of inline boxes: against the width once it is known, 0 in intrinsic sizing)
+        p.setPercentBase(known[0] orelse 0);
         const limit: ?f32 = known[0] orelse switch (avail[0]) {
             .definite => |v| v,
             .min_content => p.minContentWidth(),
@@ -2290,6 +2309,7 @@ pub const Frame = struct {
         const id = f.lid_node.items[lid];
         if (id == none) return .{ nan, nan };
         const p = f.nodes.items[id].para orelse return .{ nan, nan };
+        p.setPercentBase(content_size[0]);
         const sz = p.measure(content_size[0]);
         if (sz.line_count == 0) return .{ content_size[1], content_size[1] };
         return .{ sz.first_baseline, sz.last_baseline };
@@ -2325,7 +2345,7 @@ pub const Frame = struct {
         };
     }
 
-    noinline fn inlineLayout(f: *Frame, n: *Node, p: *const font.Paragraph, io: *layout.InlineIo) Error!void {
+    noinline fn inlineLayout(f: *Frame, n: *Node, p: *font.Paragraph, io: *layout.InlineIo) Error!void {
         var fc: FlowCtx = .{ .io = io };
         var flow: font.Flow = .{ .alloc = f.a, .ctx = &fc };
         if (io.items.len > 0) {
@@ -2336,6 +2356,7 @@ pub const Frame = struct {
         if (io.band_fn != null) flow.band_fn = FlowCtx.band;
         if (io.float_fn != null) flow.float_fn = FlowCtx.float;
         const w = io.width;
+        p.setPercentBase(w);
         if (!(@abs(w) < std.math.inf(f32))) {
             // intrinsic sizes
             const iw = if (w < 0) p.minContentWidthFlow(&flow) else p.maxContentWidthFlow(&flow);
@@ -2360,6 +2381,7 @@ pub const Frame = struct {
         }
         const tl = try f.a.create(font.TextLayout);
         tl.* = p.layoutFlow(f.a, &flow, w) catch return error.OutOfMemory;
+        if (p.has_pct_edges) try f.resolveBoxPadding(n, tl);
         n.tl = tl;
         n.tl_w = std.math.nan(f32);
         io.size = .{ tl.width, tl.height };
@@ -2376,6 +2398,26 @@ pub const Frame = struct {
         }
     }
 
+    /// Inline boxes with percentage padding: the painters read the padding from the style, so they get
+    /// a copy with the padding resolved against the percentage base of line layout `tl`.
+    noinline fn resolveBoxPadding(f: *Frame, n: *const Node, tl: *const font.TextLayout) Error!void {
+        for (tl.boxes) |fr| {
+            const gi = @as(u64, n.box_base) + fr.box;
+            if (gi >= f.inline_boxes.items.len) continue;
+            const ib = &f.inline_boxes.items[@intCast(gi)];
+            var any = false;
+            for (ib.cs.padding) |lp| {
+                if (lp.pct != 0 or lp.calc != null) any = true;
+            }
+            if (!any or (ib.paint_cs != null and ib.paint_base == tl.pct_base)) continue;
+            const c = try f.a.create(CS);
+            c.* = ib.cs.*;
+            for (&c.padding) |*lp| lp.* = .{ .px = @max(lp.resolve(tl.pct_base), 0) };
+            ib.paint_cs = c;
+            ib.paint_base = tl.pct_base;
+        }
+    }
+
     /// Index of a node of `f.nodes` from its pointer.
     pub fn nodeId(f: *const Frame, n: *const Node) u32 {
         return @intCast((@intFromPtr(n) - @intFromPtr(f.nodes.items.ptr)) / @sizeOf(Node));
@@ -2389,15 +2431,17 @@ pub const Frame = struct {
     pub fn boxFragment(f: *const Frame, n: *const Node, fr: *const font.BoxFragment) ?FragInfo {
         const gi = @as(u64, n.box_base) + fr.box;
         if (gi >= f.inline_boxes.items.len or !(fr.x1 >= fr.x0)) return null;
-        const cs = f.inline_boxes.items[@intCast(gi)].cs;
+        const ib = f.inline_boxes.items[@intCast(gi)];
+        const cs = ib.paint_cs orelse ib.cs;
         if (cs.visibility != .visible) return null;
         const clone = cs.box_decoration_break == .clone;
         // (the start edge is on the right in a right-to-left fragment)
         const has_left = if (fr.rtl) fr.last else fr.first;
         const has_right = if (fr.rtl) fr.first else fr.last;
         const bw = cs.usedBorderWidths();
-        const el = @trunc(bw[3] * 64) / 64 + @trunc(@max(cs.padding[3].resolve(0), 0) * 64) / 64;
-        const er = @trunc(bw[1] * 64) / 64 + @trunc(@max(cs.padding[1].resolve(0), 0) * 64) / 64;
+        const base: f32 = if (n.tl) |tl| tl.pct_base else 0;
+        const el = @trunc(bw[3] * 64) / 64 + @trunc(@max(cs.padding[3].resolve(base), 0) * 64) / 64;
+        const er = @trunc(bw[1] * 64) / 64 + @trunc(@max(cs.padding[1].resolve(base), 0) * 64) / 64;
         return .{
             .cs = cs,
             .x0 = if (has_left) fr.x0 + el else fr.x0,
@@ -2416,7 +2460,9 @@ pub const Frame = struct {
             if (n.tl_w != n.tl_w or n.tl_w == cw) return tl;
         }
         const tl = try f.a.create(font.TextLayout);
+        p.setPercentBase(cw);
         tl.* = p.layout(f.a, cw) catch return error.OutOfMemory;
+        if (p.has_pct_edges) try f.resolveBoxPadding(n, tl);
         n.tl = tl;
         n.tl_w = cw;
         return tl;

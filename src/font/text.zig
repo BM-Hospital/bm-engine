@@ -132,10 +132,24 @@ pub const InlineBox = struct {
     /// The box paints something (background, border): its fragments are wanted in
     /// `TextLayout.boxes` even when it does not affect the layout.
     decorated: bool = false,
+    /// Margins / padding with a percentage: the parts of the edges ([inline start, inline end]). When
+    /// set, `start` / `end` / `margin_*` are derived from it for the percentage base of the moment
+    /// (`Paragraph.setPercentBase`: the containing block width; 0 in intrinsic sizing).
+    pct: ?EdgeParts = null,
     /// `direction: rtl` on the box: its inline-start edge is its right one (`start` / `end` are
     /// logical). On a line the edges are placed visually (Blink's box fragments): the left edge left of
     /// the box's leftmost content, the right edge right of its rightmost.
     rtl: bool = false,
+};
+
+/// The parts of the inline edges of an `InlineBox`, [inline start, inline end]: margin and padding as
+/// px + fraction of the percentage base, border width in px.
+pub const EdgeParts = struct {
+    margin: [2]f32 = .{ 0, 0 },
+    margin_pct: [2]f32 = .{ 0, 0 },
+    padding: [2]f32 = .{ 0, 0 },
+    padding_pct: [2]f32 = .{ 0, 0 },
+    border: [2]f32 = .{ 0, 0 },
 };
 
 pub const LineHeight = union(enum) {
@@ -367,6 +381,8 @@ pub const TextLayout = struct {
     objects: []ObjectPos = &.{},
     boxes: []BoxFragment = &.{},
     segments: []Segment = &.{},
+    /// The percentage base the inline box edges were resolved against (`Paragraph.setPercentBase`).
+    pct_base: f32 = 0,
 
     pub fn deinit(self: *TextLayout, alloc: std.mem.Allocator) void {
         alloc.free(self.objects);
@@ -473,6 +489,24 @@ const BoxInfo = struct {
     face: FaceId = 0,
     clone: bool = false,
     rtl: bool = false,
+    pct: ?EdgeParts = null,
+
+    /// `start` / `end` / `margin_*` of a box with percentage edges for the base `base` (each part on
+    /// the 1/64 px grid, like the px-only edges).
+    fn resolveEdges(bi: *BoxInfo, base: f32) void {
+        const e = bi.pct orelse return;
+        var m: [2]f32 = undefined;
+        var r: [2]f32 = undefined;
+        for (0..2) |k| {
+            m[k] = @trunc((e.margin[k] + e.margin_pct[k] * base) * 64) / 64;
+            r[k] = m[k] + @trunc(e.border[k] * 64) / 64 + @trunc(@max(e.padding[k] + e.padding_pct[k] * base, 0) * 64) / 64;
+            if (!std.math.isFinite(m[k]) or !std.math.isFinite(r[k])) return;
+        }
+        bi.start = r[0];
+        bi.end = r[1];
+        bi.margin_start = m[0];
+        bi.margin_end = m[1];
+    }
 };
 
 const ObjInfo = struct { box: u32, valign: VerticalAlign };
@@ -563,6 +597,9 @@ pub const Paragraph = struct {
     has_indent: bool = false,
     /// Some inline box is `direction: rtl` (its edges need visual placement on every line).
     has_rtl_box: bool = false,
+    /// Some inline box has percentage margins / padding; the base they are resolved for at the moment.
+    has_pct_edges: bool = false,
+    pct_base: f32 = 0,
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -682,6 +719,7 @@ pub const Paragraph = struct {
         p.objs = try b.objs.toOwnedSlice(alloc);
         p.has_clone = b.cx and b.has_clone;
         p.has_rtl_box = b.cx and b.has_rtl_box;
+        p.has_pct_edges = b.cx and b.has_pct;
         p.boxes = b.boxes;
         p.run_box = b.run_box;
         return p;
@@ -698,6 +736,22 @@ pub const Paragraph = struct {
 
     fn wraps(self: *const Paragraph) bool {
         return self.any_wrap;
+    }
+
+    /// Resolves the percentage margins / padding of the inline boxes against `base` (the width of the
+    /// containing block; 0 or a non-finite value = intrinsic sizing, where they are 0) for the measure /
+    /// layout calls that follow. Cheap when nothing changes; a paragraph without such boxes ignores it.
+    pub fn setPercentBase(self: *Paragraph, base: f32) void {
+        if (!self.has_pct_edges) return;
+        const b: f32 = if (std.math.isFinite(base) and base > 0) base else 0;
+        if (b == self.pct_base) return;
+        self.pct_base = b;
+        for (self.boxes) |*bi| bi.resolveEdges(b);
+        for (self.glyphs) |*g| {
+            if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid > Special.close or g.cluster >= self.boxes.len) continue;
+            const bi = &self.boxes[g.cluster];
+            if (bi.pct != null) g.x_advance = if (g.gid == Special.open) bi.start else bi.end;
+        }
     }
 
     const LineInfo = struct {
@@ -2445,6 +2499,7 @@ pub const Paragraph = struct {
             .exact_width = if (flow) max_w else size.exact_width,
             .lines = &.{},
             .glyphs = &.{},
+            .pct_base = self.pct_base,
         };
         return acc.finish(alloc, &res);
     }
@@ -2772,6 +2827,7 @@ const Builder = struct {
     nowrap: bool = false,
     has_clone: bool = false,
     has_rtl_box: bool = false,
+    has_pct: bool = false,
     base_level: u8 = 0,
 
     /// Resolves `ParagraphOptions.boxes` and decides whether the paragraph needs the inline box
@@ -2806,6 +2862,14 @@ const Builder = struct {
             }
             bi.rtl = s.rtl;
             if (s.rtl) b.has_rtl_box = true;
+            if (s.pct) |ep| {
+                bi.pct = ep;
+                bi.resolveEdges(0);
+                bi.clone = s.clone;
+                if (bi.clone) b.has_clone = true;
+                b.has_pct = true;
+                cx = true;
+            }
             ib[k] = bi;
             if (s.decorated or bi.valign != .baseline or bi.start != 0 or bi.end != 0 or bi.normal_lh != ib[0].normal_lh or
                 (!bi.normal_lh and (bi.ascent != ib[0].ascent or bi.descent != ib[0].descent))) cx = true;

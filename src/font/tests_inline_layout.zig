@@ -187,3 +187,31 @@ test "text-wrap: balance with inline boxes and atomic inlines (flow layout)" {
     try t.expectEqual(l1.lines.len, l2.lines.len);
     for (l1.lines, l2.lines) |a, b| try t.expectEqual(a.width, b.width);
 }
+
+test "inline box edges with percentages resolve against the percentage base" {
+    var fx = try Fx.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = fam, .size = 16 };
+    // padding-left 10 % + 2 px border, margin-right 5 %
+    const boxes = [_]font.InlineBox{.{ .style = st, .decorated = true, .pct = .{ .padding_pct = .{ 0.1, 0 }, .border = .{ 2, 0 }, .margin_pct = .{ 0, 0.05 } } }};
+    const runs = [_]font.Run{ .{ .text = "ab ", .style = st }, .{ .text = "cd", .style = st, .box = 0 }, .{ .text = " ef", .style = st } };
+    var p = try font.Paragraph.init(t.allocator, &fx.fc, &runs, .{ .boxes = &boxes });
+    defer p.deinit();
+    try t.expect(p.complex and p.has_pct_edges);
+    // intrinsic sizing: the percentages are 0
+    const w0 = p.maxContentWidth();
+    p.setPercentBase(300);
+    try t.expectEqual(w0 + 30 + 15, p.maxContentWidth());
+    var l = try p.layout(t.allocator, 300);
+    defer l.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 300), l.pct_base);
+    try t.expectEqual(@as(usize, 1), l.boxes.len);
+    // border box: 2 px border + 30 px padding + the text; the 15 px margin lies outside it
+    const x_c = l.glyphs[3].x;
+    try t.expectApproxEqAbs(x_c - 32, l.boxes[0].x0, 0.02);
+    try t.expectApproxEqAbs(l.glyphs[5].x - 15, l.boxes[0].x1, 0.02);
+    p.setPercentBase(0);
+    try t.expectEqual(w0, p.maxContentWidth());
+    p.setPercentBase(std.math.inf(f32));
+    try t.expectEqual(w0, p.maxContentWidth());
+}

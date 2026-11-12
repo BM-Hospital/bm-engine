@@ -65,6 +65,7 @@ pub const Direction = text.Direction;
 pub const TextWrap = text.TextWrap;
 pub const Object = text.Object;
 pub const InlineBox = text.InlineBox;
+pub const EdgeParts = text.EdgeParts;
 pub const VerticalAlign = text.VerticalAlign;
 pub const no_box = text.no_box;
 pub const ObjectMetrics = text.ObjectMetrics;
