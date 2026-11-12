@@ -752,7 +752,8 @@ CASES.pdf = async () => {
   const both = await Promise.all(Array.from({ length: 40 }, (_, i) => (i & 1 ? ir.render(docs[2], img).then((b) => sha(b) === wantImg) : rs[i % 8].renderPdf(docs[1], opts[1]).then((b) => sha(b) === expected[1]))));
   check(both.every(Boolean), "image renders (bm-engine binding) and PDF renders (bm-engine/pdf binding) run concurrently on one addon");
   // the event loop keeps turning during a long PDF render
-  const big = pdfDoc(120);
+  // (long enough to span many timer ticks now that a page costs only its own content)
+  const big = pdfDoc(600);
   let maxGap = 0, ticks = 0, last = performance.now();
   const timer = setInterval(() => { const now = performance.now(); maxGap = Math.max(maxGap, now - last); last = now; ticks++; }, 1);
   await new Promise((res) => setTimeout(res, 30));
@@ -765,8 +766,9 @@ CASES.pdf = async () => {
   t0 = performance.now();
   const bigWasm = wr.renderPdfSync(big, opts[0]);
   const bigWasmMs = performance.now() - t0;
-  check(sha(bigOut) === sha(bigWasm), "a 120-section document is byte-identical");
-  check(ticks > 20 && maxGap < Math.max(100, bigMs / 4), `the event loop keeps running during renderPdf (${bigMs.toFixed(0)} ms, ${ticks} timer ticks, longest delay ${maxGap.toFixed(0)} ms)`);
+  check(sha(bigOut) === sha(bigWasm), "a 600-section document is byte-identical");
+  // (a 1 ms interval ticks about every 15.6 ms on Windows)
+  check(ticks > Math.min(20, bigMs / 40) && maxGap < Math.max(100, bigMs / 4), `the event loop keeps running during renderPdf (${bigMs.toFixed(0)} ms, ${ticks} timer ticks, longest delay ${maxGap.toFixed(0)} ms)`);
   // free() with PDF jobs pending; errors reject
   const fr = withFonts(npdf, ["Inter"]);
   const pend = Array.from({ length: 6 }, () => fr.renderPdf(docs[3], opts[3]).then((b) => "ok " + sha(b), (e) => "err " + e.message));
