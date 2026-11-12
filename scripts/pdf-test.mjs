@@ -738,6 +738,20 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
     check(m.width === 300 && m.height === 0, `measure of empty content: ${JSON.stringify(m)}`);
     isPdf(await r.render(`<div style="height:10.2px;margin:5px"></div>`, { viewport: { width: 300 } }), "content-sized page keeps the fractional height", [225, 15.140625]);
   }
+
+  // 4. paint order (CSS 2.1 appendix E, as takumi-pdf: in-flow backgrounds, floats, in-flow content, positioned)
+  {
+    const order = (bytes, needles) => { const c = content(bytes); return needles.map((s) => c.indexOf(s)); };
+    const fl = await r.render(`<div style="width:300px;background:#eee"><p style="margin:0;background:#cfc">Hello text</p><div style="float:left;width:100px;height:40px;margin-top:-30px;background:#f00"></div><div style="position:relative;width:50px;height:20px;background:#00f;margin-top:-10px"></div></div>`, { ...vp, tagged: false });
+    const [bg, flt, txt, pos] = order(fl, ["0.8 1 0.8 rg", "1 0 0 rg", "BT", "0 0 1 rg"]);
+    check(bg >= 0 && bg < flt && flt < txt && txt < pos, `paint order: block background < float < text < positioned (${[bg, flt, txt, pos]})`);
+    const fx = await r.render(`<div style="width:300px"><div style="display:flex"><div style="background:#f00;width:50px;height:20px">A</div></div><div style="background:#00f;height:20px;margin-top:-10px"></div></div>`, { ...vp, tagged: false });
+    const [blue, red] = order(fx, ["0 0 1 rg", "1 0 0 rg"]);
+    check(blue >= 0 && blue < red, "paint order: a flex item paints with the content, after a later block's background");
+    const ib = await r.render(`<p style="margin:0">Hi <span style="display:inline-block;width:40px;height:20px;background:#f00"></span> yo</p><div style="background:#00f;height:20px;margin-top:-10px"></div>`, { ...vp, tagged: false });
+    const [b2, t2, r2] = order(ib, ["0 0 1 rg", "BT", "1 0 0 rg"]);
+    check(b2 >= 0 && b2 < t2 && t2 < r2, "paint order: block background < text < inline-block");
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });

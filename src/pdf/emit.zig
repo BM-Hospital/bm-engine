@@ -118,7 +118,25 @@ pub const PageBox = struct {
 
 const Deferred = struct { cs: *const CS, g: Geom, ctm: Tf, clip0: u32, clip1: u32 };
 const ClipRec = struct { path: Path, rule: sf.FillRule, ctm: Tf };
-const QueuedFloat = struct { id: u32, ox: f32, oy: f32, tf: Affine, depth: u32 };
+/// A box (`whole`: a float or an atomic in-flow box, at its parent's origin) or the content of a
+/// box (its text / replaced content, at its own origin) waiting for the paint phase of its context
+/// (CSS 2.1 appendix E as takumi's `StackingContextNode::paint_phases`), with what the walk was in
+/// where it met it (the clips are re-entered as for a lift).
+const Queued = struct {
+    id: u32,
+    ox: f32,
+    oy: f32,
+    tf: Affine,
+    ctm: Tf,
+    clip0: u32,
+    clip1: u32,
+    depth: u32,
+    pass: ?u32,
+    tpage: bool,
+    in_repeat: bool,
+    tphase: Emitter.Phase,
+    whole: bool,
+};
 /// A positioned / stacking box lifted to the end of its stacking context (`liftOf`), with what
 /// the walk was in where it met it.
 const Lift = struct {
@@ -155,8 +173,17 @@ pub const Emitter = struct {
     /// clips opened by the walk (overflow, clip-path), for re-entering them around deferred outlines
     clips: std.ArrayList(ClipRec) = .empty,
     outline_clips: std.ArrayList(ClipRec) = .empty,
-    float_q: std.ArrayList(QueuedFloat) = .empty,
+    /// the paint phases of a context (takumi `paint_phases`): a context (the root, a stacking
+    /// context, a positioned box, a float, an atomic inline, a flex / grid item: `contextScope`)
+    /// paints the decorations of the in-flow boxes inside it as the walk meets them, then its floats
+    /// (`float_q`), then the content of those boxes and its atomic in-flow boxes whole
+    /// (`content_q`), in tree order; `defer_on`: a context is open, `float_now` / `queue_now`: the
+    /// box painted from a queue
+    float_q: std.ArrayList(Queued) = .empty,
+    content_q: std.ArrayList(Queued) = .empty,
     float_now: u32 = none,
+    queue_now: u32 = none,
+    defer_on: bool = false,
     /// positioned / stacking boxes waiting for the end of their stacking context (takumi's
     /// `PaintBucket::Positioned` / `Positive`: a box lifts past the in-flow content of every box up
     /// to its stacking context), whether a stacking context collects them, the box painted from
@@ -285,23 +312,116 @@ pub const Emitter = struct {
     noinline fn queueFloat(e: *Emitter, id: u32, ox: f32, oy: f32, depth: u32) Error!bool {
         const n = &e.f.nodes.items[id];
         if (n.cs.float == .none or n.kind == .anon_text or id == e.float_now or id == e.f.root or n.cs.display == .none or stacks(n.cs)) return false;
-        try e.float_q.append(e.a, .{ .id = id, .ox = ox, .oy = oy, .tf = e.tf, .depth = depth });
+        try e.enqueue(&e.float_q, id, ox, oy, depth, true);
         return true;
     }
 
-    noinline fn flushFloats(e: *Emitter, q0: usize) Error!void {
+    /// An atomic in-flow box (an atomic inline: inline-block / -flex / -grid / -table, an inline
+    /// image; a flex or grid item) inside an open context: queued whole for the context's content
+    /// phase (takumi `PaintItem::part_in`: an atomic context paints whole with the content).
+    noinline fn queueAtomic(e: *Emitter, id: u32, ox: f32, oy: f32, depth: u32) Error!bool {
+        if (!e.defer_on or id == e.queue_now or id == e.f.root) return false;
+        const n = &e.f.nodes.items[id];
+        if (n.kind == .anon_text or n.cs.display == .none or n.cs.float != .none or n.cs.position != .static) return false;
+        if (e.stackingContext(id) or e.partKind(id) != .none) return false;
+        if (!e.atomic(n) and !(n.kind == .image and n.cs.display == .@"inline")) return false;
+        // (a collapsed table's decorations pass: the content pass meets it again)
+        if (e.tphase == .decorations) return true;
+        try e.enqueue(&e.content_q, id, ox, oy, depth, true);
+        return true;
+    }
+
+    /// The content of the box at (`x`, `y`), queued for its context's content phase.
+    noinline fn queueContent(e: *Emitter, id: u32, x: f32, y: f32) Error!void {
+        try e.enqueue(&e.content_q, id, x, y, 0, false);
+    }
+
+    noinline fn enqueue(e: *Emitter, list: *std.ArrayList(Queued), id: u32, ox: f32, oy: f32, depth: u32, whole: bool) Error!void {
+        const c0: u32 = @intCast(e.lift_clips.items.len);
+        try e.lift_clips.appendSlice(e.a, e.clips.items);
+        try list.append(e.a, .{
+            .id = id,
+            .ox = ox,
+            .oy = oy,
+            .tf = e.tf,
+            .ctm = e.s.bd().ctm(),
+            .clip0 = c0,
+            .clip1 = @intCast(e.lift_clips.items.len),
+            .depth = depth,
+            .pass = e.pass,
+            .tpage = e.tpage,
+            .in_repeat = e.in_repeat,
+            .tphase = e.tphase,
+            .whole = whole,
+        });
+    }
+
+    /// Whether box `id` is a context whose floats and content paint at its end (takumi's
+    /// `StackingContextNode`s: the root, stacking contexts and atomic boxes; an `overflow` clip
+    /// is none). The root opens one only when no context is open (a page's passes share one).
+    noinline fn contextScope(e: *const Emitter, id: u32) bool {
+        if (id == e.f.root) return !e.defer_on;
+        const n = &e.f.nodes.items[id];
+        if (n.kind == .anon_text) return false;
+        if (n.cs.position != .static or e.stackingContext(id) or e.atomic(n)) return true;
+        return n.kind == .image and n.cs.display == .@"inline";
+    }
+
+    /// Paints the items queued on `list` since `q0` (those they queue in turn are painted by their
+    /// own contexts), re-entering the clips opened after `base` they were met under.
+    noinline fn flushQueue(e: *Emitter, list: *std.ArrayList(Queued), q0: usize, base: usize) Error!void {
         var i = q0;
-        while (i < e.float_q.items.len) : (i += 1) {
-            const q = e.float_q.items[i];
-            const saved = e.float_now;
-            e.float_now = q.id;
-            defer e.float_now = saved;
-            const saved_tf = e.tf;
-            e.tf = q.tf;
-            defer e.tf = saved_tf;
-            try e.paintNode(q.id, q.ox, q.oy, q.depth);
+        while (i < list.items.len) : (i += 1) {
+            if (e.fail_msg != null) break;
+            try e.paintQueued(list.items[i], base);
         }
-        e.float_q.items.len = @min(q0, e.float_q.items.len);
+        list.items.len = @min(q0, list.items.len);
+    }
+
+    noinline fn paintQueued(e: *Emitter, it: Queued, base: usize) Error!void {
+        const depth0 = e.s.depth();
+        const saved_clips = e.clips.items.len;
+        const saved_tf = e.tf;
+        const saved_pass = e.pass;
+        const saved_tpage = e.tpage;
+        const saved_rep = e.in_repeat;
+        const saved_phase = e.tphase;
+        const saved_float = e.float_now;
+        const saved_now = e.queue_now;
+        const saved_defer = e.defer_on;
+        defer {
+            e.s.popTo(depth0);
+            e.clips.items.len = saved_clips;
+            e.tf = saved_tf;
+            e.pass = saved_pass;
+            e.tpage = saved_tpage;
+            e.in_repeat = saved_rep;
+            e.tphase = saved_phase;
+            e.float_now = saved_float;
+            e.queue_now = saved_now;
+            e.defer_on = saved_defer;
+        }
+        const cur = e.s.bd().ctm();
+        const inv = cur.invert() orelse Tf.identity;
+        var k: usize = it.clip0 + @min(base, it.clip1 - it.clip0);
+        while (k < it.clip1) : (k += 1) {
+            const ce = e.lift_clips.items[k];
+            try geom.transformed(e.a, &ce.path, inv.pre(ce.ctm), &e.path);
+            e.s.pushClip(&e.path, ce.rule);
+            try e.clips.append(e.a, ce);
+        }
+        if (!it.ctm.eql(cur)) e.s.pushTransform(inv.pre(it.ctm));
+        e.tf = it.tf;
+        e.pass = it.pass;
+        e.tpage = it.tpage;
+        e.in_repeat = it.in_repeat;
+        e.tphase = it.tphase;
+        if (!it.whole) {
+            e.defer_on = false;
+            return e.paintOwn(it.id, it.ox, it.oy, .content);
+        }
+        if (e.f.nodes.items[it.id].cs.float != .none) e.float_now = it.id else e.queue_now = it.id;
+        try e.paintNode(it.id, it.ox, it.oy, it.depth);
     }
 
     pub fn paintNode(e: *Emitter, id: u32, ox: f32, oy: f32, depth: u32) Error!void {
@@ -309,6 +429,7 @@ pub const Emitter = struct {
         if (e.skip_fixed and depth > 0 and e.f.nodes.items[id].kind != .anon_text and e.f.nodes.items[id].cs.position == .fixed and repeats(e.f, id)) return;
         if (try e.liftOf(id, ox, oy, depth)) return;
         if (pm.enable_floats and try e.queueFloat(id, ox, oy, depth)) return;
+        if (try e.queueAtomic(id, ox, oy, depth)) return;
         if (pm.enable_tables and id < e.tparts.len and e.tparts[id].hidden) return;
         const f = e.f;
         const n = &f.nodes.items[id];
@@ -377,11 +498,26 @@ pub const Emitter = struct {
         const saved_on = e.lift_on;
         defer e.lift_on = saved_on;
         if (scope) e.lift_on = true;
+        // a context paints its floats, then the content of its in-flow boxes, after their
+        // decorations (takumi `paint_phases`)
+        const context = e.contextScope(id);
+        const fq0 = e.float_q.items.len;
+        const cq0 = e.content_q.items.len;
+        const saved_defer = e.defer_on;
+        defer e.defer_on = saved_defer;
+        if (context) e.defer_on = true;
         try e.paintBox(id, x, y, depth);
+        if (context) try e.flushContext(fq0, cq0, lbase);
         if (scope) try e.flushLifts(lq0, lbase);
         // outlines close the stacking context, and every box Blink paints atomically (flex / grid
         // items, inline-blocks, floats, positioned boxes: takumi's per-item outline chunks)
         if (group or cs.clip_path != null or stacks(cs) or e.atomic(n)) try e.flushOutlines(mark, saved_clips);
+    }
+
+    /// The end of a context: its floats, then its content.
+    pub noinline fn flushContext(e: *Emitter, fq0: usize, cq0: usize, base: usize) Error!void {
+        if (pm.enable_floats) try e.flushQueue(&e.float_q, fq0, base);
+        try e.flushQueue(&e.content_q, cq0, base);
     }
 
     noinline fn atomic(e: *const Emitter, n: *const Node) bool {
@@ -596,7 +732,7 @@ pub const Emitter = struct {
         if (e.tphase == .decorations and n.kind == .anon_text) return;
         // [interactive] links / anchors / headings (once per box: table parts in their decorations pass)
         if (e.links) |lk| if ((e.tphase != .content or kind == .none) and e.home()) lk.onBox(e, id, x, y);
-        try e.paintOwn(id, x, y);
+        try e.paintOwn(id, x, y, if (e.defer_on) .decorations else .all);
         if (n.kind == .anon_text or n.first_child == none) return;
         if (e.tphase == .decorations and kind == .cell) return;
         const saved_phase = e.tphase;
@@ -605,7 +741,6 @@ pub const Emitter = struct {
         if (pm.enable_tables and e.tphase == .all and n.kind != .anon_text) {
             if (f.tree.tableGeom(n.lid)) |tg| if (tg.is_table) return e.paintTable(id, x, y, depth);
         }
-        const cs = n.cs;
         const base = e.s.depth();
         const saved_clips = e.clips.items.len;
         defer {
@@ -618,17 +753,12 @@ pub const Emitter = struct {
         while (c != none) : (c = f.nodes.items[c].next) {
             if (f.nodes.items[c].kind != .anon_text and stacks(f.nodes.items[c].cs)) special = true;
         }
-        const froot = pm.enable_floats and (id == f.root or cs.overflow_x != .visible or cs.overflow_y != .visible or cs.float != .none or stacks(cs));
-        const q0 = e.float_q.items.len;
         if (!special) {
             c = n.first_child;
             while (c != none) : (c = f.nodes.items[c].next) try e.paintNode(c, x, y, depth + 1);
-            if (froot) try e.flushFloats(q0);
         } else {
             const sc = try e.sortedChildren(n);
-            for (sc.items[0..sc.n_low]) |it| try e.paintNode(it, x, y, depth + 1);
-            if (froot) try e.flushFloats(q0);
-            for (sc.items[sc.n_low..]) |it| try e.paintNode(it, x, y, depth + 1);
+            for (sc.items) |it| try e.paintNode(it, x, y, depth + 1);
         }
         if (pm.enable_tables) try etable.collapsedAfter(e, id, x, y);
     }
@@ -738,7 +868,11 @@ pub const Emitter = struct {
 
     /// The box's own painting: shadows, background, inset shadows, border, deferred outline,
     /// image, text.
-    noinline fn paintOwn(e: *Emitter, id: u32, x: f32, y: f32) Error!void {
+    /// What `paintOwn` paints: everything, or (inside a context) the decorations, queueing the
+    /// content for the context's content phase, or that content.
+    const Own = enum { all, decorations, content };
+
+    noinline fn paintOwn(e: *Emitter, id: u32, x: f32, y: f32, mode: Own) Error!void {
         const f = e.f;
         const n = &f.nodes.items[id];
         const cs = n.cs;
@@ -746,9 +880,13 @@ pub const Emitter = struct {
         const content_x = x + l.border.left + l.padding.left;
         const content_y = y + l.border.top + l.padding.top;
         const content_w = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
-        if (n.kind == .anon_text) return if (e.home()) etext.paintText(e, n, content_x, content_y, content_w);
+        if (n.kind == .anon_text) {
+            if (mode == .decorations) return e.queueContent(id, x, y);
+            return if (e.home()) etext.paintText(e, n, content_x, content_y, content_w);
+        }
         // a collapsed table's content pass: the parts' decorations are painted already
         if (e.tphase == .content and e.partKind(id) != .none) {
+            if (mode == .decorations) return e.queueContent(id, x, y);
             if (e.home() and (n.kind == .text or (n.kind == .anon_box and n.para != null))) {
                 try etext.paintText(e, n, content_x, content_y, content_w);
             } else if (e.home() and e.in_repeat and e.partKind(id) != .cell) {
@@ -781,25 +919,30 @@ pub const Emitter = struct {
             gd = e.windowSlice(cs, l, x, y, g, fr.win);
             break :blk e.window.excludes(@floor(fr.s0) - reach, @ceil(fr.s1) + reach);
         };
-        if (pm.enable_tables) {
+        if (pm.enable_tables and mode != .content) {
             if (!excluded) {
                 as_part = try etable.decorations(e, id, x, y, &g);
             } else try etable.registerParts(e, id);
         }
+        // (inside a context the content waits for its phase; a collapsed table's decorations pass
+        // has none)
+        if (mode == .decorations and e.tphase != .decorations and (n.kind == .image or n.kind == .text or n.kind == .anon_box)) try e.queueContent(id, x, y);
         if (excluded) {
-            if (own and (n.kind == .text or (n.kind == .anon_box and n.para != null))) try etext.paintText(e, n, content_x, content_y, content_w);
+            if (mode != .decorations and own and (n.kind == .text or (n.kind == .anon_box and n.para != null))) try etext.paintText(e, n, content_x, content_y, content_w);
             return;
         }
         if (cs.visibility == .visible) {
-            if (!as_part) try e.paintDecorations(id, &gd, x, y);
-            if (cs.outline_style != .none and cs.outline_style != .hidden) try e.deferOutline(cs, if (e.pass != null) &gd else &g);
-            if (n.kind == .image) {
+            if (mode != .content) {
+                if (!as_part) try e.paintDecorations(id, &gd, x, y);
+                if (cs.outline_style != .none and cs.outline_style != .hidden) try e.deferOutline(cs, if (e.pass != null) &gd else &g);
+            }
+            if (n.kind == .image and mode != .decorations) {
                 const began = etag.begin(e, id); // [tagging] the image's region
                 defer etag.end(e, began);
                 try e.paintImage(n, &g);
             }
         }
-        if (e.tphase == .decorations or !own) return;
+        if (e.tphase == .decorations or !own or mode == .decorations) return;
         if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try etext.paintText(e, n, content_x, content_y, content_w);
         // [tagging] a line container holding only boxes still opens its (empty) region
         if (n.kind == .anon_box and n.para == null) etag.end(e, etag.begin(e, id));
@@ -2104,6 +2247,12 @@ pub fn paintPage(e: *Emitter, page: PageBox, win: Window) Error!void {
             const lbase = e.clips.items.len;
             e.lift_on = true;
             defer e.lift_on = false;
+            // (one context over the passes: their floats and content follow all their in-flow
+            // decorations, as takumi's one stacking context of the page's root fragments)
+            const fq0 = e.float_q.items.len;
+            const cq0 = e.content_q.items.len;
+            e.defer_on = true;
+            defer e.defer_on = false;
             if (e.windows.len > 1 and win.paged()) {
                 const p = e.win_page;
                 var r: u32 = if (p > 0) p - 1 else 0;
@@ -2112,6 +2261,8 @@ pub fn paintPage(e: *Emitter, page: PageBox, win: Window) Error!void {
                     try e.paintNode(e.f.root, 0, 0, 0);
                 }
             } else try e.paintNode(e.f.root, 0, 0, 0);
+            try e.flushContext(fq0, cq0, lbase);
+            e.defer_on = false;
             try e.flushLifts(lq0, lbase);
             e.pass = null;
         }
