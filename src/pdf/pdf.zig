@@ -37,7 +37,17 @@ pub const Input = struct {
     opts: opt.PdfOptions,
     kind: SourceKind,
     source: []const u8,
+    /// Flate-compress the streams (off: readable output for tests)
+    compress: bool = true,
 };
+
+/// (tests) `render` with readable output: no stream is compressed, so content streams and the
+/// structure elements can be searched as text.
+pub fn renderReadable(r: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+    r.beginCall();
+    const o = try parseOptions(r, opts_json);
+    return emit(r.arena.allocator(), .{ .r = r, .opts = o, .kind = kind, .source = source, .compress = false });
+}
 
 /// takumi-pdf `render`: `source` (JSON node tree or HTML, per `kind`) -> PDF bytes in the call arena.
 ///
@@ -88,10 +98,12 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
         },
     };
     if (o.background_color) |c| {
-        _ = style.color.parse(c) catch {
+        // (takumi-pdf-js `page_background`: only `ColorInput::Value` is a colour, `currentColor` is not)
+        const parsed = style.color.parse(c) catch null;
+        if (parsed == null or parsed.? == .current) {
             r.setErr("backgroundColor is not a color: ", c);
             return error.Invalid;
-        };
+        }
     }
     return o;
 }
@@ -107,7 +119,7 @@ const Mode = enum {
 /// (`.document` mode with page geometry) are laid out for a page area of `area` (the content box
 /// of the first page: `Frame.setPaged`; `paginate` is the caller's); bands and `measure` at the
 /// full page width with an unbounded height (takumi `band_viewport`).
-fn buildFrame(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind, source: []const u8, mode: Mode) Error!Frame {
+pub fn buildFrame(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind, source: []const u8, mode: Mode) Error!Frame {
     return buildFrameEx(r, a, o, kind, source, mode, null, null);
 }
 
@@ -182,7 +194,7 @@ fn emit(a: Allocator, input: Input) Error![]const u8 {
         .@"error" => .@"error",
         .placeholder => .placeholder,
         .blank => .blank,
-    }, .opts = &o }; // [interactive] `.opts`: metadata, outline, attachments, lang
+    }, .opts = &o, .compress = input.compress }; // [interactive] `.opts`: metadata, outline, attachments, lang
 
     switch (o.geometry) {
         .viewport => |v| {

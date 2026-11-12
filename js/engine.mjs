@@ -618,7 +618,9 @@ export function createBinding(defaultWasm, external) {
         if (!Array.isArray(attachments)) throw new TypeError("bm-engine: attachments takes an array");
         o.attachments = attachments.map((a) => {
           if (a == null || typeof a !== "object") return a;
-          const { data, ...meta } = a;
+          let { data, ...meta } = a;
+          // takumi-pdf (serde ByteBuf) also takes a plain array of byte values
+          if (Array.isArray(data) && data.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)) data = Uint8Array.from(data);
           if (isBinary(data)) {
             const id = "bm-att:" + this.#resSeq++;
             this.#putImage(id, data);

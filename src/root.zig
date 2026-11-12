@@ -44,4 +44,5 @@ test {
     _ = @import("pdf/tags.zig");
     _ = @import("pdf/markers.zig");
     _ = @import("pdf/page_names.zig");
+    _ = @import("pdf/filelayer_tests.zig");
 }

@@ -155,16 +155,19 @@ pub const TagDoc = struct {
 
     /// The page dictionary entries: /StructParents and /Tabs (krilla `InternalPage::serialize`).
     pub fn pageEntries(t: *const TagDoc, i: usize) struct { struct_parents: ?i32, tabs: ?[]const u8 } {
-        const tabs = t.tagged and (t.page_annots[i] or t.cfg.tabsEveryPage());
+        const tabs = t.page_annots[i] or (t.tagged and t.cfg.tabsEveryPage());
         return .{ .struct_parents = t.page_sp[i], .tabs = if (tabs) "S" else null };
     }
 
     /// Records the font facts krilla's validators check (`cid.rs`, `content.rs`).
     pub fn fontIssues(t: *TagDoc, is: anytype) void {
-        if (is.restricted_license) t.report.add(.restricted_license, std.hash.Wyhash.hash(0, is.restricted_font));
         if (is.notdef_shown > 0) t.report.add(.contains_notdef, 0);
-        if (is.no_codepoint_mapping > 0) t.report.add(.no_codepoint_mapping, 0);
-        if (is.invalid_codepoint_mapping > 0) t.report.add(.invalid_codepoint_mapping, 0);
-        if (is.private_use > 0) t.report.add(.private_use, 0);
+        // krilla dedupes by value: one error per distinct (font, glyph, character)
+        for (is.list.items) |it| t.report.add(switch (it.kind) {
+            .restricted_license => .restricted_license,
+            .no_codepoint_mapping => .no_codepoint_mapping,
+            .invalid_codepoint_mapping => .invalid_codepoint_mapping,
+            .private_use => .private_use,
+        }, it.key());
     }
 };

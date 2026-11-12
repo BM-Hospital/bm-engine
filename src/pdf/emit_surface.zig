@@ -40,6 +40,9 @@ pub const Ctx = struct {
     version: w.Version = .v1_7,
     /// a PostScript calculator function was written (krilla `ContainsPostScript`)
     postscript: bool = false,
+    /// a page, XObject or tiling pattern content stream nests `q` deeper than 28 (krilla
+    /// `TooHighQNestingLevel`, registered where those streams are serialised)
+    q_over: bool = false,
     /// scratch for transformed clip paths
     tmp: Path = .empty,
 };
@@ -113,6 +116,8 @@ pub const Stream = struct {
     bbox: LRect,
     res: w.Resources,
     uses_mask: bool,
+    /// string / name lengths and the q nesting fact of the content (conformance limits)
+    limits: w.Limits = .{},
 };
 
 pub const Pattern = struct { stream: Stream, transform: Tf, width: f32, height: f32 };
@@ -260,6 +265,7 @@ pub fn regXObject(cx: *Ctx, s: *const Stream, isolated: bool, tgcs_in: bool, cus
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return r;
     const r = cx.doc.alloc();
+    if (s.limits.q_over) cx.q_over = true;
     const res = s.res.write(cx.doc);
     const bbox = custom_bbox orelse s.bbox;
     cx.doc.formXObject(r, s.content, .{
@@ -353,7 +359,14 @@ pub const Builder = struct {
     }
 
     pub fn finish(b: *Builder) Stream {
-        return .{ .content = b.c.bytes(), .bbox = b.bbox orelse LRect{ .l = 0, .t = 0, .r = 1, .b = 1 }, .res = b.res, .uses_mask = b.uses_mask };
+        return .{ .content = b.c.bytes(), .bbox = b.bbox orelse LRect{ .l = 0, .t = 0, .r = 1, .b = 1 }, .res = b.res, .uses_mask = b.uses_mask, .limits = b.c.b.limits };
+    }
+
+    /// krilla `ContentBuilder::finish`: the stream, its limits registered with the document.
+    fn finishIn(b: *Builder, cx: *Ctx) Stream {
+        const st = b.finish();
+        cx.doc.noteLimits(st.limits);
+        return st;
     }
 
     fn setFillOpacity(b: *Builder, v: f32) void {
@@ -614,7 +627,7 @@ pub const Surface = struct {
     pub fn finish(s: *Surface) Stream {
         while (s.pushes.items.len > 0) s.pop();
         if (s.failed()) s.cx.doc.b.failed = true;
-        return s.builders.items[0].finish();
+        return s.builders.items[0].finishIn(s.cx);
     }
 
     pub fn setFill(s: *Surface, f: ?Fill) void {
@@ -694,17 +707,17 @@ pub const Surface = struct {
             .clip => s.bd().c.restore(),
             .opacity => |o| if (o != 1) {
                 var sub = s.builders.pop().?;
-                const st = sub.finish();
+                const st = sub.finishIn(s.cx);
                 s.bd().drawOpacified(s.cx, o, &st);
             },
             .mask => |m| {
                 var sub = s.builders.pop().?;
-                const st = sub.finish();
+                const st = sub.finishIn(s.cx);
                 s.bd().drawMasked(s.cx, &m, &st);
             },
             .isolated => {
                 var sub = s.builders.pop().?;
-                const st = sub.finish();
+                const st = sub.finishIn(s.cx);
                 s.bd().drawIsolated(s.cx, &st);
             },
         }

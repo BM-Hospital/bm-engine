@@ -27,6 +27,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { taggingFixtures } from "./pdf-tagging-fixtures.mjs"; // [tagging]
+import { moreFixtures } from "./pdf-compare-more.mjs"; // [more] goldens the lists above leave out
 import { interchangeParts, compareInterchange, printInterchange, INTERCHANGE_FIXTURES } from "./pdf-interchange.mjs"; // [interchange]
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -774,6 +775,7 @@ const counts = { IDENTICAL: 0, CLOSE: 0, DIFFER: 0, ERROR: 0, OBJ: 0, FONTS: 0, 
 // [interchange] links, outline, Info, XMP, /ID, attachments, catalog (scripts/pdf-interchange.mjs)
 FIXTURES.push(...INTERCHANGE_FIXTURES);
 FIXTURES.push(...taggingFixtures({ png })); // [tagging] PDF/A, PDF/UA, structure fixtures
+FIXTURES.push(...moreFixtures({ jtext, jcolumn })); // [more]
 const ixCounts = {};
 const rows = [];
 for (const fx of FIXTURES) {

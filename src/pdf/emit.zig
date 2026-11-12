@@ -229,6 +229,20 @@ pub const Emitter = struct {
     in_repeat: bool = false,
     page_index: u32 = 0,
     doc_lang: []const u8 = "",
+    /// [lists] an inside symbol marker the text of its line container paints (emit_text.zig)
+    inline_markers: std.ArrayList(InlineMarker) = .empty,
+
+    pub const InlineMarker = struct { host: u32, node: u32, x: f32, y: f32, depth: u32 };
+
+    /// Takes the inside marker waiting for the text of line container `host` (null: none).
+    pub fn takeInlineMarker(e: *Emitter, host: u32) ?InlineMarker {
+        for (e.inline_markers.items, 0..) |im, i| if (im.host == host) return e.inline_markers.swapRemove(i);
+        return null;
+    }
+
+    fn dropInlineMarker(e: *Emitter, host: u32) void {
+        _ = e.takeInlineMarker(host);
+    }
 
     pub fn init(f: *Frame, cx: *sf.Ctx, s: *sf.Surface, fonts: *text.FontRegistry) Emitter {
         return .{
@@ -768,7 +782,24 @@ pub const Emitter = struct {
         if (e.tphase == .decorations and n.kind == .anon_text) return;
         // [interactive] links / anchors / headings (once per box: table parts in their decorations pass)
         if (e.links) |lk| if ((e.tphase != .content or kind == .none) and e.home()) lk.onBox(e, id, x, y);
-        try e.paintOwn(id, x, y, if (e.defer_on) .decorations else .all);
+        // [lists] the marker box of a line container, where takumi's tree order paints it (an
+        // inside marker paints with its line's text, which inside a context waits for the context's
+        // content phase: it is kept by host until then)
+        var marker: u32 = none;
+        if (n.kind == .anon_box) if (@import("markers.zig").placement(f, id)) |pl| {
+            marker = pl.node;
+            switch (pl.how) {
+                .before_text => try e.paintNode(pl.node, x, y, depth + 1),
+                .in_text => {
+                    e.dropInlineMarker(id);
+                    try e.inline_markers.append(e.a, .{ .host = id, .node = pl.node, .x = x, .y = y, .depth = depth + 1 });
+                },
+            }
+        };
+        const own_mode: Own = if (e.defer_on) .decorations else .all;
+        try e.paintOwn(id, x, y, own_mode);
+        // (the text did not paint on this page: neither does the marker inside it)
+        if (marker != none and own_mode == .all) e.dropInlineMarker(id);
         if (n.kind == .anon_text or n.first_child == none) return;
         if (e.tphase == .decorations and kind == .cell) return;
         const saved_phase = e.tphase;
@@ -791,10 +822,14 @@ pub const Emitter = struct {
         }
         if (!special) {
             c = n.first_child;
-            while (c != none) : (c = f.nodes.items[c].next) try e.paintNode(c, x, y, depth + 1);
+            while (c != none) : (c = f.nodes.items[c].next) {
+                if (c != marker) try e.paintNode(c, x, y, depth + 1);
+            }
         } else {
             const sc = try e.sortedChildren(n);
-            for (sc.items) |it| try e.paintNode(it, x, y, depth + 1);
+            for (sc.items) |it| {
+                if (it != marker) try e.paintNode(it, x, y, depth + 1);
+            }
         }
         if (pm.enable_tables) try etable.collapsedAfter(e, id, x, y);
     }
@@ -962,7 +997,7 @@ pub const Emitter = struct {
         }
         // (inside a context the content waits for its phase; a collapsed table's decorations pass
         // has none)
-        if (mode == .decorations and e.tphase != .decorations and (n.kind == .image or n.kind == .text or n.kind == .anon_box)) try e.queueContent(id, x, y);
+        if (mode == .decorations and e.tphase != .decorations and (n.kind == .image or n.kind == .text or n.kind == .anon_box or (e.tagged and n.kind == .container and tagsm.emptyInlineBlock(f, id)))) try e.queueContent(id, x, y);
         if (excluded) {
             if (mode != .decorations and own and (n.kind == .text or (n.kind == .anon_box and n.para != null))) try etext.paintText(e, n, content_x, content_y, content_w);
             return;
@@ -982,6 +1017,9 @@ pub const Emitter = struct {
         if (n.kind == .text or (n.kind == .anon_box and n.para != null)) try etext.paintText(e, n, content_x, content_y, content_w);
         // [tagging] a line container holding only boxes still opens its (empty) region
         if (n.kind == .anon_box and n.para == null) etag.end(e, etag.begin(e, id));
+        // [tagging] so does a block whose inline content puts nothing on a line (takumi: every box
+        // with an inline layout draws in a region, `draws(OwnContent::Inline)`)
+        if (e.tagged and n.kind == .container and tagsm.emptyInlineBlock(f, id)) etag.end(e, etag.begin(e, id));
     }
 
     /// The geometry of the fragment of a box (border-box origin `x`, `y`) that this page's window
@@ -2548,19 +2586,27 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     for (pages, outs, page_refs, fin.annots, 0..) |page, *st, pref, annots, i| {
         const cref = doc.alloc();
         doc.contentStream(cref, st.content);
+        if (st.limits.q_over) cx.q_over = true;
         const rref = st.res.write(&doc);
         const pe = td.pageEntries(i);
         _ = doc.beginPage(pref, .{ .resources = rref, .media_box = .{ 0, 0, page.width * pt_per_px, page.height * pt_per_px }, .contents = cref, .annots = annots, .struct_parents = pe.struct_parents, .tabs = pe.tabs });
         doc.endDict();
     }
+    var out: std.ArrayList(u8) = .empty;
+    const finished = metadata.finish(&doc, &out, &fin.parts);
+    // krilla `check_validator_limits` (after the file is assembled) and the q/Q nesting of the
+    // content streams
+    if (doc.tooManyObjects()) td.report.add(.too_many_indirect_objects, 0);
+    if (doc.limits.str_len > w.Limits.max_str_len) td.report.add(.too_long_string, 0);
+    if (doc.limits.name_len > w.Limits.max_name_len) td.report.add(.too_long_name, 0);
+    if (cx.q_over) td.report.add(.too_high_q_nesting, 0);
     // [conformance] what the validators prohibit fails the render (krilla `KrillaError::Validation`)
     if (td.report.failed) return error.OutOfMemory;
     if (try td.report.message(a)) |msg| {
         f.r.setErr("", msg);
         return error.Invalid;
     }
-    var out: std.ArrayList(u8) = .empty;
-    metadata.finish(&doc, &out, &fin.parts) catch |err| return switch (err) {
+    finished catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => {
             f.r.setErr("PDF writer error: ", @errorName(err));

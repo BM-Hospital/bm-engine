@@ -70,7 +70,7 @@ pub const Glyph = struct {
 pub const ShapedGlyph = struct { gid: u16, x: f32, y: f32, start: u32, end: u32 };
 
 /// The font instance of a run (bm-engine: `fonts.font(face)` and `fonts.face(face).index`).
-pub const FontRef = struct { font: *const ttf.Font, face_index: u32 = 0 };
+pub const FontRef = struct { font: *const ttf.Font, face_index: u32 = 0, variant: u32 = 0 };
 
 /// What krilla's `draw_glyphs` needs about a run.
 pub const Run = struct {
@@ -321,7 +321,7 @@ fn fillStrokeGlyphRun(reg: *FontRegistry, cx: *sf.Ctx, b: *sf.Builder, x: f32, y
         b.setStrokeProps(cx, bounds, s);
     }
     b.c.beginText();
-    const fc = try reg.container(run.font.font, run.font.face_index);
+    const fc = try reg.container(run.font.font, run.font.face_index, run.font.variant);
     var cur_x = x;
     var cur_y = y;
     const reversed = isReversed(run.glyphs);
@@ -900,6 +900,128 @@ pub fn drawFrameRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const 
     }
 }
 
+/// Unicode Default_Ignorable_Code_Point (the ranges HarfBuzz hides).
+fn defaultIgnorable(cp: u32) bool {
+    return switch (cp) {
+        0x00AD, 0x034F, 0x061C, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x180B...0x180F, 0x200B...0x200F, 0x202A...0x202E, 0x2060...0x206F, 0x3164, 0xFE00...0xFE0F, 0xFEFF, 0xFFA0, 0xFFF0...0xFFF8, 0x1BCA0...0x1BCA3, 0x1D173...0x1D17A, 0xE0000...0xE0FFF => true,
+        else => false,
+    };
+}
+
+/// A default-ignorable character that continues the cluster before it in HarfBuzz
+/// (`hb_set_unicode_props`): the zero-width joiner, and the marks among them (variation
+/// selectors, the combining grapheme joiner, tag characters).
+fn ignorableContinues(cp: u32) bool {
+    return switch (cp) {
+        0x200D, 0x034F, 0x180B...0x180D, 0x180F, 0xFE00...0xFE0F, 0xE0020...0xE007F, 0xE0100...0xE01EF => true,
+        else => false,
+    };
+}
+
+/// takumi shapes with HarfBuzz, which keeps a default-ignorable character (soft hyphen, zero-width
+/// space / joiner, direction marks, variation selectors, U+FEFF) as a glyph: the font's space
+/// glyph with no advance, in a cluster of its own unless the character continues the cluster
+/// before it. bm-engine's shaper drops the character and leaves its bytes at the end of the
+/// cluster before it, which would give that cluster's glyph the character as text (ToUnicode
+/// `a` -> `a` + U+200B, an /ActualText span around every plain `a`). This puts the invisible
+/// glyphs back (left-to-right runs; a font without a space glyph gets none, as in HarfBuzz).
+fn hideIgnorables(a: Allocator, font: *const ttf.Font, size: f32, gs: []const font_mod.PositionedGlyph, shaped: []ShapedGlyph, text: []const u8) ![]ShapedGlyph {
+    var any = false;
+    for (shaped) |g| {
+        var i: usize = g.start;
+        while (i < g.end and i < text.len) {
+            const d = uni.decodeUtf8(text, i);
+            i += d.len;
+            if (d.cp >= 0xAD and defaultIgnorable(d.cp)) any = true;
+        }
+    }
+    if (!any) return shaped;
+    for (gs) |g| if (g.bidi_level & 1 != 0) return shaped;
+    const space = font.glyphIndex(' ');
+    const hyphen = font.glyphIndex('-');
+    const hyphen2 = font.glyphIndex(0x2010);
+    const upm: f32 = @floatFromInt(@max(1, font.units_per_em));
+    var out: std.ArrayList(ShapedGlyph) = .empty;
+    var i: usize = 0;
+    while (i < shaped.len) {
+        var j = i + 1;
+        while (j < shaped.len and shaped[j].start == shaped[i].start and shaped[j].end == shaped[i].end) j += 1;
+        const st = shaped[i].start;
+        const en = @min(shaped[i].end, @as(u32, @intCast(text.len)));
+        // where the trailing run of default-ignorable characters starts
+        var tail: u32 = st;
+        var p: u32 = st;
+        while (p < en) {
+            const d = uni.decodeUtf8(text, p);
+            p += @intCast(d.len);
+            if (!defaultIgnorable(d.cp)) tail = p;
+        }
+        if (tail >= en or tail == st) {
+            try out.appendSlice(a, shaped[i..j]);
+            i = j;
+            continue;
+        }
+        // the glyph a soft hyphen shows at a line break stays the hyphen's (takumi draws it as a
+        // run of its own, without text)
+        var base_end = j;
+        const soft_break = j - i >= 2 and (shaped[j - 1].gid == hyphen or shaped[j - 1].gid == hyphen2) and shaped[j - 1].gid != 0 and uni.decodeUtf8(text, tail).cp == 0xAD;
+        if (soft_break) base_end = j - 1;
+        // the pen after the cluster: where the next glyph of the run starts
+        const last = shaped[base_end - 1];
+        const pen_x = if (base_end < shaped.len) shaped[base_end].x else last.x + @as(f32, @floatFromInt(font.advanceWidth(last.gid))) * size / upm;
+        const pen_y = shaped[i].y;
+        var first = out.items.len;
+        try out.appendSlice(a, shaped[i..base_end]);
+        var cur: [2]u32 = .{ st, tail };
+        p = tail;
+        while (p < en) {
+            const d = uni.decodeUtf8(text, p);
+            const next: u32 = p + @as(u32, @intCast(d.len));
+            if (ignorableContinues(d.cp)) {
+                cur[1] = next;
+            } else {
+                for (out.items[first..]) |*g| {
+                    g.start = cur[0];
+                    g.end = cur[1];
+                }
+                first = out.items.len;
+                cur = .{ p, next };
+            }
+            if (space != 0) try out.append(a, .{ .gid = space, .x = pen_x, .y = pen_y, .start = 0, .end = 0 });
+            p = next;
+        }
+        for (out.items[first..]) |*g| {
+            g.start = cur[0];
+            g.end = cur[1];
+        }
+        if (soft_break) {
+            var h = shaped[j - 1];
+            h.start = en;
+            h.end = en;
+            try out.append(a, h);
+        }
+        i = j;
+    }
+    return out.items;
+}
+
+/// takumi-pdf keys a font by the variation values the text asked for, not by the coordinates
+/// they clamp to: text at two sizes beyond the range of an `opsz` axis draws from two font
+/// objects with the same outlines, while `font-optical-sizing: none` (the axis default) shares
+/// the font of text at the default size. The value asked for when it lies outside the axis
+/// range (inside it the instance's coordinates differ already), as bits; 0 otherwise.
+fn opszVariant(f: *rt.Frame, g0: *const font_mod.PositionedGlyph, font: *const ttf.Font) u32 {
+    const ax = font.findAxis("opsz") orelse return 0;
+    if (g0.user >= f.run_styles.items.len) return 0;
+    const cs = f.run_styles.items[g0.user];
+    var v: f32 = if (cs.font_optical_sizing != .none) cs.font_size else ax.default;
+    for (cs.font_variation_settings) |fv| {
+        if (std.mem.eql(u8, &fv.tag, "opsz")) v = fv.value;
+    }
+    if (!(v < ax.min or v > ax.max)) return 0;
+    return @bitCast(v);
+}
+
 /// The krilla run of bm-engine glyphs `gs` (one face and size): cluster ranges from the
 /// paragraph's cluster starts; without the paragraph text, a stand-in text made of each glyph's
 /// lowest cmap codepoint (so ToUnicode still maps simple text).
@@ -911,8 +1033,9 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
     if (!(size > 0)) return null;
     const shaped = try a.alloc(ShapedGlyph, gs.len);
     var text = text_in;
+    const variant = opszVariant(f, g0, font);
     if (text.len == 0) {
-        const fc = try reg.container(font, face.index);
+        const fc = try reg.container(font, face.index, variant);
         var t: std.ArrayList(u8) = .empty;
         for (gs, shaped) |g, *sg| {
             const st: u32 = @intCast(t.items.len);
@@ -930,9 +1053,12 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
             const st: u32 = @min(g.cluster, @as(u32, @intCast(text.len)));
             sg.* = .{ .gid = g.gid, .x = g.x, .y = g.y, .start = st, .end = clusterEnd(text, starts, st) };
         }
+        const shown = try hideIgnorables(a, font, size, gs, shaped, text);
+        const glyphs = try runGlyphs(a, shown, size, text, &reg.uncovered);
+        return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
     }
     const glyphs = try runGlyphs(a, shaped, size, text, &reg.uncovered);
-    return .{ .font = .{ .font = font, .face_index = face.index }, .glyphs = glyphs, .text = text, .size = size };
+    return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
 }
 
 fn coloredFace(font: *const ttf.Font) bool {
@@ -954,8 +1080,8 @@ fn drawSubRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const rt.Nod
         .stroke_width = rcs.webkit_text_stroke_width,
         .stroke_color = rcs.resolveColor(rcs.webkit_text_stroke_color),
         .stroke_first = rcs.paint_order == .stroke,
-        .synthetic_bold = if (!colored_face and rcs.font_weight >= 600 and face.weight < 600) ptext.emboldenWidth(run.size) else null,
-        .synthetic_skew = if (!colored_face and rcs.font_style != .normal and !face.italic) synthetic_italic_skew else null,
+        .synthetic_bold = if (!colored_face and rcs.font_synthesis.weight and rcs.font_weight >= 600 and face.weight < 600) ptext.emboldenWidth(run.size) else null,
+        .synthetic_skew = if (!colored_face and rcs.font_synthesis.style and rcs.font_style != .normal and !face.italic) synthetic_italic_skew else null,
         .baseline = baseline,
         .owned = o.owned,
         .filter = o.filter,

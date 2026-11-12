@@ -171,6 +171,28 @@ pub const Date = struct {
     utc_offset_minute: u8 = 0,
 };
 
+/// pdf-writer `Limits` (what krilla's `check_validator_limits` reads) plus the q/Q nesting
+/// fact of a content stream (krilla `ContentBuilder::content_save_state`).
+pub const Limits = struct {
+    /// longest string written, in bytes before escaping (`Str`: its bytes; `TextStr`: its UTF-8)
+    str_len: u32 = 0,
+    /// longest name written, in bytes before escaping
+    name_len: u32 = 0,
+    /// a content stream nested `q` deeper than `max_q_depth`
+    q_over: bool = false,
+
+    pub const max_str_len = 32767;
+    pub const max_name_len = 127;
+    pub const max_q_depth = 28;
+    pub const max_objects = 8388607;
+
+    pub fn merge(l: *Limits, o: Limits) void {
+        l.str_len = @max(l.str_len, o.str_len);
+        l.name_len = @max(l.name_len, o.name_len);
+        l.q_over = l.q_over or o.q_over;
+    }
+};
+
 /// Append-only byte buffer with pdf-writer's lazy token padding. Used for object bodies (through
 /// `Doc`) and content streams (`content.zig`). Object values are written in order; dictionaries
 /// are `dict()` + key/value pairs + `dictEnd()`, arrays `arr()` + items + `arrEnd()`.
@@ -182,6 +204,8 @@ pub const Buf = struct {
     /// Padding is only considered after this offset (start of the current object).
     base: usize = 0,
     failed: bool = false,
+    /// lengths of the strings and names written so far
+    limits: Limits = .{},
 
     pub fn init(a: Allocator) Buf {
         return .{ .a = a };
@@ -235,6 +259,7 @@ pub const Buf = struct {
 
     /// `/name` with `#xx` escapes for bytes outside the regular printable range.
     pub fn name(b: *Buf, n: []const u8) void {
+        b.limits.name_len = @max(b.limits.name_len, @as(u32, @truncate(@min(n.len, 0xffff_ffff))));
         b.byte('/');
         for (n) |c| {
             if (isNameRegular(c)) {
@@ -256,8 +281,13 @@ pub const Buf = struct {
 
     /// pdf-writer `Str`: literal string for ASCII bytes, hex string otherwise.
     pub fn str(b: *Buf, s: []const u8) void {
+        b.noteStr(s.len);
         for (s) |c| if (c >= 0x80) return b.hexStr(s);
         b.literal(s);
+    }
+
+    fn noteStr(b: *Buf, len: usize) void {
+        b.limits.str_len = @max(b.limits.str_len, @as(u32, @truncate(@min(len, 0xffff_ffff))));
     }
 
     fn literal(b: *Buf, s: []const u8) void {
@@ -305,6 +335,7 @@ pub const Buf = struct {
     /// pdf-writer `TextStr` from UTF-8: a literal string when every byte is printable ASCII,
     /// otherwise `<FEFF...>` UTF-16BE (invalid UTF-8 bytes become U+FFFD).
     pub fn textStr(b: *Buf, s: []const u8) void {
+        b.noteStr(s.len);
         for (s) |c| {
             if (c < 32 or c > 126) break;
         } else return b.literal(s);
@@ -591,6 +622,12 @@ pub const Doc = struct {
     cur: ?Obj = null,
     cur_catalog: bool = false,
     cache: std.AutoHashMapUnmanaged(u64, Ref) = .empty,
+    /// Limits of the objects written (krilla: the limits of the final `Pdf` plus those of every
+    /// content stream, see `noteLimits`). Complete after `finish`: structure elements count
+    /// only when they were not packed into object streams (pdf-writer never sees the strings
+    /// of a packed chunk).
+    limits: Limits = .{},
+    limits_struct: Limits = .{},
 
     pub fn init(a: Allocator, o: Options) Doc {
         var d: Doc = .{ .a = a, .version = o.version, .compress = o.compress, .level = o.level, .b = .init(a) };
@@ -633,7 +670,20 @@ pub const Doc = struct {
         d.b.base = pos;
         d.cur = .{ .ref = r, .cat = cat, .start = pos, .end = pos, .plo = @intCast(d.b.patches.items.len), .phi = 0, .data = null };
         d.cur_catalog = false;
+        d.limits.merge(d.b.limits);
+        d.b.limits = .{};
         return &d.b;
+    }
+
+    /// krilla `register_limits` for a content stream built outside the document buffer.
+    pub fn noteLimits(d: *Doc, l: Limits) void {
+        d.limits.str_len = @max(d.limits.str_len, l.str_len);
+        d.limits.name_len = @max(d.limits.name_len, l.name_len);
+    }
+
+    /// The number of indirect objects allocated exceeds what PDF/A-2 and A-3 allow.
+    pub fn tooManyObjects(d: *const Doc) bool {
+        return d.next_ref > Limits.max_objects;
     }
 
     pub fn end(d: *Doc) void {
@@ -643,6 +693,8 @@ pub const Doc = struct {
         };
         o.end = @intCast(d.b.list.items.len);
         o.phi = @intCast(d.b.patches.items.len);
+        if (o.cat == .struct_elements and !d.cur_catalog) d.limits_struct.merge(d.b.limits) else d.limits.merge(d.b.limits);
+        d.b.limits = .{};
         const list = if (d.cur_catalog) &d.catalog_parts else &d.objs;
         list.append(d.a, o) catch {
             d.b.failed = true;
@@ -840,6 +892,7 @@ pub const Doc = struct {
             }
         }
         const pack = o.object_streams and d.version.atLeast(.v1_5) and n_struct >= 2 and !struct_streams;
+        if (!pack) d.limits.merge(d.limits_struct);
 
         // rows[n]: byte offset, or (stream number << 16 | index) when packed
         const Row = struct { v: u64 = 0, packed_: bool = false };
@@ -929,6 +982,7 @@ pub const Doc = struct {
                 tb.pairDate("ModDate", dt);
                 tb.pairDate("CreationDate", dt);
             }
+            d.limits.merge(tb.limits);
             if (tb.list.items.len > 0) {
                 if (tb.failed) return error.OutOfMemory;
                 info_num = num;
@@ -1470,4 +1524,35 @@ test "dangling ref is an error" {
 
 test {
     _ = @import("content.zig");
+}
+
+test "limits: strings and names of the written objects; packed structure elements do not count" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const long = try a.alloc(u8, 40000);
+    @memset(long, 'a');
+    for ([_]bool{ true, false }) |two| {
+        var d = Doc.init(a, .{ .version = .v1_7, .compress = false });
+        const page = d.addPage();
+        const cs = d.alloc();
+        d.contentStream(cs, "");
+        _ = d.beginPage(page, .{ .resources = null, .media_box = .{ 0, 0, 10, 10 }, .contents = cs });
+        d.endDict();
+        const n: usize = if (two) 2 else 1;
+        for (0..n) |_| {
+            const b = d.beginDict(d.alloc(), .struct_elements);
+            b.pairText("Alt", long);
+            d.endDict();
+        }
+        const o = d.beginDict(d.alloc(), .annotations);
+        o.pairName("S", long[0..128]);
+        o.pairStr("URI", long[0..300]);
+        d.endDict();
+        var out: std.ArrayList(u8) = .empty;
+        try d.finish(&out, .{ .info = .{ .title = long[0..500] } });
+        // two structure elements are packed into an object stream, a single one is not
+        try testing.expectEqual(@as(u32, if (two) 500 else 40000), d.limits.str_len);
+        try testing.expectEqual(@as(u32, 128), d.limits.name_len);
+    }
 }

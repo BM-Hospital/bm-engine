@@ -107,6 +107,26 @@ pub const FontIssues = struct {
     private_use: u32 = 0,
     /// `.notdef` glyphs (or a LastResort font) shown as text (`ContainsNotDefGlyph`; PDF/A, UA).
     notdef_shown: u32 = 0,
+    /// One entry per violation krilla registers while writing the fonts, with the values its
+    /// `ValidationError` variant carries (krilla dedupes the list by value, so the number of
+    /// distinct entries is what `validation failed with N error(s)` counts).
+    list: std.ArrayList(Issue) = .empty,
+
+    pub const Kind = enum { restricted_license, no_codepoint_mapping, invalid_codepoint_mapping, private_use };
+    pub const Issue = struct {
+        kind: Kind,
+        /// index of the font (krilla `Font`) in first-use order
+        font: u32,
+        /// CID, or code within a Type3 font (krilla passes both as the `GlyphId`)
+        glyph: u32 = 0,
+        /// the offending character (`InvalidCodepointMapping`, `UnicodePrivateArea`)
+        ch: u32 = 0,
+
+        /// A value that is equal exactly when krilla's variants are.
+        pub fn key(i: Issue) u64 {
+            return (@as(u64, i.font) << 37) | (@as(u64, i.glyph & 0xffff) << 21) | @as(u64, i.ch & 0x1fffff);
+        }
+    };
 };
 
 /// krilla `FontContainer`: everything one font instance contributes to the document.
@@ -115,6 +135,8 @@ pub const FontContainer = struct {
     /// The instance (variation coordinates applied); `font.data` must outlive the document.
     font: ttf.Font,
     face_index: u32,
+    /// see `FontRegistry.container`
+    variant: u32 = 0,
     upem: f32,
     /// krilla `can_be_cid_font`: the font has glyf / CFF / CFF2 outlines.
     cid_capable: bool,
@@ -325,11 +347,12 @@ pub const Uncovered = struct {
 };
 
 /// Key of a font instance.
-fn instanceHash(font: *const ttf.Font, face_index: u32) u64 {
+fn instanceHash(font: *const ttf.Font, face_index: u32, variant: u32) u64 {
     var h = std.hash.Wyhash.init(0x7e47);
     h.update(std.mem.asBytes(&@intFromPtr(font.data.ptr)));
     h.update(std.mem.asBytes(&font.data.len));
     h.update(std.mem.asBytes(&face_index));
+    h.update(std.mem.asBytes(&variant));
     h.update(std.mem.sliceAsBytes(font.coords[0..font.n_axes]));
     return h.final();
 }
@@ -366,15 +389,18 @@ pub const FontRegistry = struct {
     /// The container of an instance, created on first use (krilla `register_font_container`).
     /// `font` is the instance the text was shaped with (bm-engine `fonts.font(face)`) and
     /// `face_index` its face in a collection (`fonts.face(face).index`).
-    pub fn container(reg: *FontRegistry, font: *const ttf.Font, face_index: u32) !*FontContainer {
-        const key = instanceHash(font, face_index);
+    /// `variant` tells instances apart that share their coordinates (krilla keys a font by the
+    /// variation values it was asked for, see `text.zig opszVariant`); 0 = none.
+    pub fn container(reg: *FontRegistry, font: *const ttf.Font, face_index: u32, variant: u32) !*FontContainer {
+        const key = instanceHash(font, face_index, variant);
         for (reg.keys.items, 0..) |k, i| {
             const c = reg.containers.items[i];
-            if (k == key and c.font.data.ptr == font.data.ptr and c.face_index == face_index and
+            if (k == key and c.font.data.ptr == font.data.ptr and c.face_index == face_index and c.variant == variant and
                 std.mem.eql(i16, c.font.coords[0..c.font.n_axes], font.coords[0..font.n_axes])) return c;
         }
         const c = try reg.a.create(FontContainer);
         c.* = try FontContainer.init(reg.a, font, face_index);
+        c.variant = variant;
         try reg.containers.append(reg.a, c);
         try reg.keys.append(reg.a, key);
         return c;
@@ -387,12 +413,13 @@ pub const FontRegistry = struct {
         var issues: FontIssues = .{ .notdef_shown = reg.notdef_shown };
         if (reg.flushed) return issues;
         reg.flushed = true;
-        for (reg.containers.items) |c| {
+        for (reg.containers.items, 0..) |c, fi| {
+            const at: IssueAt = .{ .a = cx.a, .issues = &issues, .font = @intCast(fi) };
             for (0..c.t3.items.len) |i| {
                 const r = c.ref(cx.doc, .{ .t3 = @intCast(i) });
-                try writeType3(cx, c, &c.t3.items[i], r, &issues);
+                try writeType3(cx, c, &c.t3.items[i], r, at);
             }
-            if (!c.cid.isEmpty()) try writeCid(cx, c, c.ref(cx.doc, .cid), &issues);
+            if (!c.cid.isEmpty()) try writeCid(cx, c, c.ref(cx.doc, .cid), at);
         }
         if (cx.doc.b.failed) return error.OutOfMemory;
         return issues;
@@ -401,38 +428,71 @@ pub const FontRegistry = struct {
 
 // ------------------------------------------------------------------------------- CID fonts
 
-/// krilla `write_cmap_entry`: the validation facts of one glyph's text.
-fn checkText(text: ?[]const u8, issues: *FontIssues) void {
+/// Where the violations of one font are recorded.
+const IssueAt = struct {
+    a: Allocator,
+    issues: *FontIssues,
+    font: u32,
+
+    fn add(at: IssueAt, kind: FontIssues.Kind, glyph: u32, ch: u32) Allocator.Error!void {
+        try at.issues.list.append(at.a, .{ .kind = kind, .font = at.font, .glyph = glyph, .ch = ch });
+    }
+};
+
+/// krilla `write_cmap_entry`: the validation facts of one glyph's text (`g`: the CID or the
+/// Type3 code).
+fn checkText(text: ?[]const u8, at: IssueAt, g: u32) Allocator.Error!void {
+    const issues = at.issues;
     const t = text orelse {
         issues.no_codepoint_mapping += 1;
+        try at.add(.no_codepoint_mapping, g, 0);
         return;
     };
     var invalid_code = false;
     var private = false;
+    var invalid_ch: u32 = 0;
+    var private_ch: u32 = 0;
     var i: usize = 0;
     while (i < t.len) {
         const d = uni.decodeUtf8(t, i);
         i += d.len;
-        if (d.cp == 0 or d.cp == 0xFEFF or d.cp == 0xFFFE) invalid_code = true;
-        if ((d.cp >= 0xE000 and d.cp <= 0xF8FF) or (d.cp >= 0xF0000 and d.cp <= 0xFFFFD) or (d.cp >= 0x100000 and d.cp <= 0x10FFFD)) private = true;
+        if (d.cp == 0 or d.cp == 0xFEFF or d.cp == 0xFFFE) {
+            invalid_code = true;
+            invalid_ch = d.cp;
+        }
+        if ((d.cp >= 0xE000 and d.cp <= 0xF8FF) or (d.cp >= 0xF0000 and d.cp <= 0xFFFFD) or (d.cp >= 0x100000 and d.cp <= 0x10FFFD)) {
+            private = true;
+            private_ch = d.cp;
+        }
     }
     if (invalid_code) {
         issues.invalid_codepoint_mapping += 1;
-    } else if (t.len == 0) issues.no_codepoint_mapping += 1;
-    if (private) issues.private_use += 1;
+        try at.add(.invalid_codepoint_mapping, g, invalid_ch);
+    } else if (t.len == 0) {
+        issues.no_codepoint_mapping += 1;
+        try at.add(.no_codepoint_mapping, g, 0);
+    }
+    if (private) {
+        issues.private_use += 1;
+        try at.add(.private_use, g, private_ch);
+    }
 }
 
 /// krilla `CIDFont::serialize` (objects: Type0 `root`, CIDFont, FontDescriptor in `fonts`;
 /// ToUnicode CMap, then the font program, in `font_streams`).
-fn writeCid(cx: *sf.Ctx, c: *FontContainer, root: Ref, issues: *FontIssues) !void {
+fn writeCid(cx: *sf.Ctx, c: *FontContainer, root: Ref, at: IssueAt) !void {
+    const issues = at.issues;
     const doc = cx.doc;
     const d = try c.cid.finish(cx.a);
-    if (d.restricted_license and !issues.restricted_license) {
-        issues.restricted_license = true;
-        issues.restricted_font = d.base_font;
+    if (d.restricted_license) {
+        try at.add(.restricted_license, 0, 0);
+        if (!issues.restricted_license) {
+            issues.restricted_license = true;
+            issues.restricted_font = d.base_font;
+        }
     }
     var cid: usize = 1;
-    while (cid < c.cid.numCids()) : (cid += 1) checkText(c.cid.texts.items[cid], issues);
+    while (cid < c.cid.numCids()) : (cid += 1) try checkText(c.cid.texts.items[cid], at, @intCast(cid));
 
     const cid_ref = doc.alloc();
     const fd_ref = doc.alloc();
@@ -583,7 +643,7 @@ fn weightBucket(weight: f32) i64 {
 }
 
 /// krilla `Type3Font::serialize`.
-fn writeType3(cx: *sf.Ctx, c: *FontContainer, t: *const Type3Font, root: Ref, issues: *FontIssues) !void {
+fn writeType3(cx: *sf.Ctx, c: *FontContainer, t: *const Type3Font, root: Ref, at: IssueAt) !void {
     const doc = cx.doc;
     const a = cx.a;
     var res = w.Resources.init(a);
@@ -688,7 +748,7 @@ fn writeType3(cx: *sf.Ctx, c: *FontContainer, t: *const Type3Font, root: Ref, is
         b.dictEnd();
         doc.endDict();
     }
-    for (t.texts.items) |x| checkText(x, issues);
+    for (t.texts.items, 0..) |x, g| try checkText(x, at, @intCast(g));
     writeCmapStream(doc, cmap_ref, try type3Cmap(a, t.texts.items));
 }
 
