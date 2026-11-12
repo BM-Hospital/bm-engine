@@ -182,4 +182,72 @@ const balance = [
   },
 ];
 
-export default [rtl, indent, bidiBoxes, balance].flat();
+// ------------------------------------------------------------------------------------------------ block-in-inline
+const biiCss = `
+  .s { background: #fde047; border: 2px solid #dc2626; padding: 0 6px }
+  .u { background: #bbf7d0; border-bottom: 2px solid #16a34a; margin: 0 4px }
+  .d { background: #bae6fd }
+`;
+const blockInInline = [
+  {
+    id: "fix-layout-block-in-inline", feature: "block-in-inline", title: "a block inside an inline box splits it (CSS 2.1 9.2.1.1): first part without end edge, the block at the container's width, last part without start edge; block first; a paragraph inside <b>", width: 400, height: 250,
+    node: page(biiCss, `
+      <div>before <span class="s">inside start <div class="d">block child</div> inside end</span> after</div>
+      <div style="margin-top:8px">before <span class="s"><div class="d">block first</div>tail</span> after <b style="color:red">bold <p>para in b</p> more</b></div>
+    `),
+  },
+  {
+    id: "fix-layout-block-in-inline-nested", feature: "block-in-inline", title: "block-in-inline through nested inline boxes, adjacent blocks, margins, wrapping text after the split; a span holding only a block; float and flex blocks inside a span", width: 400, height: 330,
+    node: page(biiCss, `
+      <div style="width:260px">text <span class="s">outer <span class="u">inner one <div class="d" style="margin:6px 0;padding:4px">deep block with margin</div> inner two</span> outer end <div class="d">second block</div><div class="d">third adjacent</div></span> tail text that wraps onto another line here</div>
+      <div style="margin-top:8px"><span class="s"><div class="d">only a block</div></span></div>
+      <div style="margin-top:6px"><span><div class="d">no-edge span, block</div>after</span></div>
+      <div style="margin-top:6px">a <span class="s">x<div class="d" style="float:left;width:30px;height:20px"></div><div class="d" style="display:flex;gap:4px"><i>flex</i><i>block</i></div>y</span> z</div>
+    `),
+  },
+  {
+    id: "fix-layout-block-in-inline-align", feature: "block-in-inline", title: "block-in-inline with text-align: center, sized / auto-margin blocks, a right-to-left container, box-decoration-break: clone, a link holding a block", width: 400, height: 300,
+    node: page(biiCss, `
+      <div style="text-align:center;width:300px;background:#f1f5f9">centered <span class="s">start <div class="d" style="width:120px">w120</div><div class="d" style="width:120px;margin-left:auto">auto ml</div> end</span> tail</div>
+      <div dir="rtl" style="width:300px;margin-top:6px">rtl <span class="s" style="border-left-width:6px">start <div class="d">block</div> end</span> tail</div>
+      <div style="width:300px;margin-top:6px">a <span class="s" style="box-decoration-break:clone">clone <div class="d">block</div> end</span> b <a style="color:blue;text-decoration:underline">link <div class="d">div in a</div> text</a></div>
+    `),
+  },
+  {
+    id: "fix-layout-block-in-inline-node", feature: "block-in-inline", title: "node tree: an inline container (no display) with padding / background holding a flex container: the inline box is split, its fragments decorated", width: 400, height: 130,
+    node: { type: "container", style: { display: "block", width: "100%", height: "100%", backgroundColor: "#fff", fontFamily: "Inter", fontSize: 16, padding: 10 }, children: [
+      { type: "text", text: "start " },
+      { type: "container", style: { backgroundColor: "#fde047", padding: 4 }, children: [{ type: "text", text: "inline container " }, { type: "container", style: { display: "flex", backgroundColor: "#bae6fd", height: 24, gap: 4 }, children: [{ type: "container", style: { width: 30, backgroundColor: "#0f172a" } }, { type: "text", text: "flex child" }] }, { type: "text", text: " tail" }] },
+      { type: "text", text: " end" }] },
+  },
+];
+
+// ------------------------------------------------------------------------------------------------ float paint order
+const fpCss = `.fl { float: left; width: 80px; height: 40px; background: rgba(56,189,248,.85); margin-right: -30px } .w { width: 260px; margin-bottom: 8px }`;
+const floatPaint = [
+  {
+    id: "fix-layout-float-paint-text", feature: "float-paint-order", title: "floats paint above in-flow block backgrounds and below inline content (CSS 2.1 appendix E): negative margins pulling text over a float, a float between blocks", width: 300, height: 190,
+    node: page(fpCss, `
+      <div class="w"><div class="fl"></div><div style="background:#fde047">text over float with negative margin so the words overlap the float box here</div></div>
+      <div class="w"><div style="background:#fde047">first block</div><div class="fl" style="margin-top:-10px"></div><div style="background:#bbf7d0;margin-top:4px">second block text overlapping the float box, more words</div><div style="background:#fecaca">third block under</div></div>
+    `),
+  },
+  {
+    id: "fix-layout-float-paint-layers", feature: "float-paint-order", title: "float paint order against the other layers: positioned block and opacity group above floats, inline box backgrounds and atomic inlines above, a BFC block's background below; overlapping floats in tree order", width: 300, height: 250,
+    node: page(fpCss, `
+      <div class="w"><div class="fl"></div><div style="background:#fde047;position:relative">positioned block text overlaps float</div><div style="background:#bbf7d0"><span style="background:#f97316">inline bg</span> and <span style="display:inline-block;background:#a855f7;width:30px;height:12px"></span> atomic</div></div>
+      <div class="w"><div class="fl"><div style="background:#fff;margin:5px">block in float</div></div><div style="background:#fde047;opacity:0.9">opacity block text overlapping</div><div style="overflow:hidden;background:#bbf7d0;height:20px">bfc block avoids</div></div>
+      <div class="w" style="height:70px"><div class="fl" style="margin-right:0"></div><div class="fl" style="margin:10px 0 0 -40px;background:rgba(249,115,22,.85)"></div><div style="background:#fde047;height:30px;margin-top:20px"></div><div class="fl" style="margin-top:-20px;background:rgba(34,197,94,.85);float:right"></div></div>
+    `),
+  },
+  {
+    id: "fix-layout-float-paint-nested", feature: "float-paint-order", title: "floats inside atomic boxes paint with their box: a float in an inline-block under that inline-block's text, floats in flex items, a float with an absolutely positioned child, an absolute box in a paragraph above the block after it", width: 300, height: 260,
+    node: page(fpCss, `
+      <div class="w">before <div style="display:inline-block;background:#e2e8f0;width:200px"><span class="fl" style="height:30px"></span>inline-block text overlapping its own float child here</div> after</div>
+      <div class="w" style="display:flex;gap:6px"><div style="width:120px;background:#fde047"><div class="fl" style="width:50px;height:30px"></div>item text over its float</div><div style="width:120px;background:#bbf7d0;margin-left:-40px">second item covers the first</div></div>
+      <div class="w" style="position:relative;height:40px;background:#f1f5f9"><div class="fl" style="position:static"><div style="position:absolute;right:4px;top:4px;width:30px;height:12px;background:#dc2626"></div></div>x<div style="position:absolute;width:20px;height:14px;background:#000;left:60px;top:8px"></div><div style="width:120px;height:24px;background:#f97316;margin-left:40px"></div></div>
+    `),
+  },
+];
+
+export default [rtl, indent, bidiBoxes, balance, blockInInline, floatPaint].flat();

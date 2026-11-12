@@ -109,7 +109,9 @@ pub const ColorGlyphEntry = struct { pix: raster.Pixmap, ox: i32, oy: i32 };
 /// An inline box (tagged inline element or generated box) enclosing text runs of a paragraph.
 /// `paint_cs`: for a box with percentage padding, a copy of `cs` with the padding resolved against the
 /// percentage base (`paint_base`) of the line layout that will be painted.
-pub const InlineBox = struct { cs: *const CS, parent: u32, paint_cs: ?*const CS = null, paint_base: f32 = 0 };
+/// `no_start` / `no_end`: the box continues from / into another paragraph around a block-level child
+/// (block-in-inline): this part has no start / end edge.
+pub const InlineBox = struct { cs: *const CS, parent: u32, paint_cs: ?*const CS = null, paint_base: f32 = 0, no_start: bool = false, no_end: bool = false };
 
 /// Iterates the painted runs of a line layout: maximal glyph sequences of one source run and one
 /// face on one line, with their horizontal extent and baseline.
@@ -1192,6 +1194,7 @@ pub const Frame = struct {
     /// so far (built as children of the paragraph's node once it exists).
     box_base: u32 = 0,
     pend_objs: std.ArrayList(PendingObj) = .empty,
+    ifc: Ifc = .{},
     /// The next paragraph made is an anonymous block that is not the first child of its container:
     /// it has no first formatted line for `text-indent` (Blink: CanContainFirstFormattedLine)
     no_indent: bool = false,
@@ -1642,6 +1645,9 @@ pub const Frame = struct {
                 const el = f.dom.at(i);
                 if (depth > 64 or !inFlowInline(el.cs)) return false;
                 if (el.run) return true;
+                // In a block container an inline box joins the paragraph whatever it holds: a block-level
+                // child splits the paragraph around it (block-in-inline, see `splitForBlock`).
+                if (objects and el.kind != .image) return true;
                 switch (el.kind) {
                     .image => return false,
                     .text => if (!hasGenerated(el)) return true,
@@ -1658,6 +1664,12 @@ pub const Frame = struct {
                 return true;
             },
         }
+    }
+
+    /// An inline element that is an inline box (own fragments: background, border, edges): a tagged
+    /// element or a container; a bare text node (and a `text` node without a tag, as in takumi) is not.
+    fn isBoxed(el: *const dom_mod.El) bool {
+        return !el.run and (el.tag.len > 0 or el.kind == .container);
     }
 
     fn hasInlineEdges(cs: *const CS) bool {
@@ -1704,7 +1716,7 @@ pub const Frame = struct {
                 const el = f.dom.at(i);
                 if (el.cs.display == .none or depth > 64) return false;
                 // (an inline box with inline edges makes a line even when it is empty)
-                if (!el.run and el.tag.len > 0 and hasInlineEdges(el.cs)) return true;
+                if (isBoxed(el) and hasInlineEdges(el.cs)) return true;
                 if (el.kind == .text and !hasGenerated(el)) {
                     if (el.tag.len == 2 and std.ascii.eqlIgnoreCase(el.tag, "br")) return true;
                     if (el.cs.white_space_collapse != .collapse) return el.text.len > 0;
@@ -1833,6 +1845,8 @@ pub const Frame = struct {
         var run_start = it;
         var run_len: u32 = 0;
         var run_content = false;
+        // (an inline box with children may hold a block-level one)
+        var run_boxes = false;
         while (true) {
             const before = it;
             const c = it.next();
@@ -1841,6 +1855,10 @@ pub const Frame = struct {
                 if (inline_ctx) {
                     joins = f.isInlineLevel(x, 0, lines) or (lines and f.objectKind(x) != null);
                     if (joins and !run_content) run_content = f.hasLineContent(x, 0);
+                    if (joins and lines and x == .el) {
+                        const xe = f.dom.at(x.el);
+                        if (xe.kind == .container and !xe.run and xe.first != none) run_boxes = true;
+                    }
                 }
             }
             if (joins) {
@@ -1849,9 +1867,10 @@ pub const Frame = struct {
                 continue;
             }
             if (run_len > 0) {
-                try f.buildInlineRun(run_start, run_len, run_content, cs, id, depth);
+                try f.buildInlineRun(run_start, run_len, run_content, run_boxes, cs, id, depth);
                 run_len = 0;
                 run_content = false;
+                run_boxes = false;
             }
             const x = c orelse break;
             // white-space-only text between boxes generates nothing
@@ -1863,10 +1882,11 @@ pub const Frame = struct {
 
     /// Builds the `count` children starting at `start_it` that form one inline formatting context
     /// of block `parent` (style `cs`).
-    noinline fn buildInlineRun(f: *Frame, start_it: Items, count: u32, content: bool, cs: *const CS, parent: u32, depth: u32) Error!void {
+    /// `boxes`: some child is an inline box with children (it may hold block-level ones).
+    noinline fn buildInlineRun(f: *Frame, start_it: Items, count: u32, content: bool, boxes: bool, cs: *const CS, parent: u32, depth: u32) Error!void {
         var it = start_it;
         var k: u32 = 0;
-        if (!content) {
+        if (!content and !boxes) {
             // no line box: only the boxes are built
             while (k < count) : (k += 1) {
                 const c = it.next() orelse break;
@@ -1875,31 +1895,61 @@ pub const Frame = struct {
             return;
         }
         var pending: std.ArrayList(font.Run) = .empty;
-        const not_first = f.nodes.items[parent].first_child != none;
         const saved_base = f.box_base;
         const saved_box = f.cur_box;
         const saved_objs = f.pend_objs;
+        const saved_ifc = f.ifc;
         defer {
             f.box_base = saved_base;
             f.cur_box = saved_box;
             f.pend_objs = saved_objs;
+            f.ifc = saved_ifc;
         }
         f.box_base = @intCast(f.inline_boxes.items.len);
         f.cur_box = none;
         f.pend_objs = .empty;
+        f.ifc = .{ .parent = parent, .cs = cs, .depth = depth };
         while (k < count) : (k += 1) {
             const c = it.next() orelse break;
             try f.collectRuns(c, &pending, depth + 1, cs);
         }
+        try f.finishPart(&pending, content);
+    }
+
+    /// The inline formatting context being collected (`buildInlineRun`): the block container node, its
+    /// style, its depth; `split`: a block-level box inside an inline box has split it into parts.
+    const Ifc = struct { parent: u32 = none, cs: *const CS = undefined, depth: u32 = 0, split: bool = false };
+
+    /// Ends the part of the inline formatting context collected in `pending` (all of it, or the part
+    /// before / between / after block-level boxes): a paragraph when it has line content, else only its
+    /// floats and out-of-flow boxes. `content`: the whole run is known to have line content.
+    noinline fn finishPart(f: *Frame, pending: *std.ArrayList(font.Run), content: bool) Error!void {
+        const cs = f.ifc.cs;
+        const parent = f.ifc.parent;
+        const depth = f.ifc.depth;
         const objs = f.pend_objs.items;
-        f.no_indent = not_first;
-        if (objs.len == 0) return f.flushRuns(&pending, cs, parent);
+        const lang = f.cur_lang;
+        const box = f.cur_box;
+        defer {
+            f.cur_lang = lang;
+            f.cur_box = box;
+            pending.* = .empty;
+        }
+        if (!(if (f.ifc.split or !content) f.partHasContent(pending.items) else true)) {
+            // no line box: only the boxes are built
+            for (objs) |o| {
+                f.cur_lang = o.lang;
+                try f.buildItem(o.item, parent, depth + 1);
+            }
+            return;
+        }
+        // (an anonymous block that is not the first child has no first formatted line)
+        f.no_indent = f.nodes.items[parent].first_child != none;
+        if (objs.len == 0) return f.flushRuns(pending, cs, parent);
         // inline-level boxes: an anonymous inline formatting context holding them as children
         const id = try f.openAnonBox(cs, parent);
         // (the paragraph's own properties are the block's: alignment, wrapping, clamping)
         f.nodes.items[id].para = try f.makeParagraph(pending.items, cs);
-        const lang = f.cur_lang;
-        defer f.cur_lang = lang;
         f.cur_box = none;
         for (objs) |o| {
             f.cur_lang = o.lang;
@@ -1907,6 +1957,75 @@ pub const Frame = struct {
             try f.buildItem(o.item, id, depth + 1);
             if (first < f.nodes.items.len) f.nodes.items[first].in_inline_box = o.boxed;
         }
+    }
+
+    /// Does a part of an inline formatting context put anything on a line: text that survives
+    /// white-space collapsing, a forced break, an atomic inline, an inline box edge?
+    fn partHasContent(f: *const Frame, runs: []const font.Run) bool {
+        for (runs) |r| {
+            if (r.object) |o| {
+                if (o.kind == .atomic) return true;
+                continue;
+            }
+            if (r.hard_break_after) return true;
+            const ws = r.white_space orelse .normal;
+            if (ws != .normal and ws != .nowrap) {
+                if (r.text.len > 0) return true;
+                continue;
+            }
+            for (r.text) |c| if (!isSpace(c)) return true;
+        }
+        for (f.inline_boxes.items[@min(f.box_base, f.inline_boxes.items.len)..]) |ib| {
+            const clone = ib.cs.box_decoration_break == .clone;
+            const rtl = ib.cs.direction == .rtl;
+            // (side 3 = left, 1 = right)
+            if ((clone or !ib.no_start) and sideEdge(ib.cs, if (rtl) 1 else 3)) return true;
+            if ((clone or !ib.no_end) and sideEdge(ib.cs, if (rtl) 3 else 1)) return true;
+        }
+        return false;
+    }
+
+    fn sideEdge(cs: *const CS, k: usize) bool {
+        if (cs.usedBorderWidths()[k] > 0 or cs.padding[k].resolve(0) != 0 or cs.padding[k].pct != 0) return true;
+        return switch (cs.margin[k]) {
+            .lp => |lp| lp.resolve(0) != 0 or lp.pct != 0,
+            else => false,
+        };
+    }
+
+    /// Block-in-inline (CSS 2.1 §9.2.1.1): `item` is a block-level box inside the inline boxes that are
+    /// open (`cur_box` and its ancestors). The paragraph collected so far ends with those boxes open
+    /// (no end edge), the block becomes a child of the block container, and a new paragraph continues
+    /// the boxes (no start edge) for what follows.
+    noinline fn splitForBlock(f: *Frame, out: *std.ArrayList(font.Run), item: Item) Error!void {
+        const boxes = &f.inline_boxes;
+        var n_open: u32 = 0;
+        var b = f.cur_box;
+        while (b != none and b >= f.box_base and b < boxes.items.len and n_open < max_node_depth) : (b = boxes.items[b].parent) {
+            boxes.items[b].no_end = true;
+            n_open += 1;
+        }
+        const top = f.cur_box;
+        // (the innermost open box shows up in this part even when nothing is in it yet)
+        if (n_open > 0) try f.appendRun(out, "", boxes.items[top].cs, false);
+        f.ifc.split = true;
+        try f.finishPart(out, false);
+        try f.buildItem(item, f.ifc.parent, f.ifc.depth + 1);
+        // the continuation: the same chain of boxes, outer first
+        const new_base: u32 = @intCast(boxes.items.len);
+        var k: u32 = n_open;
+        var prev: u32 = none;
+        while (k > 0) {
+            k -= 1;
+            var src = top;
+            for (0..k) |_| src = boxes.items[src].parent;
+            try boxes.append(f.a, .{ .cs = boxes.items[src].cs, .parent = prev, .no_start = true });
+            prev = @intCast(boxes.items.len - 1);
+        }
+        f.box_base = new_base;
+        f.cur_box = prev;
+        f.pend_objs = .empty;
+        if (prev != none) try f.appendRun(out, "", boxes.items[prev].cs, false);
     }
 
     fn isSpace(c: u8) bool {
@@ -1996,20 +2115,21 @@ pub const Frame = struct {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
                 if (ps.cs.display == .none) return;
-                const saved = f.cur_box;
-                defer f.cur_box = saved;
+                if (!inFlowInline(ps.cs)) return f.splitForBlock(out, item);
                 try f.openInlineBox(ps.cs);
+                // (a block-in-inline split re-opens the boxes: leave through the parent link)
+                defer f.closeInlineBox();
                 try f.appendRun(out, ps.text, ps.cs, false);
             },
             .el => |i| {
                 const el = f.dom.at(i);
                 if (el.cs.display == .none) return;
-                const saved = f.cur_box;
-                defer f.cur_box = saved;
+                if (!el.run and !inFlowInline(el.cs)) return f.splitForBlock(out, item);
                 // a real (tagged) element is an inline box; bare text nodes are not
                 const br = el.tag.len == 2 and std.ascii.eqlIgnoreCase(el.tag, "br");
-                const boxed = !el.run and el.tag.len > 0 and !br;
+                const boxed = isBoxed(el) and !br;
                 if (boxed) try f.openInlineBox(el.cs);
+                defer if (boxed) f.closeInlineBox();
                 if (el.kind == .text and !hasGenerated(el)) return f.appendRun(out, el.text, el.cs, br);
                 const before = out.items.len;
                 var it: Items = .{ .f = f, .el = i };
@@ -2066,6 +2186,11 @@ pub const Frame = struct {
         };
     }
 
+    /// Leaves the current inline box.
+    fn closeInlineBox(f: *Frame) void {
+        if (f.cur_box != none and f.cur_box < f.inline_boxes.items.len) f.cur_box = f.inline_boxes.items[f.cur_box].parent;
+    }
+
     /// Pushes an inline box nested in the current one and makes it current.
     noinline fn openInlineBox(f: *Frame, cs: *const CS) Error!void {
         try f.inline_boxes.append(f.a, .{ .cs = cs, .parent = f.cur_box });
@@ -2105,6 +2230,9 @@ pub const Frame = struct {
             var edge: [2]f32 = undefined;
             var mar: [2]f32 = undefined;
             const rtl = cs.direction == .rtl;
+            const clone = cs.box_decoration_break == .clone;
+            // block-in-inline: the part of a split box has no edge where the box continues
+            const drop: [2]bool = .{ ib.no_start and !clone, ib.no_end and !clone };
             // percentage margins / padding resolve against the containing block width at layout time
             // (Chrome; takumi takes them as 0)
             var parts: font.EdgeParts = .{};
@@ -2121,6 +2249,11 @@ pub const Frame = struct {
                 edge[k] = mar[k] + @trunc(bw[side] * 64) / 64 + @trunc(@max(plp.resolve(0), 0) * 64) / 64;
                 // [inline start, inline end]
                 const e: usize = @intFromBool((k == 1) != rtl);
+                if (drop[e]) {
+                    mar[k] = 0;
+                    edge[k] = 0;
+                    continue;
+                }
                 parts.margin[e] = m;
                 parts.margin_pct[e] = mlp.resolve(1) - m;
                 parts.padding[e] = plp.resolve(0);
@@ -2141,6 +2274,8 @@ pub const Frame = struct {
                 .end = edge[@intFromBool(!rtl)],
                 .margin_start = mar[@intFromBool(rtl)],
                 .rtl = rtl,
+                .no_start = drop[0],
+                .no_end = drop[1],
                 .pct = if (has_pct) parts else null,
                 .margin_end = mar[@intFromBool(!rtl)],
                 .clone = cs.box_decoration_break == .clone,

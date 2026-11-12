@@ -94,3 +94,32 @@ test "display: contents generates no box: the children are items of the parent" 
     try buf.appendSlice(testing.allocator, "]}");
     try t.expectSame(buf.items, "{\"type\":\"container\",\"style\":{\"display\":\"flex\"},\"children\":[" ++ box_a ++ "]}");
 }
+
+test "block-in-inline: a block-level child splits the inline box around it" {
+    const t = try T.init();
+    defer t.deinit();
+    const css = "<style>div{font-family:Inter;font-size:16px} .b{display:block;height:10px} span{padding:0 4px}</style>";
+    // the block is a child of the block container, the inline box is split into a part before (no end
+    // edge) and a part after it (no start edge): the same boxes as writing the parts out
+    const a = try t.html(css ++ "<div>x <span>y<i class=\"b\"></i>z</span> w</div>");
+    defer testing.allocator.free(a);
+    const b = try t.html(css ++ "<div>x <span style=\"padding-right:0\">y</span><i class=\"b\"></i><span style=\"padding-left:0\">z</span> w</div>");
+    defer testing.allocator.free(b);
+    try testing.expectEqualStrings(b, a);
+    // an inline box that only holds a block: no line boxes around it without inline edges
+    try t.expectSameHtml(
+        "<style>div{font-family:Inter} .b{display:block;height:10px}</style><div><span><i class=\"b\"></i></span></div>",
+        "<style>div{font-family:Inter} .b{display:block;height:10px}</style><div><i class=\"b\"></i></div>",
+    );
+    // nested inline boxes, several blocks, deep nesting: no crash, finite output
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(testing.allocator);
+    try buf.appendSlice(testing.allocator, "<div style=\"font-family:Inter\">a");
+    const depth = 120;
+    for (0..depth) |_| try buf.appendSlice(testing.allocator, "<span style=\"border:1px solid\">b<div>c</div>");
+    for (0..depth) |_| try buf.appendSlice(testing.allocator, "d</span>");
+    try buf.appendSlice(testing.allocator, "</div>");
+    const out = try t.html(buf.items);
+    defer testing.allocator.free(out);
+    try testing.expect(std.mem.indexOf(u8, out, "nan") == null and std.mem.indexOf(u8, out, "inf") == null);
+}

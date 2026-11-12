@@ -136,6 +136,10 @@ pub const InlineBox = struct {
     /// set, `start` / `end` / `margin_*` are derived from it for the percentage base of the moment
     /// (`Paragraph.setPercentBase`: the containing block width; 0 in intrinsic sizing).
     pct: ?EdgeParts = null,
+    /// The box continues from / into another paragraph (block-in-inline): its fragments never have the
+    /// start / end edge (pass 0 for that edge).
+    no_start: bool = false,
+    no_end: bool = false,
     /// `direction: rtl` on the box: its inline-start edge is its right one (`start` / `end` are
     /// logical). On a line the edges are placed visually (Blink's box fragments): the left edge left of
     /// the box's leftmost content, the right edge right of its rightmost.
@@ -489,6 +493,8 @@ const BoxInfo = struct {
     face: FaceId = 0,
     clone: bool = false,
     rtl: bool = false,
+    no_start: bool = false,
+    no_end: bool = false,
     pct: ?EdgeParts = null,
 
     /// `start` / `end` / `margin_*` of a box with percentage edges for the base `base` (each part on
@@ -1933,7 +1939,7 @@ pub const Paragraph = struct {
 
     fn openState(self: *const Paragraph, cx: *Cx, box: u32, slot: u32, first_in: bool) void {
         const bi = self.boxes[box];
-        const first = first_in or bi.clone;
+        const first = (first_in and !bi.no_start) or bi.clone;
         cx.push(.{ .box = box, .start = slot, .asc = bi.ascent, .desc = bi.descent, .valign = bi.valign });
         if (cx.frags) |fr| {
             fr.append(cx.frag_alloc, .{ .box = box - 1, .line = cx.line, .x0 = std.math.inf(f32), .x1 = -std.math.inf(f32), .baseline = 0, .first = first, .face = bi.face, .slot = slot }) catch {
@@ -1994,7 +2000,7 @@ pub const Paragraph = struct {
             switch (g.gid) {
                 Special.open => if (g.cluster < self.boxes.len and g.cluster != 0) self.openState(cx, g.cluster, slot, true),
                 Special.close => if (cx.stack.items.len > 1 and top.box == g.cluster) {
-                    markLast(cx, g.cluster);
+                    if (g.cluster < self.boxes.len and !self.boxes[g.cluster].no_end) markLast(cx, g.cluster);
                     self.endBox(cx, slot + 1);
                 },
                 Special.atomic => {
@@ -2861,6 +2867,8 @@ const Builder = struct {
                 if (bi.clone) b.has_clone = true;
             }
             bi.rtl = s.rtl;
+            bi.no_start = s.no_start;
+            bi.no_end = s.no_end;
             if (s.rtl) b.has_rtl_box = true;
             if (s.pct) |ep| {
                 bi.pct = ep;
