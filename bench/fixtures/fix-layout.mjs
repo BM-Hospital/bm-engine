@@ -140,4 +140,46 @@ const bidiBoxes = [
   },
 ];
 
-export default [rtl, indent, bidiBoxes].flat();
+// ------------------------------------------------------------------------------------------------ text-wrap: balance / pretty with inline content
+const balCss = `
+  p { width: 300px; background: #f1f5f9; text-wrap: balance; margin: 0 0 7px }
+  .h { background: #fde047; padding: 0 6px; border: 1px solid #ca8a04 }
+  .ib { display: inline-block; width: 30px; height: 12px; background: #ef4444 }
+`;
+const balance = [
+  {
+    id: "fix-layout-balance-inline-boxes", feature: "text-wrap-balance", title: "text-wrap: balance in paragraphs with inline boxes (padding / border, larger font, background, sup, nowrap span), centred, cloned decorations (bisection)", width: 330, height: 330,
+    node: page(balCss, `
+      <p>A headline <span class="h">that should</span> be balanced across its lines nicely</p>
+      <p>A headline <span style="font-size:20px">that should</span> be balanced across its lines nicely</p>
+      <p>A headline <span style="background:#fde047">that should be balanced</span> across its lines nicely</p>
+      <p>A headline<sup style="background:#fde047">sup</sup> that should be balanced across its lines nicely</p>
+      <p>A headline <span class="h" style="white-space:nowrap">that should not</span> be balanced across its lines nicely</p>
+      <p style="text-align:center">A headline <span class="h">that should</span> be balanced across its lines nicely</p>
+      <p>A headline <span class="h" style="box-decoration-break:clone">that should be balanced across</span> its lines nicely</p>
+    `),
+  },
+  {
+    id: "fix-layout-balance-atomic", feature: "text-wrap-balance", title: "text-wrap: balance / pretty with inline-blocks, an absolutely positioned box, forced breaks, six lines", width: 330, height: 330,
+    node: page(balCss, `
+      <p>With an <span class="ib"></span> inline-block in the balanced paragraph text here</p>
+      <p>Inline-block at the end of the balanced paragraph text <span class="ib"></span></p>
+      <p>Balanced <span style="display:inline-block;background:#bae6fd;padding:0 4px">inline block</span> with text inside the paragraph that wraps twice or more times ok</p>
+      <p style="position:relative">A headline <span style="position:absolute;right:0;top:0;width:10px;height:10px;background:red"></span>that should be balanced across its lines nicely</p>
+      <p>A headline <span class="h">that</span> should be balanced<br>across its lines nicely and more words to wrap again</p>
+      <p style="text-wrap:pretty">A headline <span class="h">that should</span> be balanced across its lines very nicely ok</p>
+      <p style="width:150px">A headline <span class="h">that should</span> be balanced across its lines nicely and it goes on for many lines here</p>
+    `),
+  },
+  {
+    id: "fix-layout-balance-floats", feature: "text-wrap-balance", title: "text-wrap: balance beside floats: a leading float in the paragraph (two line widths), a sibling float, a float inside the text (not balanced), a float shorter than the first line", width: 330, height: 300,
+    node: page(balCss, `
+      <p><span style="float:left;width:60px;height:50px;background:#38bdf8"></span>A headline that should be balanced across its lines nicely beside a float ok</p>
+      <p><span style="float:left;width:60px;height:14px;background:#38bdf8"></span>A headline that should be balanced across its lines nicely beside a float ok</p>
+      <p>A headline that should <span style="float:right;width:60px;height:30px;background:#38bdf8"></span>be balanced across its lines nicely beside a float ok</p>
+      <div style="width:300px"><div style="float:left;width:80px;height:40px;background:#38bdf8"></div><p style="width:auto">A headline that should be balanced across its lines nicely beside a sibling float ok</p></div>
+    `),
+  },
+];
+
+export default [rtl, indent, bidiBoxes, balance].flat();

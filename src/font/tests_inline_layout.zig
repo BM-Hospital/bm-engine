@@ -135,3 +135,55 @@ test "inline box edges are placed visually: rtl box around ltr text, box split b
         try t.expectApproxEqAbs(p.maxContentWidth(), l.lines[0].width, 1.0 / 64.0 + 0.001);
     }
 }
+
+test "text-wrap: balance with inline boxes and atomic inlines (flow layout)" {
+    var fx = try Fx.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = fam, .size = 14 };
+    const boxes = [_]font.InlineBox{.{ .style = st, .start = 7, .end = 7, .decorated = true }};
+    const runs = [_]font.Run{
+        .{ .text = "A headline ", .style = st },
+        .{ .text = "that should", .style = st, .box = 0 },
+        .{ .text = " be balanced across its lines nicely ", .style = st },
+        .{ .text = "", .style = st, .object = .{ .id = 0 } },
+        .{ .text = " ok", .style = st },
+    };
+    const objs = [_]font.ObjectMetrics{.{ .width = 30, .ascent = 10, .descent = 2 }};
+    var greedy = try font.Paragraph.init(t.allocator, &fx.fc, &runs, .{ .boxes = &boxes });
+    defer greedy.deinit();
+    var bal = try font.Paragraph.init(t.allocator, &fx.fc, &runs, .{ .boxes = &boxes, .text_wrap = .balance });
+    defer bal.deinit();
+    try t.expect(bal.complex);
+    const flow: font.Flow = .{ .alloc = t.allocator, .objects = &objs };
+    var lg = try greedy.layoutFlow(t.allocator, &flow, 300);
+    defer lg.deinit(t.allocator);
+    var lb = try bal.layoutFlow(t.allocator, &flow, 300);
+    defer lb.deinit(t.allocator);
+    // same number of lines; the greedy last line is short, the balanced lines are even
+    try t.expectEqual(lg.lines.len, lb.lines.len);
+    try t.expect(lg.lines.len >= 2);
+    const gl = lg.lines[lg.lines.len - 1].width;
+    const bl = lb.lines[lb.lines.len - 1].width;
+    try t.expect(bl > gl);
+    try t.expect(lb.lines[0].width < lg.lines[0].width);
+    // measuring agrees with layout
+    const sz = bal.measureFlow(&flow, 300);
+    try t.expectEqual(@as(usize, sz.line_count), lb.lines.len);
+    try t.expectEqual(sz.width, lb.width);
+    // a float inside the text takes balancing away (Blink: no line widths, no bisection)
+    const runs_f = [_]font.Run{
+        .{ .text = "A headline that ", .style = st },
+        .{ .text = "", .style = st, .object = .{ .id = 0, .kind = .float } },
+        .{ .text = "should be balanced across its lines nicely ok", .style = st },
+    };
+    var gf = try font.Paragraph.init(t.allocator, &fx.fc, &runs_f, .{});
+    defer gf.deinit();
+    var bf = try font.Paragraph.init(t.allocator, &fx.fc, &runs_f, .{ .text_wrap = .balance });
+    defer bf.deinit();
+    var l1 = try gf.layoutFlow(t.allocator, &.{ .alloc = t.allocator }, 200);
+    defer l1.deinit(t.allocator);
+    var l2 = try bf.layoutFlow(t.allocator, &.{ .alloc = t.allocator }, 200);
+    defer l2.deinit(t.allocator);
+    try t.expectEqual(l1.lines.len, l2.lines.len);
+    for (l1.lines, l2.lines) |a, b| try t.expectEqual(a.width, b.width);
+}

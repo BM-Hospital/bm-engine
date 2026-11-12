@@ -854,7 +854,9 @@ pub const Paragraph = struct {
                 // an inline box edge: spaces before it collapse when the line ends after it, and a
                 // closing edge after such spaces never forces a break (it overhangs)
                 const cc = cum_content + (nc - cum);
-                if (g.gid == Special.close and (sp or oh > 0)) {
+                // (at the end of the paragraph the space before the edge is collapsed away, not hanging:
+                // the edge has to fit)
+                if (g.gid == Special.close and (sp or oh > 0) and !self.endsWithEdges(i + 1)) {
                     oh += nc - cum;
                 } else {
                     oh = 0;
@@ -891,6 +893,14 @@ pub const Paragraph = struct {
             return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(e - s_cum + clone_end), .last = false, .hyphen = hyphen, .cum = cum }, s_cum);
         }
         return self.fin(.{ .start = start, .end = content_end, .next = n, .width = @floatCast(cum_content - s_cum + clone_end), .last = true, .cum = cum }, s_cum);
+    }
+
+    /// Nothing but closing edges and transparent items from glyph `from` to the paragraph end.
+    fn endsWithEdges(self: *const Paragraph, from: u32) bool {
+        for (self.glyphs[from..]) |g| {
+            if (g.flags & ShapedGlyph.SPECIAL == 0 or g.gid == Special.open or g.gid == Special.atomic) return false;
+        }
+        return true;
     }
 
     /// pre-wrap: hanging spaces count in the reported width (as takumi reports them) but only
@@ -960,6 +970,8 @@ pub const Paragraph = struct {
         indent: f32 = std.math.nan(f32),
         first_line: bool = true,
         after_hard: bool = false,
+        /// text-wrap: balance by bisection: the width the lines are broken at (NaN = not balanced)
+        bal_w: f32 = std.math.nan(f32),
 
         /// text-indent of the next line (`first`: it is the first formatted line).
         noinline fn indentFor(it: *LineIter, first: bool) f32 {
@@ -973,16 +985,28 @@ pub const Paragraph = struct {
             return if ((first or (it.after_hard and o.indent_each_line)) != o.indent_hanging) it.indent else 0;
         }
 
+        /// Blink's `LineWidths`: the available width of every line when it is known without layout:
+        /// the first `n_ex` lines (beside one float) have `ex` px, the others `def`.
+        const LineW = struct {
+            def: f32,
+            ex: f32 = 0,
+            n_ex: u32 = 0,
+
+            inline fn at(w: LineW, line: u32) f32 {
+                return if (line < w.n_ex) w.ex else w.def;
+            }
+        };
+
         /// Blink's `ScoreLineBreaker` for the paragraph part starting at the current position:
         /// fills `forced` when better break points than the greedy ones are found; `balance`
-        /// falls back to bisecting the available width.
-        noinline fn prepare(it: *LineIter) void {
+        /// falls back to bisecting the available width (`may_bisect`: the part is the whole
+        /// paragraph in one layout opportunity; the result goes to `bal_w`).
+        noinline fn prepare(it: *LineIter, w: LineW, may_bisect: bool) void {
             const p = it.p;
             const balance = it.mode.strategy == .balance;
-            const avail = floor64(@max(it.mode.avail.?, 0));
             const max_lines: u32 = if (balance) max_balance_lines else max_pretty_lines;
             const n: u32 = @intCast(p.glyphs.len);
-            var greedy: Mode = .{ .avail = it.mode.avail, .clamp = false, .emergency = it.mode.emergency };
+            var greedy: Mode = .{ .avail = w.def, .clamp = false, .emergency = it.mode.emergency, .flow = it.mode.flow };
             const ind_first: f32 = if (p.has_indent) it.indentFor(it.first_line) else 0;
             const ind_rest: f32 = if (p.has_indent) it.indentFor(false) else 0;
             // greedy pass
@@ -992,6 +1016,7 @@ pub const Paragraph = struct {
             var width_sum: f32 = 0;
             var last: LineInfo = undefined;
             while (true) {
+                greedy.avail = w.at(lines);
                 greedy.indent = if (lines == 0) ind_first else ind_rest;
                 last = p.nextLine(pos, cum, greedy, no_stop);
                 lines += 1;
@@ -1005,17 +1030,17 @@ pub const Paragraph = struct {
             if (lines <= 1) return;
             if (!balance) {
                 // worth it only when the greedy last line is short and a single word
-                if (!(last.width < avail / 3.0)) return;
+                if (!(last.width < w.def / 3.0)) return;
                 var k = last.start + 1;
                 while (k < last.end) : (k += 1) {
                     if (p.glyphs[k].flags & ShapedGlyph.BREAK_BEFORE != 0) return;
                 }
             }
-            greedy.indent = 0;
-            if (it.score(avail, lines, balance, ind_first)) return;
-            if (!balance or pos < n or it.pos != 0) return;
+            // (cloned box decorations take scoring away)
+            if (!p.has_clone and it.score(w, lines, balance, ind_first)) return;
+            if (!balance or !may_bisect or pos < n or it.pos != 0) return;
             // bisection: the narrowest width (to 1 px) that keeps the number of lines
-            var upper = avail;
+            var upper = w.def;
             var lower = floor64(width_sum / @as(f32, @floatFromInt(lines)) * 0.8 + 1.0 / 128.0);
             while (lower + 1.0 < upper) {
                 const mid = floor64((upper + lower) * 0.5);
@@ -1032,10 +1057,17 @@ pub const Paragraph = struct {
                 }
                 if (cnt <= lines) upper = mid else lower = mid;
             }
-            it.mode.avail = upper;
+            it.bal_w = upper;
         }
 
-        fn score(it: *LineIter, avail: f32, greedy_lines: u32, balance: bool, first_indent: f32) bool {
+        /// Blink's `LineBreakCandidateContext` + `ComputeScores`. Candidates: every break
+        /// opportunity of the part between two sentinels, with the position of the line end when
+        /// the line breaks there (`pos_if`: without trailing spaces) and when it does not
+        /// (`pos_no`). An inline box edge or an atomic inline starts on the layout-unit grid; an
+        /// edge leaves the position-with-a-break where the content before it ended (Blink: "opaque
+        /// items leave the position with a break, as trailing spaces do"), and an opportunity right
+        /// after an edge / atomic inline is a candidate of that item.
+        fn score(it: *LineIter, w: LineW, greedy_lines: u32, balance: bool, first_indent: f32) bool {
             const p = it.p;
             const gs = p.glyphs;
             const n: u32 = @intCast(gs.len);
@@ -1044,10 +1076,9 @@ pub const Paragraph = struct {
             var pos_if: [max_candidates]f32 = undefined;
             var pen: [max_candidates]f32 = undefined;
             const justified = p.opts.text_align == .justify;
-            const wfs = avail * p.strut_size;
+            const wfs = @max(w.def, 0) * p.strut_size;
             const hyphen_penalty: f32 = if (justified) wfs / 2.0 else wfs * 2.0;
             const line_penalty: f32 = if (justified) 0 else hyphen_penalty * 2.0;
-            // candidates: every break opportunity of the part, between two sentinels
             var nc: usize = 1;
             glyph[0] = it.pos;
             pos_no[0] = 0;
@@ -1058,12 +1089,14 @@ pub const Paragraph = struct {
             var cum_content = s_cum;
             var content_end = it.pos;
             var last_hyphen_run = true;
+            // glyph whose break-before opportunity is already a candidate (made by the item before it)
+            var done_at: u32 = no_stop;
             var i = it.pos;
             while (i < n) : (i += 1) {
                 const g = gs[i];
                 if (p.multi_run and i > it.pos and g.item != gs[i - 1].item) cum = s_cum + ceil64d(cum - s_cum);
                 if (g.flags & ShapedGlyph.HARD_BREAK != 0) break;
-                if (i > it.pos and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
+                if (i > it.pos and i != done_at and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
                     if (nc + 1 >= max_candidates) return false;
                     var e = cum_content;
                     var hy = false;
@@ -1079,6 +1112,30 @@ pub const Paragraph = struct {
                     pos_if[nc] = @floatCast(e - s_cum);
                     pen[nc] = if (hy) hyphen_penalty else 0;
                     nc += 1;
+                }
+                if (g.flags & ShapedGlyph.SPECIAL != 0) {
+                    // floats and out-of-flow boxes are transparent
+                    if (g.gid >= Special.float) continue;
+                    const end = s_cum + ceil64d(cum - s_cum) + p.advanceOf(g, @floatCast(cum - s_cum), it.mode.flow);
+                    // a negative size breaks the candidates' monotonic positions
+                    if (end < cum) return false;
+                    cum = end;
+                    if (g.gid == Special.atomic) {
+                        cum_content = end;
+                        content_end = i + 1;
+                    }
+                    var j = i + 1;
+                    while (j < n and gs[j].flags & ShapedGlyph.SPECIAL != 0 and gs[j].gid >= Special.float) j += 1;
+                    if (j < n and gs[j].flags & ShapedGlyph.BREAK_BEFORE != 0 and gs[j].flags & ShapedGlyph.HARD_BREAK == 0) {
+                        if (nc + 1 >= max_candidates) return false;
+                        glyph[nc] = j;
+                        pos_no[nc] = @floatCast(end - s_cum);
+                        pos_if[nc] = @floatCast(cum_content - s_cum);
+                        pen[nc] = 0;
+                        nc += 1;
+                        done_at = j;
+                    }
+                    continue;
                 }
                 const nx = cum + p.advanceOf(g, @floatCast(cum - s_cum), null);
                 cum = nx;
@@ -1108,21 +1165,31 @@ pub const Paragraph = struct {
             sc[0] = 0;
             prev[0] = 0;
             line_ix[0] = 0;
-            const fit = avail + 1.0 / 64.0;
             var active: usize = 0;
             var end: usize = 1;
             while (end < nc) : (end += 1) {
                 const is_last = end == nc - 1;
                 var best: f32 = std.math.floatMax(f32);
                 var best_prev: usize = 0;
-                const start_edge = pos_if[end] - fit;
+                // (the width of the line that would start at a candidate: by its line index, the
+                // first one narrower by its text-indent)
+                var last_line: u8 = line_ix[active];
+                var fit = @max(w.at(last_line) - (if (last_line == 0) first_indent else 0), 0) + 1.0 / 64.0;
+                var start_edge = pos_if[end] - fit;
                 var best_hope: f32 = 0;
-                const first = active;
-                var st: usize = first;
+                var st: usize = active;
                 while (st < end) : (st += 1) {
+                    if (line_ix[st] != last_line) {
+                        last_line = line_ix[st];
+                        const nf = @max(w.at(last_line) - (if (last_line == 0) first_indent else 0), 0) + 1.0 / 64.0;
+                        if (nf != fit) {
+                            fit = nf;
+                            start_edge = pos_if[end] - fit;
+                            best_hope = 0;
+                        }
+                    }
                     if (sc[st] + best_hope >= best) continue;
-                    // (Blink: the first line is narrower by its text-indent)
-                    const delta = pos_no[st] - start_edge - (if (st == 0) first_indent else 0);
+                    const delta = pos_no[st] - start_edge;
                     var width_score: f32 = 0;
                     var extra: f32 = 0;
                     if (delta < 0) {
@@ -1155,6 +1222,72 @@ pub const Paragraph = struct {
             return true;
         }
 
+        /// Flow layout: the line widths of the paragraph part at the current position, whose first
+        /// line is at `y` with the free range `band` (its leading floats are placed), and whether a
+        /// balanced paragraph may bisect. Null: the widths are not known without layout (Blink's
+        /// `LineWidths::Set`): more than one exclusion, floats inside the text, atomic inlines,
+        /// shifted boxes or fonts taller than the strut beside a float.
+        noinline fn lineWidths(it: *const LineIter, band: Band, y: f32, may_bisect: *bool) ?LineW {
+            const p = it.p;
+            const flow = it.cx.?.flow;
+            const narrowed = band.next_y == band.next_y;
+            // (Blink: the paragraph has a float anywhere; the other conditions look at the part)
+            var has_float = false;
+            for (p.glyphs[0..it.pos]) |g| {
+                if (g.flags & ShapedGlyph.SPECIAL != 0 and g.gid == Special.float) has_float = true;
+            }
+            var late_float = false;
+            var uneven = false;
+            var leading = it.pos == 0;
+            // (a font taller than the strut makes its line taller)
+            const strut_only = p.opts.line_height != .normal;
+            var tall = false;
+            var last_m: u16 = 0xffff;
+            for (p.glyphs[it.pos..]) |g| {
+                if (g.flags & ShapedGlyph.SPECIAL == 0) {
+                    leading = false;
+                    if (g.metric != last_m and g.metric < p.metrics.len) {
+                        last_m = g.metric;
+                        const mt = p.metrics[g.metric];
+                        if (!strut_only and (mt.ascent > p.strut_ascent or mt.descent > p.strut_descent)) tall = true;
+                        // (the strut of the inline box the text is in)
+                        if (mt.run < p.run_box.len and p.run_box[mt.run] < p.boxes.len) {
+                            const bi = p.boxes[p.run_box[mt.run]];
+                            if (bi.ascent > p.strut_ascent or bi.descent > p.strut_descent) tall = true;
+                        }
+                    }
+                    continue;
+                }
+                switch (g.gid) {
+                    Special.float => {
+                        has_float = true;
+                        if (!leading) late_float = true;
+                    },
+                    Special.atomic => {
+                        uneven = true;
+                        leading = false;
+                    },
+                    Special.open => if (g.cluster < p.boxes.len and p.boxes[g.cluster].valign != .baseline) {
+                        uneven = true;
+                    },
+                    else => {},
+                }
+            }
+            const bw = floor64(@max(band.x1 - band.x0, 0));
+            may_bisect.* = !narrowed and !has_float;
+            if (!narrowed and !has_float) return .{ .def = bw };
+            if (late_float or uneven or tall) return null;
+            if (!narrowed) return .{ .def = bw };
+            const bf = flow.band_fn orelse return null;
+            const b2 = bf(flow, band.next_y, 0);
+            if (b2.next_y == b2.next_y or !(b2.x1 >= b2.x0)) return null;
+            const lh = p.strut_ascent + p.strut_descent;
+            if (!(lh > 0) or !(band.next_y > y)) return null;
+            const nl = @ceil((band.next_y - y) / lh);
+            if (!(nl < 64)) return null;
+            return .{ .def = floor64(b2.x1 - b2.x0), .ex = bw, .n_ex = @intFromFloat(nl) };
+        }
+
         fn next(it: *LineIter) ?LineInfo {
             if (it.cx != null) return it.nextFlow();
             const p = it.p;
@@ -1165,7 +1298,10 @@ pub const Paragraph = struct {
             }
             var stop: u32 = no_stop;
             if ((comptime wrap_balance) and it.mode.strategy != .wrap) {
-                if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) it.prepare();
+                if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) {
+                    it.prepare(.{ .def = floor64(@max(it.mode.avail.?, 0)) }, true);
+                    if (it.bal_w == it.bal_w) it.mode.avail = it.bal_w;
+                }
                 if (it.forced_i < it.n_forced) {
                     stop = it.forced[it.forced_i];
                     it.forced_i += 1;
@@ -1216,6 +1352,15 @@ pub const Paragraph = struct {
             // the float placed beside this line last, and a break position that is settled
             var beside: u32 = no_stop;
             var stop: u32 = no_stop;
+            // text-wrap: balance / pretty: the break point chosen for this line
+            const scored = (comptime wrap_balance) and it.mode.strategy != .wrap and full != null;
+            var prepared = !scored;
+            if (scored and it.forced_i < it.n_forced) {
+                stop = it.forced[it.forced_i];
+                it.forced_i += 1;
+                if (stop >= n) stop = no_stop;
+                prepared = true;
+            }
             while (true) {
                 band = .{ .x0 = 0, .x1 = @max(full orelse 0, 0) };
                 if (full != null) if (flow.band_fn) |bf| {
@@ -1225,6 +1370,9 @@ pub const Paragraph = struct {
                 };
                 var m = it.mode;
                 if (full != null) m.avail = band.x1 - band.x0;
+                if (m.avail) |a| {
+                    if (it.bal_w < a) m.avail = it.bal_w;
+                }
                 if (p.has_indent) m.indent = it.indentFor(it.first_line);
                 li = p.nextLine(it.pos, it.cum, m, stop);
                 it.clampLine(&li, m.avail);
@@ -1262,6 +1410,20 @@ pub const Paragraph = struct {
                     }
                     // (bounded: `float_next` grows with every float placed)
                     if (placed) continue;
+                }
+                if ((comptime wrap_balance) and !prepared) {
+                    // the leading floats are placed: the widths of the lines are known now
+                    prepared = true;
+                    if (stop == no_stop and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) {
+                        var may_bisect = false;
+                        // (unknown widths: `pretty` tries again at the next line)
+                        if (it.lineWidths(band, y, &may_bisect)) |lw| it.prepare(lw, may_bisect);
+                        if (it.forced_i < it.n_forced) {
+                            stop = it.forced[it.forced_i];
+                            it.forced_i += 1;
+                            if (stop >= n) stop = no_stop else continue;
+                        } else if (it.bal_w == it.bal_w) continue;
+                    }
                 }
                 // a line without text, atomic inlines, inline edges or a forced break has no line box
                 // (a line broken again starts its fragments again)
@@ -1310,6 +1472,12 @@ pub const Paragraph = struct {
             if (!li.empty) {
                 it.first_line = false;
                 it.after_hard = li.hard;
+            }
+            if (li.last) {
+                // paragraph part ended: `pretty` looks at the next part afresh
+                it.n_forced = 0;
+                it.forced_i = 0;
+                it.suspended = it.mode.strategy == .balance;
             }
             li.top = y;
             li.band_x = band.x0;
@@ -1802,7 +1970,7 @@ pub const Paragraph = struct {
         return .{
             .avail = avail,
             .emergency = self.opts.overflow_wrap != .normal,
-            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps() and !self.complex) self.opts.text_wrap else .wrap,
+            .strategy = if (avail != null and self.opts.max_lines == null and self.wraps()) self.opts.text_wrap else .wrap,
         };
     }
 
@@ -1838,7 +2006,6 @@ pub const Paragraph = struct {
         defer cx.deinit();
         var m = self.modeFor(max_width);
         m.flow = flow;
-        m.strategy = .wrap;
         var it: LineIter = .{ .p = self, .mode = m, .cx = &cx };
         var s: Size = .{ .width = 0, .height = 0 };
         while (it.next()) |li| {
@@ -1926,7 +2093,6 @@ pub const Paragraph = struct {
         defer cx.deinit();
         var m = self.modeFor(max_width);
         m.flow = flow;
-        m.strategy = .wrap;
         return self.layoutImpl(alloc, m, &cx);
     }
 
