@@ -14,6 +14,7 @@
 // Design, build and the internal addon interface: docs/NATIVE.md.
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBinding, builtInWoffDecoder } from "./engine.mjs";
 
@@ -73,7 +74,7 @@ export function loadNative() {
     if (names.length === 0) errors.push(`no native build for ${proc.platform}-${proc.arch}`);
     const candidates = [];
     const forced = proc.env.BM_ENGINE_NATIVE_PATH;
-    if (forced) candidates.push(forced);
+    if (forced) candidates.push(resolve(forced)); // (relative to the working directory)
     else {
       for (const name of names) {
         const dev = fileURLToPath(new URL(`../native/dist/${name}/bm-engine.${name}.node`, import.meta.url));

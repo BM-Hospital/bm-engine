@@ -9,6 +9,8 @@ import { ROOT_DIR } from "../lib/assets.mjs";
 const entry = path.join(ROOT_DIR, "js", "node.mjs");
 const wasmPath = process.env.BM_WASM ? path.resolve(process.env.BM_WASM) : path.join(ROOT_DIR, "zig-out", "bin", "bm_engine.wasm");
 if (process.env.BM_WASM) process.env.BM_WASM = wasmPath; // absolute for js/node.mjs (child processes inherit it)
+// This adapter measures the wasm build: keep js/node.mjs from picking the native addon (see engines/bm-native.mjs).
+process.env.BM_ENGINE_BACKEND ||= "wasm";
 
 export default {
   name: "bm",
