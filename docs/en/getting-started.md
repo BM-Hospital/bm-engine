@@ -29,18 +29,99 @@ The package has no dependencies and no install scripts. It contains three prebui
 binaries (`core`, `standard`, `full`), the optional WOFF add-on, a dependency-free ESM wrapper and
 TypeScript declarations. The package is ES modules only (see [CommonJS](#commonjs)).
 
+It also lists eight **optional dependencies**, one per platform: `bm-engine-win32-x64-msvc`,
+`bm-engine-linux-x64-gnu`, ... (table below). Each holds only the native Node-API build of the same engine
+(about 1 MB compressed) and declares `os`, `cpu` and, on Linux, `libc`, so your package manager installs
+the one that matches the machine and skips the others. Nothing is compiled or downloaded at install time or
+at run time; there is no postinstall script.
+
+### Native on Node.js, WebAssembly everywhere else
+
+On Node.js, `import ... from "bm-engine"` uses the native addon when its platform package is installed and
+loads, and otherwise falls back to the `full` WebAssembly binary **automatically and silently**. The API is
+the same and the output is the same, byte for byte; natively the engine is faster and the async methods
+(`render`, `renderSvg`, `measure`, `renderAnimation`, ...) run on the libuv thread pool instead of blocking
+the event loop. Browsers, bundlers for the browser, workers and edge runtimes never see the native code.
+
+```js
+import { backend } from "bm-engine";
+console.log(backend); // "native" or "wasm"
+```
+
+| To force | Use |
+|:--|:--|
+| WebAssembly on Node | `BM_ENGINE_BACKEND=wasm`, or import `bm-engine/full` (always wasm) |
+| native, or fail loudly | `BM_ENGINE_BACKEND=native` (the import throws and says why), or import `bm-engine/native` |
+
+Why the addon was not used is in the error of `BM_ENGINE_BACKEND=native node app.mjs`, for example
+`bm-engine: BM_ENGINE_BACKEND=native, but the native addon is not available (bm-engine-linux-x64-gnu: not
+installed)`.
+
+| Platform package | `os` / `cpu` / `libc` | Status |
+|:--|:--|:--|
+| `bm-engine-win32-x64-msvc` | win32 / x64 | **executed**: byte identity with wasm on 200 fixtures, thread / memory / fuzz tests, install tests |
+| `bm-engine-win32-arm64-msvc` | win32 / arm64 | built and structurally verified, **never executed** |
+| `bm-engine-linux-x64-gnu` | linux / x64 / glibc 2.17+ | built and structurally verified, **never executed** |
+| `bm-engine-linux-x64-musl` | linux / x64 / musl (Alpine) | built and structurally verified, **never executed** |
+| `bm-engine-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | built and structurally verified, **never executed** |
+| `bm-engine-linux-arm64-musl` | linux / arm64 / musl | built and structurally verified, **never executed** |
+| `bm-engine-darwin-x64` | darwin / x64 (macOS 10.15+) | built and structurally verified, **never executed** |
+| `bm-engine-darwin-arm64` | darwin / arm64 (macOS 11+) | built and structurally verified, **never executed** |
+
+"Structurally verified" means the build script checked each binary without running it (format, CPU,
+exported and imported symbols, glibc symbol versions, no math-library imports). Until a platform is
+executed, rely on the fallback: if its addon does not load, `bm-engine` uses WebAssembly. The x64 builds
+need an x86-64-v2 CPU (SSE4.2, 2009 onwards); older CPUs get WebAssembly. Node.js 18 or newer.
+
+### Package managers, Docker, serverless
+
+- **npm, pnpm, Yarn, Bun** honour `os` and `cpu`. `libc` (glibc or musl) is honoured by current npm
+  (tested: npm 11), pnpm and Yarn 3.2+; a manager that ignores it may install both Linux variants of your
+  architecture, which is harmless: `bm-engine` detects musl and loads the right one.
+- **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) installs no platform
+  package: you get WebAssembly (tested with npm).
+- **Lockfiles created on another OS.** With npm 11 the lockfile written on Windows lists all eight packages
+  with their `os` / `cpu` / `libc`, and `npm ci` for Linux x64 installs `bm-engine-linux-x64-gnu` (tested).
+  Some older npm versions dropped the other platforms' optional packages from the lockfile when
+  `node_modules` already existed (npm/cli#4828), the classic native-package pitfall. Here it is not fatal:
+  the missing addon means WebAssembly, not an error. To repair, delete `node_modules` and the lockfile and
+  install again, and check `backend` in CI.
+- **Docker.** Run `npm ci` inside the image, on the image's platform; do not copy a `node_modules` built
+  on your Windows or macOS host into a Linux image (you would get WebAssembly). Multi-arch builds
+  (`docker buildx --platform linux/amd64,linux/arm64`) install the right package per architecture. Alpine
+  images get the `-musl` package.
+- **Installing for another machine** (e.g. building a Linux deployment on a Mac): npm can be told the
+  target, and then needs all three flags (without `--libc` it installed neither Linux package on Windows):
+
+  ```sh
+  npm ci --os=linux --cpu=x64 --libc=glibc     # AWS Lambda x86_64, most Linux servers
+  npm ci --os=linux --cpu=arm64 --libc=glibc   # Lambda arm64 (Graviton)
+  npm ci --os=linux --cpu=x64 --libc=musl      # Alpine
+  ```
+
+  pnpm and Yarn use `supportedArchitectures` in their configuration instead.
+- **Serverless (AWS Lambda, Vercel Functions, Netlify Functions, ...).** The binary is chosen when
+  dependencies are installed, on the build machine: a platform that builds on Linux x64 (Vercel, Netlify,
+  most CI) gets `bm-engine-linux-x64-gnu`; a zip of `node_modules` made on a Mac or on Windows carries the
+  wrong one (WebAssembly at run time). Bundling deployers must also ship the platform package; see
+  [Next.js](./frameworks/nextjs.md#native-addon-in-deployments) for `outputFileTracingIncludes`. Log
+  `backend` once at startup to know what runs. None of these deployments was tested.
+- **Bun, Deno, Electron** load the `node` entry and may load the addon; not tested. If it does not load,
+  they get WebAssembly.
+
 ## Package entry points
 
 | Import | Node.js (`node` condition) | Everywhere else (browsers, bundlers, workers, Deno) |
 |:--|:--|:--|
-| `bm-engine` | `full` binary, initialised on import (`BM_PROFILE` / `BM_WASM` override it) | wrapper only: call `init(wasm)` with the binary yourself |
+| `bm-engine` | the native addon if installed, else the `full` binary, ready on import (`BM_ENGINE_BACKEND`, `BM_PROFILE`, `BM_WASM` override it) | wrapper only: call `init(wasm)` with the binary yourself |
+| `bm-engine/native` | the native addon, or the import throws | not available |
 | `bm-engine/full` | `full`, initialised on import | `await init()` locates `bm_engine.wasm` next to the module (or pass it) |
 | `bm-engine/standard` | `standard`, initialised on import | `await init()` locates `bm_engine.standard.wasm` |
 | `bm-engine/core` | `core`, initialised on import | `await init()` locates `bm_engine.core.wasm` |
 | `bm-engine/woff` | `loadWoff()` / `decodeWoff()` — the WOFF add-on | same |
-| `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | the raw binaries, for bundler asset imports and Workers module imports | same |
+| `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | the raw binaries, for bundler asset imports and Workers module imports; each also as `...wasm?module` for Next.js Edge | same |
 
-Every entry exposes the same API (`init`, `initSync`, `Renderer`, `features`, ...; the profile entries
+Every entry exposes the same API (`init`, `initSync`, `Renderer`, `features`, `backend`, ...; the profile entries
 also export `profile` and `wasmUrl()`). Each entry has **its own module instance**, so several profiles
 can be loaded side by side in one process; within one entry the first successful `init` wins and later
 calls return the same instance. `bm-engine` and `bm-engine/full` are separate instances too: importing
@@ -48,8 +129,9 @@ both on Node loads the full binary twice, so pick one.
 
 ## Node.js
 
-On Node.js every entry reads its binary from disk and initialises synchronously on import, so you can
-create a `Renderer` immediately:
+On Node.js every entry is ready on import (`bm-engine` with the native addon or, without it, like the
+profile entries, by reading its wasm binary from disk and initialising synchronously), so you can create a
+`Renderer` immediately:
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
@@ -77,14 +159,17 @@ Things to notice:
 - **Register a font before rendering text.** Without one, text is silently not drawn (takumi bundles
   the Geist font; bm-engine does not). See [Fonts](#fonts).
 - `renderSync` returns a `Uint8Array` (PNG unless you pass `format`). Every method also has an async
-  twin (`render`, `measure`, ...). Rendering itself is synchronous either way; the async variants exist
-  for takumi compatibility and for the options that need awaiting (`fonts`, lazy `images`).
+  twin (`render`, `measure`, ...). On the native backend the async variants render on the libuv thread
+  pool (one renderer runs one call at a time: create several renderers to render in parallel); on wasm
+  rendering is synchronous either way and the async variants exist for takumi compatibility and for the
+  options that need awaiting (`fonts`, lazy `images`).
 - `display` defaults to **`inline`**, as in takumi and CSS. Give every container that has a size, or
   whose children should be laid out as a row/column, an explicit `display: "flex"` / `"block"` / `"grid"`.
   See [Troubleshooting](troubleshooting.md#containers-collapse-to-zero-height).
 
-The `bm-engine` Node entry honours two environment variables: `BM_PROFILE=core|standard|full` selects
-one of the packaged binaries and `BM_WASM=/path/to/file.wasm` loads a custom build. Prefer the explicit
+The `bm-engine` Node entry honours three environment variables: `BM_ENGINE_BACKEND=wasm|native` (see
+[Install](#native-on-nodejs-webassembly-everywhere-else)), `BM_PROFILE=core|standard|full` selects one of
+the packaged wasm binaries and `BM_WASM=/path/to/file.wasm` loads a custom build (both imply wasm). Prefer the explicit
 subpaths (`bm-engine/core`, ...) in application code.
 
 ### CommonJS
@@ -167,16 +252,31 @@ await init(wasmUrl);
 | Rollup | needs an asset plugin that handles `new URL(..., import.meta.url)` (for example `@web/rollup-plugin-import-meta-assets`), or pass the URL yourself | no |
 | esbuild | bundles cleanly (browser and `workerd` conditions) but does not copy `new URL()` assets: copy the `.wasm` file next to your bundle, or use `--loader:.wasm=file` and pass the imported URL to `init` | bundling only (esbuild 0.28) |
 
+**Bundling a Node.js program** (esbuild `--platform=node`, Rollup, webpack with `target: "node"`). The
+simplest is to keep the package out of the bundle: `esbuild app.mjs --bundle --platform=node
+--external:bm-engine`, and ship `node_modules`. Bundled anyway, the `bm-engine` Node entry still works as
+long as `node_modules/bm-engine` (and the platform package) exist at run time: it looks for its wasm file
+next to itself, then through package resolution, then in `<cwd>/node_modules/bm-engine/js/`, and requires
+the platform package at run time (no `--loader:.node` is needed: the `.node` file is never part of the
+bundle). Tested with esbuild 0.28: ESM and CommonJS bundles ran natively; the CommonJS bundle copied to a
+directory without `node_modules` failed at import with `bm-engine: cannot find bm_engine.wasm (...). This
+happens when a bundler moved bm-engine's Node.js entry away from its package: keep the package external
+...`, and worked with `BM_WASM=/path/to/bm_engine.wasm`.
+
 Do **not** enable a bundler's WebAssembly-ESM integration for these files (`experiments.asyncWebAssembly`,
 `vite-plugin-wasm`): bm-engine instantiates the module itself and expects a URL, bytes or a
 `WebAssembly.Module`.
 
-**Next.js.** In Route Handlers on the Node.js runtime, import `bm-engine` (or a profile entry) and read
-fonts with `fs` as in the Node example; the Node entry reads its binary from `node_modules`, so keep
-bm-engine external to the server bundle (`serverExternalPackages: ["bm-engine"]`) if your setup bundles
-it. bm-engine has no `ImageResponse` helper; return
+**Next.js.** In Route Handlers on the Node.js runtime, import `bm-engine` and read fonts with `fs` as in
+the Node example. With Next.js 16.4.6 (Turbopack and webpack builders) this works without any
+configuration under `next start`, natively when the platform package is installed. For self-contained
+output (`output: "standalone"`, Vercel) add `serverExternalPackages: ["bm-engine"]` and
+`outputFileTracingIncludes: { "/*": ["./node_modules/bm-engine-*/**"] }` so that the wasm files and the
+platform package are copied; without them a webpack build fails at run time and a Turbopack build falls
+back to wasm. On the Edge runtime, `import wasm from "bm-engine/core.wasm?module"` and
+`initSync(wasm)` (from `bm-engine/core`). bm-engine has no `ImageResponse` helper; return
 `new Response(png, { headers: { "content-type": "image/png" } })`. See [Next.js](./frameworks/nextjs.md)
-for the full setup and what was verified (Node runtime: yes; Edge runtime: no clean wasm path yet).
+for the full setup and exactly what was verified.
 
 Verification status of this section: the Vite and esbuild rows were exercised by the package test
 (`npm run test:pack`: `npm pack`, install the tarball, build, run in headless Edge); webpack and Rollup
@@ -211,8 +311,8 @@ the snippet was **not** run under wrangler / workerd. The compressed size of eac
 standard 435.2 KiB, full 538.2 KiB) is what counts against the Workers script-size limit of your plan. The
 WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
-- **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` loads and initialises
-  the binary with `node:fs`. Not tested.
+- **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` tries the native
+  addon and otherwise loads the wasm binary with `node:fs`. Not tested.
 - **Deno**: `import { Renderer } from "npm:bm-engine"` uses the same Node entry. Not tested.
 
 ## Choosing a profile

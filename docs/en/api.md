@@ -23,8 +23,9 @@ Behaviour described here was checked by running it; error messages are quoted ve
 
 ## Module exports
 
-Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`) exports the same
-names and owns one wasm instance. See [Package entry points](getting-started.md#package-entry-points).
+Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/native`) exports
+the same names and owns one engine instance (a wasm instance; on Node.js, `bm-engine` may run the native addon
+instead, and `bm-engine/native` always does). See [Package entry points](getting-started.md#package-entry-points).
 
 | Export | Kind |
 |:--|:--|
@@ -34,6 +35,7 @@ names and owns one wasm instance. See [Package entry points](getting-started.md#
 | `features` | `Readonly<Features>` |
 | `Prepared` | opaque class of `prepare()` handles (not constructible by you) |
 | `setGlyphCacheMaxBytes` | no-op, for takumi compatibility |
+| `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-engine` / `bm-engine/native` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
 | `profile` | `"core" \| "standard" \| "full"` (profile entries only) |
 | `wasmUrl` | `() => URL` (profile entries only) |
 
@@ -401,7 +403,13 @@ all three profiles.
 - **What lives where.** Per renderer: fonts (the bytes you registered), the decoded-image cache (cleared
   above 96 MiB), the glyph cache (cleared above 8 MiB), and one canvas sized like the last render. Per render: a bump arena
   that is reused across renders. `free()` returns all of a renderer's memory to the wasm allocator.
-- **Threads.** The binary is single-threaded and the API is synchronous: a render blocks the calling
+- **Native backend (Node.js).** `init()` / `initSync()` are no-ops, `memoryBytes()` is the addon's live
+  allocation in the process (it returns to 0 after everything is freed; garbage collection sees it), and
+  the async methods (`render`, `renderAsDataUrl`, `renderSvg`, `measure`, `renderAnimation`) run on the
+  libuv thread pool with their inputs copied at the call. Calls on **one** renderer run one at a time, in
+  call order; different renderers run in parallel (up to `UV_THREADPOOL_SIZE`, default 4). The addon also
+  loads in `worker_threads`. Details: [docs/NATIVE.md](../NATIVE.md).
+- **Threads (wasm).** The binary is single-threaded and the API is synchronous: a render blocks the calling
   thread (a 1200 × 630 card takes a few ms; see [Benchmark](benchmark.md)). For parallelism, run one
   instance per worker thread (`node:worker_threads`, Web Workers); each worker imports bm-engine and
   registers its own fonts (verified with `node:worker_threads`: four workers rendering in parallel).

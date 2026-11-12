@@ -23,8 +23,9 @@ Mọi hành vi mô tả ở đây đều đã được kiểm tra bằng cách c
 
 ## Các export của module
 
-Mọi điểm vào (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`) export cùng các tên
-và sở hữu một instance wasm. Xem [Các điểm vào của package](getting-started.md#các-điểm-vào-của-package).
+Mọi điểm vào (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/native`)
+export cùng các tên và sở hữu một instance engine (một instance wasm; trên Node.js, `bm-engine` có thể chạy
+addon native thay vào đó, còn `bm-engine/native` thì luôn như vậy). Xem [Các điểm vào của package](getting-started.md#các-điểm-vào-của-package).
 
 | Export | Loại |
 |:--|:--|
@@ -34,6 +35,7 @@ và sở hữu một instance wasm. Xem [Các điểm vào của package](gettin
 | `features` | `Readonly<Features>` |
 | `Prepared` | lớp mờ (opaque) của các handle do `prepare()` trả về (bạn không tự tạo được) |
 | `setGlyphCacheMaxBytes` | không làm gì, để tương thích takumi |
+| `backend` | `"wasm" \| "native"`: bản build engine nào phục vụ điểm vào này (`"native"` chỉ với `bm-engine` / `bm-engine/native` trên Node.js khi đã cài platform package); API và output như nhau, xem [Native trên Node.js](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác) |
 | `profile` | `"core" \| "standard" \| "full"` (chỉ có ở điểm vào theo profile) |
 | `wasmUrl` | `() => URL` (chỉ có ở điểm vào theo profile) |
 
@@ -402,7 +404,13 @@ an toàn cho cả ba profile.
   khi vượt 96 MiB), cache glyph (bị xoá khi vượt 8 MiB) và một canvas có kích thước của lần render gần
   nhất. Theo từng lần render: một bump arena được dùng lại giữa các lần render. `free()` trả toàn bộ bộ
   nhớ của renderer về bộ cấp phát của wasm.
-- **Luồng.** Binary là đơn luồng và API là đồng bộ: một lần render chặn luồng đang gọi (một thẻ
+- **Backend native (Node.js).** `init()` / `initSync()` không làm gì, `memoryBytes()` là lượng bộ nhớ addon
+  đang cấp phát trong tiến trình (về 0 khi mọi thứ đã được giải phóng; garbage collector nhìn thấy nó), và
+  các method async (`render`, `renderAsDataUrl`, `renderSvg`, `measure`, `renderAnimation`) chạy trên thread
+  pool của libuv, đầu vào được sao chép ngay lúc gọi. Các lệnh trên **một** renderer chạy lần lượt, đúng thứ
+  tự gọi; các renderer khác nhau chạy song song (tối đa `UV_THREADPOOL_SIZE`, mặc định 4). Addon cũng nạp
+  được trong `worker_threads`. Chi tiết: [docs/NATIVE.md](../NATIVE.md).
+- **Luồng (wasm).** Binary là đơn luồng và API là đồng bộ: một lần render chặn luồng đang gọi (một thẻ
   1200 × 630 mất vài ms; xem [Benchmark](benchmark.md)). Để chạy song song, hãy dùng một instance cho mỗi
   worker thread (`node:worker_threads`, Web Workers); mỗi worker tự import bm-engine và đăng ký font riêng
   (đã kiểm chứng với `node:worker_threads`: bốn worker render song song). Không thể chia sẻ renderer và

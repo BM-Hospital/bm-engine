@@ -29,18 +29,100 @@ Package không có dependency và không có install script. Bên trong gồm ba
 (`core`, `standard`, `full`), add-on WOFF tùy chọn, một wrapper ESM không phụ thuộc gì và các khai báo
 TypeScript. Package chỉ phát hành dạng ES module (xem [CommonJS](#commonjs)).
 
+Package cũng khai báo tám **optional dependency**, mỗi nền tảng một cái: `bm-engine-win32-x64-msvc`,
+`bm-engine-linux-x64-gnu`, ... (bảng bên dưới). Mỗi package chỉ chứa bản build Node-API native của cùng
+engine (khoảng 1 MB sau nén) và khai báo `os`, `cpu` và, trên Linux, `libc`, nên package manager chỉ cài
+đúng cái khớp với máy và bỏ qua những cái còn lại. Không có gì được biên dịch hay tải về lúc cài hoặc lúc
+chạy; không có postinstall script.
+
+### Native trên Node.js, WebAssembly ở mọi nơi khác
+
+Trên Node.js, `import ... from "bm-engine"` dùng addon native khi platform package của nó được cài và nạp
+được; nếu không, nó **tự động và lặng lẽ** chuyển sang binary WebAssembly `full`. API giống hệt và output
+giống hệt, đến từng byte; ở dạng native engine chạy nhanh hơn và các method async (`render`, `renderSvg`,
+`measure`, `renderAnimation`, ...) chạy trên thread pool của libuv thay vì chặn event loop. Trình duyệt,
+bundler cho trình duyệt, worker và edge runtime không bao giờ thấy code native.
+
+```js
+import { backend } from "bm-engine";
+console.log(backend); // "native" or "wasm"
+```
+
+| Muốn ép | Dùng |
+|:--|:--|
+| WebAssembly trên Node | `BM_ENGINE_BACKEND=wasm`, hoặc import `bm-engine/full` (luôn là wasm) |
+| native, hoặc báo lỗi rõ ràng | `BM_ENGINE_BACKEND=native` (lệnh import ném lỗi và nói lý do), hoặc import `bm-engine/native` |
+
+Lý do addon không được dùng nằm trong thông báo lỗi của `BM_ENGINE_BACKEND=native node app.mjs`, ví dụ
+`bm-engine: BM_ENGINE_BACKEND=native, but the native addon is not available (bm-engine-linux-x64-gnu: not
+installed)`.
+
+| Platform package | `os` / `cpu` / `libc` | Trạng thái |
+|:--|:--|:--|
+| `bm-engine-win32-x64-msvc` | win32 / x64 | **đã chạy**: giống hệt từng byte với wasm trên 200 fixture, test luồng / bộ nhớ / fuzz, test cài đặt |
+| `bm-engine-win32-arm64-msvc` | win32 / arm64 | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-linux-x64-gnu` | linux / x64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-linux-x64-musl` | linux / x64 / musl (Alpine) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-linux-arm64-musl` | linux / arm64 / musl | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-darwin-x64` | darwin / x64 (macOS 10.15+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `bm-engine-darwin-arm64` | darwin / arm64 (macOS 11+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+
+"Kiểm tra cấu trúc" nghĩa là script build đã kiểm tra từng binary mà không chạy nó (định dạng, CPU, các
+symbol export và import, phiên bản symbol của glibc, không import thư viện toán). Cho tới khi một nền tảng
+được chạy thật, hãy dựa vào cơ chế fallback: nếu addon của nó không nạp được, `bm-engine` dùng WebAssembly.
+Các bản build x64 cần CPU x86-64-v2 (SSE4.2, từ 2009 trở đi); CPU cũ hơn dùng WebAssembly. Cần Node.js 18
+trở lên.
+
+### Package manager, Docker, serverless
+
+- **npm, pnpm, Yarn, Bun** tôn trọng `os` và `cpu`. `libc` (glibc hay musl) được npm hiện tại (đã kiểm
+  thử: npm 11), pnpm và Yarn 3.2+ tôn trọng; một package manager bỏ qua nó có thể cài cả hai biến thể
+  Linux cho kiến trúc của bạn, điều này vô hại: `bm-engine` phát hiện musl và nạp đúng cái.
+- **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) không cài platform
+  package nào: bạn nhận WebAssembly (đã kiểm thử với npm).
+- **Lockfile tạo trên hệ điều hành khác.** Với npm 11, lockfile ghi trên Windows liệt kê đủ tám package
+  cùng `os` / `cpu` / `libc` của chúng, và `npm ci` cho Linux x64 cài `bm-engine-linux-x64-gnu` (đã kiểm
+  thử). Một số phiên bản npm cũ hơn làm rơi optional package của các nền tảng khác khỏi lockfile khi
+  `node_modules` đã tồn tại (npm/cli#4828), cái bẫy kinh điển của package native. Ở đây nó không gây lỗi:
+  thiếu addon nghĩa là WebAssembly, không phải lỗi. Để sửa, xóa `node_modules` và lockfile rồi cài lại, và
+  kiểm tra `backend` trong CI.
+- **Docker.** Chạy `npm ci` bên trong image, trên nền tảng của image; đừng chép `node_modules` được build
+  trên máy Windows hay macOS vào một image Linux (bạn sẽ nhận WebAssembly). Build đa kiến trúc
+  (`docker buildx --platform linux/amd64,linux/arm64`) cài đúng package cho từng kiến trúc. Image Alpine
+  nhận package `-musl`.
+- **Cài cho một máy khác** (ví dụ build bản deploy Linux trên máy Mac): có thể báo cho npm biết nền tảng
+  đích, và khi đó cần đủ cả ba cờ (không có `--libc`, trên Windows npm không cài package Linux nào):
+
+  ```sh
+  npm ci --os=linux --cpu=x64 --libc=glibc     # AWS Lambda x86_64, most Linux servers
+  npm ci --os=linux --cpu=arm64 --libc=glibc   # Lambda arm64 (Graviton)
+  npm ci --os=linux --cpu=x64 --libc=musl      # Alpine
+  ```
+
+  pnpm và Yarn dùng `supportedArchitectures` trong cấu hình của chúng.
+- **Serverless (AWS Lambda, Vercel Functions, Netlify Functions, ...).** Binary được chọn lúc cài
+  dependency, trên máy build: nền tảng build trên Linux x64 (Vercel, Netlify, đa số CI) nhận
+  `bm-engine-linux-x64-gnu`; một file zip `node_modules` tạo trên Mac hoặc Windows mang theo binary sai
+  (lúc chạy là WebAssembly). Các công cụ deploy có bundle cũng phải mang theo platform package; xem
+  [Next.js](./frameworks/nextjs.md#addon-native-khi-triển-khai) về `outputFileTracingIncludes`. Hãy log
+  `backend` một lần khi khởi động để biết thứ gì đang chạy. Chưa kiểm thử kiểu deploy nào trong số này.
+- **Bun, Deno, Electron** nạp điểm vào `node` và có thể nạp được addon; chưa kiểm thử. Nếu không nạp
+  được, chúng dùng WebAssembly.
+
 ## Các điểm vào của package
 
 | Import | Node.js (điều kiện `node`) | Mọi nơi khác (trình duyệt, bundler, worker, Deno) |
 |:--|:--|:--|
-| `bm-engine` | binary `full`, tự khởi tạo khi import (`BM_PROFILE` / `BM_WASM` ghi đè) | chỉ có wrapper: bạn tự gọi `init(wasm)` với binary |
+| `bm-engine` | addon native nếu đã cài, nếu không thì binary `full`, sẵn sàng ngay khi import (`BM_ENGINE_BACKEND`, `BM_PROFILE`, `BM_WASM` ghi đè) | chỉ có wrapper: bạn tự gọi `init(wasm)` với binary |
+| `bm-engine/native` | addon native, nếu không có thì lệnh import ném lỗi | không có |
 | `bm-engine/full` | `full`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.wasm` nằm cạnh module (hoặc truyền vào) |
 | `bm-engine/standard` | `standard`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.standard.wasm` |
 | `bm-engine/core` | `core`, tự khởi tạo khi import | `await init()` tự tìm `bm_engine.core.wasm` |
 | `bm-engine/woff` | `loadWoff()` / `decodeWoff()` — add-on WOFF | như bên trái |
-| `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | các binary thô, dùng cho import asset của bundler và import module trên Workers | như bên trái |
+| `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | các binary thô, dùng cho import asset của bundler và import module trên Workers; mỗi file còn có dạng `...wasm?module` cho Next.js Edge | như bên trái |
 
-Mọi điểm vào đều có cùng API (`init`, `initSync`, `Renderer`, `features`, ...; các điểm vào theo
+Mọi điểm vào đều có cùng API (`init`, `initSync`, `Renderer`, `features`, `backend`, ...; các điểm vào theo
 profile còn export thêm `profile` và `wasmUrl()`). Mỗi điểm vào có **instance module riêng**, nên có thể
 nạp nhiều profile song song trong một tiến trình; trong cùng một điểm vào, lần `init` thành công đầu
 tiên được giữ và các lần gọi sau trả về đúng instance đó. `bm-engine` và `bm-engine/full` cũng là hai
@@ -48,8 +130,8 @@ instance riêng: import cả hai trên Node sẽ nạp binary full hai lần, n�
 
 ## Node.js
 
-Trên Node.js, mọi điểm vào đều đọc binary từ đĩa và khởi tạo đồng bộ ngay khi import, nên bạn có thể tạo
-`Renderer` luôn:
+Trên Node.js, mọi điểm vào đều sẵn sàng ngay khi import (`bm-engine` với addon native hoặc, nếu không có, giống
+các điểm vào theo profile: đọc binary wasm từ đĩa và khởi tạo đồng bộ), nên bạn có thể tạo `Renderer` luôn:
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
@@ -77,14 +159,17 @@ Cần lưu ý:
 - **Đăng ký font trước khi render chữ.** Nếu chưa có font, chữ sẽ không được vẽ và cũng không báo lỗi
   (takumi kèm sẵn font Geist; bm-engine thì không). Xem [Font](#font).
 - `renderSync` trả về `Uint8Array` (PNG nếu bạn không truyền `format`). Method nào cũng có bản async
-  tương ứng (`render`, `measure`, ...). Bản thân việc render luôn đồng bộ; các bản async tồn tại để
-  tương thích với takumi và để xử lý những tùy chọn cần chờ (`fonts`, `images` nạp lười).
+  tương ứng (`render`, `measure`, ...). Với backend native, các bản async render trên thread pool
+  của libuv (một renderer chỉ chạy một lệnh tại một thời điểm: tạo vài renderer để render song song); với
+  wasm, việc render luôn đồng bộ và các bản async tồn tại để tương thích với takumi và để xử lý những tùy
+  chọn cần chờ (`fonts`, `images` nạp lười).
 - `display` mặc định là **`inline`**, giống takumi và CSS. Container nào có kích thước, hoặc cần xếp con
   theo hàng/cột, phải đặt rõ `display: "flex"` / `"block"` / `"grid"`.
   Xem [Xử lý sự cố](troubleshooting.md#khối-chứa-bị-co-về-chiều-cao-0).
 
-Điểm vào Node của `bm-engine` đọc hai biến môi trường: `BM_PROFILE=core|standard|full` chọn một trong các
-binary đóng gói sẵn và `BM_WASM=/path/to/file.wasm` nạp một bản build tùy biến. Trong mã ứng dụng, nên
+Điểm vào Node của `bm-engine` đọc ba biến môi trường: `BM_ENGINE_BACKEND=wasm|native` (xem
+[Cài đặt](#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)), `BM_PROFILE=core|standard|full` chọn một trong các
+binary wasm đóng gói sẵn và `BM_WASM=/path/to/file.wasm` nạp một bản build tùy biến (cả hai đều kéo theo wasm). Trong mã ứng dụng, nên
 dùng các subpath tường minh (`bm-engine/core`, ...).
 
 ### CommonJS
@@ -167,16 +252,31 @@ await init(wasmUrl);
 | Rollup | cần một plugin asset xử lý `new URL(..., import.meta.url)` (ví dụ `@web/rollup-plugin-import-meta-assets`), hoặc tự truyền URL | không |
 | esbuild | bundle được (điều kiện browser và `workerd`) nhưng không chép asset của `new URL()`: hãy chép file `.wasm` cạnh bundle, hoặc dùng `--loader:.wasm=file` rồi truyền URL đã import cho `init` | chỉ bước bundle (esbuild 0.28) |
 
+**Bundle một chương trình Node.js** (esbuild `--platform=node`, Rollup, webpack với `target: "node"`). Cách
+đơn giản nhất là để package nằm ngoài bundle: `esbuild app.mjs --bundle --platform=node
+--external:bm-engine`, rồi mang theo `node_modules`. Nếu vẫn bundle, điểm vào Node của `bm-engine` vẫn chạy
+miễn là `node_modules/bm-engine` (và platform package) tồn tại lúc chạy: nó tìm file wasm ngay cạnh nó, sau
+đó qua package resolution, sau đó trong `<cwd>/node_modules/bm-engine/js/`, và require platform package lúc
+chạy (không cần `--loader:.node`: file `.node` không bao giờ nằm trong bundle). Đã kiểm thử với esbuild
+0.28: bundle ESM và CommonJS chạy native; bundle CommonJS chép sang một thư mục không có `node_modules` lỗi
+ngay khi import với `bm-engine: cannot find bm_engine.wasm (...). This happens when a bundler moved
+bm-engine's Node.js entry away from its package: keep the package external ...`, và chạy được với
+`BM_WASM=/path/to/bm_engine.wasm`.
+
 **Đừng** bật cơ chế tích hợp WebAssembly-ESM của bundler cho các file này (`experiments.asyncWebAssembly`,
 `vite-plugin-wasm`): bm-engine tự instantiate module và chờ nhận một URL, bytes hoặc một
 `WebAssembly.Module`.
 
-**Next.js.** Trong Route Handler chạy trên runtime Node.js, import `bm-engine` (hoặc một điểm vào theo
-profile) và đọc font bằng `fs` như ví dụ Node; điểm vào Node đọc binary từ `node_modules`, nên hãy để
-bm-engine nằm ngoài bundle phía server (`serverExternalPackages: ["bm-engine"]`) nếu cấu hình của bạn có
-bundle nó. bm-engine không có helper `ImageResponse`; hãy trả về
+**Next.js.** Trong Route Handler chạy trên runtime Node.js, import `bm-engine` và đọc font bằng `fs` như ví
+dụ Node. Với Next.js 16.4.6 (builder Turbopack và webpack), cách này chạy mà không cần cấu hình gì khi dùng
+`next start`, ở dạng native nếu platform package đã được cài. Với output tự chứa (`output: "standalone"`,
+Vercel), thêm `serverExternalPackages: ["bm-engine"]` và
+`outputFileTracingIncludes: { "/*": ["./node_modules/bm-engine-*/**"] }` để các file wasm và platform package
+được chép theo; thiếu chúng, bản build webpack lỗi lúc chạy và bản build Turbopack lùi về wasm. Trên Edge
+runtime, dùng `import wasm from "bm-engine/core.wasm?module"` và `initSync(wasm)` (từ `bm-engine/core`).
+bm-engine không có helper `ImageResponse`; hãy trả về
 `new Response(png, { headers: { "content-type": "image/png" } })`. Xem trang [Next.js](./frameworks/nextjs.md)
-để biết cấu hình đầy đủ và phần đã kiểm chứng (runtime Node: có; runtime Edge: chưa có cách nạp wasm gọn).
+để biết cấu hình đầy đủ và chính xác những gì đã được kiểm chứng.
 
 Tình trạng kiểm chứng của mục này: các dòng Vite và esbuild đã được chạy trong bài test package
 (`npm run test:pack`: `npm pack`, cài tarball, build, chạy trong Edge headless); webpack và Rollup
@@ -211,8 +311,8 @@ resolve các điểm vào với `node --conditions=workerd` rồi khởi tạo c
 200 KiB, standard 435.2 KiB, full 538.2 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
 của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
-- **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` nạp và khởi tạo
-  binary bằng `node:fs`. Chưa kiểm thử.
+- **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` thử addon native và
+  nếu không có thì nạp binary wasm bằng `node:fs`. Chưa kiểm thử.
 - **Deno**: `import { Renderer } from "npm:bm-engine"` dùng cùng điểm vào Node. Chưa kiểm thử.
 
 ## Chọn profile

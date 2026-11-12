@@ -14,7 +14,7 @@ const png = await r.render(node, { width: 1200, height: 630 }); // on a libuv po
 
 Contents: [selection and fallback](#selection-and-fallback) · [architecture](#architecture) ·
 [adding an output kind](#adding-an-output-kind-eg-pdf) · [threading](#threading) · [memory](#memory) ·
-[stack](#stack) · [bit-identical output](#bit-identical-output) · [building](#building) ·
+[stack](#stack) · [bit-identical output](#bit-identical-output) · [building](#building) · [packaging](#packaging) ·
 [what is verified](#what-is-verified) · [limits](#limits-and-known-gaps)
 
 ## Selection and fallback
@@ -39,7 +39,7 @@ Environment variables (read once, when `bm-engine` is imported):
 
 Where the addon is looked for (`js/native.mjs`, nothing in it throws): `$BM_ENGINE_NATIVE_PATH`; else a
 checkout's `native/dist/<name>/bm-engine.<name>.node`; else `require("bm-engine-<name>")`, the per-platform
-package whose `main` is the `.node` file. `<name>` is one of
+package whose `main` is the `.node` file (see [packaging](#packaging) for how this survives bundlers). `<name>` is one of
 
     win32-x64-msvc   win32-arm64-msvc   darwin-x64   darwin-arm64
     linux-x64-gnu    linux-x64-musl     linux-arm64-gnu   linux-arm64-musl
@@ -283,6 +283,44 @@ CPU registration fails and `bm-engine` runs the wasm build. arm64 artifacts use 
 Optimisation mode: ReleaseFast (see the numbers below). It has no bounds or overflow checks, like the
 shipped wasm (ReleaseSmall): the protection against hostile input is the engine's limits plus the stack
 handling above, exercised by the fuzzers below.
+
+## Packaging
+
+npm layout (napi-rs style; maintainer procedure: [docs/en/publishing.md](en/publishing.md)):
+
+| package | contents | selection |
+| --- | --- | --- |
+| `bm-engine` | `js/`, the wasm files, typings; no `.node` | `optionalDependencies`: the 8 below, each at exactly the same version |
+| `bm-engine-<name>` (8) | `bm-engine.<name>.node` (= `main`), README, licenses | `os` / `cpu` / `libc` (`["glibc"]` / `["musl"]` on Linux), so a package manager installs only the matching one |
+
+* `npm run build:npm` (`scripts/npm-platform-packages.mjs`) writes `npm/<name>/`: `package.json` and `README.md`
+  (committed, generated from the root `package.json`), the `.node` (checked against `native/dist/manifest.json`)
+  and the license files (git-ignored). `--check` (part of `npm run verify`) fails when a platform
+  `package.json` or an optional dependency is not at the root version; `npm run version:set -- x.y.z`
+  updates the root, the optional dependencies, `package-lock.json` and the platform packages together.
+* `engines.node` of the platform packages is the Node-API 6 range `>=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0`:
+  every function in the `Api` struct of `src/native/napi.zig` is Node-API 1 except `napi_set_instance_data`
+  (Node-API 6), and registration is by the `napi_register_module_v1` symbol. The main package requires
+  Node 18 (`engines`), which is the effective floor; only Node 26 was executed.
+* Loading (`js/native.mjs`): `BM_ENGINE_NATIVE_PATH` and the checkout path are opened with `process.dlopen` (no
+  module request for bundlers to see). The platform package is `require("bm-engine-<name>")` with one literal
+  name per platform on `createRequire(import.meta.url)` in the same function, the form `@vercel/nft` traces
+  (Next.js + webpack with `serverExternalPackages`: the package lands in standalone output), each marked
+  `/* webpackIgnore: true */ /* turbopackIgnore: true */` so that bundlers leave it to run time (Turbopack
+  otherwise fails the build on the 7 packages that are not installed). Turbopack's own tracing honours the
+  comment as well, hence `outputFileTracingIncludes` in the Next.js guide. In a CommonJS bundle without
+  `import.meta.url` the require is based on `__filename`, then on the working directory.
+* WebAssembly on Node (`js/wasm-file.mjs`, used by every Node entry): the file next to the module (a literal
+  `new URL("./bm_engine.wasm", import.meta.url)`, so bundlers that emit such assets keep working), then
+  `createRequire(...).resolve("bm-engine/full.wasm")`, then `<cwd>/node_modules/bm-engine/js/`; the error when
+  all fail names `serverExternalPackages` / `--external:bm-engine` / `BM_WASM`.
+* `"./<x>.wasm?module"` exports: Turbopack (Next.js Edge) matches the `exports` key including the query.
+* `npm run test:pack` generates and packs the platform packages and installs them with npm `overrides` (the
+  registry stand-in): only the host's package is installed, native output = wasm output, wasm fallback for
+  `--omit=optional` / a missing / corrupted / wrong-arch / other-OS binary / a force-installed foreign
+  package, `BM_ENGINE_BACKEND`, `bm-engine/native`, worker threads, esbuild node bundles, no loader in browser
+  bundles. `.github/workflows/release.yml` (never executed) runs the native tests on every platform before
+  publishing.
 
 ## What is verified
 

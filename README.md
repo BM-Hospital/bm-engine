@@ -38,11 +38,30 @@ Where it still loses: wasm linear memory is **9 % larger** than takumi's after 5
 npm install bm-engine
 ```
 
+### Native on Node.js, wasm everywhere else
+
+On Node.js the same package also runs as a **native Node-API addon**: `npm install bm-engine` pulls in the
+one optional platform package that matches the machine (`bm-engine-linux-x64-gnu`, `bm-engine-darwin-arm64`,
+...; no compiler, no install script), and `import ... from "bm-engine"` uses it, with the same API and
+byte-identical output, faster, and with `render()` & co. running on the libuv thread pool. If the addon is
+missing or does not load, `bm-engine` falls back to WebAssembly silently. Browsers, workers and edge
+runtimes always use WebAssembly. Check with `import { backend } from "bm-engine"`; force with
+`BM_ENGINE_BACKEND=wasm|native`.
+
+| Platform package | Status |
+|:--|:--|
+| `win32-x64-msvc` | executed: byte identity with wasm on 200 fixtures, threading, memory, fuzz and install tests |
+| `win32-arm64-msvc`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64` | cross-compiled and structurally verified, **never executed** yet (wasm fallback if they do not load) |
+
+Details: [Getting started → Install](docs/en/getting-started.md#install) (package managers, Docker,
+serverless, lockfiles), [docs/NATIVE.md](docs/NATIVE.md) (design), [Publishing](docs/en/publishing.md)
+(maintainers).
+
 ## Quick start (Node.js)
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // Node: the full profile, initialised on import
+import { Renderer } from "bm-engine"; // Node: native addon or the full wasm profile, ready on import
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") }); // no font is bundled
@@ -111,7 +130,7 @@ Version 0.1.0. What to know before adopting it:
 - **No bundled font.** takumi ships Geist; bm-engine draws no text until you register a font.
 - **No network access.** Remote images and `@font-face` URLs are never fetched (`prepare()` does not
   fetch either); pass bytes through `images` and `registerFont`.
-- **No JSX, no `ImageResponse`, no PDF, no native binding.** Convert JSX with `@takumi-rs/helpers`.
+- **No JSX, no `ImageResponse`, no PDF.** Convert JSX with `@takumi-rs/helpers`.
 - **Inline layout is complete for common content** (text flows around floats; atomic inlines and inline
   span padding take part in line breaking). Remaining gaps: RTL inline boxes around LTR text, line-clamp
   around floats, block-in-inline, approximate float paint order, `text-wrap: balance` beside floats or
@@ -121,7 +140,9 @@ Version 0.1.0. What to know before adopting it:
   takumi), `<text>` inside SVG images and some SVG filters.
 - Known differences: `direction: rtl` does not reverse flex rows; `image-rendering: pixelated` is
   ignored on raster images; `measure()` text runs carry no `text` field.
-- Single-threaded and synchronous inside one instance; WebAssembly memory grows but never shrinks.
+- WebAssembly: single-threaded and synchronous inside one instance; memory grows but never shrinks. Native
+  (Node.js): one renderer runs one call at a time, several renderers run in parallel; only the Windows x64
+  addon has been executed so far.
 
 Full list: [CSS support → Known gaps](docs/en/css-support.md#known-gaps) and
 [Differences from takumi](docs/en/differences-from-takumi.md).

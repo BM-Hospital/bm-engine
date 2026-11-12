@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Renderer } from "bm-engine/standard";
+import { Renderer } from "bm-engine"; // native addon on Node when installed, else the full wasm build
 
 let renderer;
 export function getRenderer() {

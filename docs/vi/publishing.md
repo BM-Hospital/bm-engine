@@ -1,0 +1,169 @@
+# Phát hành một bản release (dành cho maintainer)
+
+[English](../en/publishing.md) · [Tiếng Việt](publishing.md)
+
+Một bản release của bm-engine là **chín package npm cùng một version**: `bm-engine` (JavaScript, typings và
+các binary wasm) và tám platform package `bm-engine-<platform>`, mỗi cái chứa một bản build Node-API
+native. `bm-engine` liệt kê tám package này trong `optionalDependencies`, ghim đúng version của chính nó,
+nên tất cả phải có mặt trên registry, ở đúng version đó, trước khi người dùng cài. Trang này là quy trình;
+thiết kế nằm trong [docs/NATIVE.md](../NATIVE.md), hành vi phía người dùng nằm trong
+[Bắt đầu](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác).
+
+| Package | Build từ | Nội dung |
+|:--|:--|:--|
+| `bm-engine` | thư mục gốc của repository (`files` trong `package.json`) | `js/`, bốn file `.wasm`, README, license; **không có file `.node`** |
+| `bm-engine-win32-x64-msvc`, `-win32-arm64-msvc`, `-linux-x64-gnu`, `-linux-x64-musl`, `-linux-arm64-gnu`, `-linux-arm64-musl`, `-darwin-x64`, `-darwin-arm64` | `npm/<platform>/`, sinh bởi `npm run build:npm` | `bm-engine.<platform>.node` (là `main` của nó), `package.json` với `os` / `cpu` / `libc`, README, license |
+
+`npm/<platform>/package.json` và `README.md` được commit; các file `.node` và bản sao license trong `npm/`
+là output của bước build (bị git bỏ qua). Các `package.json` của platform package được sinh từ
+`package.json` gốc (version, license, author, repository, ...), nên đừng bao giờ sửa tay.
+
+## Thiết lập một lần
+
+1. Thay các placeholder `OWNER` / `AUTHOR_NAME` trong `package.json` gốc (`author`, `homepage`,
+   `repository`, `bugs`), rồi chạy `npm run build:npm` để chép chúng sang `npm/*/package.json`.
+   `npm run verify` sẽ không qua chừng nào còn placeholder.
+2. Một tài khoản npm có xác thực hai lớp. Lần `npm publish` đầu tiên của mỗi tên sẽ tạo package và đặt
+   bạn làm owner; thêm đồng maintainer cho **cả chín** package bằng `npm owner add <user> <pkg>`. Ngày
+   2026-11-12, chưa có tên nào trong chín tên này tồn tại trên registry (`npm view <name>` trả về 404).
+3. Zig 0.17.1 trong `PATH` (hoặc `ZIG=<path>`), và `npm install --ignore-scripts` ở thư mục gốc của
+   repository để có `wasm-opt` (binaryen).
+
+## Quy trình release
+
+### 1. Đặt version (một lệnh)
+
+```sh
+npm run version:set -- 0.2.0
+```
+
+Lệnh này ghi lại cùng lúc: `version` trong `package.json`, tám `optionalDependencies` (đúng `0.2.0`),
+`package-lock.json` (mục gốc; các mục `node_modules/bm-engine-*` cũ bị bỏ đi), và mọi
+`npm/<platform>/package.json` + `README.md`. `npm run verify` sẽ thất bại bất cứ khi nào chúng không khớp
+nhau (`node scripts/npm-platform-packages.mjs --check`). Đừng chỉ dùng `npm version`: lệnh đó không đụng
+tới optional dependency hay các platform package.
+
+### 2. Build mọi thứ
+
+```sh
+npm run build          # wasm: core, standard, full, woff + js/build-manifest.json (records the version)
+npm run build:native   # 8 native targets -> native/dist/<platform>/, structurally verified, manifest.json
+npm run build:npm      # npm/<platform>/: copies each .node (checked against native/dist/manifest.json)
+```
+
+`build:native` cross-compile cả tám target từ một máy bất kỳ và thất bại khi có bất kỳ lỗi cấu trúc nào
+(xem [NATIVE.md](../NATIVE.md#what-is-verified)). `build:npm` thất bại nếu thiếu một binary, binary không
+khớp manifest, hoặc chưa được kiểm tra.
+
+### 3. Kiểm tra
+
+```sh
+npm run verify                 # version sync + wasm manifest + no placeholders
+npm run test:pack              # packs everything, installs it in scratch projects (~5 min)
+npm run test:native            # the native test suite, on this machine's addon
+node bench/native-identity.mjs # byte identity native vs wasm (needs bench/node_modules)
+npm pack --dry-run             # main package file list: no .node, ~32 files, ~1.3 MB
+for d in npm/*/; do npm pack --dry-run "$d"; done
+```
+
+`test:pack` chạy các kịch bản cài đặt với tarball thật: npm chọn đúng platform package, fallback sang wasm
+khi không có nó (`--omit=optional`, thiếu, binary hỏng hoặc của hệ điều hành khác), `BM_ENGINE_BACKEND`,
+`bm-engine/native`, worker thread, bundler. Trên máy cục bộ chỉ binary của máy đó chạy được; các binary
+còn lại được chạy bởi ma trận test của CI ([con đường CI](#con-đường-ci)). **Đừng phát hành một nền tảng
+chưa từng qua `native-identity.mjs` và `native-tests.mjs` trên đúng hệ điều hành và CPU của nó**, trừ khi
+bạn chấp nhận rằng người dùng nền tảng đó có thể lặng lẽ nhận wasm (fallback), hoặc tệ hơn, một binary nạp
+được nhưng chạy sai.
+
+### 4. Commit và gắn tag
+
+```sh
+git commit -am "Release 0.2.0" && git tag v0.2.0
+```
+
+### 5. Publish: platform package trước, rồi tới bm-engine
+
+Thứ tự là quan trọng. Nếu `bm-engine@0.2.0` được publish trước, các lần cài trong vài phút sau đó sẽ bỏ qua
+những optional dependency chưa tồn tại (lặng lẽ: wasm), và lockfile tạo ra lúc đó sẽ không có chúng.
+
+```sh
+npm publish ./npm/win32-x64-msvc --access public
+npm publish ./npm/win32-arm64-msvc --access public
+npm publish ./npm/linux-x64-gnu --access public
+npm publish ./npm/linux-x64-musl --access public
+npm publish ./npm/linux-arm64-gnu --access public
+npm publish ./npm/linux-arm64-musl --access public
+npm publish ./npm/darwin-x64 --access public
+npm publish ./npm/darwin-arm64 --access public
+npm view bm-engine-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
+npm publish --access public                     # bm-engine itself (prepublishOnly re-runs verify + test:pack)
+```
+
+`--access public` đã có sẵn trong `publishConfig` của mỗi package, nó được lặp lại cho rõ.
+
+**2FA / OTP.** Với 2FA chế độ "auth and writes", mỗi lệnh `npm publish` sẽ hỏi mật khẩu một lần, hoặc nhận
+`--otp=<code>`. Một mã chỉ có hiệu lực khoảng 30 giây, nên chín lần publish cần vài mã; con đường CI bên dưới
+tránh việc này bằng token.
+
+**Provenance.** `npm publish --provenance` gắn kèm một chứng nhận có chữ ký nối tarball với commit nguồn và
+lần build. Nó chỉ chạy được từ một nhà cung cấp CI được hỗ trợ (GitHub Actions với
+`permissions: id-token: write`, GitLab), không chạy từ laptop, và npm kiểm tra rằng `repository.url` trong
+mỗi `package.json` đúng là repository mà workflow đang chạy (thêm một lý do để điền các placeholder).
+
+### 6. Kiểm tra bản release
+
+```sh
+npm view bm-engine@0.2.0 optionalDependencies
+mkdir /tmp/check && cd /tmp/check && npm init -y && npm i bm-engine@0.2.0
+node --input-type=module -e 'const m = await import("bm-engine"); console.log(m.backend)'   # native
+```
+
+## Khi có sự cố
+
+- **Một lần publish platform package thất bại** (mạng, OTP hết hạn, gõ sai tên): chưa có gì hỏng,
+  `bm-engine` chưa được publish. Sửa nguyên nhân rồi publish các platform package còn lại; những package
+  đã publish sẽ trả lời `You cannot publish over the previously published versions` và có thể bỏ qua. Chỉ
+  publish `bm-engine` khi đủ cả tám.
+- **`bm-engine` đã ra, thiếu một platform package**: người dùng nền tảng đó nhận wasm (fallback), không
+  phải lỗi. Publish package còn thiếu với **cùng** version càng sớm càng tốt; các lần cài mới sẽ nhận nó.
+  Lockfile được ghi trong khoảng thời gian đó có thể thiếu nó: những người dùng này cần cài lại.
+- **Một binary platform đã publish bị hỏng**: một version trên npm không bao giờ ghi đè được, và việc
+  unpublish chỉ làm được trong vòng 72 giờ và khóa vĩnh viễn số version đó. Thay vào đó hãy deprecate:
+  `npm deprecate bm-engine-<platform>@0.2.0 "broken, use 0.2.1"` (và cả `bm-engine@0.2.0`), rồi release
+  0.2.1 cho **cả chín** package (các version luôn đi cùng nhau; `version:set` làm việc đó). Trong lúc chờ,
+  người dùng có thể ép wasm bằng `BM_ENGINE_BACKEND=wasm`.
+- **Lệch version** không thể xảy ra qua các script (`verify` kiểm tra), nhưng nếu một platform package của
+  version khác được cài, addon của nó chỉ được nạp khi version giao diện nội bộ (`abi`) bằng đúng giá trị
+  mà `bm-engine` mong đợi; nếu không, `bm-engine` dùng wasm.
+
+## Prerelease và dist-tag
+
+```sh
+npm run version:set -- 0.3.0-beta.1
+# build, verify, tag v0.3.0-beta.1 as above, then the same nine publishes with a tag:
+npm publish ./npm/win32-x64-msvc --access public --tag next   # ... all eight
+npm publish --access public --tag next
+```
+
+Luôn truyền `--tag next` (hoặc `beta`) cho một prerelease, trên cả chín package, để `latest` vẫn trỏ tới bản
+ổn định; người dùng chủ động chọn bằng `npm i bm-engine@next`. Vì optional dependency ghim đúng version, tag
+của các platform package không ảnh hưởng tới việc resolve, nhưng hãy giữ chúng nhất quán. Để nâng một
+version lên sau này: `npm dist-tag add bm-engine@0.3.0 latest` (và tương tự cho tám platform package).
+
+## Con đường CI
+
+`.github/workflows/release.yml` tự động hóa các bước 2 tới 5 khi push một tag `v*`: một job Linux build
+wasm và cross-compile tám addon bằng Zig 0.17.1 được ghim version và kiểm tra checksum; một ma trận test
+**chạy thật** từng addon trên đúng nền tảng của nó (Ubuntu x64 và arm64, Alpine x64 và arm64 trong Docker,
+macOS x64 và arm64, Windows x64 và arm64) với Node 18, bản LTS hiện tại và bản mới nhất
+(`native-identity.mjs`, `native-tests.mjs`, và các kịch bản cài đặt một lần cho mỗi nền tảng); chỉ khi tất
+cả đều xanh, job publish mới phát hành tám platform package rồi tới `bm-engine`, với `--provenance`,
+`--tag next` cho prerelease, và bỏ qua các version đã có trên registry (nên một lần chạy lỗi có thể chạy
+lại). Yêu cầu: secret `NPM_TOKEN` của repository (hoặc npm trusted publishing được cấu hình cho từng
+package, sau lần publish thủ công đầu tiên), các placeholder đã được điền, SHA của action và nhãn runner
+đã được kiểm tra. `.github/workflows/ci.yml` build và test trên mỗi lần push và pull request.
+
+::: warning Chưa từng chạy
+Cả hai workflow đều là template: YAML của chúng đã được parse và kiểm tra, SHA của các action đã được
+resolve từ release tag vào ngày 2026-11-12, nhưng chưa workflow nào từng chạy trên GitHub. Hãy chuẩn bị sửa
+vài chi tiết ở lần chạy đầu (làm việc đó với một tag prerelease).
+:::

@@ -37,11 +37,29 @@ Chỗ còn thua: bộ nhớ tuyến tính wasm **lớn hơn 9 %** so với takum
 npm install bm-engine
 ```
 
+### Native trên Node.js, wasm ở mọi nơi khác
+
+Trên Node.js, cùng package này còn chạy dưới dạng **addon Node-API native**: `npm install bm-engine` kéo theo
+đúng một optional platform package khớp với máy (`bm-engine-linux-x64-gnu`, `bm-engine-darwin-arm64`, ...;
+không cần trình biên dịch, không có install script), và `import ... from "bm-engine"` dùng nó, với cùng API
+và output giống hệt từng byte, nhanh hơn, và `render()` cùng các method async chạy trên thread pool của
+libuv. Nếu addon không có hoặc không nạp được, `bm-engine` lặng lẽ chuyển sang WebAssembly. Trình duyệt,
+worker và edge runtime luôn dùng WebAssembly. Kiểm tra bằng `import { backend } from "bm-engine"`; ép bằng
+`BM_ENGINE_BACKEND=wasm|native`.
+
+| Platform package | Trạng thái |
+|:--|:--|
+| `win32-x64-msvc` | đã chạy: giống hệt từng byte với wasm trên 200 fixture, test luồng, bộ nhớ, fuzz và cài đặt |
+| `win32-arm64-msvc`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64` | đã cross-compile và kiểm tra cấu trúc, **chưa từng chạy** (fallback sang wasm nếu không nạp được) |
+
+Chi tiết: [Bắt đầu → Cài đặt](docs/vi/getting-started.md#cài-đặt) (package manager, Docker, serverless,
+lockfile), [docs/NATIVE.md](docs/NATIVE.md) (thiết kế), [Phát hành](docs/vi/publishing.md) (maintainer).
+
 ## Bắt đầu nhanh (Node.js)
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // Node: profile full, tự khởi tạo khi import
+import { Renderer } from "bm-engine"; // Node: addon native hoặc profile wasm full, sẵn sàng khi import
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") }); // không kèm sẵn font nào
@@ -110,7 +128,7 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
 - **Không kèm font.** takumi có sẵn Geist; bm-engine không vẽ chữ nào cho tới khi bạn đăng ký font.
 - **Không truy cập mạng.** Ảnh từ xa và URL trong `@font-face` không bao giờ được tải (`prepare()` cũng
   không tải); hãy truyền bytes qua `images` và `registerFont`.
-- **Không có JSX, không có `ImageResponse`, không có PDF, không có binding native.** Chuyển JSX bằng
+- **Không có JSX, không có `ImageResponse`, không có PDF.** Chuyển JSX bằng
   `@takumi-rs/helpers`.
 - **Layout inline đã đủ cho nội dung thông thường** (chữ chảy quanh float; inline nguyên tử và padding của
   span inline tham gia ngắt dòng). Còn lại: hộp inline RTL bao quanh chữ LTR, line-clamp quanh float,
@@ -121,7 +139,9 @@ Phiên bản 0.1.0. Những điều cần biết trước khi dùng:
   takumi), `<text>` bên trong ảnh SVG và một số filter SVG.
 - Khác biệt đã biết: `direction: rtl` không đảo chiều hàng flex; `image-rendering: pixelated` bị bỏ qua
   với ảnh raster; các text run của `measure()` không có trường `text`.
-- Đơn luồng và đồng bộ trong một instance; bộ nhớ WebAssembly chỉ tăng chứ không bao giờ co lại.
+- WebAssembly: đơn luồng và đồng bộ trong một instance; bộ nhớ chỉ tăng chứ không bao giờ co lại. Native
+  (Node.js): một renderer chạy một lệnh tại một thời điểm, nhiều renderer chạy song song; tới nay mới chỉ
+  addon Windows x64 được chạy thật.
 
 Danh sách đầy đủ: [Hỗ trợ CSS → Các hạn chế đã biết](docs/vi/css-support.md#các-hạn-chế-đã-biết) và
 [Khác biệt với takumi](docs/vi/differences-from-takumi.md).

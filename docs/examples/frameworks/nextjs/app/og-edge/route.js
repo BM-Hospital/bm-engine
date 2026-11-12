@@ -1,14 +1,11 @@
 import { initSync, Renderer } from "bm-engine/core";
-import wasm from "../../node_modules/bm-engine/js/bm_engine.core.wasm?module";
+import wasm from "bm-engine/core.wasm?module";
 
 export const runtime = "edge";
 
 let renderer;
 async function getRenderer() {
   if (!renderer) {
-    // Next.js hands the edge sandbox a WebAssembly.Module from another realm; bm-engine 0.1.0 checks
-    // `instanceof WebAssembly.Module`, so re-brand it with this realm's prototype first.
-    if (!(wasm instanceof WebAssembly.Module)) Object.setPrototypeOf(wasm, WebAssembly.Module.prototype);
     initSync(wasm);
     const font = await fetch(new URL("../../fonts/Inter-Regular.ttf", import.meta.url)).then((r) => r.arrayBuffer());
     renderer = new Renderer();

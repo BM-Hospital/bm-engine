@@ -11,6 +11,7 @@ về) và một quyết định riêng của bm-engine (không kèm font).
 - ["this build has no ... support"](#this-build-has-no--support)
 - [Ảnh không hiện](#ảnh-không-hiện)
 - [Không tìm thấy file .wasm (bundler, worker)](#không-tìm-thấy-file-wasm)
+- [Addon native (Node.js)](#addon-native-nodejs)
 - [Bộ nhớ tăng mãi](#bộ-nhớ-tăng-mãi)
 - [Ảnh bị mờ trên màn hình DPI cao](#ảnh-bị-mờ-trên-màn-hình-dpi-cao)
 - [Tiếng Việt](#tiếng-việt)
@@ -97,6 +98,43 @@ xem [Profile và kích thước](profiles-and-size.md).
 - **Node trong môi trường tùy biến**: `BM_WASM=/path/to/bm_engine.wasm` thay binary của entry
   `bm-engine`.
 
+## Addon native (Node.js)
+
+Trên Node.js, `bm-engine` chạy addon native từ optional platform package `bm-engine-<platform>` khi nó
+được cài và nạp được, nếu không thì chạy WebAssembly (xem
+[Cài đặt](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)). Cơ chế fallback được thiết kế
+để chạy lặng lẽ, nên bước đầu tiên luôn là hỏi xem backend nào đang chạy:
+
+```sh
+node --input-type=module -e 'import("bm-engine").then((m) => console.log(m.backend))'
+BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not used
+```
+
+- **Không có binary cho nền tảng này, hoặc nó không được cài** (hệ điều hành / CPU không có platform
+  package, ví dụ FreeBSD, Linux trên ARM 32-bit hay ppc64; `--omit=optional`; một `node_modules` chép từ
+  hệ điều hành khác; một lockfile làm mất optional package): bạn nhận WebAssembly, với output giống hệt.
+  Lỗi khi ép native ghi `bm-engine-<platform>: not installed`. Hãy cài lại trên máy đích, xem
+  [Package manager, Docker, serverless](getting-started.md#package-manager-docker-serverless).
+- **Tới nay chỉ `win32-x64-msvc` đã được chạy thật.** Bảy platform package còn lại đã được build và kiểm
+  tra cấu trúc nhưng chưa từng chạy; nếu một cái không nạp được trên máy bạn, `bm-engine` dùng
+  WebAssembly. Hãy báo lại kèm thông báo lỗi khi ép native.
+- **`BM_ENGINE_BACKEND`**: `wasm` không bao giờ thử addon; `native` khiến lệnh import ném lỗi khi addon không
+  dùng được; giá trị khác ném lỗi `BM_ENGINE_BACKEND must be "wasm" or "native"`. `BM_WASM` và `BM_PROFILE`
+  cũng chọn WebAssembly. `bm-engine/native` là native hoặc lỗi khi import; `bm-engine/full`, `/standard`,
+  `/core` luôn là WebAssembly.
+- **CPU x64 đời cũ.** Các addon x64 cần x86-64-v2 (SSE4.2, POPCNT: Intel từ 2008, AMD từ 2011). Trên CPU cũ
+  hơn, addon từ chối đăng ký và bạn nhận WebAssembly.
+- **Electron, Bun, Deno** dùng điểm vào Node và có thể nạp được addon; chưa cái nào được kiểm thử. Nếu addon
+  không nạp được, chúng nhận WebAssembly.
+- **Render không nhanh hơn khi thêm `await`.** Một renderer chỉ thực thi một lệnh tại một thời điểm (các
+  lệnh trên nó được xếp hàng theo thứ tự). Để có thông lượng song song trên backend native, hãy tạo vài
+  renderer với cùng bộ font, tối đa khoảng bằng kích thước pool của libuv (`UV_THREADPOOL_SIZE`, mặc định
+  4), rồi chia việc. Trên WebAssembly mọi thứ vẫn chạy trên luồng gọi.
+- **Server đã bundle không tìm thấy file wasm**: `bm-engine: cannot find bm_engine.wasm (...)`. Bundler đã
+  chuyển điểm vào Node ra khỏi package của nó và lúc chạy không có `node_modules`. Hãy để package ở dạng
+  external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), hoặc đặt
+  `BM_WASM=/path/to/bm_engine.wasm`. Xem [Next.js](frameworks/nextjs.md) về deploy.
+
 ## Bộ nhớ tăng mãi
 
 Bộ nhớ WebAssembly chỉ tăng chứ không bao giờ co lại. bm-engine tái sử dụng bộ nhớ giữa các lần render
@@ -170,6 +208,10 @@ hàm màu hiện đại trên `core`. Khai báo trong stylesheet không ném l�
 | Thông báo (tiền tố `bm-engine: `) | Nguyên nhân |
 |:--|:--|
 | `call init()/initSync() before creating a Renderer` | ngoài Node, entry chưa được khởi tạo |
+| `BM_ENGINE_BACKEND=native, but the native addon is not available (...)` | ép native nhưng không có addon dùng được; lý do nằm trong ngoặc ([Addon native](#addon-native-nodejs)) |
+| `bm-engine/native: the native addon is not available (...)` | import `bm-engine/native` khi chưa cài platform package |
+| `BM_ENGINE_BACKEND must be "wasm" or "native", not "..."` | gõ sai biến môi trường |
+| `cannot find bm_engine.wasm (...)` | bundler đã chuyển điểm vào Node ra khỏi `node_modules` ([Addon native](#addon-native-nodejs)) |
 | `renderer has been freed` | dùng renderer sau khi đã `free()` |
 | `invalid viewport: width/height must be > 0` | `width` hoặc `height` bằng 0 |
 | `invalid viewport: content has zero size and no width/height was given` | không có kích thước canvas và không có gì để đo |

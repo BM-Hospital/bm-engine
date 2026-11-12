@@ -11,6 +11,7 @@ and one of bm-engine's own (no bundled font).
 - ["this build has no ... support"](#this-build-has-no--support)
 - [Images do not appear](#images-do-not-appear)
 - [The .wasm file is not found (bundlers, workers)](#the-wasm-file-is-not-found)
+- [Native addon (Node.js)](#native-addon-nodejs)
 - [Memory keeps growing](#memory-keeps-growing)
 - [Output is blurry on high-DPI screens](#output-is-blurry-on-high-dpi-screens)
 - [Vietnamese text](#vietnamese-text)
@@ -97,6 +98,43 @@ Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-
 - **Node in a custom setup**: `BM_WASM=/path/to/bm_engine.wasm` overrides the binary of the `bm-engine`
   entry.
 
+## Native addon (Node.js)
+
+On Node.js, `bm-engine` runs the native addon from the optional platform package
+`bm-engine-<platform>` when it is installed and loads, and WebAssembly otherwise (see
+[Install](getting-started.md#native-on-nodejs-webassembly-everywhere-else)). The fallback is silent by
+design, so the first step is always to ask which backend runs:
+
+```sh
+node --input-type=module -e 'import("bm-engine").then((m) => console.log(m.backend))'
+BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not used
+```
+
+- **No binary for this platform, or it was not installed** (an OS / CPU without a platform package, e.g.
+  FreeBSD, Linux on 32-bit ARM or ppc64; `--omit=optional`; a `node_modules` copied from another OS; a
+  lockfile that lost the optional packages): you get WebAssembly, with the same output. The forced error
+  says `bm-engine-<platform>: not installed`. Reinstall on the target machine, see
+  [Package managers, Docker, serverless](getting-started.md#package-managers-docker-serverless).
+- **Only `win32-x64-msvc` has been executed so far.** The seven other platform packages are built and
+  structurally verified but have never run; if one fails to load on your machine, `bm-engine` uses
+  WebAssembly. Please report it with the forced error message.
+- **`BM_ENGINE_BACKEND`**: `wasm` never tries the addon; `native` makes the import throw when the addon is not
+  available; anything else throws `BM_ENGINE_BACKEND must be "wasm" or "native"`. `BM_WASM` and `BM_PROFILE`
+  select WebAssembly too. `bm-engine/native` is native or an import error; `bm-engine/full`, `/standard`,
+  `/core` are always WebAssembly.
+- **Old x64 CPUs.** The x64 addons need x86-64-v2 (SSE4.2, POPCNT: Intel since 2008, AMD since 2011). On an
+  older CPU the addon refuses to register and you get WebAssembly.
+- **Electron, Bun, Deno** use the Node entry and may load the addon; none of them was tested. If the addon
+  does not load, they get WebAssembly.
+- **Rendering does not get faster with more `await`s.** One renderer executes one call at a time (calls
+  on it are queued in order). For parallel throughput on the native backend create several renderers with
+  the same fonts, at most about the libuv pool size (`UV_THREADPOOL_SIZE`, default 4), and spread the work.
+  On WebAssembly everything runs on the calling thread anyway.
+- **A bundled server cannot find the wasm file**: `bm-engine: cannot find bm_engine.wasm (...)`. A bundler
+  moved the Node entry away from its package and `node_modules` is not there at run time. Keep the package
+  external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), or set
+  `BM_WASM=/path/to/bm_engine.wasm`. See [Next.js](frameworks/nextjs.md) for deployments.
+
 ## Memory keeps growing
 
 WebAssembly memory can grow but never shrink. bm-engine reuses memory between renders (a per-render
@@ -169,6 +207,10 @@ functions on `core`. Stylesheet declarations do not throw; they are dropped.
 |:--|:--|
 | `call init()/initSync() before creating a Renderer` | outside Node, the entry was not initialised |
 | `renderer has been freed` | the renderer was used after `free()` |
+| `BM_ENGINE_BACKEND=native, but the native addon is not available (...)` | native forced, no usable addon; the reason is in parentheses ([Native addon](#native-addon-nodejs)) |
+| `bm-engine/native: the native addon is not available (...)` | `bm-engine/native` imported without an installed platform package |
+| `BM_ENGINE_BACKEND must be "wasm" or "native", not "..."` | a typo in the environment variable |
+| `cannot find bm_engine.wasm (...)` | a bundler moved the Node entry away from `node_modules` ([Native addon](#native-addon-nodejs)) |
 | `invalid viewport: width/height must be > 0` | `width` or `height` is 0 |
 | `invalid viewport: content has zero size and no width/height was given` | no canvas size and nothing to measure |
 | `canvas too large` | more than 16384 px per side or 40 megapixels |
