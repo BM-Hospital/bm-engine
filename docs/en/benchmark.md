@@ -82,9 +82,9 @@ Geomeans over the 250 fixtures every engine rendered; ± = half the range of the
 
 | Build | Raw | gzip -9 | brotli | vs. takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 487.0 KiB | 228.3 KiB | 194.3 KiB | 8.7× smaller |
-| `standard` | 933.9 KiB | 463.5 KiB | 397.7 KiB | 4.5× smaller |
-| `full` | 1 140.5 KiB | 558.2 KiB | 469.6 KiB | 3.7× smaller |
+| `core` | 487.6 KiB | 228.4 KiB | 194.3 KiB | 8.7× smaller |
+| `standard` | 934.4 KiB | 463.7 KiB | 398.0 KiB | 4.5× smaller |
+| `full` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | 3.7× smaller |
 | WOFF add-on | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | phase 1 (single build) | 320.9 KiB | 147.1 KiB | 126.5 KiB | 13.2× smaller |
 

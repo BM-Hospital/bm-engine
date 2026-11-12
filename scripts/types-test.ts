@@ -28,6 +28,9 @@ import * as core from "bm-engine/core";
 import { init as initStandard, profile as standardProfile } from "bm-engine/standard";
 import fullInit, { Renderer as FullRenderer, wasmUrl } from "bm-engine/full";
 import { loadWoff, decodeWoff } from "bm-engine/woff";
+import * as pdf from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, type PdfRenderOptions, type MeasuredSize } from "bm-engine/pdf";
+import pdfWasm from "bm-engine/pdf.wasm";
 import coreWasm from "bm-engine/core.wasm";
 import woffWasm from "bm-engine/woff.wasm";
 import coreWasmModule from "bm-engine/core.wasm?module"; // Next.js Edge / webpack `?module` form
@@ -109,6 +112,32 @@ async function main(): Promise<void> {
 
   const fr = new FullRenderer();
   fr.renderSync(node);
+
+  // PDF output (bm-engine/pdf)
+  await pdf.init(pdfWasm);
+  const pp: "pdf" = pdf.profile;
+  const pr = new PdfRenderer();
+  const popts: PdfRenderOptions = { size: "a4", landscape: true, margin: { top: "auto", bottom: 30 }, header: node, footer: "<p>x</p>",
+    pages: { first: { header: false } }, pageRanges: [1, { from: 3 }], metadata: { title: "t", creationDate: "2026-01-01" },
+    attachments: [{ name: "a.xml", data: bytes, mimeType: "application/xml" }], tagged: "ua1", uncoveredText: "blank", css: ".a{}", cssVariables: { a: "b" } };
+  const pdfBytes: Uint8Array = await pr.render(node, popts);
+  const pdfBytes2: Uint8Array = pr.renderSync("<p>x</p>", { viewport: { width: 100 } });
+  const msz: MeasuredSize = await pr.measure(node, { size: "letter" });
+  const msz2: MeasuredSize = await pdf.measure(node, { viewport: { width: 100, height: 50 } });
+  const pdfBytes3: Uint8Array = await r.renderPdf(node, { pdfa: "3b", attachments: [{ name: "a", data: "x", mimeType: "a/b", description: "d" }] });
+  const msz3: MeasuredSize = r.measurePdfSync(node);
+  const counter = PageNumber({ format: "lower-roman", className: "x" });
+  void pp; void pdfBytes; void pdfBytes2; void msz; void msz2; void pdfBytes3; void msz3; void counter;
+  const pf: boolean = features.pdf;
+  void pf;
+  // @ts-expect-error viewport and paged options are mutually exclusive
+  await pr.render(node, { viewport: { width: 1 }, size: "a4" });
+  // @ts-expect-error the PDF/A "a" levels need a structure tree
+  await pr.render(node, { pdfa: "2a", tagged: false });
+  // @ts-expect-error PDF/A-2b takes no attachments
+  await pr.render(node, { pdfa: "2b", attachments: [{ name: "a", data: "x" }] });
+  // @ts-expect-error PDF/UA-2 pairs with PDF/A-4 only
+  await pr.render(node, { pdfa: "2b", tagged: "ua2" });
 
   const w: { builtIn: boolean } = await loadWoff();
   await loadWoff(woffWasm);

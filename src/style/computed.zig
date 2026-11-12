@@ -149,6 +149,40 @@ pub const BorderCollapse = enum(u8) { separate, collapse };
 pub const CaptionSide = enum(u8) { top, bottom };
 pub const EmptyCells = enum(u8) { show, hide };
 pub const BoxDecorationBreak = enum(u8) { slice, clone };
+/// `break-before` / `break-after` (Blink's EBreakBetween; `always` is the legacy spelling of `page`).
+pub const BreakBetween = enum(u8) {
+    auto,
+    avoid,
+    avoid_page,
+    avoid_column,
+    column,
+    page,
+    always,
+    left,
+    right,
+    recto,
+    verso,
+
+    /// forces a page break in paged output (Blink's IsForcedBreakValue)
+    pub fn forcesPage(b: BreakBetween) bool {
+        return @intFromEnum(b) >= @intFromEnum(BreakBetween.page);
+    }
+    /// avoids a page break (Blink's IsAvoidBreakValue)
+    pub fn avoidsPage(b: BreakBetween) bool {
+        return b == .avoid or b == .avoid_page;
+    }
+};
+/// `break-inside` (Blink's EBreakInside)
+pub const BreakInside = enum(u8) {
+    auto,
+    avoid,
+    avoid_page,
+    avoid_column,
+
+    pub fn avoidsPage(b: BreakInside) bool {
+        return b == .avoid or b == .avoid_page;
+    }
+};
 pub const Contain = packed struct(u8) { size: bool = false, inline_size: bool = false, layout: bool = false, style: bool = false, paint: bool = false, _pad: u3 = 0 };
 pub const ListStylePosition = enum(u8) { outside, inside };
 /// `list-style-type`: `ident` holds the counter-style name lower-cased as written (disc, decimal, ...),
@@ -190,7 +224,8 @@ pub const CustomProp = struct { name: []const u8, value: []const u8 };
 
 pub const BorderStyle = enum(u8) { none, hidden, solid, dashed, dotted, double, groove, ridge, inset, outset };
 pub const BgRepeat = enum(u8) { repeat, no_repeat, space, round };
-pub const BgBox = enum(u8) { border_box, padding_box, content_box, text };
+/// (`border-area` exists in the PDF build only: the raster painter does not draw it yet)
+pub const BgBox = if (@import("../config.zig").enable_pdf) enum(u8) { border_box, padding_box, content_box, text, border_area } else enum(u8) { border_box, padding_box, content_box, text };
 pub const BgSize = union(enum) { cover, contain, size: [2]LengthAuto };
 pub const ObjectFit = enum(u8) { fill, contain, cover, none, scale_down };
 pub const ImageRendering = enum(u8) { auto, smooth, pixelated, crisp_edges };
@@ -408,6 +443,13 @@ pub const ComputedStyle = struct {
     caption_side: CaptionSide = .top, // inherited
     empty_cells: EmptyCells = .show, // inherited
     box_decoration_break: BoxDecorationBreak = .slice,
+    // fragmentation (paged output only)
+    break_before: BreakBetween = .auto,
+    break_after: BreakBetween = .auto,
+    break_inside: BreakInside = .auto,
+    /// fewest lines of a block a page break may leave after / before it (inherited, >= 1)
+    widows: u8 = 2,
+    orphans: u8 = 2,
     contain: Contain = .{},
     vertical_align: VerticalAlign = .baseline,
     unicode_bidi: UnicodeBidi = .normal,

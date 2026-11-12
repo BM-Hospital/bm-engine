@@ -215,7 +215,7 @@ này được kỳ vọng chạy với `--webpack`, nhưng không thể kiểm t
 `Object.setPrototypeOf` mà các phiên bản cũ của trang này cần đã không còn: `initSync` nhận module mà
 Next.js truyền vào.
 
-Kích thước rất quan trọng trên Edge: binary `core` nặng 487.0 KiB khi chưa nén (khoảng 210 KiB gzip) và
+Kích thước rất quan trọng trên Edge: binary `core` nặng 487.6 KiB khi chưa nén (khoảng 210 KiB gzip) và
 font cộng thêm kích thước của chính nó; xem [Profile và kích thước](../profiles-and-size.md). Edge runtime
 đã bị deprecate trong Next.js 16 (bản build in ra cảnh báo) và không có addon native: nên dùng Node.js
 runtime.

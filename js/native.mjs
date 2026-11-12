@@ -1,6 +1,7 @@
 // bm-engine internal (Node.js / Bun / Deno only): finds and loads the native Node-API addon and wraps it as an
 // engine backend for js/engine.mjs. Imported by js/node.mjs (`bm-engine` on Node: native when available, else
-// wasm) and js/node-native.mjs (`bm-engine/native`: native or an error). The wasm-only entries never import
+// wasm), js/node-pdf.mjs (`bm-engine/pdf` on Node, likewise, with the addon's PDF output) and js/node-native.mjs
+// (`bm-engine/native`: native or an error). The wasm-only entries never import
 // this file, so bundles for browsers / edge runtimes contain no `require` of a `.node` file.
 //
 // Where the addon is looked for (first that loads wins; nothing here ever throws):
@@ -161,12 +162,25 @@ export function nativeError() {
   return errors.join("; ") || "not tried";
 }
 
-/** The addon as a js/engine.mjs backend (see the interface there). */
-export function nativeBackend(addon) {
+/** Bit of the `pdf` feature in the addon's `features` (src/config.zig `feature_bits`, js/engine.mjs FEATURE_NAMES). */
+const PDF_BIT = 1 << 18;
+const PDF_OPS = new Set(["pdf", "pdfMeasure"]);
+
+/** Whether the addon was built with PDF output (the published ones are). */
+export function nativeHasPdf(addon) {
+  return !!addon && (addon.features & PDF_BIT) !== 0 && addon.ops.pdf !== undefined && addon.ops.pdfMeasure !== undefined;
+}
+
+/**
+ * The addon as a js/engine.mjs backend (see the interface there). `pdf`: expose its PDF output. One addon serves
+ * two entries: `bm-engine` / `bm-engine/native` (pdf = false: the feature set of the full wasm build, so
+ * `features.pdf` is false and renderPdf rejects exactly as it does on wasm) and `bm-engine/pdf` (pdf = true).
+ */
+export function nativeBackend(addon, pdf = false) {
   const ops = addon.ops;
   const id = (op) => {
     const i = ops[op];
-    if (i === undefined) throw new Error(`bm-engine: ${op} is not supported by this native build`);
+    if (i === undefined || (!pdf && PDF_OPS.has(op))) throw new Error(`bm-engine: ${op} is not supported by this native build`);
     return i;
   };
   // V8 (Node.js, Deno, Electron) hands out zero-filled ArrayBuffers: raw frames are then painted straight into
@@ -179,8 +193,8 @@ export function nativeBackend(addon) {
     /** what init() / initSync() resolve to */
     exports: addon,
     ready: () => true,
-    featureBits: () => addon.features >>> 0,
-    has: (op) => ops[op] !== undefined,
+    featureBits: () => (pdf ? addon.features : addon.features & ~PDF_BIT) >>> 0,
+    has: (op) => ops[op] !== undefined && (pdf || !PDF_OPS.has(op)),
     create: () => addon.create(),
     destroy: (h) => addon.destroy(h),
     memoryBytes: () => addon.memoryBytes(),
@@ -215,4 +229,22 @@ export function nativeBinding() {
     });
   }
   return binding;
+}
+
+let pdfBinding; // undefined = not tried yet
+
+/**
+ * The same API on the same addon with its PDF output exposed (`bm-engine/pdf` on Node: js/node-pdf.mjs), or null
+ * when no addon is available or it was built without the `pdf` feature (the caller then uses bm_engine.pdf.wasm).
+ */
+export function nativePdfBinding() {
+  if (pdfBinding !== undefined) return pdfBinding;
+  const addon = loadNative();
+  if (!addon) return (pdfBinding = null);
+  if (!nativeHasPdf(addon)) {
+    errors.push("the addon was built without PDF output");
+    return (pdfBinding = null);
+  }
+  nativeBinding(); // (installs the built-in WOFF decoder)
+  return (pdfBinding = createBinding(undefined, nativeBackend(addon, true)));
 }

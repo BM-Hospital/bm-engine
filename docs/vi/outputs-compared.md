@@ -3,15 +3,16 @@
 [English](../en/outputs-compared.md) · [Tiếng Việt](outputs-compared.md)
 
 Tài liệu của takumi được chia thành ba phần — **Image**, **PDF** và **Paint** — vì takumi cung cấp ba
-loại đầu ra, dưới dạng ba package riêng, cùng dựa trên một layout engine. bm-engine chỉ port loại đầu
-tiên. Trang này giải thích mỗi đầu ra của takumi dùng để làm gì, bm-engine hiện đáp ứng tới đâu, và làm
-sao tiến gần tới hai loại còn lại bằng bm-engine kết hợp với công cụ khác.
+loại đầu ra, dưới dạng ba package riêng, cùng dựa trên một layout engine. bm-engine port hai loại đầu:
+Image, và PDF trong profile `pdf` riêng ([Đầu ra PDF](pdf.md)). Trang này giải thích mỗi đầu ra của takumi dùng
+để làm gì, bm-engine hiện đáp ứng tới đâu, và làm sao tiến gần tới Paint bằng bm-engine kết hợp với công cụ khác.
 
 ::: info Trạng thái kiểm chứng
 Phần mô tả takumi đã được đối chiếu với mã nguồn và tài liệu takumi trong bản sao tham chiếu của
 repository (`ref/takumi`: các crate / package `takumi-core`, `takumi-raster`, `takumi-svg`, `takumi-pdf`,
 `takumi-pdf-js` và `takumi-paint` cùng `docs/content/docs/{pdf,paint}`); không chạy mã takumi nào. Các
-nhận định về bm-engine được kiểm tra bằng cách tìm trong `js/` và `src/` và chạy các API được nhắc tới.
+nhận định về bm-engine được kiểm tra bằng cách tìm trong `js/` và `src/` và chạy các API được nhắc tới. Dòng về PDF
+phản ánh phần port PDF được thêm sau engine ảnh 0.1.0.
 :::
 
 ## Một layout engine, ba đầu ra
@@ -36,7 +37,7 @@ nhận định về bm-engine được kiểm tra bằng cách tìm trong `js/` 
 | Package npm | `takumi-js`, `@takumi-rs/wasm`, `@takumi-rs/core` | `takumi-pdf` | `takumi-paint` |
 | Bạn nhận được | byte ảnh đã mã hóa (hoặc một chuỗi SVG, hoặc một animation) | một file PDF | một cây object JavaScript để bạn tự vẽ |
 | Công dụng điển hình | thẻ Open Graph, thumbnail, ảnh mạng xã hội | hóa đơn, báo cáo, vé, chứng nhận | slide chỉnh sửa được (PPTX), vẽ bằng Canvas / Skia / API native, renderer tự viết |
-| bm-engine | **đã port** (raster, SVG, animation) | **không có** | **không có** (chỉ có `measure()`) |
+| bm-engine | **đã port** (raster, SVG, animation) | **đã port** thành profile `pdf`, với [hạn chế đã biết](pdf.md#hạn-chế-đã-biết) | **không có** (chỉ có `measure()`) |
 
 ### Image
 
@@ -73,16 +74,20 @@ Layout mà không raster hóa: `paint()` trả về một **paint tree** — m�
 | Đầu ra raster (PNG, JPEG, WebP, RGBA thô, ICO) | có — `render` / `renderSync`, `renderAsDataUrl` |
 | Đầu ra SVG | có — `renderSvg` / `renderSvgSync` (profile `full`); chữ thành đường viền glyph, ảnh nhúng dạng URL `data:` |
 | Đầu ra động | có — `renderAnimation` (`full`): WebP động, APNG, GIF |
-| Đầu ra PDF | **không** — không có trình ghi PDF nào trong `src/` hay `js/` (chữ "PDF" duy nhất trong mã nguồn là ký tự điều khiển bidi Unicode U+202C POP DIRECTIONAL FORMATTING) |
-| Phân trang / fragmentation qua nhiều trang | **không** — mỗi lần render là một canvas |
+| Đầu ra PDF | **có** — `bm-engine/pdf` (`PdfRenderer`, `renderPdf`): đầu ra nhiều trang với chữ thật và font con, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ và PDF/A. Không có trong `core`, `standard` hay `full`; trên Node.js nó chạy trên addon native khi đã cài. Xem [Đầu ra PDF](pdf.md) |
+| Phân trang / fragmentation qua nhiều trang | **có, trong profile `pdf`** — nội dung chảy qua nhiều trang, với `break-*`, `orphans` / `widows`, header bảng lặp lại và `@page`. Render ảnh vẫn là một canvas mỗi lần |
 | Paint tree | **không** — không có API nào trả về lệnh vẽ, màu, gradient hay glyph |
 | Box layout | có — `measure()` trả về cây box: `width` / `height` của border box, một `transform` 2D (vị trí tuyệt đối), `children`, và `runs` của các dòng chữ (`x`, `y`, `width`, `height`; không có chữ, không có font, không có vị trí glyph) |
 
 ## Cách xoay xở (không có sẵn)
 
-Không cái nào dưới đây là tính năng của bm-engine; chúng kết hợp bm-engine với công cụ khác.
+Mục đầu trỏ tới đầu ra PDF có sẵn; các mục còn lại kết hợp bm-engine với công cụ khác.
 
 ### Tạo PDF từ đầu ra của bm-engine
+
+Hãy dùng profile `pdf`: [Đầu ra PDF](pdf.md). Nếu không nạp được nó (ví dụ bạn phải ở lại `core`, `standard` hay
+`full`), các cách cũ hơn sau đây vẫn dùng được:
+
 
 - **Mỗi trang một ảnh.** Render từng trang thành PNG ở độ phân giải in (một trang A4 ở 150 dpi là
   1240 × 1754 px; render `width: 1240, height: 1754` với `devicePixelRatio` phóng layout CSS 96 dpi của bạn
@@ -90,11 +95,8 @@ Không cái nào dưới đây là tính năng của bm-engine; chúng kết h�
   Chữ không bôi chọn được và file lớn; ổn cho chứng nhận hay vé, kém cho tài liệu dài.
 - **Mỗi trang một SVG.** `renderSvg` cho đầu ra vector; các công cụ chuyển SVG sang PDF (`rsvg-convert`
   của librsvg, Inkscape, các thư viện svg2pdf) giữ hình sắc nét. Chữ vẫn là đường viền, không bôi chọn được.
-- **Tự phân trang.** bm-engine không chia nội dung qua nhiều trang. Dùng `measure()` để biết các khối kết
+- **Tự phân trang.** Các profile ảnh không chia nội dung qua nhiều trang. Dùng `measure()` để biết các khối kết
   thúc ở đâu rồi tự quyết định chỗ ngắt trang, hoặc render mỗi trang từ cây node riêng của nó.
-
-Nếu bạn cần chữ bôi chọn được, liên kết, PDF/A hay tệp đính kèm, hãy dùng một engine PDF thật sự
-(takumi-pdf, một trình duyệt headless, hoặc một thư viện PDF) — bm-engine không tạo ra được những thứ đó.
 
 ### Dựng paint tree từ `measure()`
 
@@ -129,5 +131,5 @@ thứ chính xác tới từng pixel, hãy render bằng bm-engine rồi vẽ �
 | Bản SVG của cùng tấm thẻ | bm-engine `full` + `renderSvg` |
 | Animation ngắn | bm-engine `full` + `renderAnimation` |
 | Co giãn chữ cho vừa, kiểm tra layout trước khi render | bm-engine `measure()` |
-| Tài liệu nhiều trang với chữ bôi chọn được | takumi-pdf hoặc một engine PDF khác |
+| Tài liệu nhiều trang với chữ bôi chọn được | profile `pdf` của bm-engine (hoặc takumi-pdf, hoặc một engine PDF khác) |
 | Slide chỉnh sửa được / renderer riêng với đầy đủ thông tin style | takumi-paint |

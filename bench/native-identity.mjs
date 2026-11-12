@@ -1,6 +1,6 @@
 // Byte identity of the native addon against the wasm build, on every fixture of the benchmark suite.
 //
-//   node native-identity.mjs [--filter=<regex>] [--wasm=<file>] [--native=<file.node>] [--no-async] [--quiet]
+//   node native-identity.mjs [--filter=<regex>] [--wasm=<file>] [--native=<file.node>] [--no-async] [--no-pdf] [--quiet]
 //
 // Both backends run in this process through the same public API (js/engine.mjs): the full-profile wasm
 // (js/bm_engine.wasm, or --wasm) and the addon (js/native.mjs lookup, or --native). For every fixture:
@@ -9,9 +9,19 @@
 //   renderSvg                                the SVG text
 //   native render() (thread pool)            raw, against the native sync result
 // plus animations (WebP / APNG / GIF), ICO, HTML sources, image attachments and WOFF2 registration.
+// PDF (unless --no-pdf): the pdf-profile wasm (js/bm_engine.pdf.wasm) against the addon's PDF output
+// (js/native.mjs `nativePdfBinding`, what `bm-engine/pdf` uses on Node):
+//   every 5th fixture as a one-page PDF (viewport), every 10th paged with header / footer bands and tagged,
+//   measurePdf, native renderPdf() (thread pool) against the native sync result;
+//   tagged / PDF/A / PDF/UA / attachments / links / outline / metadata / page-range variants and errors;
+//   image renders through the pdf bindings against the full wasm (the pdf feature must not change an image);
+//   and, each in a child process on the native backend with every PDF call replayed on wasm
+//   (bench/lib/pdf-identity-hook.mjs): docs/examples/pdf*.mjs, scripts/pdf-test.mjs, scripts/pdf-compare.mjs
+//   (takumi-pdf's fixtures; the last two when ref/takumi is present).
 // An error counts as identical only when both backends throw the same message. Exit code 1 on any mismatch.
 // Results: out/native-identity.json.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -160,12 +170,151 @@ if (!args.filter) {
   }
 }
 
+// ---- PDF -----------------------------------------------------------------------------------------------
+const pdfStats = { fixtures: 0, compared: 0, asyncChecked: 0, scripts: [] };
+if (!args["no-pdf"]) {
+  const before = counts.compared;
+  const { nativePdfBinding, nativeError } = await import(pathToFileURL(path.join(ROOT, "js", "native.mjs")).href);
+  const npdf = nativePdfBinding();
+  if (!npdf) throw new Error("the native addon has no PDF output: " + nativeError());
+  const wpdf = createBinding();
+  wpdf.initSync(readFileSync(path.join(ROOT, "js", "bm_engine.pdf.wasm")));
+  if (!wpdf.features.pdf || !npdf.features.pdf || native.features.pdf) throw new Error("pdf feature mix-up");
+  for (const [k, v] of Object.entries(wpdf.features)) if (npdf.features[k] !== v) throw new Error(`pdf binding feature ${k}: wasm ${v}, native ${npdf.features[k]}`);
+  pools.wpdf = new Map();
+  pools.npdf = new Map();
+  const pdfRenderer = (which, families) => {
+    const key = families ? families.join(",") : "*";
+    const pool = pools[which];
+    if (!pool.has(key)) {
+      const r = new (which === "wpdf" ? wpdf : npdf).Renderer();
+      for (const f of fontsFor(families)) r.registerFont({ name: f.name, data: new Uint8Array(readFileSync(f.path)), weight: f.weight, style: f.style });
+      pool.set(key, r);
+    }
+    return pool.get(key);
+  };
+  const bothPdf = (id, what, families, fn) => compare(id, what, attempt(() => fn(pdfRenderer("wpdf", families))), attempt(() => fn(pdfRenderer("npdf", families))));
+  const band = (text) => ({ type: "container", style: { display: "flex", justifyContent: "space-between", width: "100%", fontSize: 9, color: "#555", fontFamily: "Inter" },
+    children: [{ type: "text", text }, { type: "container", tagName: "span", className: "pageNumber" }, { type: "container", tagName: "span", className: "totalPages" }] });
+  // (the fixtures' CSS and image options apply; the size becomes the viewport / the page)
+  const pdfOpts = (k, extra) => { const { width, height, format: _f, devicePixelRatio: _d, quality: _q, ...rest } = renderOpts(k, "raw"); return { ...rest, uncoveredText: "blank", ...extra(width, height) }; };
+  const step = args.filter ? 1 : 5;
+  for (let i = 0; i < cases.length; i += step) {
+    const k = cases[i];
+    const b0 = mismatches.length;
+    pdfStats.fixtures++;
+    const vp = pdfOpts(k, (width, height) => ({ viewport: { width, height } }));
+    bothPdf(k.id, "pdf viewport", k.fonts, (r) => r.renderPdfSync(k.node, vp));
+    bothPdf(k.id, "pdf measure", k.fonts, (r) => JSON.stringify(r.measurePdfSync(k.node, vp)));
+    // (the pdf feature compiled in must leave the image path alone: the pdf-profile wasm and the addon's pdf
+    // binding against the full wasm)
+    const img = attempt(() => rendererFor("wasm", k.fonts).renderSync(k.node, renderOpts(k, "raw")));
+    compare(k.id, "image on the pdf wasm vs full wasm", img, attempt(() => pdfRenderer("wpdf", k.fonts).renderSync(k.node, renderOpts(k, "raw"))));
+    compare(k.id, "image on the native pdf binding vs full wasm", img, attempt(() => pdfRenderer("npdf", k.fonts).renderSync(k.node, renderOpts(k, "raw"))));
+    if (i % (2 * step) === 0) {
+      const paged = pdfOpts(k, () => ({ size: "a5", landscape: i % (4 * step) === 0, margin: { top: 40, bottom: 40, left: 24, right: 24 }, header: band(k.id), footer: band("bm-engine"),
+        tagged: true, metadata: { title: k.id, authors: ["bench"], creationDate: "2026-01-02T03:04:05Z" } }));
+      bothPdf(k.id, "pdf paged tagged", k.fonts, (r) => r.renderPdfSync(k.node, paged));
+    }
+    if (!args["no-async"]) {
+      const r = pdfRenderer("npdf", k.fonts);
+      const sync = attempt(() => r.renderPdfSync(k.node, vp));
+      let pooled;
+      try { const v = await r.renderPdf(k.node, vp); pooled = { bytes: Buffer.from(v.buffer, v.byteOffset, v.byteLength) }; }
+      catch (e) { pooled = { error: String(e && e.message) }; }
+      compare(k.id, "native async vs sync pdf", sync, pooled);
+      pdfStats.asyncChecked++;
+    }
+    if (!args.quiet) console.error(`${mismatches.length === b0 ? "ok  " : "DIFF"} pdf ${k.id}`);
+  }
+  if (!args.filter) {
+    // a long document: pagination, links, anchors, outline, lists, tables, RTL, attachments, conformance levels
+    const para = "The quick brown fox jumps over the lazy dog; sphinx of black quartz, judge my vow. ";
+    const doc = "<style>body{font-family:Inter;font-size:13px;line-height:1.5} h1{font-size:24px;break-before:page} h2{font-size:17px} " +
+      "table{border-collapse:collapse;width:100%} td,th{border:1px solid #94a3b8;padding:4px 6px} thead{background:#e2e8f0} .rtl{direction:rtl} " +
+      ".f{float:right;width:120px;height:80px;background:#bae6fd;margin:0 0 8px 8px} .ind{text-indent:2em} .sc{font-variant-caps:small-caps} " +
+      ".el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:180px} @page{margin:48px}</style>" +
+      "<h1 id=a>Alpha</h1><p class=ind>" + para.repeat(12) + "<a href='https://example.com/x?y=1'>a link</a> and <a href='#c'>see Gamma (page <span class=targetPageNumber></span>)</a>.</p>" +
+      "<div class=f></div><p>" + para.repeat(8) + "</p><ol start=3><li>one<li value=9>nine<ul><li>nested <b>bold</b></ul><li>ten</ol>" +
+      "<h2 id=b>Beta</h2><p class=sc>Small Caps Text " + para + "</p><p class=el>" + para + "</p>" +
+      "<p class=rtl>\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd abc 123 <span style='background:#fde68a;padding:0 4px'>\u0645\u0631\u062d\u0628\u0627</span> " + para + "</p>" +
+      "<table><thead><tr><th>#<th>Name<th>Value</thead><tbody>" + Array.from({ length: 60 }, (_, i) => `<tr><td>${i}<td>row ${i} \u{1F600}<td>${(i * 37) % 101}</tr>`).join("") + "</tbody></table>" +
+      "<h1 id=c>Gamma</h1><p>A <span style='border:1px solid red'>span with <div style='background:#eee'>a block inside</div> an inline</span> box.</p>" +
+      "<table class=rtl><tr><td>\u05d0<td>\u05d1<td>\u05d2</table><p>" + para.repeat(30) + "</p>";
+    const meta = { title: "Identity", authors: ["A", "B"], description: "d", keywords: ["k1", "k2"], creator: "bench", language: "en", creationDate: "2026-03-04T05:06:07Z" };
+    const files = [{ name: "data.xml", data: new TextEncoder().encode("<a>1</a>"), mimeType: "application/xml", description: "payload" }, { name: "note.txt", data: "plain text", mimeType: "text/plain" }];
+    const variants = {
+      "a4": { size: "a4" },
+      "letter landscape bands": { size: "letter", landscape: true, margin: { top: "auto", bottom: 36, left: 30, right: 30 }, header: band("header"), footer: "<div style='font:9px Inter;text-align:center'>page <span class=pageNumber></span> / <span class=totalPages></span></div>" },
+      "viewport": { viewport: { width: 640 } },
+      "metadata outline": { size: "a4", metadata: meta, outline: true },
+      "tagged": { size: "a4", tagged: true, metadata: meta, lang: "en" },
+      "tagged ua1": { size: "a4", tagged: "ua1", metadata: meta, lang: "en" },
+      "pdfa 2b": { size: "a4", pdfa: "2b", metadata: meta },
+      "pdfa 2a": { size: "a4", pdfa: "2a", metadata: meta, lang: "en" },
+      "pdfa 3b attachments": { size: "a4", pdfa: "3b", metadata: meta, attachments: files },
+      "pdfa 4 ua2": { size: "a4", pdfa: "4", tagged: "ua2", metadata: meta, lang: "en" },
+      "attachments": { size: "a5", attachments: files },
+      "page ranges": { size: "a5", pageRanges: [1, { from: 3, to: 4 }] },
+      "first page rules": { size: "a5", header: band("h"), pages: { first: { header: false } }, backgroundColor: "#fffbeb" },
+      "css variables": { size: "a5", css: "p{color:var(--ink)}", cssVariables: { ink: "#1d4ed8" } },
+      "error: viewport + size": { viewport: { width: 100 }, size: "a4" },
+      "error: bad size": { size: "a99" },
+      "error: pdfa 2b attachments": { pdfa: "2b", attachments: files },
+      "error: bad date": { metadata: { creationDate: "yesterday" } },
+    };
+    for (const [name, o] of Object.entries(variants)) {
+      bothPdf("pdf-doc", name, undefined, (r) => r.renderPdfSync(doc, { uncoveredText: "blank", ...o }));
+      if (!name.startsWith("error")) bothPdf("pdf-doc", name + " (measure)", undefined, (r) => JSON.stringify(r.measurePdfSync(doc, { uncoveredText: "blank", ...o })));
+    }
+    bothPdf("pdf-doc", "uncovered text (error)", undefined, (r) => r.renderPdfSync("<p style='font-family:Inter'>\u{10FFFD} \u6f22</p>", {}));
+    bothPdf("pdf-doc", "blur filter (error)", undefined, (r) => r.renderPdfSync("<p style='filter:blur(2px)'>x</p>", { uncoveredText: "blank" }));
+    const small = cases.find((k) => k.id === "card-og") ?? cases[0];
+    const png = rendererFor("wasm", small.fonts).renderSync(small.node, { ...renderOpts(small, "png"), width: 120, height: 63 });
+    bothPdf("pdf-doc", "images", undefined, (r) => r.renderPdfSync({ type: "container", style: { display: "flex", gap: 8 }, children: [{ type: "image", src: png, style: { width: 140, height: 100 } }, { type: "image", src: "pic", width: 64, height: 64 }] },
+      { viewport: { width: 300, height: 200 }, images: [{ src: "pic", data: png }] }));
+    compare("pdf-doc", "renderPdf on the image entries (error)", attempt(() => rendererFor("wasm").renderPdfSync(doc, {})), attempt(() => rendererFor("native").renderPdfSync(doc, {})));
+    // every PDF call of the existing scripts, replayed (child processes on the native backend)
+    const hook = pathToFileURL(path.join(BENCH, "lib", "pdf-identity-hook.mjs")).href;
+    const scripts = readdirSync(path.join(ROOT, "docs", "examples")).filter((f) => /^pdf.*\.mjs$/.test(f)).map((f) => [path.join("docs", "examples", f)]);
+    if (existsSync(path.join(ROOT, "ref", "takumi", "assets", "fonts"))) {
+      scripts.push([path.join("scripts", "pdf-test.mjs"), "--no-build"]);
+      if (existsSync(path.join(ROOT, "ref", "takumi", "takumi-pdf", "tests", "fixtures-generated"))) scripts.push([path.join("scripts", "pdf-compare.mjs")]);
+    } else console.error("pdf scripts skipped: ref/takumi is not present");
+    mkdirSync(path.join(BENCH, "out"), { recursive: true });
+    for (const [script, ...rest] of scripts) {
+      const outFile = path.join(BENCH, "out", "pdf-identity-child.json");
+      rmSync(outFile, { force: true });
+      const r = spawnSync(process.execPath, ["--import", hook, path.join(ROOT, script), ...rest], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28,
+        env: { ...process.env, BM_ENGINE_BACKEND: "native", BM_PDF_IDENTITY_OUT: outFile } });
+      const id = script.split(path.sep).join("/");
+      let res = null;
+      try { res = JSON.parse(readFileSync(outFile, "utf8")); } catch {}
+      rmSync(outFile, { force: true });
+      if (r.status !== 0 || !res) {
+        counts.compared++;
+        mismatches.push({ id, what: "script on the native backend", native: `exit ${r.status}: ${String(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" | ").slice(0, 400)}`, wasm: "-" });
+        continue;
+      }
+      counts.compared += res.compared;
+      counts.identical += res.identical;
+      counts.bothError += res.bothError;
+      counts.bytes += res.bytes;
+      for (const m of res.mismatches) mismatches.push({ id, ...m });
+      pdfStats.scripts.push({ script: id, compared: res.compared, identical: res.identical, calls: res.calls });
+      if (!args.quiet) console.error(`${res.mismatches.length ? "DIFF" : "ok  "} ${id}: ${res.compared} PDF calls replayed on wasm`);
+    }
+  }
+  pdfStats.compared = counts.compared - before;
+}
+
 const ms = performance.now() - t0;
 for (const pool of Object.values(pools)) for (const r of pool.values()) r.free();
-const out = { date: new Date().toISOString(), node: process.version, platform: `${process.platform}-${process.arch}`, wasm: path.relative(ROOT, wasmFile), fixtures: cases.length, ...counts, asyncChecked, mismatches };
+const out = { date: new Date().toISOString(), node: process.version, platform: `${process.platform}-${process.arch}`, wasm: path.relative(ROOT, wasmFile), fixtures: cases.length, ...counts, asyncChecked, pdf: pdfStats, mismatches };
 mkdirSync(path.join(BENCH, "out"), { recursive: true });
 writeFileSync(path.join(BENCH, "out", "native-identity.json"), JSON.stringify(out, null, 1));
 console.log(`native vs wasm: ${cases.length} fixtures, ${counts.compared} comparisons, ${counts.identical} identical (${counts.bothError} of them the same error on both), ` +
-  `${mismatches.length} mismatches, ${(counts.bytes / 1e6).toFixed(1)} MB compared, ${(ms / 1000).toFixed(1)} s`);
+  `${mismatches.length} mismatches, ${(counts.bytes / 1e6).toFixed(1)} MB compared, ${(ms / 1000).toFixed(1)} s` +
+  (args["no-pdf"] ? "" : `; PDF: ${pdfStats.fixtures} fixtures + variants + ${pdfStats.scripts.length} scripts replayed = ${pdfStats.compared} of the comparisons`));
 for (const m of mismatches.slice(0, 40)) console.log("  MISMATCH", JSON.stringify(m));
 process.exit(mismatches.length ? 1 : 0);

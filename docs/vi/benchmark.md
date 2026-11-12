@@ -78,9 +78,9 @@ Geomean trên 250 fixture mà cả bốn engine đều render được; ± = n�
 
 | Bản build | Thô | gzip -9 | brotli | so với takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 487.0 KiB | 228.3 KiB | 194.3 KiB | nhỏ hơn 8.7× |
-| `standard` | 933.9 KiB | 463.5 KiB | 397.7 KiB | nhỏ hơn 4.5× |
-| `full` | 1 140.5 KiB | 558.2 KiB | 469.6 KiB | nhỏ hơn 3.7× |
+| `core` | 487.6 KiB | 228.4 KiB | 194.3 KiB | nhỏ hơn 8.7× |
+| `standard` | 934.4 KiB | 463.7 KiB | 398.0 KiB | nhỏ hơn 4.5× |
+| `full` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | nhỏ hơn 3.7× |
 | Add-on WOFF | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | giai đoạn 1 (một bản duy nhất) | 320.9 KiB | 147.1 KiB | 126.5 KiB | nhỏ hơn 13.2× |
 

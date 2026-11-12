@@ -77,7 +77,7 @@ Hàm `render(jsx, options)` cấp cao nhất của `takumi-js` tương ứng v�
 | Hạng mục | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / định dạng module | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, chỉ ESM (CommonJS qua `require(esm)`), chỉ WebAssembly — không có binding native |
-| Binary | một file wasm 4.2 MB | ba profile (487.0 KiB – 1.11 MiB) + add-on WOFF; `features` cho biết bản đang nạp |
+| Binary | một file wasm 4.2 MB | ba profile (487.6 KiB – 1.11 MiB), một profile `pdf` (khoảng 1.5 MB) + add-on WOFF; `features` cho biết bản đang nạp |
 | Import của wasm | glue wasm-bindgen | không có |
 | API đồng bộ | các phương thức của wrapper đều async | mọi phương thức có bản `*Sync`; bản async resolve ngay |
 | `registerFont` | trả về `Promise<RegisteredFamily[]>` (wrapper) | trả về `RegisteredFamily[]` đồng bộ với byte / `{ data: bytes }`; chỉ trả `Promise` với URL và dữ liệu lười |
@@ -90,7 +90,7 @@ Hàm `render(jsx, options)` cấp cao nhất của `takumi-js` tương ứng v�
 | `drawDebugBorder`, `dithering` | có hỗ trợ | nhận nhưng bỏ qua |
 | Kết quả `measure` | run có `text`, chiều cao theo hộp glyph | cùng cây, hộp và vị trí; run không có `text` và dùng chiều cao dòng (xem [API](api.md#measure--measuresync)) |
 | `renderSvg` | takumi-svg | đã port (profile full): cùng cấu trúc, glyph dưới dạng outline, không nhúng font |
-| PDF (`takumi-pdf`) | package riêng | không port |
+| PDF (`takumi-pdf`) | package riêng (`takumi-pdf`) | đã port thành profile `pdf`, `bm-engine/pdf`: `PdfRenderer`, `render`, `measure`, `prepare`, `PageNumber`, `TotalPages`, `TargetPageNumber`; khác biệt [bên dưới](#đầu-ra-pdf) |
 | `ImageResponse`, `render()` JSX (`takumi-js`) | có | không có; dùng `@takumi-rs/helpers` + `new Response(...)` |
 | `memoryBytes()` | — | bổ sung: kích thước bộ nhớ wasm hiện tại |
 | Lỗi | `Error` với thông báo của takumi | `Error` có tiền tố `bm-engine: `; câu chữ khác |
@@ -130,9 +130,40 @@ trong mức nhiễu khử răng cưa.
 - **`text-indent`** chỉ thụt dòng đầu của block container; takumi thụt cả dòng đầu của block ẩn danh
   không phải đầu tiên (chữ đứng sau một con dạng block).
 
+## Đầu ra PDF
+
+`bm-engine/pdf` port `takumi-pdf` (xem [Đầu ra PDF](pdf.md)). Tên tùy chọn, giá trị mặc định, quy tắc kiểm tra và phần lớn
+thông báo lỗi là của takumi-pdf. Các khác biệt:
+
+- **Profile riêng.** Đầu ra PDF chỉ có trong `bm-engine/pdf`; `renderPdf` trên mọi build khác ném lỗi, kể cả khi `bm-engine` chạy trên addon native. Trên Node.js, bản thân `bm-engine/pdf` dùng addon native khi đã cài, nếu không thì dùng profile wasm `pdf`.
+- **Không có bước `needs`.** `prepare` không tải gì và file `@font-face` không được tải: hãy truyền byte ảnh qua `images`
+  và font qua `fonts` / `registerFont`.
+- **Ký hiệu danh sách** được vẽ trong đầu ra PDF (nhiều trang và `viewport`, kèm phần tử cấu trúc `Lbl`), không có
+  trong đầu ra raster hay SVG. `list-style-image` không được hỗ trợ, và mục bắt đầu bằng hộp flex, grid, bảng hoặc ảnh
+  không có ký hiệu.
+- **Thứ tự xếp chồng** theo thứ tự vẽ của CSS như takumi; không biết khác biệt nào ở các fixture đã so sánh.
+- **`@page`**: trang có tên hoạt động (thuộc tính `page`, `@page tên`, khổ giấy, lề và chiều cao vùng trang theo
+  từng trang), nhưng nội dung chỉ được dàn một lần ở chiều rộng của các trang không tên: trang có tên với chiều rộng khác
+  nhận khổ riêng còn nội dung giữ chiều rộng cũ từ lề trái, và các quy tắc `:first` / `:left` / `:right` làm đổi chiều
+  rộng bị bỏ. Xem [Phân trang](pdf-pagination.md#trang-có-tên).
+- **Trang trắng cho ngắt `left` / `right`** không được chèn.
+- **PDF/A** được kiểm tra bằng các quy tắc chính của krilla, nhưng không có giới hạn độ dài và độ lồng của nó, và chưa chạy
+  validator ngoài nào trên đầu ra.
+- **Font**: chương trình font con không phải lúc nào cũng trùng từng byte với takumi-pdf.
+- **Counter trong nội dung sinh ra** (`counter(page)`, `target-counter()`) không hoạt động, như ở takumi.
+
+So với 89 file PDF golden của takumi-pdf (`node scripts/pdf-compare.mjs`, render từng fixture bằng `bm-engine/pdf`
+(kết quả giống nhau trên profile wasm và addon native) rồi so nội dung trang từng toán tử một): 73 file giống hệt, 3 file khớp trong phạm vi
+0.01 đơn vị, và 13 file khác, không có lỗi render. Bố cục object giống hệt ở cả 89 file, chương trình font nhúng ở 42
+file, và cây cấu trúc ở 88 file. 13 khác biệt gồm: độ chính xác tọa độ đường viền glyph ở các fixture bóng chữ, nét viền
+chữ và `background-clip: text` (5), độ rộng nét đứt của gạch trang trí chữ (1), điều chỉnh kerning rất nhỏ và hình chữ
+nhật liên kết ở ba fixture `report-*` (3), mặt nạ bóng của glyph bitmap (1), độ rộng chỗ giữ chỗ của bộ đếm trang (1),
+và hai fixture quy tắc trang mà các trang có chiều rộng khác nhau (trang có tên; trang `:first` nằm ngang). Các fixture
+hóa đơn, header và footer bảng lặp lại, và danh sách giống hệt. Các con số này lấy từ một lần chạy tại thời điểm viết và
+thay đổi theo bản build.
+
 ## Chưa port
 
-- Xuất PDF (`takumi-pdf`, một sản phẩm riêng khoảng 43 500 dòng Rust).
 - Binding native N-API (`@takumi-rs/core`).
 - Mọi kiểu truy cập mạng (`prepare` tải tài nguyên, URL `@font-face`).
 - Counter trong `content`, ký hiệu đầu dòng của danh sách, `@apply`, animation trên pseudo-element,
@@ -161,7 +192,7 @@ cho takumi cho ra cùng kết quả:
 - Ảnh không tìm thấy thì không vẽ gì và không ném lỗi.
 - Tailwind: bảng utility, thứ tự sắp xếp và tập variant của takumi (không có `hover:`, `dark:`, `z-*`,
   `ring-*`, ...); giữa hai class màu xung đột, class đứng sau theo thứ tự chữ cái thắng.
-- Stylesheet: cách parse "lossy" của takumi (`@page`, `@container`, `@scope`, ... bị loại), pseudo-class
+- Stylesheet: cách parse "lossy" của takumi (`@page`, `@container`, `@scope`, ... bị loại khỏi cascade; profile `pdf` đọc `@page` riêng để lấy khổ giấy và lề), pseudo-class
   động không bao giờ khớp, `@media` so với kích thước canvas tính bằng CSS px, media feature không hỗ trợ
   làm cả query thành sai.
 - Animation: dòng thời gian tính bằng ms nguyên, mặc định áp dụng tại t = 0, `animation-play-state` bị

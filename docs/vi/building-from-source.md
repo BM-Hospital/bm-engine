@@ -20,8 +20,8 @@ Script build tìm Zig qua biến môi trường `ZIG`, nếu không có thì dù
 ```sh
 npm install                        # root dev dependency: binaryen (wasm-opt)
 
-node scripts/build.mjs             # core + standard + full + WOFF add-on: zig build (optimize=small) + wasm-opt -Oz
-node scripts/build.mjs --profile=core          # one profile (core | standard | full)
+node scripts/build.mjs             # core + standard + full + pdf + WOFF add-on: zig build (optimize=small) + wasm-opt -Oz
+node scripts/build.mjs --profile=core          # one profile (core | standard | full | pdf)
 node scripts/build.mjs -- -Dtables=false       # extra zig options for every profile (marked "custom" in the manifest)
 node scripts/build.mjs --manifest  # rewrite js/build-manifest.json from the wasm files in js/
 node scripts/build.mjs --verify    # check js/*.wasm against the manifest (run by prepublishOnly)
@@ -29,7 +29,7 @@ node scripts/build.mjs --test      # zig build test (also: npm test)
 ```
 
 Đầu ra: `js/bm_engine.core.wasm`, `js/bm_engine.standard.wasm`, `js/bm_engine.wasm` (full),
-`js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, đã tối ưu), `js/build-manifest.json` (profile,
+`js/bm_engine.pdf.wasm` (full + đầu ra PDF), `js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, đã tối ưu), `js/build-manifest.json` (profile,
 kích thước, sha256 và bit tính năng của từng file) và một bảng kích thước ghi vào `bench/out/sizes.json`.
 
 Lệnh Zig trực tiếp:
@@ -42,7 +42,7 @@ zig build addons                            # only the add-on modules
 zig build test --summary all                # native unit tests of every module
 ```
 
-Tùy chọn: `-Dprofile=core|standard|full`, mỗi tính năng một cờ `-D<feature>=true|false` (danh sách ở
+Tùy chọn: `-Dprofile=core|standard|full|pdf`, mỗi tính năng một cờ `-D<feature>=true|false` (danh sách ở
 [Profile và kích thước](profiles-and-size.md#build-tùy-biến)), `-Dwasm-optimize=small|fast|safe|debug`,
 `-Dstrip=false`, `-Dstack-kib=<n>` (shadow stack, mặc định 1024).
 

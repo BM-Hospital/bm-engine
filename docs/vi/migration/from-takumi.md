@@ -28,7 +28,7 @@ takumi 2.20 trong bản sao tham chiếu của repository; **không chạy bất
 | `takumi-js` | `render(jsx)`, `renderSvg`, `measure`, `renderAnimation` cấp cao | `new Renderer()` + `renderer.render(node, options)` v.v.; JSX phải được chuyển đổi trước ([JSX](#jsx)) |
 | `takumi-js/response`, `@takumi-rs/image-response` | `ImageResponse` (lớp con của `Response`) | **không có**; dùng [helper `imageResponse()`](../frameworks/index.md#helper-imageresponse) khoảng 30 dòng hoặc `new Response(bytes, { headers })` |
 | `takumi-js/helpers`, `@takumi-rs/helpers` | `fromJsx`, `fromHtml`, các hàm dựng `container` / `text` / `image`, `googleFonts`, bộ nạp emoji | không thuộc bm-engine. Các hàm dựng trả về object node thuần theo định dạng chung; bm-engine cũng nhận thẳng chuỗi HTML. Xem bên dưới. |
-| `takumi-pdf` | đầu ra PDF | **không có** ([So sánh Image, PDF và Paint](../outputs-compared.md)) |
+| `takumi-pdf` | đầu ra PDF | `bm-engine/pdf` (`PdfRenderer`, `render`, `measure`, `prepare`, `PageNumber`, `TotalPages`, `TargetPageNumber`); xem [PDF](#pdf) |
 | `takumi-paint` | đầu ra paint tree | **không có** ([So sánh Image, PDF và Paint](../outputs-compared.md)) |
 
 ## Khởi tạo
@@ -97,6 +97,23 @@ bm-engine không có JSX runtime. Có ba cách để giữ template JSX:
 
 Các hàm dựng `container()`, `text()`, `image()` của `@takumi-rs/helpers` trả về object node thuần theo
 cùng định dạng, nên cây dựng bằng chúng hẳn sẽ render được nguyên trạng (chưa kiểm thử).
+
+## PDF
+
+`takumi-pdf` ứng với `bm-engine/pdf` ([Đầu ra PDF](../pdf.md)). Tên và hình dạng các tùy chọn là của takumi-pdf (`size`,
+`landscape`, `margin`, `header`, `footer`, `pages`, `pageRanges`, `viewport`, `metadata`, `outline`, `pdfa`, `tagged`,
+`attachments`, `uncoveredText`, ...), và phần lớn thông báo kiểm tra cũng vậy. Khi chuyển mã sang cần đổi:
+
+- Import `PdfRenderer` từ `bm-engine/pdf` thay vì `takumi-pdf`; không có JSX, nên `PageNumber()`, `TotalPages()` và
+  `TargetPageNumber()` trả về object node (một `span` mang class hook), còn `header` / `footer` là chuỗi HTML hoặc cây node.
+- `prepare` và `render` không tải gì và không có `needs`: hãy truyền byte ảnh qua `images` và font qua `registerFont`
+  hoặc `fonts`. bm-engine không kèm font.
+- Font đã đăng ký phải phủ mọi ký tự, nếu không render lỗi (`uncoveredText: "error"`, như ở takumi-pdf).
+- Khác biệt đã biết: PDF/A được kiểm tra nhưng chưa chứng nhận, `list-style-image` không được hỗ trợ, và nội dung chỉ
+  được dàn một lần ở một chiều rộng nên trang có tên hoặc quy tắc `@page` làm đổi chiều rộng trang không dàn lại nó
+  ([Hạn chế đã biết](../pdf.md#hạn-chế-đã-biết)).
+
+`takumi-paint` không có đối ứng ([So sánh Image, PDF và Paint](../outputs-compared.md)).
 
 ## Khác biệt đầu ra cần lường trước
 

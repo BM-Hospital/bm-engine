@@ -12,17 +12,17 @@
   "profiles": {
     "core": {
       "wasm": "js/bm_engine.core.wasm",
-      "bytes": 438785,
+      "bytes": 499257,
       "features": "none of the 18 optional features (bm_features() = 0x0)"
     },
     "standard": {
       "wasm": "js/bm_engine.standard.wasm",
-      "bytes": 869971,
+      "bytes": 956833,
       "features": "13: css, tw, html, svg, woff, variableFonts, cff, effects, modernColor, tables, floats, webpGifDecode, textWrapBalance (0x1fff)"
     },
     "full": {
       "wasm": "js/bm_engine.wasm",
-      "bytes": 1095688,
+      "bytes": 1168942,
       "features": "all 18 (adds colorFonts, complexText, animation, extraCodecs, renderSvg; 0x3ffff)"
     },
     "woffAddon": {

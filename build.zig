@@ -23,6 +23,8 @@ const features = [_]Feature{
     .{ .name = "animation", .desc = "CSS animations / transitions, renderAnimation, animated image sources", .standard = false },
     .{ .name = "extra_codecs", .desc = "WebP lossy (VP8) decode, animated GIF/APNG/WebP decode + encode, ICO output", .standard = false },
     .{ .name = "render_svg", .desc = "renderSvg (vector SVG output)", .standard = false },
+    // Only the `pdf` profile (= full + pdf) turns this on; never part of core / standard / full.
+    .{ .name = "pdf", .desc = "renderPdf (PDF output)", .standard = false },
 };
 
 pub fn build(b: *std.Build) void {
@@ -42,16 +44,24 @@ pub fn build(b: *std.Build) void {
         .single_threaded = true,
     });
     // Feature flags (see src/config.zig): -Dprofile=core|standard|full (default full).
-    const profile = b.option([]const u8, "profile", "feature preset: core | standard | full (default)") orelse "full";
-    const level: u2 = if (std.mem.eql(u8, profile, "core")) 0 else if (std.mem.eql(u8, profile, "standard")) 1 else if (std.mem.eql(u8, profile, "full")) 2 else {
-        std.debug.panic("unknown -Dprofile={s} (core | standard | full)", .{profile});
+    const profile = b.option([]const u8, "profile", "feature preset: core | standard | full (default) | pdf (= full + pdf)") orelse "full";
+    const level: u2 = if (std.mem.eql(u8, profile, "core")) 0 else if (std.mem.eql(u8, profile, "standard")) 1 else if (std.mem.eql(u8, profile, "full") or std.mem.eql(u8, profile, "pdf")) 2 else {
+        std.debug.panic("unknown -Dprofile={s} (core | standard | full | pdf)", .{profile});
     };
+    const is_pdf = std.mem.eql(u8, profile, "pdf");
     const flags = b.addOptions();
+    // The native addon (`zig build native`) is built from the same options with one difference: `pdf`
+    // is on unless `-Dpdf=false` says otherwise (the addon serves both `bm-engine` and `bm-engine/pdf`).
+    const native_flags = b.addOptions();
     inline for (features) |ft| {
-        const def = level == 2 or (level == 1 and ft.standard);
-        flags.addOption(bool, ft.name, b.option(bool, ft.name, ft.desc) orelse def);
+        const is_pdf_flag = comptime std.mem.eql(u8, ft.name, "pdf");
+        const def = if (is_pdf_flag) is_pdf else (level == 2 or (level == 1 and ft.standard));
+        const given = b.option(bool, ft.name, ft.desc);
+        flags.addOption(bool, ft.name, given orelse def);
+        native_flags.addOption(bool, ft.name, given orelse (def or is_pdf_flag));
     }
     flags.addOption([]const u8, "profile", profile);
+    native_flags.addOption([]const u8, "profile", profile);
     wasm_mod.addOptions("build_options", flags);
 
     const stack = (b.option(u64, "stack-kib", "wasm shadow stack size in KiB (default 1024)") orelse 1024) * 1024;
@@ -91,7 +101,7 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
-    addNative(b, native_target, flags);
+    addNative(b, native_target, native_flags);
 }
 
 /// `zig build native -Dtarget=<triple> [-Dnative-optimize=fast|safe|small|debug]`: the Node-API addon

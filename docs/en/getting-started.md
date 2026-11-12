@@ -25,8 +25,8 @@ resolution; snippets for runtimes that could not be run here are marked as such.
 npm install bm-engine
 ```
 
-The package has no dependencies and no install scripts. It contains three prebuilt WebAssembly
-binaries (`core`, `standard`, `full`), the optional WOFF add-on, a dependency-free ESM wrapper and
+The package has no dependencies and no install scripts. It contains four prebuilt WebAssembly
+binaries (`core`, `standard`, `full` and `pdf`, which adds PDF output), the optional WOFF add-on, a dependency-free ESM wrapper and
 TypeScript declarations. The package is ES modules only (see [CommonJS](#commonjs)).
 
 It also lists eight **optional dependencies**, one per platform: `bm-engine-win32-x64-msvc`,
@@ -118,6 +118,7 @@ need an x86-64-v2 CPU (SSE4.2, 2009 onwards); older CPUs get WebAssembly. Node.j
 | `bm-engine/full` | `full`, initialised on import | `await init()` locates `bm_engine.wasm` next to the module (or pass it) |
 | `bm-engine/standard` | `standard`, initialised on import | `await init()` locates `bm_engine.standard.wasm` |
 | `bm-engine/core` | `core`, initialised on import | `await init()` locates `bm_engine.core.wasm` |
+| `bm-engine/pdf` | the native addon when installed, else the wasm `pdf` profile (= `full` + PDF output), initialised on import; see [PDF output](pdf.md) | `await init()` locates `bm_engine.pdf.wasm` |
 | `bm-engine/woff` | `loadWoff()` / `decodeWoff()` — the WOFF add-on | same |
 | `bm-engine/full.wasm`, `/standard.wasm`, `/core.wasm`, `/woff.wasm` (`bm-engine/wasm` = full) | the raw binaries, for bundler asset imports and Workers module imports; each also as `...wasm?module` for Next.js Edge | same |
 
@@ -307,8 +308,8 @@ export default {
 
 What was tested: `initSync(new WebAssembly.Module(bytes))` was executed in Node, and the package test
 resolves the entries with `node --conditions=workerd` and initialises them from a `WebAssembly.Module`;
-the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 228.3 KiB,
-standard 463.5 KiB, full 558.2 KiB) is what counts against the Workers script-size limit of your plan. The
+the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 228.4 KiB,
+standard 463.7 KiB, full 559.0 KiB) is what counts against the Workers script-size limit of your plan. The
 WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` tries the native
@@ -319,9 +320,9 @@ WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await l
 
 | Profile | wasm raw / brotli | Pick it when |
 |:--|:--|:--|
-| `core` | 487.0 / 194.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
-| `standard` | 933.9 / 397.7 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
-| `full` | 1 140.5 / 469.6 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
+| `core` | 487.6 / 194.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
+| `standard` | 934.4 / 398.0 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
+| `full` | 1 141.5 / 469.8 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
 
 Details, and what a smaller profile does with input it cannot handle, are in
 [Profiles and size](profiles-and-size.md). At runtime `features` tells you what the loaded binary has:

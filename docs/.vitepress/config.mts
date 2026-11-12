@@ -126,6 +126,14 @@ const GROUPS: [string, string, P[], boolean?][] = [
     ["native-vs-wasm", "Native vs WebAssembly", "Native và WebAssembly"],
     ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
   ]],
+  ["PDF", "PDF", [
+    ["pdf", "PDF output", "Đầu ra PDF"],
+    ["pdf-pagination", "Pagination", "Phân trang"],
+    ["pdf-headers-footers", "Headers, footers, counters", "Header, footer, bộ đếm trang"],
+    ["pdf-links-metadata", "Links, bookmarks, metadata", "Liên kết, bookmark, metadata"],
+    ["pdf-fonts", "Fonts in PDF", "Font trong PDF"],
+    ["pdf-accessibility", "Accessibility & archival", "Khả năng truy cập và lưu trữ"],
+  ]],
   ["Frameworks", "Framework", [
     ["frameworks/", "Overview", "Tổng quan"],
     ["frameworks/nextjs", "Next.js", "Next.js"],

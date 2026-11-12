@@ -43,11 +43,15 @@ export const TARGETS = {
 };
 const GLIBC_BASELINE = [2, 17];
 /**
- * Fused multiply-add instructions an arm64 artifact may contain: exactly the explicit `@mulAdd` uses, which
- * are fused on every target by definition (in software where the CPU cannot, e.g. wasm). Today: the two
- * `std.math.lerp` calls inlined into paint_text.paintDecoLine / svg_out_text.paintDecoLine (wavy underlines).
+ * Fused multiply-add instructions an arm64 artifact may contain. Today two, both the same source expression:
+ * `@mod(t, 2) == 1` (is the dotted / dashed decoration thickness odd) in paint_text.paintDecoLine and
+ * svg_out_text.paintDecoLine. LLVM lowers a float remainder by a power of two to `t - 2 * trunc(t * 0.5)` and
+ * emits it as one fmsub; the product by 2 is exact, so the fused and the unfused forms give the same bits (the
+ * result is identical to wasm / x86-64). (The PDF emitter's copy of that code, pdf/emit_text.paintDecoLine,
+ * tests the parity on the integer instead, so it adds none.)
  * Any other count means the compiler contracted a multiply and an add on its own, or the source gained /
- * lost an explicit fused operation: run with --explain-fused to see the functions, then update this number.
+ * lost such an expression: run with --explain-fused to see the functions; prefer rewriting the expression
+ * (integer math) to raising this number, and raise it only for a provably exact case like the one above.
  */
 const FUSED_EXPECTED = 2;
 /** libm entry points: none may be imported (the engine's own / compiler-rt implementations must be used). */
@@ -330,8 +334,8 @@ export function verify(name, file = fileOf(name)) {
   }
   if (t.cpu === "arm64") {
     const f = countFusedA64(code);
-    need(f.n === FUSED_EXPECTED, `${f.n} fused multiply-add instruction(s) in the code, expected the ${FUSED_EXPECTED} explicit ones (${f.first.join(" ")}); see --explain-fused`);
-    facts.push(`fused multiply-add instructions: ${f.n} (the ${FUSED_EXPECTED} explicit @mulAdd uses)`);
+    need(f.n === FUSED_EXPECTED, `${f.n} fused multiply-add instruction(s) in the code, expected the ${FUSED_EXPECTED} known exact ones (${f.first.join(" ")}); see --explain-fused`);
+    facts.push(`fused multiply-add instructions: ${f.n} (the ${FUSED_EXPECTED} exact power-of-two remainders)`);
   } else {
     facts.push("x86-64-v2 code (SSE4.2; no AVX / FMA), CPU checked at registration");
   }

@@ -1,5 +1,5 @@
 // bm-engine internal (Node.js / Bun / Deno only): reads one of the package's wasm files from disk, for the Node
-// entries (js/node.mjs, node-core.mjs, node-standard.mjs, node-full.mjs), in a way that survives bundling.
+// entries (js/node.mjs, node-core.mjs, node-standard.mjs, node-full.mjs, node-pdf.mjs), in a way that survives bundling.
 //
 // Tried in order, first readable wins:
 //   1. next to this module: new URL("./<file>", import.meta.url), written literally per file so that bundlers
@@ -39,6 +39,7 @@ const SUBPATH = {
   "bm_engine.wasm": "full.wasm",
   "bm_engine.core.wasm": "core.wasm",
   "bm_engine.standard.wasm": "standard.wasm",
+  "bm_engine.pdf.wasm": "pdf.wasm",
 };
 
 /** new URL(<literal>, import.meta.url) for each shipped file (literal: see 1. above). */
@@ -47,6 +48,7 @@ function siblingUrl(file) {
     case "bm_engine.wasm": return new URL("./bm_engine.wasm", import.meta.url);
     case "bm_engine.core.wasm": return new URL("./bm_engine.core.wasm", import.meta.url);
     case "bm_engine.standard.wasm": return new URL("./bm_engine.standard.wasm", import.meta.url);
+    case "bm_engine.pdf.wasm": return new URL("./bm_engine.pdf.wasm", import.meta.url);
   }
   return new URL("./" + file, moduleBase());
 }

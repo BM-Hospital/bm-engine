@@ -32,7 +32,7 @@ fn toRadians(deg: f32) f32 {
 }
 
 /// sin / cos of an f32 angle, in f64 (reduction by pi/2, Taylor series; |error| < 1e-15 for |x| < 1e6).
-fn sinCos64(rad: f32) [2]f64 {
+pub fn sinCos64(rad: f32) [2]f64 {
     if (!std.math.isFinite(rad)) return .{ std.math.nan(f64), std.math.nan(f64) };
     const x: f64 = rad;
     const q = @floor(x * (2.0 / std.math.pi) + 0.5);

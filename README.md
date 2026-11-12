@@ -2,12 +2,12 @@
 
 [English](README.md) · [Tiếng Việt](README.vi.md)
 
-Render node trees, HTML and Tailwind/CSS to PNG, JPEG, WebP, ICO, raw RGBA, SVG and animated WebP / APNG /
-GIF with a dependency-free WebAssembly engine. bm-engine is a port of the Rust renderer
+Render node trees, HTML and Tailwind/CSS to PNG, JPEG, WebP, ICO, raw RGBA, SVG, animated WebP / APNG /
+GIF and paged PDF with a dependency-free WebAssembly engine. bm-engine is a port of the Rust renderer
 [takumi](https://github.com/kane50613/takumi) (2.20) to Zig 0.17: it accepts takumi's node format, render
 options and API, and was checked against takumi fixture by fixture. It runs in Node.js, browsers,
-bundlers, Bun, Deno and edge runtimes such as Cloudflare Workers, and ships in three build profiles so
-you only load the features you use.
+bundlers, Bun, Deno and edge runtimes such as Cloudflare Workers, and ships in three build profiles (plus a
+`pdf` profile for PDF output) so you only load the features you use.
 
 Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNER/bm-engine/tree/main/docs/en`).
 
@@ -16,7 +16,7 @@ Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNE
 Measured against `@takumi-rs/wasm` 2.20.0 on 250 shared fixtures (Node 26, i3-10100; details in
 [docs/en/benchmark.md](docs/en/benchmark.md)):
 
-- **Small**: `core` 487.0 KiB, `standard` 933.9 KiB, `full` 1 140.5 KiB of wasm (194 / 398 / 470 KiB
+- **Small**: `core` 487.6 KiB, `standard` 934.4 KiB, `full` 1 141.5 KiB of wasm (194 / 398 / 470 KiB
   brotli), against 4 234.9 KiB for takumi — 8.7× / 4.5× / 3.7× smaller. The module has **no imports**
   (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
 - **Same output**: 81 fixtures byte-identical, 169 equivalent (SSIM ≥ 0.99, differences at
@@ -98,13 +98,34 @@ document.querySelector("img").src = URL.createObjectURL(new Blob([png], { type: 
 On Cloudflare Workers import the binary as a module and pass it: `import wasm from "bm-engine/full.wasm";
 initSync(wasm)`. See [Getting started](docs/en/getting-started.md) for bundlers, Workers, Deno and Bun.
 
+## Quick start (PDF)
+
+```js
+import { readFileSync, writeFileSync } from "node:fs";
+import { PdfRenderer } from "bm-engine/pdf"; // the pdf profile: full + PDF output
+
+const pdf = new PdfRenderer();
+pdf.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") });
+
+const bytes = await pdf.render(
+  `<h1 style="font-family: Inter">Quarterly report</h1><p style="font-family: Inter">Selectable text.</p>`,
+  { size: "a4", margin: 36, footer: `<span style="font: 10px Inter">Page <span class="pageNumber"></span></span>` },
+);
+writeFileSync("report.pdf", bytes);
+```
+
+Content flows across pages; headers, footers, page counters, links, bookmarks, metadata, attachments, tagged
+PDF (PDF/UA) and PDF/A are supported. See [PDF output](docs/en/pdf.md). On Node.js `bm-engine/pdf` uses the native
+addon when it is installed (same bytes, faster, async off the main thread) and the wasm `pdf` profile otherwise.
+
 ## Profiles
 
 | Profile | Import | wasm (raw / brotli) | Adds |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 487.0 / 194.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
-| `standard` | `bm-engine/standard` | 933.9 / 397.7 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 140.5 / 469.6 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
+| `core` | `bm-engine/core` | 487.6 / 194.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
+| `standard` | `bm-engine/standard` | 934.4 / 398.0 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 141.5 / 469.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
+| `pdf` | `bm-engine/pdf` | about 1.5 MB raw | `full` + PDF output: pagination, headers / footers, links, bookmarks, metadata, attachments, tagged PDF, PDF/A. See [PDF output](docs/en/pdf.md) |
 
 An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the
 loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.md).
@@ -114,6 +135,7 @@ loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.m
 - [Getting started](docs/en/getting-started.md): install, Node / browser / bundlers / Workers, profiles, fonts, images, formats
 - [API reference](docs/en/api.md): `init`, `Renderer`, node format, options, errors, limits, memory
 - [CSS and feature support](docs/en/css-support.md): the feature matrix and every supported property
+- [PDF output](docs/en/pdf.md): pages, [pagination](docs/en/pdf-pagination.md), [headers and footers](docs/en/pdf-headers-footers.md), [links and metadata](docs/en/pdf-links-metadata.md), [fonts](docs/en/pdf-fonts.md), [PDF/UA and PDF/A](docs/en/pdf-accessibility.md)
 - [Profiles and size](docs/en/profiles-and-size.md) · [Differences from takumi / migration](docs/en/differences-from-takumi.md)
 - [Benchmark](docs/en/benchmark.md) · [Building from source](docs/en/building-from-source.md) · [Playground](docs/en/playground.md) · [Troubleshooting](docs/en/troubleshooting.md)
 - Developer docs: [ARCHITECTURE](docs/ARCHITECTURE.md), [TAKUMI_NOTES](docs/TAKUMI_NOTES.md), [CONVENTIONS](docs/CONVENTIONS.md), [BENCHMARK (full report, Vietnamese)](docs/BENCHMARK.md)
@@ -130,7 +152,10 @@ Version 0.1.0. What to know before adopting it:
 - **No bundled font.** takumi ships Geist; bm-engine draws no text until you register a font.
 - **No network access.** Remote images and `@font-face` URLs are never fetched (`prepare()` does not
   fetch either); pass bytes through `images` and `registerFont`.
-- **No JSX, no `ImageResponse`, no PDF.** Convert JSX with `@takumi-rs/helpers`.
+- **No JSX, no `ImageResponse`.** Convert JSX with `@takumi-rs/helpers`.
+- **PDF is a separate entry** (`bm-engine/pdf`: the wasm `pdf` profile, about 1.5 MB raw, or the native addon on Node.js) and a port of `takumi-pdf` with known
+  differences: content is laid out once at one width (a named page of another width is not re-flowed), `list-style-image` is not supported, PDF/A is checked but not certified, and there is no `needs`
+  pass (see [PDF output → Known limitations](docs/en/pdf.md#known-limitations)).
 - **Inline layout is complete for common content** (text flows around floats; block-in-inline, RTL
   inline boxes, atomic inlines and inline span padding take part in line breaking). Remaining gaps: RTL +
   `pre-wrap` hanging spaces, line-clamp around floats, a block inside a relatively positioned inline box

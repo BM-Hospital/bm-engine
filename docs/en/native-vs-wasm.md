@@ -16,12 +16,17 @@ How the platform packages are built and published: [Publishing](./publishing.md)
 | Browsers, Web Workers | wasm (the only option) | `bm-engine` resolves to the wasm build there |
 | Cloudflare Workers, Vercel / Netlify Edge, Deno Deploy and other edge runtimes | wasm (the only option) | same import |
 | Node.js, but you want wasm anyway (for example to reproduce a browser render bit for bit, or on a host whose addon has not been tested yet) | wasm | `import ... from "bm-engine/full"` or `BM_ENGINE_BACKEND=wasm` |
+| Node.js, Bun, Deno, and you want PDF output | **native**, with an automatic fallback to the wasm `pdf` profile | `import { PdfRenderer, backend } from "bm-engine/pdf"`; see [PDF output](./pdf.md#native-backend-on-nodejs) |
 | Node.js, and you want an error rather than a silent fallback | native | `import ... from "bm-engine/native"` or `BM_ENGINE_BACKEND=native` |
 
 The fallback is silent: if no addon is installed for the platform, if the CPU is older than x86-64-v2
 (SSE4.2), or if the addon fails its load-time floating-point check, `bm-engine` loads the wasm build and
 everything keeps working, only slower and with async calls on the main thread. Log `backend` once at startup
 if you need to know.
+
+`bm-engine/pdf` follows the same rules: on Node.js it uses the addon when it is installed and otherwise the wasm
+`pdf` profile, produces identical PDF bytes on both, and runs its async methods on the libuv thread pool when native.
+`bm-engine` itself exposes no PDF on either backend, although the addon binary contains the PDF writer.
 
 ## Results at a glance
 

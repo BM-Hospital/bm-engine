@@ -1,19 +1,20 @@
 // Release build of every profile: `zig build -Dprofile=<p>` (optimize=small) + `wasm-opt -Oz`, plus the
 // packaging manifest.
 //
-//   node scripts/build.mjs                    core + standard + full + the WOFF add-on
-//   node scripts/build.mjs --profile=core     one profile only (core | standard | full)
+//   node scripts/build.mjs                    core + standard + full + pdf + the WOFF add-on
+//   node scripts/build.mjs --profile=core     one profile only (core | standard | full | pdf)
 //   node scripts/build.mjs -- -Dtables=false  extra zig build options (applied to every profile; the result
 //                                             is marked "custom" in the manifest and cannot be published)
 //   node scripts/build.mjs --manifest         only (re)write js/build-manifest.json from the wasm files in js/
-//   node scripts/build.mjs --verify           check the four wasm files in js/ against js/build-manifest.json
+//   node scripts/build.mjs --verify           check the five wasm files in js/ against js/build-manifest.json
 //                                             and the package.json placeholders (prepublishOnly); exits 1 with
 //                                             instructions on mismatch (--allow-placeholders skips the latter)
 //   node scripts/build.mjs --test             `zig build test` (npm test)
 //   (ZIG=<path to zig> overrides the compiler location; wasm-opt comes from the `binaryen` dev dependency,
 //    looked up in ./node_modules then bench/node_modules)
 //
-// Outputs: js/bm_engine.core.wasm, js/bm_engine.standard.wasm, js/bm_engine.wasm (= full, every feature),
+// Outputs: js/bm_engine.core.wasm, js/bm_engine.standard.wasm, js/bm_engine.wasm (= full: every feature but pdf),
+// js/bm_engine.pdf.wasm (= full + PDF output),
 // js/bm_woff.wasm (add-on, see js/addons.mjs), zig-out/bin/bm_engine.wasm (= full, optimised),
 // js/build-manifest.json (per file: profile, bytes, sha256, feature bits; git describe; zig version) and a
 // size table (raw / gzip -9 / brotli q11) printed and written to bench/out/sizes.json.
@@ -29,12 +30,12 @@ const argv = process.argv.slice(2);
 const dd = argv.indexOf("--");
 const extra = dd >= 0 ? argv.slice(dd + 1) : [];
 const opts = Object.fromEntries((dd >= 0 ? argv.slice(0, dd) : argv).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
-const ALL = ["core", "standard", "full"];
+const ALL = ["core", "standard", "full", "pdf"];
 
 /** Published binaries: js/<file> per profile (+ the add-on). */
-const FILES = { core: "bm_engine.core.wasm", standard: "bm_engine.standard.wasm", full: "bm_engine.wasm", woff: "bm_woff.wasm" };
+const FILES = { core: "bm_engine.core.wasm", standard: "bm_engine.standard.wasm", full: "bm_engine.wasm", pdf: "bm_engine.pdf.wasm", woff: "bm_woff.wasm" };
 /** `bm_features()` of each canonical profile (bit order: src/config.zig `feature_bits`, js/engine.mjs FEATURE_NAMES). */
-const EXPECTED_FEATURES = { core: 0x0, standard: 0x1fff, full: 0x3ffff };
+const EXPECTED_FEATURES = { core: 0x0, standard: 0x1fff, full: 0x3ffff, pdf: 0x7ffff };
 const MANIFEST = path.join(root, "js", "build-manifest.json");
 const rel = (p) => path.relative(root, p).split(path.sep).join("/");
 const sha256 = (b) => createHash("sha256").update(b).digest("hex");
@@ -147,11 +148,14 @@ if (!zigVersion.startsWith("0.17.")) console.warn(`warning: Zig ${zigVersion} fo
 
 if (opts.test) {
   const r = spawnSync(zig, ["build", "test", "--summary", "all"], { cwd: root, stdio: "inherit" });
-  process.exit(r.status ?? 1);
+  if (r.status !== 0) process.exit(r.status ?? 1);
+  // the PDF stub's tests only run with the feature on
+  const p = spawnSync(zig, ["build", "test", "-Dpdf=true", "--summary", "all"], { cwd: root, stdio: "inherit" });
+  process.exit(p.status ?? 1);
 }
 
 const profiles = opts.profile ? String(opts.profile).split(",") : ALL;
-for (const p of profiles) if (!ALL.includes(p)) throw new Error(`unknown profile ${p} (core | standard | full)`);
+for (const p of profiles) if (!ALL.includes(p)) throw new Error(`unknown profile ${p} (core | standard | full | pdf)`);
 
 const wasmOpt = [path.join(root, "node_modules", "binaryen", "bin", "wasm-opt"), path.join(root, "bench", "node_modules", "binaryen", "bin", "wasm-opt")].find(existsSync);
 if (!wasmOpt) console.warn("wasm-opt not found (run `npm i --ignore-scripts` in the repository root); shipping unoptimised binaries");
@@ -179,7 +183,7 @@ for (const p of profiles) {
   copyFileSync(out, dest);
   built.push(p);
   rows[p] = { file: rel(dest), zig: zigBytes, ...sizes(readFileSync(dest)) };
-  if (p === "full" || !rows.woffAddon) {
+  if (p === "full" || (p !== "pdf" && !rows.woffAddon)) {
     const w = path.join(prefix, "bin", "bm_woff.wasm");
     if (existsSync(w)) {
       const zw = statSync(w).size;

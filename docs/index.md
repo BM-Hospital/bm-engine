@@ -5,7 +5,7 @@ titleTemplate: Render HTML + CSS to images with WebAssembly
 
 hero:
   name: bm-engine
-  text: Node trees, HTML and CSS to PNG, WebP, JPEG, SVG and animations
+  text: Node trees, HTML and CSS to PNG, WebP, JPEG, SVG, animations and PDF
   tagline: A dependency-free Zig → WebAssembly port of takumi. Same node format, 4–9× smaller binaries, faster rendering, and pixel-equivalent output on all 250 benchmark fixtures. Runs in Node.js, browsers, Bun, Deno and edge workers.
   actions:
     - theme: brand
@@ -21,7 +21,7 @@ hero:
 features:
   - icon: 📦
     title: 4–9× smaller than takumi
-    details: "<strong>core</strong> 487.0 KiB (8.7× smaller), <strong>standard</strong> 933.9 KiB (4.5×), <strong>full</strong> 1 140.5 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 397.7 / 469.6 KiB."
+    details: "<strong>core</strong> 487.6 KiB (8.7× smaller), <strong>standard</strong> 934.4 KiB (4.5×), <strong>full</strong> 1 141.5 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 469.8 KiB."
     link: /profiles-and-size
     linkText: Profiles and size
   - icon: ⚡
@@ -44,6 +44,11 @@ features:
     details: "<code>core</code>: node trees, block / flex / grid layout, gradients, shadows, filters. <code>standard</code>: + stylesheets, HTML, Tailwind, SVG images, tables, floats. <code>full</code>: + emoji, complex scripts, animations, <code>renderSvg</code>. Optional 84.2 KiB WOFF add-on for <code>core</code>."
     link: /css-support
     linkText: CSS and feature support
+  - icon: 📄
+    title: Paged PDF output
+    details: "A separate <code>pdf</code> profile (about 1.5 MB) ports <code>takumi-pdf</code>: selectable text with subset fonts, pagination, headers and footers, links, bookmarks, attachments, tagged PDF and PDF/A."
+    link: /pdf
+    linkText: PDF output
   - icon: 🧪
     title: Try it in the browser
     details: "The playground runs the real engine in your browser: every profile, node JSON / HTML / Tailwind input and every output format."

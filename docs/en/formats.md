@@ -6,7 +6,7 @@
 which one. This page shows every output bm-engine 0.1.0 can produce — PNG, JPEG, WebP, raw RGBA, ICO,
 data URLs, SVG documents and (on its own page) animations — what each does with transparency and
 `quality`, how `devicePixelRatio` and the canvas size interact, which profile ships which encoder, and
-what the benchmark says about speed and file size. Every snippet below is part of
+what the benchmark says about speed and file size. PDF documents have their own pages, starting at [PDF output](pdf.md). Every snippet below is part of
 `docs/examples/formats.mjs` and the images under it are its real output.
 
 ## At a glance
@@ -347,6 +347,7 @@ try {
 | ICO | | | ✓ |
 | `renderSvg()` | | | ✓ |
 | `renderAnimation()` (WebP / APNG / GIF) | | | ✓ |
+| PDF (`renderPdf()`, `bm-engine/pdf`) | | | not in `full`: see [PDF output](pdf.md) |
 
 On a smaller profile the `full`-only outputs throw a clear error:
 

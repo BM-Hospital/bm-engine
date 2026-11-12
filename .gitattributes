@@ -1,0 +1,2 @@
+# Byte-exact reference data compared in tests (no end-of-line conversion on checkout).
+src/pdf/testdata/*.txt -text

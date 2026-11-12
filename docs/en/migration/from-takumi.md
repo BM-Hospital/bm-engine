@@ -28,7 +28,7 @@ statements about takumi's behaviour are as documented by takumi.
 | `takumi-js` | high-level `render(jsx)`, `renderSvg`, `measure`, `renderAnimation` | `new Renderer()` + `renderer.render(node, options)` etc.; JSX must be converted first ([JSX](#jsx)) |
 | `takumi-js/response`, `@takumi-rs/image-response` | `ImageResponse` (a `Response` subclass) | **not available**; use the 30-line [`imageResponse()` helper](../frameworks/index.md#an-imageresponse-helper) or `new Response(bytes, { headers })` |
 | `takumi-js/helpers`, `@takumi-rs/helpers` | `fromJsx`, `fromHtml`, `container` / `text` / `image` builders, `googleFonts`, emoji loaders | not part of bm-engine. The builders return plain node objects in the shared format; bm-engine also takes HTML strings directly. See below. |
-| `takumi-pdf` | PDF output | **not available** ([Image, PDF and Paint compared](../outputs-compared.md)) |
+| `takumi-pdf` | PDF output | `bm-engine/pdf` (`PdfRenderer`, `render`, `measure`, `prepare`, `PageNumber`, `TotalPages`, `TargetPageNumber`); see [PDF](#pdf) |
 | `takumi-paint` | paint-tree output | **not available** ([Image, PDF and Paint compared](../outputs-compared.md)) |
 
 ## Initialisation
@@ -97,6 +97,25 @@ bm-engine has no JSX runtime. Three ways to keep JSX templates:
 
 takumi's `container()`, `text()`, `image()` builders from `@takumi-rs/helpers` return plain node objects
 in the same format, so trees built with them should render as is (not tested).
+
+## PDF
+
+`takumi-pdf` maps to `bm-engine/pdf` ([PDF output](../pdf.md)). The option names and shapes are takumi-pdf's
+(`size`, `landscape`, `margin`, `header`, `footer`, `pages`, `pageRanges`, `viewport`, `metadata`, `outline`,
+`pdfa`, `tagged`, `attachments`, `uncoveredText`, ...), and so are most validation messages.
+What to change when you move code over:
+
+- Import `PdfRenderer` from `bm-engine/pdf` instead of `takumi-pdf`; there is no JSX, so `PageNumber()`,
+  `TotalPages()` and `TargetPageNumber()` return node objects (a `span` with the class hook), and `header` /
+  `footer` are HTML strings or node trees.
+- `prepare` and `render` fetch nothing and there is no `needs`: pass image bytes in `images` and fonts through
+  `registerFont` or `fonts`. bm-engine ships no font.
+- Registered fonts must cover every character, or the render fails (`uncoveredText: "error"`, as in takumi-pdf).
+- Known differences: PDF/A is checked but not certified, `list-style-image` is not supported, and content is laid
+  out once at one width, so a named page or `@page` rule that changes the page width does not re-flow it
+  ([Known limitations](../pdf.md#known-limitations)).
+
+`takumi-paint` has no counterpart ([Image, PDF and Paint compared](../outputs-compared.md)).
 
 ## Output differences to expect
 

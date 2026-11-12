@@ -11,10 +11,10 @@
 //! image sources when the op says so (`images = true`), calls `run`, and turns the result bytes or
 //! the error into a JS value / exception / rejection. An op only has to call into the engine.
 //!
-//! Adding an output kind (e.g. PDF): see docs/NATIVE.md. In short, add ONE entry here:
+//! Adding an output kind: see docs/NATIVE.md. In short, add ONE entry here, as PDF did:
 //!
-//!     .{ .name = "pdf", .images = true, .run = pdf },
-//!     fn pdf(c: *Call) Error!void { c.result = try c.r.?.renderPdf(sourceKind(c), c.input, c.options); }
+//!     .{ .name = "pdf", .images = true, .run = pdfOp },
+//!     fn pdfOp(c: *Call) Error!void { c.result = try c.r.?.renderPdf(sourceKind(c), c.input, c.options); }
 //!
 //! and the matching entry in the wasm backend + the public method in js/engine.mjs.
 const std = @import("std");
@@ -83,6 +83,9 @@ pub const table = [_]Op{
     .{ .name = "clearFonts", .run = clearFonts },
     .{ .name = "woffDecode", .renderer = false, .run = woffDecode },
     .{ .name = "mathProbe", .renderer = false, .run = mathProbe },
+    // (appended: the index is not ABI, JavaScript reads `ops`, but existing indices stay put)
+    .{ .name = "pdf", .images = true, .run = pdfOp },
+    .{ .name = "pdfMeasure", .images = true, .run = pdfMeasureOp },
 };
 
 /// `arg0` of the source-taking ops: 0 = JSON node tree, 1 = HTML markup (as the wasm ABI).
@@ -103,6 +106,18 @@ fn measureOp(c: *Call) Error!void {
 /// result = SVG document (UTF-8).
 fn svgOp(c: *Call) Error!void {
     c.result = try c.r.?.renderSvg(sourceKind(c), c.input, c.options);
+}
+
+/// takumi-pdf `render`: options = the PdfRenderOptions JSON; the attachments are the image sources of
+/// the document and of the header / footer bands plus the embedded files (`dataRef` ids). Result = a
+/// PDF file. Without the `pdf` feature: "renderPdf is not supported by this build" (as the wasm builds).
+fn pdfOp(c: *Call) Error!void {
+    c.result = try c.r.?.renderPdf(sourceKind(c), c.input, c.options);
+}
+
+/// takumi-pdf `measure`: result = `{"width":..,"height":..}` JSON (CSS px).
+fn pdfMeasureOp(c: *Call) Error!void {
+    c.result = try c.r.?.measurePdf(sourceKind(c), c.input, c.options);
 }
 
 /// input = `{scenes, width, height, fps, ...}` JSON; result = encoded WebP / APNG / GIF.

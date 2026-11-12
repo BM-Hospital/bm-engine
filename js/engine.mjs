@@ -13,8 +13,8 @@ const isWasmModule = (x) => Object.prototype.toString.call(x) === "[object WebAs
 
 /** Optional features in `bm_features()` bit order (src/config.zig `feature_bits`). */
 const FEATURE_NAMES = ["css", "tw", "html", "svg", "woff", "variableFonts", "cff", "effects", "modernColor", "tables",
-  "floats", "webpGifDecode", "textWrapBalance", "colorFonts", "complexText", "animation", "extraCodecs", "renderSvg"];
-const FEATURE_LABELS = { css: "stylesheet (`css` option)", html: "HTML input", woff: "WOFF/WOFF2 font", renderSvg: "renderSvg",
+  "floats", "webpGifDecode", "textWrapBalance", "colorFonts", "complexText", "animation", "extraCodecs", "renderSvg", "pdf"];
+const FEATURE_LABELS = { css: "stylesheet (`css` option)", html: "HTML input", woff: "WOFF/WOFF2 font", renderSvg: "renderSvg", pdf: "renderPdf",
   animation: "animation", extraCodecs: "ICO output" };
 
 const enc = new TextEncoder();
@@ -139,6 +139,7 @@ export function createBinding(defaultWasm, external) {
   const FULL_ONLY = new Set(["renderSvg", "animation", "extraCodecs", "colorFonts", "complexText"]);
   function requireFeature(name) {
     if (!features[name]) {
+      if (name === "pdf") throw new Error("bm-engine: renderPdf is not supported by this build (use the pdf build: import from \"bm-engine/pdf\")");
       throw new Error(`bm-engine: this build has no ${FEATURE_LABELS[name] || name} support (use the ${FULL_ONLY.has(name) ? "full" : "standard / full"} build${name === "woff" ? ", or load the WOFF add-on: import { loadWoff } from \"bm-engine/woff\"; await loadWoff()" : ""})`);
     }
   }
@@ -191,8 +192,8 @@ export function createBinding(defaultWasm, external) {
   //   has(op)              whether the build provides the operation
   //   create() -> handle   a renderer (truthy);  destroy(handle)
   //   run(handle, op, arg0, arg1, input, options, attachments, text) -> Uint8Array | string
-  //       One engine operation. `op`: "render" | "measure" | "svg" (arg0 = source kind: 0 JSON tree, 1 HTML;
-  //       input = the source text, options = options JSON), "animation" (input = options JSON),
+  //       One engine operation. `op`: "render" | "measure" | "svg" | "pdf" | "pdfMeasure" (arg0 = source kind:
+  //       0 JSON tree, 1 HTML; input = the source text, options = options JSON), "animation" (input = options JSON),
   //       "registerFont" (arg0 = weight, arg1 = italic -1 | 0 | 1 as u32, input = family name, attachments =
   //       the font file), "unregisterFont" (input = family; result [0 | 1]), "clearFonts".
   //       `attachments`: null or a flat array of [key, bytes, flags, width, height] groups; for the source
@@ -230,7 +231,8 @@ export function createBinding(defaultWasm, external) {
   }
 
   /** Source ops: the export taking (handle, kind, source, options); [1] = pre-`*_src` export (JSON only). */
-  const SOURCE_OPS = { render: ["bm_render_src", "bm_render"], measure: ["bm_measure_src", "bm_measure"], svg: ["bm_render_svg"] };
+  const SOURCE_OPS = { render: ["bm_render_src", "bm_render"], measure: ["bm_measure_src", "bm_measure"], svg: ["bm_render_svg"],
+    pdf: ["bm_render_pdf"], pdfMeasure: ["bm_measure_pdf"] };
 
   const backend = external || {
     name: "wasm",
@@ -456,7 +458,7 @@ export function createBinding(defaultWasm, external) {
      * Serialises the source; binary image sources become attachments of the call and are replaced by ids.
      * Returns [text, kind] with kind 0 = JSON node tree, 1 = HTML markup.
      */
-    #prepareSource(node, options) {
+    #prepareSource(node, options, extra) {
       this.#handle();
       this.#atts = [];
       let json;
@@ -466,8 +468,11 @@ export function createBinding(defaultWasm, external) {
       if (typeof node === "string") { requireFeature("html"); json = node; kind = 1; }
       else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
       else { own = true; json = this.#stringify(node); }
+      // `extra` (renderPdf): produces more text that may reference images (header / footer bands) and attaches
+      // its own blobs to the call (after the reset above).
+      const more = extra ? extra() : "";
       // Only images the tree actually references are passed to the engine.
-      this.#putImages(options.images, json, own);
+      this.#putImages(options.images, more ? json + "\n" + more : json, own);
       return [json, kind];
     }
 
@@ -553,6 +558,62 @@ export function createBinding(defaultWasm, external) {
     async renderSvg(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
       return this.#runAsync(this.#call("svg", node, await this.#extras(options)), true);
+    }
+
+    /** renderPdf / measurePdf options as JSON text; attachment bytes and band images become attachments of the call. */
+    #pdfOptionsText(options) {
+      const { images: _i, fonts: _f, signal: _s, attachments, ...rest } = options;
+      const o = { ...rest };
+      if (attachments != null) {
+        if (!Array.isArray(attachments)) throw new TypeError("bm-engine: attachments takes an array");
+        o.attachments = attachments.map((a) => {
+          if (a == null || typeof a !== "object") return a;
+          const { data, ...meta } = a;
+          if (isBinary(data)) {
+            const id = "bm-att:" + this.#resSeq++;
+            this.#putImage(id, data);
+            return { ...meta, dataRef: id };
+          }
+          return data === undefined ? meta : { ...meta, data };
+        });
+      }
+      return this.#stringify(o);
+    }
+
+    /** Validates and serialises one renderPdf / measurePdf call; returns the job for #run / #runAsync. */
+    #callPdf(which, node, options) {
+      [node, options] = unwrap(node, options, "render");
+      throwIfAborted(options.signal);
+      requireFeature("pdf");
+      if ((options.css != null && options.css.length !== 0) || (options.stylesheets != null && options.stylesheets.length !== 0)) requireFeature("css");
+      let text;
+      const [json, kind] = this.#prepareSource(node, options, () => (text = this.#pdfOptionsText(options)));
+      return { op: which === "render" ? "pdf" : "pdfMeasure", kind, text: json, opts: text, atts: this.#atts };
+    }
+
+    /**
+     * takumi-pdf `render`: the source as a PDF file. Needs a build with `pdf` (bm-engine/pdf). Options: takumi-pdf's
+     * `PdfRenderOptions` (`viewport` | `size` / `landscape` / `margin` / `header` / `footer` / `pages` /
+     * `pageRanges`, `metadata`, `outline`, `pdfa`, `tagged`, `attachments`, `uncoveredText`, `backgroundColor`,
+     * `css`, `cssVariables`, `fontFamilies`, `lang`, `images`, `fonts`, `signal`); see js/pdf-types.d.mts.
+     */
+    renderPdfSync(node, options = {}) {
+      return this.#run(this.#callPdf("render", node, options));
+    }
+
+    async renderPdf(node, options = {}) {
+      [node, options] = unwrap(node, options, "render");
+      return this.#runAsync(this.#callPdf("render", node, await this.#extras(options)));
+    }
+
+    /** takumi-pdf `measure`: `{ width, height }` in CSS px, laid out like a header / footer band (see pdf.d.mts). */
+    measurePdfSync(node, options = {}) {
+      return JSON.parse(this.#run(this.#callPdf("measure", node, options), true));
+    }
+
+    async measurePdf(node, options = {}) {
+      [node, options] = unwrap(node, options, "render");
+      return JSON.parse(await this.#runAsync(this.#callPdf("measure", node, await this.#extras(options)), true));
     }
 
     /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */

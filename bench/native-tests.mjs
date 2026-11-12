@@ -7,7 +7,8 @@
 //   node native-tests.mjs --case=<name>   one case in this process (what the children run)
 //
 // Cases: concurrency, eventloop, free, gc, errors, raw, fallback, workers, stack, fuzz-tree, fuzz-inline, fuzz-table,
-// fuzz-diff, perf, cold. Byte identity on the fixtures is bench/native-identity.mjs.
+// fuzz-diff, pdf, pdf-stack, fuzz-pdf, perf, cold. Byte identity on the fixtures is bench/native-identity.mjs.
+// The pdf cases drive the addon's PDF output (`bm-engine/pdf` on Node) against js/bm_engine.pdf.wasm.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -692,6 +693,314 @@ CASES["fuzz-diff"] = async () => {
   notes["fuzz-diff"] = rows;
 };
 
+// ---- PDF output (bm-engine/pdf: the same addon, js/native.mjs nativePdfBinding) ---------------------------
+const PDF_WASM_FILE = path.join(ROOT, "js", "bm_engine.pdf.wasm");
+async function loadPdf() {
+  const base = await load();
+  const { createBinding } = await import(href("js", "engine.mjs"));
+  const { nativePdfBinding, nativeError } = await import(href("js", "native.mjs"));
+  const npdf = nativePdfBinding();
+  if (!npdf) throw new Error("the addon has no PDF output: " + nativeError());
+  const newPdfWasm = () => { const b = createBinding(); b.initSync(readFileSync(PDF_WASM_FILE)); return b; };
+  return { ...base, npdf, newPdfWasm, wpdf: newPdfWasm() };
+}
+const pdfDoc = (n, seed = 0) => "<style>body{font-family:Inter;font-size:12px;line-height:1.4} h2{break-after:avoid} table{border-collapse:collapse;width:100%} td{border:1px solid #999;padding:2px 4px}</style>" +
+  Array.from({ length: n }, (_, i) => `<h2 id=s${i}>Section ${i + seed}</h2><p>${("Lorem ipsum dolor sit amet " + (i * 7 + seed) + ", consectetur adipiscing elit. ").repeat(6)}<a href="#s${(i * 3) % n}">link</a></p>` +
+    (i % 3 === 0 ? "<table>" + Array.from({ length: 12 }, (_, r) => `<tr><td>${r}<td>cell ${i}.${r}<td>${(r * 31 + seed) % 97}</tr>`).join("") + "</table>" : "<ul><li>one<li>two<ol><li>nested</ol></ul>")).join("");
+
+CASES.pdf = async () => {
+  const { native, npdf, wpdf, withFonts } = await loadPdf();
+  // one addon, two bindings: the image entry keeps the full wasm build's surface
+  check(native.features.pdf === false && npdf.features.pdf === true && npdf.backend === "native", "features.pdf: off on the bm-engine binding, on on the bm-engine/pdf binding");
+  check(outcome(() => new native.Renderer().renderPdfSync("<p>x</p>")).error === "bm-engine: renderPdf is not supported by this build (use the pdf build: import from \"bm-engine/pdf\")", "bm-engine (native) rejects renderPdf with the wasm build's message");
+  const entry = await import(href("js", "node-pdf.mjs"));
+  check(entry.backend === "native" && entry.profile === "pdf" && entry.Renderer === npdf.Renderer && typeof entry.PdfRenderer === "function", "bm-engine/pdf on Node runs on the addon");
+  const opts = [{ size: "a4", uncoveredText: "blank" }, { size: "a5", landscape: true, tagged: true, uncoveredText: "blank", metadata: { title: "t", creationDate: "2026-01-01" } }, { viewport: { width: 500 }, uncoveredText: "blank" },
+    { size: "letter", uncoveredText: "blank", header: "<div style='font:9px Inter'>h <span class=pageNumber></span>/<span class=totalPages></span></div>", outline: true }];
+  const docs = [pdfDoc(6), pdfDoc(14, 3), pdfDoc(2, 9), pdfDoc(25, 1)];
+  const wr = withFonts(wpdf, ["Inter"]);
+  const expected = docs.map((d, i) => sha(wr.renderPdfSync(d, opts[i])));
+  const expectedM = docs.map((d, i) => sha(JSON.stringify(wr.measurePdfSync(d, opts[i]))));
+  const r = withFonts(npdf, ["Inter"]);
+  check(docs.every((d, i) => sha(r.renderPdfSync(d, opts[i])) === expected[i]), "renderPdfSync gives the wasm bytes");
+  // 80 concurrent renderPdf() on ONE renderer; then across 8 renderers (parallel on the pool)
+  let t0 = performance.now();
+  const outs = await Promise.all(Array.from({ length: 80 }, (_, i) => r.renderPdf(docs[i % 4], opts[i % 4])));
+  const oneMs = performance.now() - t0;
+  check(outs.every((o, i) => sha(o) === expected[i % 4]), "80 concurrent renderPdf() on one renderer give the wasm bytes");
+  t0 = performance.now();
+  for (let i = 0; i < 80; i++) r.renderPdfSync(docs[i % 4], opts[i % 4]);
+  const syncMs = performance.now() - t0;
+  const rs = Array.from({ length: 8 }, () => withFonts(npdf, ["Inter"]));
+  for (const x of rs) x.renderPdfSync(docs[0], opts[0]);
+  t0 = performance.now();
+  const outs8 = await Promise.all(Array.from({ length: 80 }, (_, i) => rs[i % 8].renderPdf(docs[(i >> 3) % 4], opts[(i >> 3) % 4])));
+  const eightMs = performance.now() - t0;
+  check(outs8.every((o, i) => sha(o) === expected[(i >> 3) % 4]), "80 concurrent renderPdf() across 8 renderers give the wasm bytes");
+  check(eightMs < syncMs * 0.75, `8 renderers render PDFs in parallel (sync ${syncMs.toFixed(0)} ms, 8 renderers ${eightMs.toFixed(0)} ms)`);
+  // PDF, measure and image calls mixed on one renderer, sync calls in between
+  const img = { width: 300, height: 120, format: "png" };
+  const wantImg = sha(wr.renderSync(docs[2], img));
+  const mixed = [];
+  for (let i = 0; i < 30; i++) {
+    mixed.push(r.renderPdf(docs[i % 4], opts[i % 4]).then((b) => sha(b) === expected[i % 4]), r.measurePdf(docs[i % 4], opts[i % 4]).then((m) => sha(JSON.stringify(m)) === expectedM[i % 4]), r.render(docs[2], img).then((b) => sha(b) === wantImg));
+    if (i % 10 === 5) { r.registerFont({ name: "Extra" + i, data: fontFile("Roboto-Regular.ttf") }); mixed.push(Promise.resolve(sha(r.renderPdfSync(docs[1], opts[1])) === expected[1])); }
+  }
+  check((await Promise.all(mixed)).every(Boolean), "mixed async renderPdf / measurePdf / render + sync calls on one renderer are all correct");
+  // the image binding and the pdf binding share the addon: concurrent work on both
+  const ir = withFonts(native, ["Inter"]);
+  const both = await Promise.all(Array.from({ length: 40 }, (_, i) => (i & 1 ? ir.render(docs[2], img).then((b) => sha(b) === wantImg) : rs[i % 8].renderPdf(docs[1], opts[1]).then((b) => sha(b) === expected[1]))));
+  check(both.every(Boolean), "image renders (bm-engine binding) and PDF renders (bm-engine/pdf binding) run concurrently on one addon");
+  // the event loop keeps turning during a long PDF render
+  const big = pdfDoc(120);
+  let maxGap = 0, ticks = 0, last = performance.now();
+  const timer = setInterval(() => { const now = performance.now(); maxGap = Math.max(maxGap, now - last); last = now; ticks++; }, 1);
+  await new Promise((res) => setTimeout(res, 30));
+  maxGap = 0; ticks = 0; last = performance.now();
+  t0 = performance.now();
+  const bigOut = await r.renderPdf(big, opts[0]);
+  const bigMs = performance.now() - t0;
+  maxGap = Math.max(maxGap, performance.now() - last);
+  clearInterval(timer);
+  t0 = performance.now();
+  const bigWasm = wr.renderPdfSync(big, opts[0]);
+  const bigWasmMs = performance.now() - t0;
+  check(sha(bigOut) === sha(bigWasm), "a 120-section document is byte-identical");
+  check(ticks > 20 && maxGap < Math.max(100, bigMs / 4), `the event loop keeps running during renderPdf (${bigMs.toFixed(0)} ms, ${ticks} timer ticks, longest delay ${maxGap.toFixed(0)} ms)`);
+  // free() with PDF jobs pending; errors reject
+  const fr = withFonts(npdf, ["Inter"]);
+  const pend = Array.from({ length: 6 }, () => fr.renderPdf(docs[3], opts[3]).then((b) => "ok " + sha(b), (e) => "err " + e.message));
+  fr.free();
+  const settled = await Promise.all(pend);
+  check(settled.every((x) => x === "ok " + expected[3] || x === "err bm-engine: renderer has been freed"), "free() with PDF jobs pending: each completes with the right bytes or rejects cleanly: " + JSON.stringify([...new Set(settled)]));
+  const e1 = await r.renderPdf("<p style='filter:blur(2px)'>x</p>", {}).then(() => "resolved", (e) => e.message);
+  check(e1 === outcome(() => wr.renderPdfSync("<p style='filter:blur(2px)'>x</p>", {})).error, "an async PDF error rejects with the wasm message: " + e1);
+  // bytes survive later changes to the caller's buffers (inputs are snapshotted at the call)
+  const att = new Uint8Array(4096).fill(65);
+  const wantAtt = sha(wr.renderPdfSync(docs[2], { ...opts[2], attachments: [{ name: "a.bin", data: att.slice() }] }));
+  // (queued behind a long job: the bytes are copied when the job is handed to the addon, not when it runs)
+  const ahead = r.renderPdf(big, opts[0]);
+  const pa = r.renderPdf(docs[2], { ...opts[2], attachments: [{ name: "a.bin", data: att }] });
+  await new Promise((res) => setImmediate(res));
+  att.fill(66);
+  check(sha(await pa) === wantAtt, "attachment bytes are snapshotted when the renderPdf() job is queued, not when it runs");
+  await ahead;
+  // PdfRenderer facade and the shared helpers
+  const pr = new entry.PdfRenderer();
+  pr.registerFont({ name: "Inter", data: fontFile("Inter-Regular.ttf") });
+  const wp = new wpdf.Renderer();
+  wp.registerFont({ name: "Inter", data: fontFile("Inter-Regular.ttf") });
+  check(sha(await pr.render(docs[0], opts[0])) === sha(wp.renderPdfSync(docs[0], opts[0])) && same(await pr.measure(docs[0], opts[0]), wp.measurePdfSync(docs[0], opts[0])), "PdfRenderer.render / measure on the addon give the wasm results");
+  const prep = await pr.prepare(docs[0], opts[0]);
+  check(sha(pr.renderSync(prep)) === sha(wp.renderPdfSync(docs[0], opts[0])), "a prepared handle renders the same PDF");
+  notes.pdf = { sync80Ms: +syncMs.toFixed(0), oneRenderer80Ms: +oneMs.toFixed(0), eightRenderers80Ms: +eightMs.toFixed(0), parallelSpeedup: +(syncMs / eightMs).toFixed(2),
+    bigDocument: { sections: 120, bytes: bigOut.length, nativeAsyncMs: +bigMs.toFixed(0), wasmSyncMs: +bigWasmMs.toFixed(0), timerTicks: ticks, maxTimerDelayMs: +maxGap.toFixed(1) } };
+};
+
+/** Deepest-accepted / hostile inputs through the PDF path: paged layout, fragmentation, tagging, markers, bands. */
+function pdfDeepInputs() {
+  const heavy = (i) => ({ display: i % 3 === 0 ? "grid" : i % 3 === 1 ? "flex" : "block", padding: 0.5, opacity: i % 16 === 0 ? 0.9 : 1, overflow: i % 5 === 0 ? "hidden" : "visible", borderRadius: 3, border: "1px solid red", transform: i % 7 === 0 ? "rotate(1deg)" : undefined, boxShadow: "0 0 2px #000", clipPath: i % 29 === 0 ? "inset(0)" : undefined, maskImage: i % 37 === 0 ? "linear-gradient(#000,#000)" : undefined, mixBlendMode: i % 41 === 0 ? "multiply" : undefined });
+  const leaf = { type: "text", text: "Deep text with shadow ".repeat(40), style: { fontFamily: "Inter", fontWeight: 700, textDecoration: "underline", textShadow: "0 1px 2px red" } };
+  const tree = (depth, style, tag) => { let n = leaf; for (let i = 0; i < depth; i++) n = { type: "container", ...(tag ? { tagName: tag(i) } : {}), style: style(i), children: [n] }; return n; };
+  const blank = { uncoveredText: "blank" };
+  const paged = { ...blank, size: { width: 300, height: 400 }, margin: 20 };
+  const tagged = { ...paged, tagged: true, outline: true, lang: "en", metadata: { title: "deep", creationDate: "2026-01-01" } };
+  const vp = { ...blank, viewport: { width: 400, height: 300 } };
+  const list = [];
+  const add = (name, fn) => list.push({ name, fn });
+  const styles = [["heavy", heavy], ["flex", () => ({ display: "flex" })], ["flex column", () => ({ display: "flex", flexDirection: "column", paddingTop: 2 })], ["block", () => ({ display: "block", padding: 0.1 })],
+    ["block tall", () => ({ display: "block", paddingTop: 3, paddingBottom: 3, border: "1px solid #999" })], ["grid", () => ({ display: "grid" })], ["table", (i) => ({ display: ["table", "table-row", "table-cell"][i % 3] })],
+    ["inline", () => ({ display: "inline" })], ["inline-block", () => ({ display: "inline-block", padding: 1 })], ["float", () => ({ float: "left" })], ["list-item", () => ({ display: "list-item", marginLeft: 1 })],
+    ["positioned", (i) => ({ position: i % 2 ? "relative" : "absolute", top: 1, left: 1 })], ["fixed", (i) => ({ position: i % 50 === 0 ? "fixed" : "static", paddingTop: 1 })],
+    ["break-inside avoid", (i) => ({ breakInside: "avoid", paddingTop: 2, breakBefore: i % 100 === 99 ? "page" : "auto" })], ["columns of breaks", (i) => ({ breakAfter: i % 64 === 0 ? "page" : "avoid", paddingBottom: 2 })],
+    ["rtl", (i) => ({ direction: i % 2 ? "rtl" : "ltr", padding: 0.5 })], ["z-index", (i) => ({ position: "relative", zIndex: (i % 5) - 2 })]];
+  for (const [label, style] of styles) {
+    add(`511 containers + text ${label}: pdf paged`, (r) => r.renderPdfSync(tree(511, style), paged));
+    add(`511 containers + text ${label}: pdf viewport`, (r) => r.renderPdfSync(tree(511, style), vp));
+    add(`400 containers + text ${label}: pdf paged tagged`, (r) => r.renderPdfSync(tree(400, style, (i) => ["div", "section", "p", "ul", "li", "span", "blockquote"][i % 7]), tagged));
+    add(`511 containers + text ${label}: pdf tagged + outline`, (r) => r.renderPdfSync(tree(511, style, (i) => ["div", "section", "h2", "p", "ul", "li", "a", "table", "tr", "td", "span", "blockquote"][i % 12]), tagged));
+    add(`511 containers + text ${label}: measurePdf`, (r) => JSON.stringify(r.measurePdfSync(tree(511, style), paged)));
+  }
+  add("512 containers + text (rejected)", (r) => r.renderPdfSync(tree(512, heavy), paged));
+  add("bands of 511 levels", (r) => r.renderPdfSync(tree(40, heavy), { ...paged, header: tree(511, () => ({ display: "flex" })), footer: tree(511, heavy), margin: { top: 60, bottom: 60 } }));
+  add("measurePdf of a 511-level band", (r) => JSON.stringify(r.measurePdfSync(tree(511, heavy), { size: "a4", ...blank })));
+  add("JSON nested 100000 arrays", (r) => r.renderPdfSync({ json: "[".repeat(100000) }, paged));
+  add("JSON nested 100000 objects", (r) => r.renderPdfSync({ json: "{\"children\":[".repeat(100000) }, paged));
+  add("PDF options JSON nested deep", (r) => r.renderPdfSync({ json: "{\"type\":\"container\"}" }, { ...paged, metadata: JSON.parse("[".repeat(400) + "]".repeat(400)) }));
+  add("PDF options: pages nested deep", (r) => r.renderPdfSync({ json: "{\"type\":\"container\"}" }, { ...paged, pages: JSON.parse("{\"first\":".repeat(400) + "1" + "}".repeat(400)) }));
+  for (const tag of ["div", "span", "b", "table", "ul", "ol", "li", "blockquote", "p", "a href=#x", "h1", "section", "td", "svg"]) {
+    add(`HTML 600 nested <${tag}>: pdf paged`, (r) => r.renderPdfSync(`<${tag}>`.repeat(600) + "x", paged));
+    add(`HTML 600 nested <${tag}>: pdf tagged`, (r) => r.renderPdfSync(`<${tag}>`.repeat(600) + "x", tagged));
+  }
+  add("HTML 250 nested <ul><li> with text: tagged", (r) => r.renderPdfSync("<ul><li>item ".repeat(250), tagged));
+  add("HTML 250 nested <ol><li> inside markers", (r) => r.renderPdfSync("<style>li{list-style-position:inside}</style>" + "<ol><li>item ".repeat(250), paged));
+  add("HTML 160 nested tables with thead across pages", (r) => r.renderPdfSync("<table><thead><tr><th>h</th></tr></thead><tr><td>".repeat(160) + "cell ".repeat(400), paged));
+  add("HTML 100000 nested <div>", (r) => r.renderPdfSync("<div>".repeat(100000) + "x", paged));
+  add("HTML 100000 nested <span> measurePdf", (r) => JSON.stringify(r.measurePdfSync("<span>".repeat(100000) + "x", paged)));
+  add("HTML 20000 nested <i> closed", (r) => r.renderPdfSync("<i>".repeat(20000) + "x" + "</i>".repeat(20000), paged));
+  add("HTML 500 nested block-in-inline", (r) => r.renderPdfSync("<span>a<div>b".repeat(250) + "x", tagged));
+  add("3000 headings in the outline", (r) => r.renderPdfSync(Array.from({ length: 3000 }, (_, i) => `<h${(i % 6) + 1} id=h${i}>H ${i}</h${(i % 6) + 1}>`).join(""), { ...tagged, size: "a4" }));
+  add("2000 forced page breaks", (r) => r.renderPdfSync("<div style='break-after:page'>p</div>".repeat(2000), paged));
+  add("5000 links to one target", (r) => r.renderPdfSync("<p id=t>target</p>" + "<a href='#t'>l</a> ".repeat(5000), tagged));
+  add("@page rules + named pages, 300 names", (r) => r.renderPdfSync("<style>" + Array.from({ length: 300 }, (_, i) => `@page n${i}{margin:${i % 40}px} .n${i}{page:n${i}}`).join("") + "</style>" + Array.from({ length: 300 }, (_, i) => `<div class=n${i}>x</div>`).join(""), paged));
+  add("counters: 400 nested counter scopes", (r) => r.renderPdfSync("<style>div{counter-reset:c;counter-increment:c} div::before{content:counters(c,'.') ' '}</style>" + "<div>".repeat(400) + "x", paged));
+  add("CSS calc nested 5000 in a paged doc", (r) => r.renderPdfSync("<div class=a><p>text</p></div>", { ...paged, css: [`.a{width:${"calc(".repeat(5000)}1px${")".repeat(5000)}}`] }));
+  add("SVG 5000 nested <g> image", (r) => r.renderPdfSync({ type: "image", src: `<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">${"<g>".repeat(5000)}<rect width='10' height='10'/>${"</g>".repeat(5000)}</svg>` }, paged));
+  add("inline SVG 600 nested <g>", (r) => r.renderPdfSync("<svg width=50 height=50>" + "<g transform='rotate(1)'>".repeat(600) + "<rect width=10 height=10 />", paged));
+  add("1 MB single word", (r) => r.renderPdfSync({ type: "text", text: "a".repeat(1 << 20), style: { fontFamily: "Inter", fontSize: 3 } }, paged));
+  add("bidi 5000 embeddings tagged", (r) => r.renderPdfSync({ type: "text", text: "\u202a\u202b".repeat(2500) + "abc \u05d0\u05d1\u05d2 123" + "\u202c".repeat(5000), style: { fontFamily: "Inter" } }, tagged));
+  return list;
+}
+
+CASES["pdf-stack-probe"] = async () => {
+  // child of `pdf-stack`: runs deep PDF input #idx natively on a helper thread with exactly --stack bytes
+  const { npdf, addon, withFonts } = await loadPdf();
+  addon.tune(+args.mode || 2, +args.stack, 0);
+  const r = withFonts(npdf, ["Inter"]);
+  const inputs = pdfDeepInputs();
+  const ids = String(args.idx).split(",").map(Number);
+  const out = {};
+  const ms = {};
+  for (const i of ids) { const t0 = performance.now(); out[i] = outcome(() => inputs[i].fn(r)); ms[i] = Math.round(performance.now() - t0); }
+  if (args.times) for (const i of ids) console.log(`TIME ${ms[i]} ms  ${inputs[i].name}`);
+  console.log("RESULT " + JSON.stringify(out));
+};
+
+CASES["pdf-stack"] = async () => {
+  const { wpdf, newPdfWasm, npdf, withFonts } = await loadPdf();
+  const inputs = pdfDeepInputs();
+  // reference outcomes from the pdf wasm build (a wasm trap poisons the instance: start a new one)
+  let B = wpdf, wr = withFonts(B, ["Inter"]);
+  const ref = inputs.map((x) => { const o = outcome(() => x.fn(wr)); if (o.trap) { B = newPdfWasm(); wr = withFonts(B, ["Inter"]); } return o; });
+  const probe = (stack, idx, mode = 2) => {
+    const r = spawnSync(process.execPath, [SELF, "--case=pdf-stack-probe", `--stack=${stack}`, `--idx=${idx.join(",")}`, `--mode=${mode}`], { encoding: "utf8", timeout: 900000, maxBuffer: 64 << 20 });
+    const line = r.stdout.split("\n").find((l) => l.startsWith("RESULT "));
+    return { status: r.status, signal: r.signal, out: line ? JSON.parse(line.slice(7)) : null };
+  };
+  const all = inputs.map((_, i) => i);
+  const table = [];
+  const dflt = probe(0, all, 1), thr = probe(0, all, 2);
+  check(dflt.status === 0 && dflt.out, `default configuration survives every deep PDF input (exit ${dflt.status})`);
+  check(thr.status === 0 && thr.out, `helper thread with the default stack survives every deep PDF input (exit ${thr.status})`);
+  let wasmTraps = 0;
+  inputs.forEach((x, i) => {
+    const w = ref[i], n = dflt.out && dflt.out[i], t = thr.out && thr.out[i];
+    if (w.trap) { wasmTraps++; check(false, `${x.name}: the pdf wasm build TRAPS (${w.trap}); native: ${JSON.stringify(n)}`); }
+    else { check(same(w, n), `${x.name}: wasm ${JSON.stringify(w)} native ${JSON.stringify(n)}`); check(same(w, t), `${x.name} (helper thread): wasm ${JSON.stringify(w)} native ${JSON.stringify(t)}`); }
+    table.push({ input: x.name, wasm: w.trap ? "TRAP " + w.trap : w.error ? "error: " + w.error : "ok", native: n ? (n.error ? "error: " + n.error : "ok") : "CRASH" });
+  });
+  // the async path (a libuv pool thread) on the deepest tree
+  const ar = withFonts(npdf, ["Inter"]);
+  const deep = inputs.findIndex((x) => x.name === "511 containers + text heavy: pdf tagged + outline");
+  const pooled = await new Promise((res) => { let v; try { v = inputs[deep].fn({ renderPdfSync: (n, o) => ar.renderPdf(n, o) }); } catch (e) { return res({ error: String(e.message) }); } Promise.resolve(v).then((b) => res({ ok: sha(Buffer.from(b.buffer, b.byteOffset, b.byteLength)) }), (e) => res({ error: String(e.message) })); });
+  check(same(pooled, ref[deep]), `the deepest tagged tree on a pool thread: ${JSON.stringify(pooled)} vs wasm ${JSON.stringify(ref[deep])}`);
+  // smallest helper-thread stack on which ALL inputs behave
+  let lo = 16 << 10, hi = 3 << 20;
+  const passes = (st) => { const p = probe(st, all); return p.status === 0 && p.out && inputs.every((_, i) => ref[i].trap || same(ref[i], p.out[i])); };
+  if (passes(lo)) hi = lo;
+  while (hi - lo > 8 << 10) { const mid = (lo + hi) >> 1; if (passes(mid)) hi = mid; else lo = mid; }
+  const tight = probe(Math.max(16 << 10, (hi * 3) >> 2), all);
+  const hungry = tight.out ? inputs.filter((_, i) => !ref[i].trap && !same(ref[i], tight.out[i])).map((x) => x.name) : [`(process died with exit ${tight.status}: inputs unknown)`];
+  const worst = [];
+  if (!tight.out) for (const i of all) { const p = probe(Math.max(16 << 10, (hi * 3) >> 2), [i]); if (p.status !== 0) worst.push(inputs[i].name); }
+  notes["pdf-stack"] = { inputs: inputs.length, wasmTraps, minimalStackKiB: hi >> 10, defaultStackKiB: 3072, marginX: +((3 << 20) / hi).toFixed(1), crashAtThreeQuarters: worst.length ? worst : hungry, table };
+  check(hi <= 1 << 20, `every deep PDF input fits a ${hi >> 10} KiB stack: the 3072 KiB guarantee has >= 3x margin`);
+};
+
+CASES["fuzz-pdf-run"] = async () => {
+  // child of fuzz-pdf: mutated documents / options through the pdf wasm AND the addon, outcomes compared
+  const { newPdfWasm, npdf } = await loadPdf();
+  const cls = String(args.class);
+  let seed = (+args.seed || 1) >>> 0;
+  const rnd = (n) => { seed = (seed + 0x6d2b79f5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return (((t ^ (t >>> 14)) >>> 0) % n); };
+  const inter = fontFile("Inter-Regular.ttf");
+  let W = newPdfWasm(), wr = new W.Renderer(), nr = new npdf.Renderer();
+  wr.registerFont({ name: "Inter", data: inter }); nr.registerFont({ name: "Inter", data: inter });
+  const resetWasm = () => { W = newPdfWasm(); wr = new W.Renderer(); wr.registerFont({ name: "Inter", data: inter }); };
+  const toks = ["<", ">", "</", "/>", "<!--", "-->", "&#", "&amp", ";", "\"", "'", "=", "<svg", "</svg>", "<p>", "<table>", "<thead>", "<tr>", "<td>", "<li>", "<ol>", "<ul>", "<style>", "<a href='#x'>", "<a href='https://e.x/'>", "<h1 id=x>", "<h3>", "\r", "\0", "\ufffd", "<pre>", "<body>",
+    "{", "}", "(", ")", "calc(", "var(--x)", "!important", "@media print{", "@page{", "@page :first{", "@page n{", "margin:", "size:", "page:n;", "break-before:page;", "break-inside:avoid;", "break-after:avoid;", "widows:", "orphans:", "position:fixed;", "float:left;", "display:list-item;", "direction:rtl;",
+    "list-style:", "counter-reset:", "content:counter(page)", "::before", "::marker", "#", "%", "1e99", "-", "\\", "/*", "*/", "[", "]", ",", "rgb(", "linear-gradient(", "\"type\":", "\"children\":[", "null", "1e999", "\ud800", "\u202e", "class=pageNumber", "class=totalPages", "class=targetPageNumber",
+    "background-clip:border-area;", "background-clip:text;", "opacity:.5;", "transform:rotate(3deg);", "mix-blend-mode:multiply;", "mask-image:linear-gradient(#000,transparent);", "clip-path:circle(40%);", "text-indent:2em;", "font-variant-caps:small-caps;", "text-overflow:ellipsis;overflow:hidden;white-space:nowrap;"];
+  const mutateText = (s) => {
+    if (rnd(4) === 0) s = s.slice(0, rnd(s.length + 1));
+    for (let k = rnd(10); k >= 0; k--) {
+      const at = rnd(s.length + 1), m = rnd(3);
+      if (m === 0) s = s.slice(0, at) + toks[rnd(toks.length)] + s.slice(at);
+      else if (m === 1) s = s.slice(0, at) + s.slice(at + rnd(40));
+      else s = s.slice(0, at) + s.slice(rnd(s.length + 1));
+    }
+    return s.slice(0, 200000);
+  };
+  const htmlDir = path.join(ROOT, "ref", "takumi", "takumi", "tests", "fixtures-html");
+  const htmlSeeds = existsSync(htmlDir) ? readdirSync(htmlDir).filter((f) => f.endsWith(".html")).map((f) => readFileSync(path.join(htmlDir, f), "utf8")) : [];
+  htmlSeeds.push(pdfDoc(3), pdfDoc(9, 2), "<style>@page{margin:20px} @page :first{margin-top:60px} .a{display:flex;gap:4px;color:red} li{break-inside:avoid} thead{background:#eee} .fx{position:fixed;bottom:0}</style><div class=a><b>x</b><i>y</i></div><div class=fx>page <span class=pageNumber></span> of <span class=totalPages></span></div>" +
+    "<table><thead><tr><th>a<th>b</thead>" + "<tr><td>1<td colspan=2>2".repeat(80) + "</table><ol reversed start=5><li>a<li value=2>b<ul><li>c</ul></ol><h1 id=x>T</h1><p style='text-indent:2em;direction:rtl'>\u05e9\u05dc\u05d5\u05dd <a href='#x'>go</a> <span style='font-variant-caps:small-caps'>Caps</span></p><img src='data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"20\" height=\"20\" fill=\"red\"/></svg>'>");
+  const { ALL_CASES } = await load();
+  const jsonSeeds = ALL_CASES.filter((k) => typeof k.node === "object" && !k.images && JSON.stringify(k.node).length < 20000).filter((_, i) => i % 5 === 0).map((k) => JSON.stringify(k.node));
+  const optSeeds = [{ size: "a4" }, { size: "letter", landscape: true, margin: { top: "auto", bottom: 30, left: 20, right: 20 }, header: "<p style='font:9px Inter'>h <span class=pageNumber></span></p>", footer: { type: "text", text: "f", style: { fontFamily: "Inter", fontSize: 9 } } },
+    { viewport: { width: 400, height: 300 } }, { size: { width: 300, height: 200 }, pageRanges: [1, { from: 2, to: 5 }], backgroundColor: "#fafafa" }, { size: "a5", tagged: true, outline: true, lang: "en", metadata: { title: "T", authors: ["A"], keywords: ["k"], creationDate: "2026-02-03T04:05:06Z" } },
+    { size: "a5", pdfa: "2a", lang: "en", metadata: { title: "T", creationDate: "2026-02-03" } }, { size: "a5", pdfa: "3b", attachments: [{ name: "a.txt", data: "abc", mimeType: "text/plain", description: "d" }], metadata: { title: "T" } },
+    { size: "a5", pdfa: "4", tagged: "ua2", lang: "en", metadata: { title: "T" } }, { size: "a6", pages: { first: { header: false, margin: 40 }, left: { margin: { left: 50 } } }, header: "<b>x</b>", cssVariables: { x: "red" }, css: "p{color:var(--x)}" }];
+  const optValues = [null, 0, -1, 1e9, 0.5, "", "a4", "a99", "auto", true, false, [], {}, [1, 2], { from: 0 }, { width: -1 }, { top: "auto" }, "2026-13-45", "ua1", "2b", "4f", "blank", "placeholder", "error", "\ud800", "x".repeat(300)];
+  const optKeys = ["size", "landscape", "margin", "header", "footer", "pages", "pageRanges", "viewport", "metadata", "outline", "pdfa", "tagged", "attachments", "uncoveredText", "backgroundColor", "css", "cssVariables", "fontFamilies", "lang", "width", "height", "title", "creationDate", "first", "left", "right", "top", "name", "data"];
+  const mutateOpts = (o) => {
+    o = JSON.parse(JSON.stringify(o));
+    for (let k = rnd(4); k > 0; k--) {
+      let t = o;
+      for (let d = rnd(3); d > 0; d--) { const ks = Object.keys(t).filter((x) => t[x] && typeof t[x] === "object" && !Array.isArray(t[x])); if (!ks.length) break; t = t[ks[rnd(ks.length)]]; }
+      const m = rnd(3);
+      if (m === 0) t[optKeys[rnd(optKeys.length)]] = optValues[rnd(optValues.length)];
+      else if (m === 1) { const ks = Object.keys(t); if (ks.length) delete t[ks[rnd(ks.length)]]; }
+      else { const ks = Object.keys(t); if (ks.length) t[ks[rnd(ks.length)]] = optValues[rnd(optValues.length)]; }
+    }
+    return o;
+  };
+  const N = +args.n || 500;
+  const stats = { class: cls, seed: +args.seed || 1, cases: 0, identicalOk: 0, identicalError: 0, mismatches: 0, wasmTraps: 0, worstMs: 0 };
+  const shown = [];
+  const lastFile = path.join(BENCH, "out", `fuzz-pdf-${cls}-last.txt`);
+  mkdirSync(path.join(BENCH, "out"), { recursive: true });
+  for (let i = 0; i < N; i++) {
+    let call, desc;
+    const base = { uncoveredText: rnd(8) ? "blank" : "placeholder", ...optSeeds[rnd(optSeeds.length)] };
+    if (cls === "html") { const s = mutateText((rnd(50) === 0 ? "<div>".repeat(rnd(700)) : "") + htmlSeeds[rnd(htmlSeeds.length)]); desc = JSON.stringify(base) + "\n" + s; call = (r) => (rnd(6) ? r.renderPdfSync(s, base) : JSON.stringify(r.measurePdfSync(s, base))); }
+    else if (cls === "json") { const s = mutateText(jsonSeeds[rnd(jsonSeeds.length)]); desc = JSON.stringify(base) + "\n" + s; call = (r) => r.renderPdfSync({ json: s }, base); }
+    else if (cls === "options") { const o = mutateOpts(base); const s = htmlSeeds[htmlSeeds.length - 1 - rnd(3)]; desc = JSON.stringify(o); call = (r) => r.renderPdfSync(s, o); }
+    else if (cls === "bands") { const hs = mutateText("<div style='display:flex;justify-content:space-between;font:9px Inter'><span class=pageNumber></span><span class='totalPages upper-roman'></span><a href='#x'><span class=targetPageNumber></span></a></div>"); const o = { ...base, viewport: undefined, size: base.viewport ? "a6" : base.size, header: hs, footer: mutateText(hs) }; desc = JSON.stringify(o); call = (r) => r.renderPdfSync(htmlSeeds[htmlSeeds.length - 1], o); }
+    else throw new Error("unknown class " + cls);
+    writeFileSync(lastFile, `${cls} seed ${args.seed} iteration ${i}\n${desc}`);
+    const state = seed;
+    const t0 = performance.now();
+    const w = outcome(() => call(wr));
+    seed = state; // (the same random choices inside `call` for both backends)
+    const n = outcome(() => call(nr));
+    stats.worstMs = Math.max(stats.worstMs, +(performance.now() - t0).toFixed(0));
+    stats.cases++;
+    if (w.trap) { stats.wasmTraps++; resetWasm(); if (shown.length < 5) shown.push({ i, wasm: w, native: n, input: String(desc).slice(0, 600) }); continue; }
+    if (same(w, n)) { if (w.ok) stats.identicalOk++; else stats.identicalError++; }
+    else { stats.mismatches++; if (shown.length < 5) shown.push({ i, wasm: w, native: n, input: String(desc).slice(0, 900) }); }
+  }
+  console.log("RESULT " + JSON.stringify({ ...stats, shown }));
+};
+CASES["fuzz-pdf"] = async () => {
+  // differential mutation fuzzing of the PDF path: documents (HTML, JSON trees), PDF options, header / footer bands
+  const plan = [["html", 700], ["json", 500], ["options", 700], ["bands", 400]];
+  const rows = [];
+  for (const [cls, n] of plan) for (const seed of [1, 2]) {
+    const r = spawnSync(process.execPath, [SELF, "--case=fuzz-pdf-run", `--class=${cls}`, `--seed=${seed}`, `--n=${args.n || n}`], { encoding: "utf8", timeout: 1800000, maxBuffer: 64 << 20 });
+    const line = r.stdout.split("\n").find((l) => l.startsWith("RESULT "));
+    const res = line ? JSON.parse(line.slice(7)) : null;
+    const last = res ? "" : (() => { try { return readFileSync(path.join(BENCH, "out", `fuzz-pdf-${cls}-last.txt`), "utf8").slice(0, 400); } catch { return ""; } })();
+    check(r.status === 0 && res, `fuzz-pdf ${cls} seed ${seed}: exit ${r.status}${r.signal ? " " + r.signal : ""} ${last} ${r.stderr.slice(-300)}`);
+    if (res) {
+      check(res.mismatches === 0, `fuzz-pdf ${cls} seed ${seed}: ${res.mismatches} native/wasm mismatches, e.g. ${JSON.stringify(res.shown[0] ?? null).slice(0, 900)}`);
+      check(res.wasmTraps === 0, `fuzz-pdf ${cls} seed ${seed}: ${res.wasmTraps} wasm traps, e.g. ${JSON.stringify(res.shown[0] ?? null).slice(0, 900)}`);
+      rows.push({ class: cls, seed, cases: res.cases, identicalOk: res.identicalOk, identicalError: res.identicalError, mismatches: res.mismatches, wasmTraps: res.wasmTraps, worstMs: res.worstMs, exit: r.status, examples: res.shown.slice(0, 2) });
+    } else rows.push({ class: cls, seed, exit: r.status, signal: r.signal, crashedOn: last });
+  }
+  notes["fuzz-pdf"] = rows;
+};
+
 // ---- g. quick performance ---------------------------------------------------------------------------------
 CASES.perf = async () => {
   const { wasm, native, ALL_CASES, renderOpts, withFonts } = await load();
@@ -746,7 +1055,7 @@ CASES.cold = async () => {
 
 // ============================================================================================================
 const NODE_FLAGS = { gc: ["--expose-gc"], free: ["--expose-gc"] };
-const HIDDEN = new Set(["stack-probe", "fuzz-diff-run"]);
+const HIDDEN = new Set(["stack-probe", "fuzz-diff-run", "pdf-stack-probe", "fuzz-pdf-run"]);
 // (a worker-pool thread count other than libuv's default of 4 is up to the caller: UV_THREADPOOL_SIZE)
 
 if (!isMainThread) {

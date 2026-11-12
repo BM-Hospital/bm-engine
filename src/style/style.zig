@@ -84,6 +84,8 @@ pub const Context = struct {
     normal_line_height_ratio: f32 = 1.2,
     /// Root element's computed line-height in device px (`rlh`); 0 = normal ratio * root_font_size.
     root_line_height: f32 = 0,
+    /// PDF builds only: the frame is one a PDF is drawn from (see `props.Cx.paged`).
+    paged: props.Paged = props.paged_off,
 };
 
 /// Filled on error.InvalidStyleValue. `value` is "" for JSON-number values.
@@ -274,6 +276,7 @@ pub fn computeLayers(
         .parent_fs = pfs,
         .parent_weight = if (parent) |p| p.font_weight else 400,
         .parent_color = if (parent) |p| p.color else Color.black,
+        .paged = ctx.paged,
     };
     const st: State = .{ .init = &init_s, .parent = parent, .diag = diag };
 
@@ -351,6 +354,8 @@ fn applyWide(cx: *props.Cx, st: *const State, p: Prop, k: CssWide) void {
 
 fn applyItem(cx: *props.Cx, st: *const State, it: Item, p: Prop) Error!void {
     const d = it.d;
+    // (PDF builds, a frame no PDF is drawn from: accepted and ignored, as without the feature)
+    if (comptime props.pdf_build) if (!cx.paged and props.pagedOnly(p)) return;
     if (d.number) |num| {
         var l = tokenizer.Lexer.initNumber(num);
         return applyParsed(cx, st, it, p, &l);
@@ -2126,4 +2131,46 @@ test "fuzz: parsers never crash" {
         for (names, 0..) |nm, k| vd[k] = .{ .name = nm, .value = if (k % 2 == 0) val else "var(--a) var(--b)" };
         _ = computeEx(a, &ctx, &parent, null, &vd, null, &d) catch {};
     }
+}
+
+test "fragmentation properties (paged output)" {
+    const root = @import("root");
+    // (parsed only with the PDF feature; accepted and ignored without it)
+    const on = if (@hasDecl(root, "bm_config")) (@hasDecl(root.bm_config, "enable_pdf") and root.bm_config.enable_pdf) else true;
+    var t = TestCx.init();
+    defer t.deinit();
+    if (comptime props.pdf_build) {
+        // a frame no PDF is drawn from: ignored, as without the feature (even an invalid value)
+        const im = try css(&t, null, "break-before: page; widows: 0; orphans: 4; break-inside: sometimes");
+        try T.expect(im.break_before == .auto and im.break_inside == .auto and im.widows == 2 and im.orphans == 2);
+        try t.bad("backgroundClip", "border-area");
+        t.ctx.paged = true;
+        if (comptime @hasField(computed.BgBox, "border_area")) {
+            try T.expect((try t.one("backgroundClip", "border-area")).background_clip[0] == .border_area);
+        } else try t.bad("backgroundClip", "border-area");
+    }
+    const s = try css(&t, null, "break-before: page; break-after: avoid-page; break-inside: avoid; widows: 3; orphans: 4");
+    if (!on) {
+        try T.expect(s.break_before == .auto and s.break_inside == .auto and s.widows == 2 and s.orphans == 2);
+        return;
+    }
+    try T.expect(s.break_before == .page and s.break_after == .avoid_page and s.break_inside == .avoid);
+    try T.expect(s.widows == 3 and s.orphans == 4);
+    try T.expect(s.break_before.forcesPage() and s.break_after.avoidsPage() and s.break_inside.avoidsPage());
+    // the legacy aliases, and `always` as `page`
+    const l = try css(&t, null, "page-break-before: always; page-break-after: left; page-break-inside: avoid");
+    try T.expect(l.break_before == .always and l.break_before.forcesPage() and l.break_after == .left and l.break_inside == .avoid);
+    try T.expect((try t.one("breakBefore", "recto")).break_before.forcesPage());
+    try T.expect(!(try t.one("breakBefore", "column")).break_before.forcesPage());
+    try T.expect(!(try t.one("breakAfter", "avoid-column")).break_after.avoidsPage());
+    try T.expect(!(try t.one("breakInside", "avoid-column")).break_inside.avoidsPage());
+    try T.expect((try t.one("pageBreakInside", "avoid")).break_inside == .avoid);
+    // widows / orphans: integers >= 1, inherited
+    try t.bad("widows", "0");
+    try t.bad("orphans", "-2");
+    try t.bad("widows", "2.5");
+    try t.bad("orphans", "auto");
+    try t.bad("breakBefore", "sometimes");
+    const child = try css(&t, &s, "color: red");
+    try T.expect(child.widows == 3 and child.orphans == 4 and child.break_before == .auto and child.break_inside == .auto);
 }

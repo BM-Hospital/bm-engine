@@ -10,7 +10,8 @@ Tài liệu người dùng cho bm-engine 0.1.0, bản port bộ render ảnh tak
 | [Bắt đầu](getting-started.md) | Cài đặt, Node.js, trình duyệt, bundler, Workers / Deno / Bun, chọn profile, font, ảnh, định dạng đầu ra |
 | [Tham chiếu API](api.md) | `init`, `features`, `Renderer` và mọi method, định dạng node, tùy chọn render, lỗi, giới hạn, mô hình bộ nhớ, add-on WOFF |
 | [Hỗ trợ CSS và tính năng](css-support.md) | Ma trận tính năng kèm profile tối thiểu và mức tương đương, Tailwind, HTML, SVG, animation, hạn chế đã biết, mọi thuộc tính được hỗ trợ |
-| [Profile và kích thước](profiles-and-size.md) | `core` / `standard` / `full` gồm những gì, kích thước, chi phí từng tính năng, build tùy biến, add-on WOFF |
+| [Đầu ra PDF](pdf.md) | `bm-engine/pdf`: trang, lề, `measure`, profile `pdf`; rồi [Phân trang](pdf-pagination.md), [Header, footer và bộ đếm trang](pdf-headers-footers.md), [Liên kết, bookmark, metadata, tệp đính kèm](pdf-links-metadata.md), [Font trong PDF](pdf-fonts.md), [Khả năng truy cập và lưu trữ](pdf-accessibility.md) |
+| [Profile và kích thước](profiles-and-size.md) | `core` / `standard` / `full` / `pdf` gồm những gì, kích thước, chi phí từng tính năng, build tùy biến, add-on WOFF |
 | [Native và WebAssembly](native-vs-wasm.md) | Backend Node.js nào được dùng, mô hình thread, đầu ra trùng từng byte, nền tảng hỗ trợ, tốc độ / bộ nhớ / cold start so với wasm và takumi |
 | [Khác biệt với takumi](differences-from-takumi.md) | Hướng dẫn chuyển đổi, khác biệt API và kết quả render, các hành vi của takumi được giữ nguyên có chủ đích |
 | [Benchmark](benchmark.md) | Tốc độ, kích thước, bộ nhớ và mức tương đương điểm ảnh so với takumi 2.20, cách chạy lại |

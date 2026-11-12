@@ -23,9 +23,10 @@ Behaviour described here was checked by running it; error messages are quoted ve
 
 ## Module exports
 
-Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/native`) exports
+Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/pdf`, `bm-engine/native`) exports
 the same names and owns one engine instance (a wasm instance; on Node.js, `bm-engine` may run the native addon
-instead, and `bm-engine/native` always does). See [Package entry points](getting-started.md#package-entry-points).
+instead, and `bm-engine/native` always does); `bm-engine/pdf` adds `PdfRenderer` and the page counter helpers
+([PDF output](pdf.md)). See [Package entry points](getting-started.md#package-entry-points).
 
 | Export | Kind |
 |:--|:--|
@@ -35,8 +36,8 @@ instead, and `bm-engine/native` always does). See [Package entry points](getting
 | `features` | `Readonly<Features>` |
 | `Prepared` | opaque class of `prepare()` handles (not constructible by you) |
 | `setGlyphCacheMaxBytes` | no-op, for takumi compatibility |
-| `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-engine` / `bm-engine/native` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
-| `profile` | `"core" \| "standard" \| "full"` (profile entries only) |
+| `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-engine`, `bm-engine/native` and `bm-engine/pdf` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
+| `profile` | `"core" \| "standard" \| "full" \| "pdf"` (profile entries only) |
 | `wasmUrl` | `() => URL` (profile entries only) |
 
 ### `init`
@@ -86,10 +87,11 @@ A frozen-shape object of booleans describing the loaded binary; all `false` befo
 | `animation` | CSS animations (`timeMs`), `renderAnimation`, animated image sources | | | ✓ |
 | `extraCodecs` | lossy WebP decode, animated GIF / APNG / WebP decode and encode, ICO output | | | ✓ |
 | `renderSvg` | `renderSvg()` | | | ✓ |
+| `pdf` | `renderPdf()` / `measurePdf()` (PDF output) | | | `false` in `full` and on `bm-engine` (also on the native addon); `true` only in `bm-engine/pdf` (native or wasm), which has every other feature too |
 
 ### `profile` and `wasmUrl`
 
-Only on `bm-engine/core`, `/standard` and `/full`: `profile` is the entry's profile name; `wasmUrl()`
+Only on `bm-engine/core`, `/standard`, `/full` and `/pdf`: `profile` is the entry's profile name; `wasmUrl()`
 returns the URL `init()` loads by default (`new URL("./bm_engine[.<profile>].wasm", import.meta.url)`)
 and throws where `import.meta.url` is not usable.
 
@@ -193,6 +195,13 @@ takumi).
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });
 // '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">...'
 ```
+
+### `renderPdf` / `measurePdf` and the `*Sync` twins
+
+Every `Renderer` has `renderPdf(source, options)` and `measurePdf(source, options)`, but only `bm-engine/pdf` exposes the
+PDF writer; on any other build, including `bm-engine` on the native addon, they throw `bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")`.
+On Node.js, `bm-engine/pdf` runs on the native addon when it is installed (the same PDF bytes as the wasm `pdf` profile), and then the async twins run off the main thread on the libuv thread pool.
+The options are described in [PDF output](pdf.md); `PdfRenderer` in `bm-engine/pdf` is the usual way to call them.
 
 ### `measure` / `measureSync`
 

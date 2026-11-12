@@ -13,6 +13,7 @@
     "flexbox",
     "png",
     "svg",
+    "pdf",
     "webp",
     "wasm",
     "webassembly",
@@ -84,6 +85,15 @@
       "types": "./js/native.d.mts",
       "default": "./js/node-native.mjs"
     },
+    "./pdf": {
+      "types": "./js/pdf.d.mts",
+      "workerd": "./js/pdf.mjs",
+      "worker": "./js/pdf.mjs",
+      "edge-light": "./js/pdf.mjs",
+      "browser": "./js/pdf.mjs",
+      "node": "./js/node-pdf.mjs",
+      "default": "./js/pdf.mjs"
+    },
     "./woff": {
       "types": "./js/addons.d.mts",
       "default": "./js/addons.mjs"
@@ -120,6 +130,14 @@
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_engine.wasm?module"
     },
+    "./pdf.wasm": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.pdf.wasm"
+    },
+    "./pdf.wasm?module": {
+      "types": "./js/wasm.d.mts",
+      "default": "./js/bm_engine.pdf.wasm?module"
+    },
     "./woff.wasm": {
       "types": "./js/wasm.d.mts",
       "default": "./js/bm_woff.wasm"
@@ -134,7 +152,8 @@
     "./js/node.mjs",
     "./js/node-core.mjs",
     "./js/node-standard.mjs",
-    "./js/node-full.mjs"
+    "./js/node-full.mjs",
+    "./js/node-pdf.mjs"
   ],
   "files": [
     "js/index.mjs",
@@ -154,12 +173,18 @@
     "js/full.mjs",
     "js/full.d.mts",
     "js/node-full.mjs",
+    "js/pdf.mjs",
+    "js/pdf-api.mjs",
+    "js/pdf.d.mts",
+    "js/pdf-types.d.mts",
+    "js/node-pdf.mjs",
     "js/addons.mjs",
     "js/addons.d.mts",
     "js/wasm.d.mts",
     "js/bm_engine.core.wasm",
     "js/bm_engine.standard.wasm",
     "js/bm_engine.wasm",
+    "js/bm_engine.pdf.wasm",
     "js/bm_woff.wasm",
     "js/build-manifest.json",
     "README.md",
@@ -177,9 +202,11 @@
     "build:core": "node scripts/build.mjs --profile=core",
     "build:standard": "node scripts/build.mjs --profile=standard",
     "build:full": "node scripts/build.mjs --profile=full",
+    "build:pdf": "node scripts/build.mjs --profile=pdf",
     "build:manifest": "node scripts/build.mjs --manifest",
     "verify": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify",
     "test": "node scripts/build.mjs --test",
+    "test:pdf": "node scripts/pdf-test.mjs",
     "test:pack": "node scripts/pack-test.mjs",
     "build:native": "node scripts/build-native.mjs",
     "build:npm": "node scripts/npm-platform-packages.mjs",

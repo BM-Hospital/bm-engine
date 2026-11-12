@@ -13,7 +13,7 @@ const png = await r.render(node, { width: 1200, height: 630 }); // on a libuv po
 ```
 
 Contents: [selection and fallback](#selection-and-fallback) · [architecture](#architecture) ·
-[adding an output kind](#adding-an-output-kind-eg-pdf) · [threading](#threading) · [memory](#memory) ·
+[PDF output](#pdf-output) · [adding an output kind](#adding-an-output-kind) · [threading](#threading) · [memory](#memory) ·
 [stack](#stack) · [bit-identical output](#bit-identical-output) · [building](#building) · [packaging](#packaging) ·
 [what is verified](#what-is-verified) · [limits](#limits-and-known-gaps)
 
@@ -22,20 +22,21 @@ Contents: [selection and fallback](#selection-and-fallback) · [architecture](#a
 | import | Node.js / Bun / Deno | browsers, workerd, edge |
 | --- | --- | --- |
 | `bm-engine` | native addon if it loads, **else wasm, automatically and silently** | wasm (`js/index.mjs`, never sees the loader) |
+| `bm-engine/pdf` | the same native addon (its PDF output) if it loads, **else `bm_engine.pdf.wasm`, automatically and silently** | wasm (`js/pdf.mjs`, never sees the loader) |
 | `bm-engine/native` | native addon, or the import throws | not available |
-| `bm-engine/core`, `/standard`, `/full` | always wasm (`/full` = the same feature set as native) | wasm |
+| `bm-engine/core`, `/standard`, `/full` | always wasm (`/full` = the same feature set as `bm-engine` on the addon) | wasm |
 
 `bm-engine/wasm` already names the raw `.wasm` file, so "wasm on Node, no matter what" is spelled
 `bm-engine/full` (or the environment variable below); no new subpath was added for it.
 
-Environment variables (read once, when `bm-engine` is imported):
+Environment variables (read once, when `bm-engine` / `bm-engine/pdf` is imported; both entries read them the same way):
 
 | variable | effect |
 | --- | --- |
 | `BM_ENGINE_BACKEND=wasm` | never try the addon |
 | `BM_ENGINE_BACKEND=native` | require it: the import throws `bm-engine: BM_ENGINE_BACKEND=native, but the native addon is not available (<why>)` |
 | `BM_ENGINE_NATIVE_PATH=<file.node>` | the only place the addon is looked for (a missing or unloadable file means wasm) |
-| `BM_WASM`, `BM_PROFILE` | name a wasm binary, as before; they also select the wasm backend unless `BM_ENGINE_BACKEND=native` |
+| `BM_WASM`, `BM_PROFILE` | name a wasm binary of `bm-engine`, as before; they also select the wasm backend unless `BM_ENGINE_BACKEND=native` (`bm-engine/pdf` then loads `bm_engine.pdf.wasm`, whatever they name) |
 
 Where the addon is looked for (`js/native.mjs`, nothing in it throws): `$BM_ENGINE_NATIVE_PATH`; else a
 checkout's `native/dist/<name>/bm-engine.<name>.node`; else `require("bm-engine-<name>")`, the per-platform
@@ -52,7 +53,9 @@ be half-used).
 What differs for the user between the backends: `backend`; `init()` / `initSync()` are no-ops natively (they
 resolve to the addon's exports); `memoryBytes()` is the addon's live allocation instead of the wasm memory
 size; `loadWoff()` (`bm-engine/woff`) has nothing to load natively and returns `{ builtIn: true }`, and the
-addon's WOFF decoder also serves the wasm `core` entry in the same process. Nothing else.
+addon's WOFF decoder also serves the wasm `core` entry in the same process. Nothing else: in particular
+`features` of `bm-engine` is the full wasm build's on both backends (`features.pdf` is `false` and `renderPdf`
+throws "not supported by this build" there, although the addon contains the PDF writer: see [PDF output](#pdf-output)).
 
 ## Architecture
 
@@ -105,19 +108,57 @@ memoryBytes()        tune(stackMode, stackBytes, maxBytes, zeroedBuffers)   // t
 `arg1` of an async `render` call is a size hint: the byte length of the raw frame when `format` is `"raw"` and
 both `width` and `height` are given (0 otherwise; `js/engine.mjs` computes it). See [memory](#memory).
 
-## Adding an output kind (e.g. PDF)
+## PDF output
 
-Nothing in the N-API glue, the loader or the threading changes. Three small additions:
+PDF went in exactly as the next section describes, and it is the worked example of it.
+
+* **One addon.** The addon is built with the `pdf` feature on (`build.zig`: the native build's options are the
+  wasm profile's with `pdf` defaulting to true; `zig build native -Dpdf=false` leaves it out). Its `features`
+  has the `pdf` bit and its `ops` has `pdf` and `pdfMeasure` (`src/native/ops.zig`).
+* **Two bindings on it.** `js/native.mjs` wraps the addon as two backends: `nativeBinding()` for `bm-engine` /
+  `bm-engine/native` hides the `pdf` bit and the two ops, so those entries behave exactly like the full wasm
+  build (`features.pdf === false`; `renderPdf` throws `bm-engine: renderPdf is not supported by this build (use the
+  pdf build: import from "bm-engine/pdf")`); `nativePdfBinding()` for `bm-engine/pdf` exposes them. The rule
+  for users is therefore the same on every backend and runtime: **PDF comes from `bm-engine/pdf`**. A `Renderer`
+  from one entry is not a `Renderer` of the other (two classes), but both run on the one loaded addon, share
+  its allocator accounting and the thread pool, and can work concurrently.
+* **Fallback.** `js/node-pdf.mjs` picks the backend with the same rules and the same environment variables as
+  `js/node.mjs`; when there is no addon, or an addon without the `pdf` feature, it initialises
+  `bm_engine.pdf.wasm` (found through `js/wasm-file.mjs`, so bundling is survived the same way).
+  `PdfRenderer`, `render`, `measure`, `prepare` are built on whichever `Renderer` is active by
+  `js/pdf-api.mjs`, which the wasm-only entry `js/pdf.mjs` (browsers, workerd) shares; that entry never imports
+  the loader.
+* **Jobs.** `renderPdf` / `measurePdf` build a job like `render`: the source text, the options JSON and the
+  attachments. Attachments are the document's and the header / footer bands' images plus the embedded files
+  (`attachments[].data` becomes a `dataRef` id; the bytes travel as an attachment under that id), so an async
+  call snapshots them like image bytes. `renderPdf()` and `measurePdf()` run on the thread pool;
+  `PdfRenderer.render` / `measure` are those calls.
+* **Determinism.** A PDF has no input from the host besides the call: no clock (dates come from
+  `metadata.creationDate`; without one no date is written), no random ids (the file `/ID` and the XMP ids are
+  hashes of the metadata and of the bytes), no iteration over address-keyed tables. The same call gives the
+  same bytes on wasm and natively; `bench/native-identity.mjs` checks it (below).
+* **Image path unchanged.** The paged-media properties and values (`break-*`, `page-break-*`, `widows`,
+  `orphans`, `background-clip: border-area`) are computed only for a frame a PDF is drawn from
+  (`style.Context.paged`); in an image render they are accepted and ignored on a build with the `pdf` feature
+  exactly as on one without it. List markers and the PDF glyph placement are per frame as well. So an image
+  from the addon (or from `bm_engine.pdf.wasm`) is byte-identical to the full wasm build's, which the identity
+  run checks too.
+* **Size.** The PDF pipeline adds 0.76 MB (arm64) to 0.96 MB (x64) to an artifact (see [what is verified](#what-is-verified)).
+
+## Adding an output kind
+
+Nothing in the N-API glue, the loader or the threading changes. Three small additions (shown with PDF,
+which is in the tree):
 
 1. **Zig, `src/native/ops.zig`**: one entry in `table` and its function. `Call` gives the renderer (already
    locked, on a thread with enough stack), the two integers, `input`, `options` and the attachments; the
    function sets `c.result`.
 
    ```zig
-   .{ .name = "pdf", .images = true, .run = pdf },
-   .{ .name = "pdfMeasure", .images = true, .run = pdfMeasure },
+   .{ .name = "pdf", .images = true, .run = pdfOp },
+   .{ .name = "pdfMeasure", .images = true, .run = pdfMeasureOp },
 
-   fn pdf(c: *Call) Error!void {
+   fn pdfOp(c: *Call) Error!void {
        c.result = try c.r.?.renderPdf(sourceKind(c), c.input, c.options);
    }
    ```
@@ -132,12 +173,11 @@ Nothing in the N-API glue, the loader or the threading changes. Three small addi
    with the `(handle, kind, source, options)` signature it is one entry in `SOURCE_OPS`:
 
    ```js
-   const SOURCE_OPS = { ..., pdf: ["bm_render_pdf"], pdfMeasure: ["bm_measure_pdf"] };
+   const SOURCE_OPS = { render: [...], measure: [...], svg: [...], pdf: ["bm_render_pdf"], pdfMeasure: ["bm_measure_pdf"] };
    ```
 
-3. **JS, the public method in `js/engine.mjs`**: build the job and run it. Ported from the wasm-only version
-   of `renderPdf`, the body keeps using `#prepareSource`, `#putImage` and `#stringify` unchanged (they now
-   queue attachments instead of writing into wasm memory); only the tail changes:
+3. **JS, the public method in `js/engine.mjs`**: build the job and run it. `#prepareSource`, `#putImage` and
+   `#stringify` queue attachments (they do not write into wasm memory), so the method ends by returning a job:
 
    ```js
    #callPdf(which, node, options) {
@@ -153,19 +193,23 @@ Nothing in the N-API glue, the loader or the threading changes. Three small addi
    measurePdfSync(node, options = {}) { return JSON.parse(this.#run(this.#callPdf("measure", node, options), true)); }
    ```
 
+   (`() => (text = this.#pdfOptionsText(options))` is the `extra` hook of `#prepareSource`: it runs after the
+   attachment list is reset and may attach blobs of its own, here the embedded files.)
+
    (`#run(job, true)` returns the result decoded as text.) There is no `#takeBytes` / `#takeString` /
    `copyInString` / `check(status)` in a method any more: that is the wasm backend's business.
 
 A feature that is compiled out natively shows up as a missing bit in `features` (same `feature_bits` as wasm),
 so `requireFeature("pdf")` keeps working; an op name the addon does not have makes the native backend throw
-`bm-engine: <op> is not supported by this native build`. To ship PDF in the addon, enable the feature for the
-native build (`zig build native -Dpdf=true`, or in `scripts/build-native.mjs`) and add its fixtures to
-`bench/native-identity.mjs`.
+`bm-engine: <op> is not supported by this native build`. Then add the new output to `bench/native-identity.mjs`
+(same call on both backends, bytes compared) and, when it brings new recursion, deep inputs to the stack case
+of `bench/native-tests.mjs`.
 
 ## Threading
 
 * `*Sync` methods, `registerFont`, `unregisterFont`, `clearFonts`: on the calling thread.
-* `render`, `renderAsDataUrl`, `renderSvg`, `measure`, `renderAnimation`: `addon.runAsync` copies the inputs
+* `render`, `renderAsDataUrl`, `renderSvg`, `measure`, `renderAnimation`, `renderPdf`, `measurePdf` (and
+  `PdfRenderer.render` / `measure`): `addon.runAsync` copies the inputs
   (strings, option JSON, every attachment) into native memory **at the call**, creates a promise and a
   `napi_create_async_work`; the engine runs in the libuv pool, the promise is settled back on the JS thread.
   Later changes to the caller's buffers (including transferring or detaching them) cannot affect the render.
@@ -230,7 +274,13 @@ So every engine call first asks how much stack the calling thread has left
 `pthread_get_stackaddr_np` / `pthread_get_stacksize_np`). With at least `stack_need` = **3 MiB** left it
 runs inline. Otherwise, or when the bounds cannot be determined, it runs on a temporary thread created with
 exactly that much stack (`CreateThread` / `pthread_create`), and the caller waits. The measured worst case over the
-deepest accepted inputs is 768 KiB on x86-64 (see [what is verified](#what-is-verified)).
+deepest accepted inputs is 768 KiB on x86-64 for images and 899 KiB for PDF (see [what is verified](#what-is-verified)).
+
+The PDF emitter recurses like the painter (`src/pdf/emit.zig`: `paintNode` -> `paintBox` -> `paintNode`), and it
+arrived with frames several times larger: on the deepest accepted tree it overflowed wasm's 1 MiB stack (a trap)
+and needed 2.7 MiB natively. The walk now follows the painter's rule: everything the recursive functions call is
+`noinline` and they hold no large local, which is what brought it to the numbers above. Keep it that way when
+touching those functions; `bench/native-tests.mjs --only=pdf-stack` measures it.
 
 ## Bit-identical output
 
@@ -242,12 +292,19 @@ about it:
   level whatever `-Dcpu` or the host says): SSE4.2, no AVX, no FMA instruction exists to fuse into.
   arm64 has FMA in its baseline, so `scripts/build-native.mjs` scans every arm64 artifact's code for fused
   multiply-add instructions (`fmadd`/`fmsub`/`fnmadd`/`fnmsub`, `fmla`/`fmls`) and requires exactly the explicit
-  ones: two `std.math.lerp` calls (`@mulAdd`, in the wavy text-decoration code), which are fused on *every*
-  target by definition (in software on wasm and x86-64). `--explain-fused` lists them by function. In
+  ones: two copies of one expression, `@mod(t, 2) == 1` (is a dotted / dashed text decoration's thickness odd,
+  in `paint_text.zig` and `svg_out_text.zig`). LLVM lowers a float remainder by a power of two to
+  `t - 2 * trunc(t * 0.5)` and emits it as one fused instruction; the product by 2 is exact, so fusing cannot
+  change the result. Anything else fails the build: the rule is to rewrite the expression with integer math
+  rather than to raise the count (the PDF emitter's copy of that decoration code tests the parity on the
+  integer for this reason, as `measure_xform.zig` does for quarter turns). `--explain-fused` lists them by function. In
   addition the addon checks at load time, with volatile operands, that scalar and vector `a * b + c` round
   twice on the machine it runs on; if not it refuses to register and JavaScript falls back to wasm.
-* **Math library.** `sin`, `cos`, `exp`, `log`, `pow`, ... are Zig's `std.math` / compiler-rt code inside the
-  binary on every target. `floor`, `ceil`, `trunc`, `round` and `fmod`, which LLVM turns into C library calls
+* **Math library.** `sin`, `cos`, `exp`, `log`, `pow`, ... are the engine's own routines (`src/style/cmath.zig`,
+  `src/raster/types.zig`, `src/measure_xform.zig`) or Zig's `std.math` / compiler-rt code inside the
+  binary on every target. The builtins `@sin`, `@cos`, `@tan`, `@exp`, ... must not be used in engine code:
+  on macOS Zig's compiler-rt leaves them to libSystem (the PDF emitter came with four such calls; they now go
+  through the routines above, which changed no fixture). `floor`, `ceil`, `trunc`, `round` and `fmod`, which LLVM turns into C library calls
   where the CPU lacks an instruction, are provided by `src/native/libm.zig` (strong, hidden symbols; integer
   bit manipulation) so that no target binds them to its platform libm. The build script fails any artifact
   that imports a math function.
@@ -345,8 +402,8 @@ The tools (results land in `bench/out/native-*.json` and `native/dist/manifest.j
 | tool | what |
 | --- | --- |
 | `node scripts/build-native.mjs` | per artifact, without running it: container format and CPU; `napi_register_module_v1` exported; the undefined `napi_*` symbols (ELF, Mach-O) / lookup names (PE) are exactly the `Api` struct of `src/native/napi.zig`; Mach-O binds them by flat lookup and everything else to libSystem; only `libc.so.6` / `libpthread.so.0` / ... or musl's `libc.so` or `/usr/lib/libSystem.B.dylib` or `kernel32.dll` needed; highest required glibc symbol version <= 2.17; no math function imported; no thread-local storage segment; no executable stack; arm64 Mach-O ad-hoc signed; arm64 fused multiply-add count |
-| `node bench/native-identity.mjs` | every fixture of the benchmark suite through both backends: raw RGBA, PNG, JPEG, WebP, measure JSON, SVG, plus animations (WebP / APNG / GIF), ICO, HTML, image attachments, WOFF2, error messages; native async against native sync |
-| `node bench/native-tests.mjs` (`npm run test:native`) | each case in a child process: `concurrency`, `eventloop`, `free`, `gc`, `errors`, `fallback`, `workers`, `libm`, `stack`, `fuzz-tree` / `fuzz-inline` / `fuzz-table` (the existing probes, run against the addon through `bench/lib/native-hooks.mjs`), `fuzz-diff` (mutated HTML / JSON / CSS / SVG / images / fonts through both backends, outcomes compared), `perf`, `cold` |
+| `node bench/native-identity.mjs` | every fixture of the benchmark suite through both backends: raw RGBA, PNG, JPEG, WebP, measure JSON, SVG, plus animations (WebP / APNG / GIF), ICO, HTML, image attachments, WOFF2, error messages; native async against native sync. **PDF** (`bm_engine.pdf.wasm` against the addon's PDF output): every 5th fixture as a one-page PDF, every 10th paged with bands and tagged, `measurePdf`, async against sync; a long document as A4 / letter / viewport / tagged / PDF/UA-1 / PDF/A-2b, 2a, 3b with attachments, PDF/A-4 + UA-2 / page ranges / page rules, and the error cases; every PDF call of `docs/examples/pdf*.mjs`, `scripts/pdf-test.mjs` and `scripts/pdf-compare.mjs` (takumi-pdf's fixtures) replayed on wasm (`bench/lib/pdf-identity-hook.mjs`); and image renders through both pdf builds against the full wasm |
+| `node bench/native-tests.mjs` (`npm run test:native`) | each case in a child process: `concurrency`, `eventloop`, `free`, `gc`, `errors`, `fallback`, `workers`, `libm`, `stack`, `fuzz-tree` / `fuzz-inline` / `fuzz-table` (the existing probes, run against the addon through `bench/lib/native-hooks.mjs`), `fuzz-diff` (mutated HTML / JSON / CSS / SVG / images / fonts through both backends, outcomes compared), `pdf` (concurrent `renderPdf` on one and on eight renderers, mixed with image renders on the other binding, event loop, `free()` with jobs pending, snapshots, `PdfRenderer`), `pdf-stack` (the deepest accepted documents through paged layout, fragmentation, tagging, markers and bands, on the smallest stack), `fuzz-pdf` (mutated documents, PDF options and bands through both backends), `perf`, `cold` |
 
 Only the artifact of the host platform can be executed by these tools. The others are compiled and
 structurally verified; they still need one run of `native-identity.mjs` and `native-tests.mjs` on their
@@ -357,11 +414,12 @@ running on the machine; `win32-x64-msvc` is the only artifact that was executed)
 
 | | |
 | --- | --- |
-| artifacts | 8 / 8 compile and pass the structural checks; 1.6 MB (arm64) to 2.1 MB (x64), 0.95 to 1.1 MB gzip |
-| identity | 250 fixtures, 1810 comparisons (637 MB of output), 0 mismatches |
-| differential fuzz | 17 800 mutated inputs (HTML, JSON trees, CSS, SVG, images, fonts): same bytes or same error on both backends, 0 crashes; plus the three existing fuzz probes (16 900 inputs) without a crash |
+| artifacts | 8 / 8 compile and pass the structural checks; 2.4 MB (arm64) to 3.1 MB (x64), 1.4 to 1.6 MB gzip. Of that the PDF pipeline is 0.76 to 0.96 MB (without it the artifacts were 1.6 to 2.1 MB) |
+| identity | 250 fixtures, 2432 comparisons (800 MB of output), 0 mismatches; 622 of them PDF (50 fixtures, the document variants, and the 311 calls of the 8 replayed scripts: 278 PDF renders and measures plus their font registrations, among them takumi-pdf's 89 fixtures) |
+| PDF | `scripts/pdf-test.mjs`: 334 / 334 checks on the wasm `pdf` profile and on the addon; `scripts/pdf-compare.mjs` against takumi-pdf's 89 golden files gives the same verdicts on both (73 identical, 3 close, 13 differ: the numbers of the wasm port); 80 concurrent `renderPdf()` on one renderer and across 8 renderers all give the wasm bytes (8 renderers: 3.1x the synchronous speed); a 120-section document renders in 0.7 s on a pool thread (1.8 s on wasm) with the longest timer delay 17 ms |
+| differential fuzz | 17 800 mutated inputs (HTML, JSON trees, CSS, SVG, images, fonts): same bytes or same error on both backends, 0 crashes; plus the three existing fuzz probes (16 900 inputs) without a crash; PDF: 4 600 mutated documents, option objects and bands, same bytes or same error on both, 0 crashes, 0 wasm traps |
 | libm | 5 functions x f32 / f64 x 2^20 values, bit-exact |
-| stack | 61 deepest-allowed / hostile inputs: the smallest stack on which all behave is 768 KiB (512-level trees, PNG path); guaranteed: 3072 KiB |
+| stack | 61 deepest-allowed / hostile inputs: the smallest stack on which all behave is 768 KiB (512-level trees, PNG path); guaranteed: 3072 KiB. PDF path (137 inputs: 511-level trees of every layout kind paged, tagged and in bands, deep lists / tables / block-in-inline, 100 000 nested tags): 899 KiB, and no trap on wasm's 1 MiB stack |
 | concurrency | 200 concurrent `render()` on one renderer and across 8 renderers: all correct; 8 renderers on the default pool of 4 are 2.8x faster than the same work synchronously |
 | event loop | a 6 s animation render: longest delay of a 1 ms timer 30 ms natively (415 ticks) against 11.5 s on wasm (0 ticks, the whole render) |
 | memory | 4000 renderers with 1 MB of fonts each created and dropped without `free()`: RSS flat at 68 to 69 MB, 9.6 MB live in the addon; with `free()` 0 live; 0 after the final GC |

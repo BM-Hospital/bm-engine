@@ -233,6 +233,61 @@ pub const ParagraphOptions = struct {
     indent_pct: f32 = 0,
     indent_each_line: bool = false,
     indent_hanging: bool = false,
+    /// PDF builds only (`void` otherwise; set for the frames a PDF is drawn from, so a raster
+    /// render is untouched): a line's glyphs sit at their item's origin plus their advance within
+    /// the item, summed exactly (takumi's fragment builder: `origin.x + glyph.x`, the advances of
+    /// `ShapeResultView::for_each_glyph` summed in 1/65536 px fixed point), not at one running
+    /// f32 line position, which rounds once it passes 256 px: the PDF's text positioning shows
+    /// the last bits.
+    item_origin: if (item_origin_build) bool else void = if (item_origin_build) false else {},
+};
+
+/// Whether `ParagraphOptions.item_origin` exists (src/config.zig `enable_pdf` via the root module; on in
+/// standalone module tests).
+const item_origin_build = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_pdf else true;
+};
+
+/// Where `ParagraphOptions.item_origin` places a line's glyphs (an empty struct in other builds):
+/// the current item's origin, the advance within it so far (exact in f64, as takumi's fixed-point
+/// sum) and the face of the glyph before.
+const ItemPos = if (item_origin_build) struct {
+    org: f32,
+    loc: f64 = 0,
+    last_face: ?FaceId = null,
+
+    fn init(x: f32) ItemPos {
+        return .{ .org = x };
+    }
+    /// The next item starts where this one ends, its width snapped up to the LayoutUnit grid
+    /// (Blink's `SnappedWidth`): its origin.
+    fn nextItem(p: *ItemPos) f32 {
+        p.org += ceil64(@floatCast(p.loc));
+        p.loc = 0;
+        return p.org;
+    }
+    /// A run of another face restarts from the f32 total so far (`ShapeResultView::for_each_glyph`
+    /// converts the sum at each part).
+    fn face(p: *ItemPos, f: FaceId) void {
+        if (p.last_face) |lf| if (lf != f) {
+            p.loc = @as(f32, @floatCast(p.loc));
+        };
+        p.last_face = f;
+    }
+    /// Advances by `adv`; the pen position.
+    fn add(p: *ItemPos, adv: f32) f32 {
+        p.loc += adv;
+        return p.org + @as(f32, @floatCast(p.loc));
+    }
+    /// takumi: `origin.x + (advance + offset.x)`.
+    fn glyphX(p: *const ItemPos, x_offset: f32) f32 {
+        return p.org + (@as(f32, @floatCast(p.loc)) + x_offset);
+    }
+} else struct {
+    fn init(_: f32) ItemPos {
+        return .{};
+    }
 };
 
 /// Size of an atomic inline: margin-box width, and the margin-box extent above / below its
@@ -2509,20 +2564,29 @@ pub const Paragraph = struct {
                 if (cplx) try self.pushSeg(segs, alloc, &.{}, no_stop, g_start, out.items.len, line_x, x, baseline, lines.items.len);
             }
             var prev_item: u32 = 0xffff_ffff;
+            // (`ParagraphOptions.item_origin`, PDF builds)
+            const item_origin = if (comptime item_origin_build) self.opts.item_origin else false;
+            var ip = ItemPos.init(x);
+            _ = &ip;
             var v: usize = 0;
             while (v < count) : (v += 1) {
                 if (ve and v > 0 and endsAt(cx_.?, @intCast(v - 1))) {
                     // line-right edges of the fragments that ended with the previous item
                     if (seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                     seg_run = 0xffff_ffff;
-                    x = edgesAfter(cx_.?, frags.items, @intCast(v - 1), x);
+                    // (item_origin: the edges advance the pen like the edge markers of the logical placement)
+                    const xe = edgesAfter(cx_.?, frags.items, @intCast(v - 1), x);
+                    x = if (item_origin) ip.add(xe - x) else xe;
                 }
                 const gi = li.start + (if (visual) order[v] else @as(u32, @intCast(v)));
                 const g = self.glyphs[gi];
                 if (self.multi_run and g.item != prev_item) {
-                    if (prev_item != 0xffff_ffff) x = line_x + ceil64(x - line_x);
+                    if (item_origin) {
+                        if (prev_item != 0xffff_ffff) x = ip.nextItem();
+                    } else if (prev_item != 0xffff_ffff) x = line_x + ceil64(x - line_x);
                     prev_item = g.item;
                 }
+                if (item_origin) ip.face(g.face);
                 var dy: f32 = 0;
                 if (cplx) {
                     const cx = cx_.?;
@@ -2537,7 +2601,9 @@ pub const Paragraph = struct {
                             if (!opened and seg_run < 0xffff_fffe) try self.pushSeg(segs, alloc, &.{}, seg_run, seg_g0, out.items.len, seg_x0, x, baseline + seg_dy, lines.items.len);
                             opened = true;
                             frags.items[r.frag].x0 = x + r.left_m;
-                            x += r.left;
+                            if (item_origin) {
+                                x = ip.add(r.left);
+                            } else x += r.left;
                         }
                         if (opened) seg_run = 0xffff_ffff;
                     }
@@ -2582,7 +2648,9 @@ pub const Paragraph = struct {
                             Special.oof_block => try pushObj(objects, alloc, g.cluster, if (self.rtl) (m.avail orelse 0) else 0, if (x != line_x or out.items.len > g_start) top + li.ascent + li.descent else top, lines.items.len),
                             else => {},
                         }
-                        x += adv;
+                        if (item_origin) {
+                            x = ip.add(adv);
+                        } else x += adv;
                         continue;
                     }
                     if (gi >= tail or g.flags & ShapedGlyph.HARD_BREAK != 0) continue;
@@ -2592,23 +2660,33 @@ pub const Paragraph = struct {
                 const hyphen_here = li.hyphen and gi + 1 == li.end;
                 if (hyphen_here and g.level & 1 != 0) {
                     out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x, .y = baseline + dy, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
-                    x += mt.hyphen_adv - g.kern;
+                    if (item_origin) {
+                        x = ip.add(mt.hyphen_adv - g.kern);
+                    } else x += mt.hyphen_adv - g.kern;
                 }
                 out.appendAssumeCapacity(.{
                     .face = g.face,
                     .gid = g.gid,
-                    .x = x + g.x_offset,
+                    // (takumi: `origin.x + (advance + offset.x)`)
+                    .x = if (item_origin) ip.glyphX(g.x_offset) else x + g.x_offset,
                     .y = baseline + dy - g.y_offset,
                     .size = mt.size,
                     .user = mt.user,
                     .cluster = g.cluster,
                     .bidi_level = g.level,
                 });
-                x += self.advanceOf(g, x - line_x, null);
-                if (g.flags & ShapedGlyph.WORD_SPACE != 0) x += extra;
+                if (item_origin) {
+                    _ = ip.add(self.advanceOf(g, x - line_x, null));
+                    x = ip.add(if (g.flags & ShapedGlyph.WORD_SPACE != 0) extra else 0);
+                } else {
+                    x += self.advanceOf(g, x - line_x, null);
+                    if (g.flags & ShapedGlyph.WORD_SPACE != 0) x += extra;
+                }
                 if (hyphen_here and g.level & 1 == 0) {
                     out.appendAssumeCapacity(.{ .face = mt.face, .gid = mt.hyphen_gid, .x = x - g.kern, .y = baseline + dy, .size = mt.size, .user = mt.user, .cluster = g.cluster, .bidi_level = g.level });
-                    x += mt.hyphen_adv - g.kern;
+                    if (item_origin) {
+                        x = ip.add(mt.hyphen_adv - g.kern);
+                    } else x += mt.hyphen_adv - g.kern;
                 }
             }
             if (ve and count > 0 and endsAt(cx_.?, @intCast(count - 1))) {

@@ -84,6 +84,6 @@ jobs:
       - name: Byte identity with the wasm build
         run: node bench/native-identity.mjs --quiet
       - name: Native tests (without fuzz / perf / cold)
-        run: node bench/native-tests.mjs --only=concurrency,eventloop,free,gc,errors,fallback,workers,libm,stack
+        run: node bench/native-tests.mjs --only=concurrency,eventloop,free,gc,errors,fallback,workers,libm,stack,pdf,pdf-stack
       - name: npm install scenarios
         run: node scripts/pack-test.mjs --skip-browser
