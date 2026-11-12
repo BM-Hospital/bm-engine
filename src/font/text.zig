@@ -136,6 +136,9 @@ pub const InlineBox = struct {
     /// set, `start` / `end` / `margin_*` are derived from it for the percentage base of the moment
     /// (`Paragraph.setPercentBase`: the containing block width; 0 in intrinsic sizing).
     pct: ?EdgeParts = null,
+    /// `position: relative` offset of the box (px, x to the right, y down): its fragments and everything
+    /// inside it are shifted by it after the lines are laid out.
+    rel: [2]f32 = .{ 0, 0 },
     /// The box continues from / into another paragraph (block-in-inline): its fragments never have the
     /// start / end edge (pass 0 for that edge).
     no_start: bool = false,
@@ -357,7 +360,8 @@ pub const BoxFragment = struct {
 
 /// A maximal sequence of glyphs of one run on one line (`glyphs[g0..g1]`), with its exact
 /// horizontal extent and its (possibly shifted) baseline.
-pub const Segment = struct { g0: u32, g1: u32, x0: f32, x1: f32, baseline: f32, line: u32 };
+/// `box`: (internal) innermost inline box of the run, 0 = none.
+pub const Segment = struct { g0: u32, g1: u32, x0: f32, x1: f32, baseline: f32, line: u32, box: u32 = 0 };
 
 pub const Size = struct {
     /// Widest line, ceiled to 1/64 px (what takumi reports as the text box inline size).
@@ -495,6 +499,7 @@ const BoxInfo = struct {
     rtl: bool = false,
     no_start: bool = false,
     no_end: bool = false,
+    rel: [2]f32 = .{ 0, 0 },
     pct: ?EdgeParts = null,
 
     /// `start` / `end` / `margin_*` of a box with percentage edges for the base `base` (each part on
@@ -606,6 +611,8 @@ pub const Paragraph = struct {
     /// Some inline box has percentage margins / padding; the base they are resolved for at the moment.
     has_pct_edges: bool = false,
     pct_base: f32 = 0,
+    /// Some inline box is relatively positioned (`InlineBox.rel`).
+    has_rel: bool = false,
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -726,6 +733,7 @@ pub const Paragraph = struct {
         p.has_clone = b.cx and b.has_clone;
         p.has_rtl_box = b.cx and b.has_rtl_box;
         p.has_pct_edges = b.cx and b.has_pct;
+        p.has_rel = b.cx and b.has_rel;
         p.boxes = b.boxes;
         p.run_box = b.run_box;
         return p;
@@ -2174,6 +2182,45 @@ pub const Paragraph = struct {
         while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) touchBox(frags, b, @min(xa, xb), @max(xa, xb));
     }
 
+    /// Sum of the `position: relative` offsets of inline box `box_in` and its ancestors.
+    noinline fn relOf(self: *const Paragraph, box_in: u32) [2]f32 {
+        var r: [2]f32 = .{ 0, 0 };
+        var b = box_in;
+        while (b != 0 and b < self.boxes.len) : (b = self.boxes[b].parent) {
+            r[0] += self.boxes[b].rel[0];
+            r[1] += self.boxes[b].rel[1];
+        }
+        return r;
+    }
+
+    /// Relative positioning (after layout, it moves no line): the glyphs, segments, fragments and
+    /// atomic inlines of the boxes with an offset.
+    noinline fn applyRel(self: *const Paragraph, acc: *LayoutAcc, rel_objs: []const [2]f32) void {
+        for (acc.segs.items) |*s| {
+            const r = self.relOf(s.box);
+            if (r[0] == 0 and r[1] == 0) continue;
+            s.x0 += r[0];
+            s.x1 += r[0];
+            s.baseline += r[1];
+            const gl = acc.out.items;
+            for (gl[@min(s.g0, gl.len)..@min(s.g1, gl.len)]) |*g| {
+                g.x += r[0];
+                g.y += r[1];
+            }
+        }
+        for (acc.frags.items) |*f| {
+            const r = self.relOf(f.box +% 1);
+            f.x0 += r[0];
+            f.x1 += r[0];
+            f.baseline += r[1];
+        }
+        for (acc.objects.items, 0..) |*o, k| {
+            if (k >= rel_objs.len) break;
+            o.x += rel_objs[k][0];
+            o.y += rel_objs[k][1];
+        }
+    }
+
     noinline fn pushObj(list: *std.ArrayList(ObjectPos), alloc: std.mem.Allocator, id: u32, x: f32, y: f32, line: usize) !void {
         try list.append(alloc, .{ .id = id, .x = x, .y = y, .line = @intCast(line) });
     }
@@ -2182,7 +2229,7 @@ pub const Paragraph = struct {
     /// the boxes around run `run`.
     noinline fn pushSeg(self: *const Paragraph, list: *std.ArrayList(Segment), alloc: std.mem.Allocator, frags: []BoxFragment, run: u32, g0: usize, g1: usize, x0: f32, x1: f32, baseline: f32, line: usize) !void {
         if (g1 <= g0) return;
-        try list.append(alloc, .{ .g0 = @intCast(g0), .g1 = @intCast(g1), .x0 = x0, .x1 = x1, .baseline = baseline, .line = @intCast(line) });
+        try list.append(alloc, .{ .g0 = @intCast(g0), .g1 = @intCast(g1), .x0 = x0, .x1 = x1, .baseline = baseline, .line = @intCast(line), .box = if (run < self.run_box.len) self.run_box[run] else 0 });
         if (run < self.run_box.len) self.touchChain(frags, self.run_box[run], x0, x1);
     }
 
@@ -2199,6 +2246,8 @@ pub const Paragraph = struct {
         defer alloc.free(levels);
         var acc: LayoutAcc = .{};
         errdefer acc.deinit(alloc);
+        var rel_objs: std.ArrayList([2]f32) = .empty;
+        defer rel_objs.deinit(alloc);
         const lines = &acc.lines;
         const out = &acc.out;
         const objects = &acc.objects;
@@ -2400,6 +2449,11 @@ pub const Paragraph = struct {
                                 if (g.cluster < m.flow.?.objects.len) asc = m.flow.?.objects[g.cluster].ascent;
                                 if (!std.math.isFinite(asc)) asc = 0;
                                 try pushObj(objects, alloc, g.cluster, x, baseline + dy - asc, lines.items.len);
+                                if (self.has_rel) {
+                                    // (kept beside the object list: the offset of the boxes around the atomic inline)
+                                    while (rel_objs.items.len < objects.items.len) try rel_objs.append(alloc, .{ 0, 0 });
+                                    rel_objs.items[objects.items.len - 1] = self.relOf(if (g.metric < self.objs.len) self.objs[g.metric].box else 0);
+                                }
                                 if (g.metric < self.objs.len) self.touchChain(fr, self.objs[g.metric].box, x, x + adv);
                             },
                             Special.oof => try pushObj(objects, alloc, g.cluster, x, top, lines.items.len),
@@ -2487,6 +2541,7 @@ pub const Paragraph = struct {
             top += li.ascent + li.descent;
         }
         if (flow and cx_.?.oom) return error.OutOfMemory;
+        if (self.has_rel) self.applyRel(&acc, rel_objs.items);
 
         // paint order: box by box (outer boxes first), each box line by line
         {
@@ -2834,6 +2889,7 @@ const Builder = struct {
     has_clone: bool = false,
     has_rtl_box: bool = false,
     has_pct: bool = false,
+    has_rel: bool = false,
     base_level: u8 = 0,
 
     /// Resolves `ParagraphOptions.boxes` and decides whether the paragraph needs the inline box
@@ -2869,6 +2925,11 @@ const Builder = struct {
             bi.rtl = s.rtl;
             bi.no_start = s.no_start;
             bi.no_end = s.no_end;
+            if (std.math.isFinite(s.rel[0]) and std.math.isFinite(s.rel[1]) and (s.rel[0] != 0 or s.rel[1] != 0)) {
+                bi.rel = s.rel;
+                b.has_rel = true;
+                cx = true;
+            }
             if (s.rtl) b.has_rtl_box = true;
             if (s.pct) |ep| {
                 bi.pct = ep;

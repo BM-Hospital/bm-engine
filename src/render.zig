@@ -70,6 +70,11 @@ pub const Node = struct {
     box_base: u32 = 0,
     /// The node is an inline-level box inside an inline box (`<span>`) of its paragraph.
     in_inline_box: bool = false,
+    /// Block-in-inline: the paragraph is a part of an inline formatting context split by block-level
+    /// boxes (`ifc_part`); the node is such a block (`bii`). measure() reports them like takumi: the
+    /// parts as the container's inline content, the blocks inside an anonymous box.
+    ifc_part: bool = false,
+    bii: bool = false,
     img: ?*const raster.Pixmap = null,
     /// SVG image source: the document markup (per-render arena or renderer-owned image bytes,
     /// valid for the frame). `img` stays null; `img_w`/`img_h` hold its intrinsic size.
@@ -1195,6 +1200,8 @@ pub const Frame = struct {
     box_base: u32 = 0,
     pend_objs: std.ArrayList(PendingObj) = .empty,
     ifc: Ifc = .{},
+    /// direction of the block whose paragraph is being made (`paragraphBoxes`)
+    ifc_rtl: bool = false,
     /// The next paragraph made is an anonymous block that is not the first child of its container:
     /// it has no first formatted line for `text-indent` (Blink: CanContainFirstFormattedLine)
     no_indent: bool = false,
@@ -1857,7 +1864,7 @@ pub const Frame = struct {
                     if (joins and !run_content) run_content = f.hasLineContent(x, 0);
                     if (joins and lines and x == .el) {
                         const xe = f.dom.at(x.el);
-                        if (xe.kind == .container and !xe.run and xe.first != none) run_boxes = true;
+                        if ((xe.kind == .container and !xe.run and xe.first != none) or hasGenerated(xe)) run_boxes = true;
                     }
                 }
             }
@@ -1945,9 +1952,15 @@ pub const Frame = struct {
         }
         // (an anonymous block that is not the first child has no first formatted line)
         f.no_indent = f.nodes.items[parent].first_child != none;
-        if (objs.len == 0) return f.flushRuns(pending, cs, parent);
+        if (objs.len == 0) {
+            const before = f.nodes.items.len;
+            try f.flushRuns(pending, cs, parent);
+            if (before < f.nodes.items.len) f.nodes.items[before].ifc_part = f.ifc.split;
+            return;
+        }
         // inline-level boxes: an anonymous inline formatting context holding them as children
         const id = try f.openAnonBox(cs, parent);
+        f.nodes.items[id].ifc_part = f.ifc.split;
         // (the paragraph's own properties are the block's: alignment, wrapping, clamping)
         f.nodes.items[id].para = try f.makeParagraph(pending.items, cs);
         f.cur_box = none;
@@ -2010,7 +2023,9 @@ pub const Frame = struct {
         if (n_open > 0) try f.appendRun(out, "", boxes.items[top].cs, false);
         f.ifc.split = true;
         try f.finishPart(out, false);
+        const first_node: u32 = @intCast(f.nodes.items.len);
         try f.buildItem(item, f.ifc.parent, f.ifc.depth + 1);
+        if (first_node < f.nodes.items.len) f.nodes.items[first_node].bii = true;
         // the continuation: the same chain of boxes, outer first
         const new_base: u32 = @intCast(boxes.items.len);
         var k: u32 = n_open;
@@ -2274,6 +2289,7 @@ pub const Frame = struct {
                 .end = edge[@intFromBool(!rtl)],
                 .margin_start = mar[@intFromBool(rtl)],
                 .rtl = rtl,
+                .rel = relOffset(cs, f.ifc_rtl),
                 .no_start = drop[0],
                 .no_end = drop[1],
                 .pct = if (has_pct) parts else null,
@@ -2283,6 +2299,21 @@ pub const Frame = struct {
             };
         }
         return out;
+    }
+
+    /// `position: relative` offset of an inline box in px (percentages of the containing block are not
+    /// known to the text engine: they count as 0).
+    fn relOffset(cs: *const CS, rtl: bool) [2]f32 {
+        if (cs.position != .relative and cs.position != .sticky) return .{ 0, 0 };
+        var v: [4]?f32 = .{ null, null, null, null };
+        for (cs.inset, 0..) |d, k| switch (d) {
+            .lp => |lp| v[k] = lp.resolve(0),
+            else => {},
+        };
+        // (top, right, bottom, left; `left` wins over `right` except in a right-to-left containing block)
+        const dx: f32 = if (rtl) (if (v[1]) |r| -r else v[3] orelse 0) else (v[3] orelse if (v[1]) |r| -r else 0);
+        const dy: f32 = v[0] orelse if (v[2]) |b| -b else 0;
+        return .{ dx, dy };
     }
 
     noinline fn makeRun(f: *Frame, text: []const u8, cs: *const CS) Error!font.Run {
@@ -2345,7 +2376,10 @@ pub const Frame = struct {
                 .auto, .stable => .wrap,
             },
             .shape_cache = &f.r.shape_cache,
-            .boxes = try f.paragraphBoxes(),
+            .boxes = blk: {
+                f.ifc_rtl = cs.direction == .rtl;
+                break :blk try f.paragraphBoxes();
+            },
         };
         if (indent and (cs.text_indent.px != 0 or cs.text_indent.pct != 0 or cs.text_indent.calc != null)) {
             const ti = cs.text_indent;
@@ -2668,11 +2702,16 @@ pub const Frame = struct {
         if (inl != none and f.hasOutOfFlow(inl)) inl = none;
         var first = true;
         if (n.kind == .anon_box) try f.writePlaceholders(out, id, x, y, &first);
-        if (inl != none and f.nodes.items[inl].kind == .anon_box) {
-            const il = f.tree.layout(f.nodes.items[inl].lid);
-            try f.writeChildren(out, inl, x + il.x, y + il.y, none, &first);
+        const split = n.kind == .container and f.hasSplitInline(id);
+        if (split) {
+            try f.writeSplitChildren(out, id, x, y, &first);
+        } else {
+            if (inl != none and f.nodes.items[inl].kind == .anon_box) {
+                const il = f.tree.layout(f.nodes.items[inl].lid);
+                try f.writeChildren(out, inl, x + il.x, y + il.y, none, &first);
+            }
+            try f.writeChildren(out, id, x, y, inl, &first);
         }
-        try f.writeChildren(out, id, x, y, inl, &first);
         try out.appendSlice(a, "],\"runs\":[");
         first = true;
         const cx = l.border.left + l.padding.left;
@@ -2682,8 +2721,77 @@ pub const Frame = struct {
         } else if (inl != none) {
             const il = f.tree.layout(f.nodes.items[inl].lid);
             try f.writeRuns(out, inl, il.x - cx, il.y - cy, &first);
+        } else if (split) {
+            var c = n.first_child;
+            while (c != none) : (c = f.nodes.items[c].next) {
+                if (!f.nodes.items[c].ifc_part) continue;
+                const il = f.tree.layout(f.nodes.items[c].lid);
+                try f.writeRuns(out, c, il.x - cx, il.y - cy, &first);
+            }
         }
         try out.appendSlice(a, "]}");
+    }
+
+    /// The node holds an inline formatting context split by block-in-inline boxes.
+    fn hasSplitInline(f: *const Frame, id: u32) bool {
+        var c = f.nodes.items[id].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            if (f.nodes.items[c].ifc_part) return true;
+        }
+        return false;
+    }
+
+    /// measure() children of a container with block-in-inline content, as takumi reports them: the
+    /// atomic inlines of the parts, an anonymous box of the container's width around every run of
+    /// block-in-inline boxes, the other children as they are.
+    noinline fn writeSplitChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, first: *bool) Error!void {
+        const a = f.a;
+        const n = &f.nodes.items[id];
+        const l = f.tree.layout(n.lid);
+        var c = n.first_child;
+        while (c != none) {
+            const cn = &f.nodes.items[c];
+            if (cn.bii) {
+                var y0: f32 = std.math.inf(f32);
+                var y1: f32 = -std.math.inf(f32);
+                var e = c;
+                while (e != none and f.nodes.items[e].bii) : (e = f.nodes.items[e].next) {
+                    const el = f.tree.layout(f.nodes.items[e].lid);
+                    y0 = @min(y0, el.y);
+                    y1 = @max(y1, el.y + el.h);
+                }
+                if (!first.*) try out.append(a, ',');
+                first.* = false;
+                try out.appendSlice(a, "{\"width\":");
+                try writeNum(a, out, l.w - l.border.left - l.border.right - l.padding.left - l.padding.right);
+                try out.appendSlice(a, ",\"height\":");
+                try writeNum(a, out, y1 - y0);
+                try out.appendSlice(a, ",\"transform\":[1,0,0,1,");
+                try writeNum(a, out, x + l.border.left + l.padding.left);
+                try out.append(a, ',');
+                try writeNum(a, out, y + y0);
+                try out.appendSlice(a, "],\"children\":[");
+                var k = c;
+                while (k != e) : (k = f.nodes.items[k].next) {
+                    if (k != c) try out.append(a, ',');
+                    try f.writeMeasured(out, k, x, y);
+                }
+                try out.appendSlice(a, "],\"runs\":[]}");
+                c = e;
+                continue;
+            }
+            if (cn.ifc_part) {
+                if (cn.kind == .anon_box) {
+                    const il = f.tree.layout(cn.lid);
+                    try f.writeChildren(out, c, x + il.x, y + il.y, none, first);
+                }
+            } else {
+                if (!first.*) try out.append(a, ',');
+                first.* = false;
+                try f.writeMeasured(out, c, x, y);
+            }
+            c = cn.next;
+        }
     }
 
     /// Children of `id` except `skip` (and the inline-level boxes of an inline formatting context
@@ -3634,16 +3742,15 @@ test "pseudo-elements: ::before/::after from css and tw, content parsing, own te
     try std.testing.expect(w.before == none and w.after != none);
     try std.testing.expectEqualStrings("tw", t.f.pseudos.items[w.after].text);
     try std.testing.expectEqual(@as(u8, 255), t.f.pseudos.items[w.after].cs.color.r);
-    // render nodes: text element "t" becomes a container: one paragraph (before + own text), then the block ::after
-    var tn: u32 = none;
-    for (t.f.nodes.items, 0..) |n, k| {
-        if (n.cs == tx.cs and tn == none) tn = @intCast(k);
-    }
-    try std.testing.expect(tn != none);
-    try std.testing.expectEqual(Kind.container, t.f.nodes.items[tn].kind);
-    const first = t.f.nodes.items[tn].first_child;
+    // render nodes: text element "t" is an inline box of the root's paragraph (before + own text); its
+    // block ::after splits that paragraph (block-in-inline) and is a child of the root
+    for (t.f.nodes.items) |n| try std.testing.expect(n.cs != tx.cs);
+    const first = t.f.nodes.items[t.f.root].first_child;
     try std.testing.expectEqual(Kind.anon_text, t.f.nodes.items[first].kind);
-    try std.testing.expectEqual(Kind.text, t.f.nodes.items[t.f.nodes.items[first].next].kind);
+    try std.testing.expect(t.f.nodes.items[first].ifc_part);
+    const second = t.f.nodes.items[first].next;
+    try std.testing.expectEqual(Kind.text, t.f.nodes.items[second].kind);
+    try std.testing.expect(t.f.nodes.items[second].bii and t.f.nodes.items[second].cs == t.f.pseudos.items[tx.after].cs);
 }
 
 test "stylesheet selectors see takumi's element tree; options" {

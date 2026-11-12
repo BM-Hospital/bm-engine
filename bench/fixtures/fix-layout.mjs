@@ -250,4 +250,17 @@ const floatPaint = [
   },
 ];
 
-export default [rtl, indent, bidiBoxes, balance, blockInInline, floatPaint].flat();
+// ------------------------------------------------------------------------------------------------ relatively positioned inline boxes
+const inlineRel = [
+  {
+    id: "fix-layout-inline-relative", feature: "inline-relative", title: "position: relative on inline boxes: fragments, text, nested boxes, atomic inlines and underlines move by the offset without changing the lines; inside a float", width: 300, height: 190,
+    node: page(`.r { position: relative; background: #fde047; border: 1px solid #ca8a04; padding: 0 4px } p { width: 260px }`, `
+      <p>plain <span class="r" style="top:4px">down four</span> text <span class="r" style="left:6px;top:-3px">up right</span> end</p>
+      <p>wrap <span class="r" style="top:5px;left:-4px">a relative box that wraps over two lines <b style="position:relative;top:-6px;color:#dc2626">nested</b> end</span> tail <span class="r" style="right:5px;bottom:2px">right bottom</span></p>
+      <p>atomic <span class="r" style="top:6px">in <span style="display:inline-block;width:20px;height:10px;background:#dc2626"></span> box</span> <u style="position:relative;top:3px">underlined</u> <span dir="rtl" class="r" style="left:3px;right:9px">rtl both</span></p>
+      <div style="width:260px"><span style="float:left;width:80px;height:40px;background:rgba(56,189,248,.85);margin-right:6px"><span style="position:relative;left:10px;top:10px;background:#000;color:#fff">pos</span> in float</span>paragraph text beside the float</div>
+    `),
+  },
+];
+
+export default [rtl, indent, bidiBoxes, balance, blockInInline, floatPaint, inlineRel].flat();

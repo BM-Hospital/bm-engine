@@ -41,6 +41,15 @@ const T = struct {
     }
 };
 
+/// The `{"width":..,"height":10,"transform":[..]` prefix of the 10 px high block in a measure() output.
+fn blockRect(out: []const u8) []const u8 {
+    const key = "\"height\":10,\"transform\":[";
+    const at = std.mem.lastIndexOf(u8, out, key) orelse return "";
+    const start = std.mem.lastIndexOf(u8, out[0..at], "{\"width\":") orelse return "";
+    const end = std.mem.indexOfScalarPos(u8, out, at, ']') orelse return "";
+    return out[start..end];
+}
+
 const box_a = "{\"type\":\"container\",\"style\":{\"width\":30,\"height\":10}}";
 const box_b = "{\"type\":\"container\",\"style\":{\"width\":50,\"height\":20,\"marginLeft\":4}}";
 const box_c = "{\"type\":\"container\",\"style\":{\"width\":20,\"height\":15}}";
@@ -100,12 +109,17 @@ test "block-in-inline: a block-level child splits the inline box around it" {
     defer t.deinit();
     const css = "<style>div{font-family:Inter;font-size:16px} .b{display:block;height:10px} span{padding:0 4px}</style>";
     // the block is a child of the block container, the inline box is split into a part before (no end
-    // edge) and a part after it (no start edge): the same boxes as writing the parts out
+    // edge) and a part after it (no start edge): the same geometry as writing the parts out (measure()
+    // reports the split form like takumi: the text as runs of the container, the block in an anonymous box)
     const a = try t.html(css ++ "<div>x <span>y<i class=\"b\"></i>z</span> w</div>");
     defer testing.allocator.free(a);
     const b = try t.html(css ++ "<div>x <span style=\"padding-right:0\">y</span><i class=\"b\"></i><span style=\"padding-left:0\">z</span> w</div>");
     defer testing.allocator.free(b);
-    try testing.expectEqualStrings(b, a);
+    try testing.expectEqualStrings(blockRect(b), blockRect(a));
+    try testing.expectEqual(std.mem.count(u8, b, "{\"x\":"), std.mem.count(u8, a, "{\"x\":"));
+    // (the anonymous box around the block has its height)
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, a, "\"height\":10,"));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, b, "\"height\":10,"));
     // an inline box that only holds a block: no line boxes around it without inline edges
     try t.expectSameHtml(
         "<style>div{font-family:Inter} .b{display:block;height:10px}</style><div><span><i class=\"b\"></i></span></div>",

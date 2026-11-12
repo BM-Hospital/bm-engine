@@ -215,3 +215,43 @@ test "inline box edges with percentages resolve against the percentage base" {
     p.setPercentBase(std.math.inf(f32));
     try t.expectEqual(w0, p.maxContentWidth());
 }
+
+test "relatively positioned inline box: its glyphs, fragments and atomic inlines move, the lines do not" {
+    var fx = try Fx.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = fam, .size = 16 };
+    const runs = [_]font.Run{
+        .{ .text = "ab ", .style = st },
+        .{ .text = "cd ", .style = st, .box = 0 },
+        .{ .text = "", .style = st, .box = 0, .object = .{ .id = 0 } },
+        .{ .text = "ef", .style = st, .box = 1 },
+        .{ .text = " gh", .style = st },
+    };
+    const objs = [_]font.ObjectMetrics{.{ .width = 20, .ascent = 10, .descent = 0 }};
+    const flow: font.Flow = .{ .alloc = t.allocator, .objects = &objs };
+    const plain = [_]font.InlineBox{ .{ .style = st, .decorated = true }, .{ .style = st, .parent = 0, .decorated = true } };
+    const moved = [_]font.InlineBox{ .{ .style = st, .decorated = true, .rel = .{ 5, 3 } }, .{ .style = st, .parent = 0, .decorated = true, .rel = .{ -2, 1 } } };
+    var p0 = try font.Paragraph.init(t.allocator, &fx.fc, &runs, .{ .boxes = &plain });
+    defer p0.deinit();
+    var p1 = try font.Paragraph.init(t.allocator, &fx.fc, &runs, .{ .boxes = &moved });
+    defer p1.deinit();
+    var a = try p0.layoutFlow(t.allocator, &flow, 400);
+    defer a.deinit(t.allocator);
+    var b = try p1.layoutFlow(t.allocator, &flow, 400);
+    defer b.deinit(t.allocator);
+    try t.expectEqual(a.glyphs.len, b.glyphs.len);
+    try t.expectEqual(a.lines[0].width, b.lines[0].width);
+    try t.expectEqual(a.height, b.height);
+    // "ab " stays; "cd " moves by the outer box; "ef" by both; " gh" stays
+    try t.expectEqual(a.glyphs[0].x, b.glyphs[0].x);
+    try t.expectEqual(a.glyphs[3].x + 5, b.glyphs[3].x);
+    try t.expectEqual(a.glyphs[3].y + 3, b.glyphs[3].y);
+    try t.expectEqual(a.glyphs[6].x + 3, b.glyphs[6].x);
+    try t.expectEqual(a.glyphs[6].y + 4, b.glyphs[6].y);
+    try t.expectEqual(a.glyphs[a.glyphs.len - 1].x, b.glyphs[b.glyphs.len - 1].x);
+    try t.expectEqual(a.objects[0].x + 5, b.objects[0].x);
+    try t.expectEqual(a.objects[0].y + 3, b.objects[0].y);
+    try t.expectEqual(a.boxes[0].x0 + 5, b.boxes[0].x0);
+    try t.expectEqual(a.boxes[1].x0 + 3, b.boxes[1].x0);
+    try t.expectEqual(a.boxes[1].baseline + 4, b.boxes[1].baseline);
+}
