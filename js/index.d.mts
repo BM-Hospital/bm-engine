@@ -306,6 +306,14 @@ export type Features = {
   renderSvg: boolean;
 };
 export declare const features: Readonly<Features>;
+/**
+ * Which engine build serves this entry: "wasm", or "native" when `bm-engine` on Node.js (Bun, Deno) found the
+ * Node-API addon for the platform (optional package `bm-engine-<platform>-<arch>`). Both have the same API and
+ * produce the same bytes; natively the async methods run on the thread pool and init() / initSync() are no-ops.
+ * Force one with the environment variable BM_ENGINE_BACKEND=wasm|native, or by importing `bm-engine/full`
+ * (always wasm) / `bm-engine/native` (native or an import error).
+ */
+export declare const backend: "wasm" | "native";
 
 export type RendererOptions = {
   /** accepted, ignored (fixed 96 MiB decoded-image budget) */
@@ -349,7 +357,7 @@ export declare class Renderer {
   renderAnimation(options: RenderAnimationOptions): Promise<OutputBytes>;
   renderAnimation(prepared: Prepared, options?: { signal?: AbortSignal }): Promise<OutputBytes>;
 
-  /** current wasm linear memory size in bytes (shared by every renderer of this entry) */
+  /** current wasm linear memory size in bytes (shared by every renderer of this entry); native backend: bytes allocated by the addon */
   memoryBytes(): number;
   /** same as memoryBytes(); 0 before init */
   static memoryBytes(): number;

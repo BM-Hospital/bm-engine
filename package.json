@@ -77,6 +77,10 @@
       "node": "./js/node-full.mjs",
       "default": "./js/full.mjs"
     },
+    "./native": {
+      "types": "./js/native.d.mts",
+      "default": "./js/node-native.mjs"
+    },
     "./woff": {
       "types": "./js/addons.d.mts",
       "default": "./js/addons.mjs"
@@ -150,6 +154,8 @@
     "verify": "node scripts/build.mjs --verify",
     "test": "node scripts/build.mjs --test",
     "test:pack": "node scripts/pack-test.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "test:native": "node bench/native-tests.mjs",
     "playground": "node docs/playground-app/serve.mjs",
     "docs:prepare": "node docs/.vitepress/prepare.mjs",
     "docs:dev": "npm run docs:prepare && vitepress dev docs --port 5173",

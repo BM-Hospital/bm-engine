@@ -1,4 +1,5 @@
-// bm-engine internal: the JS binding around one bm_engine.wasm instance.
+// bm-engine internal: the JS binding around one engine backend (a bm_engine.wasm instance, or the native
+// Node-API addon: see "backend" in createBinding and docs/NATIVE.md).
 /** True for a WebAssembly.Module from any realm (Next.js Edge, vm contexts, iframes), where `instanceof` fails. */
 const isWasmModule = (x) => Object.prototype.toString.call(x) === "[object WebAssembly.Module]";
 //
@@ -22,10 +23,21 @@ const DISPOSE = typeof Symbol.dispose === "symbol" ? Symbol.dispose : Symbol.for
 
 /** sfnt converter installed by js/addons.mjs (`loadWoff`) for builds without WOFF support (shared by every binding). */
 let woffDecoder = null;
+/** WOFF decoder of the native addon when it is loaded (js/native.mjs): `loadWoff()` is then a no-op. */
+let builtInWoff = null;
 
 /** @internal used by js/addons.mjs */
 export function setWoffDecoder(fn) {
   woffDecoder = fn;
+}
+
+/** @internal used by js/native.mjs (sets) and js/addons.mjs (reads): the process-wide built-in WOFF decoder, or null */
+export function builtInWoffDecoder(fn) {
+  if (fn !== undefined) {
+    builtInWoff = fn;
+    woffDecoder = fn;
+  }
+  return builtInWoff;
 }
 
 function isWoff(b) {
@@ -85,6 +97,18 @@ export async function readFileUrl(url) {
   return new Uint8Array(await fs.readFile(url));
 }
 
+const MIME = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" };
+
+function dataUrl(format, bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return `data:${MIME[format || "png"]};base64,${btoa(bin)}`;
+}
+
+function mimeCheck(options) {
+  if (!MIME[options.format || "png"]) throw new Error("bm-engine: renderAsDataUrl needs an encoded format");
+}
+
 const NEEDS_INPUT = "bm-engine: init() needs the wasm binary: bytes, a URL / Request / Response, or a WebAssembly.Module " +
   "(e.g. `import wasm from \"bm-engine/full.wasm\"` on Cloudflare Workers). The profile entries bm-engine/core, " +
   "bm-engine/standard and bm-engine/full locate their wasm file themselves.";
@@ -92,8 +116,10 @@ const NEEDS_INPUT = "bm-engine: init() needs the wasm binary: bytes, a URL / Req
 /**
  * @param {(() => URL) | undefined} defaultWasm  where `init()` without an argument loads the wasm from
  *   (called lazily, so a runtime without a usable `import.meta.url` only fails when it is actually needed)
+ * @param {object} [external]  a ready backend to use instead of a wasm instance (js/native.mjs passes the
+ *   native addon's); see the backend interface below. init() / initSync() are then no-ops.
  */
-export function createBinding(defaultWasm) {
+export function createBinding(defaultWasm, external) {
   /** @type {WebAssembly.Exports & Record<string, any>} */
   let wasm = null;
   /** in-flight `init()` (concurrent callers share it) */
@@ -106,8 +132,7 @@ export function createBinding(defaultWasm) {
    */
   const features = Object.fromEntries(FEATURE_NAMES.map((n) => [n, false]));
 
-  function setFeatures() {
-    const m = typeof wasm.bm_features === "function" ? wasm.bm_features() >>> 0 : 0xffffffff;
+  function setFeatures(m = typeof wasm.bm_features === "function" ? wasm.bm_features() >>> 0 : 0xffffffff) {
     FEATURE_NAMES.forEach((n, i) => { features[n] = ((m >>> i) & 1) === 1; });
   }
 
@@ -158,8 +183,113 @@ export function createBinding(defaultWasm) {
     return wasm;
   }
 
+  // ---- backend -----------------------------------------------------------------------------------------
+  // Everything below this block talks to the engine only through `backend`:
+  //
+  //   name                 "wasm" | "native"
+  //   ready()              false until the engine can be used (wasm: before init)
+  //   has(op)              whether the build provides the operation
+  //   create() -> handle   a renderer (truthy);  destroy(handle)
+  //   run(handle, op, arg0, arg1, input, options, attachments, text) -> Uint8Array | string
+  //       One engine operation. `op`: "render" | "measure" | "svg" (arg0 = source kind: 0 JSON tree, 1 HTML;
+  //       input = the source text, options = options JSON), "animation" (input = options JSON),
+  //       "registerFont" (arg0 = weight, arg1 = italic -1 | 0 | 1 as u32, input = family name, attachments =
+  //       the font file), "unregisterFont" (input = family; result [0 | 1]), "clearFonts".
+  //       `attachments`: null or a flat array of [key, bytes, flags, width, height] groups; for the source
+  //       ops they are the call's image sources (flags bit 0 = raw RGBA width x height, bit 1 = premultiplied).
+  //       Returns a fresh Uint8Array, or with `text` the result decoded as UTF-8. Throws Error("bm-engine: ...").
+  //   runAsync?(same) -> Promise   optional: the same off the calling thread, inputs snapshotted at the call
+  //                        (native). Without it the async API runs `run`.
+  //   memoryBytes()        bytes the engine currently holds
+  //
+  // A new output kind (e.g. PDF) = one more `op` here (the wasm export to call) + its entry in
+  // src/native/ops.zig + the public method below. See docs/NATIVE.md.
+
+  /** The result of the last call on `h`: a copy of the bytes, or the decoded text. */
+  function take(h, text, release) {
+    const ptr = wasm.bm_result_ptr(h);
+    const len = wasm.bm_result_len(h);
+    const out = text ? dec.decode(u8().subarray(ptr, ptr + len)) : u8().slice(ptr, ptr + len);
+    if (release) wasm.bm_release_result(h);
+    return out;
+  }
+
+  /** Replaces the renderer's image sources with `atts` (copied into wasm memory). */
+  function putImages(h, atts) {
+    wasm.bm_clear_images(h);
+    for (let i = 0; atts && i < atts.length; i += 5) {
+      const [sptr, slen, scap] = copyInString(atts[i]);
+      const [dptr, dlen] = copyIn(atts[i + 1]);
+      const status = atts[i + 2] & 1
+        ? wasm.bm_put_rgba(h, sptr, slen, dptr, dlen, atts[i + 3], atts[i + 4], atts[i + 2] & 2 ? 1 : 0)
+        : wasm.bm_put_image(h, sptr, slen, dptr, dlen);
+      wasm.bm_free(sptr, scap);
+      wasm.bm_free(dptr, dlen || 1);
+      check(status);
+    }
+  }
+
+  /** Source ops: the export taking (handle, kind, source, options); [1] = pre-`*_src` export (JSON only). */
+  const SOURCE_OPS = { render: ["bm_render_src", "bm_render"], measure: ["bm_measure_src", "bm_measure"], svg: ["bm_render_svg"] };
+
+  const backend = external || {
+    name: "wasm",
+    ready: () => wasm !== null,
+    has: (op) => (op === "animation" ? !!wasm.bm_render_animation : true),
+    create: () => wasm.bm_renderer_new(),
+    destroy: (h) => wasm.bm_renderer_free(h),
+    memoryBytes: () => wasm.memory.buffer.byteLength,
+    run(h, op, arg0, arg1, input, options, atts, text) {
+      if (SOURCE_OPS[op]) {
+        putImages(h, atts);
+        const [jptr, jlen, jcap] = copyInString(input);
+        const [optr, olen, ocap] = copyInString(options);
+        const [name, legacy] = SOURCE_OPS[op];
+        // (older binaries without the *_src exports accept JSON only)
+        const status = wasm[name] ? wasm[name](h, arg0, jptr, jlen, optr, olen)
+          : arg0 === 0 && legacy ? wasm[legacy](h, jptr, jlen, optr, olen)
+          : -1;
+        wasm.bm_free(jptr, jcap);
+        wasm.bm_free(optr, ocap);
+        if (status === -1) throw new Error("bm-engine: this wasm build does not accept HTML sources");
+        check(status);
+        return take(h, text, true);
+      }
+      if (op === "animation") {
+        putImages(h, atts);
+        const [ptr, len, cap] = copyInString(input);
+        const status = wasm.bm_render_animation(h, ptr, len);
+        wasm.bm_free(ptr, cap);
+        check(status);
+        return take(h, text, true);
+      }
+      if (op === "registerFont") {
+        const [ptr, len] = copyIn(atts[1]);
+        const [nptr, nlen, ncap] = copyInString(input);
+        // Ownership of the font bytes moves to the renderer (zero-copy parsing inside wasm).
+        const status = wasm.bm_register_font(h, ptr, len, nptr, nlen, arg0, arg1);
+        wasm.bm_free(nptr, ncap);
+        check(status);
+        return take(h, text, false);
+      }
+      if (op === "unregisterFont") {
+        const [nptr, nlen, ncap] = copyInString(input);
+        const r = wasm.bm_unregister_font(h, nptr, nlen);
+        wasm.bm_free(nptr, ncap);
+        return Uint8Array.of(r !== 0 ? 1 : 0);
+      }
+      if (op === "clearFonts") {
+        wasm.bm_clear_fonts(h);
+        return new Uint8Array(0);
+      }
+      throw unsupported(op);
+    },
+  };
+  if (external) setFeatures(external.featureBits());
+
   /** Synchronously instantiate from bytes or a compiled WebAssembly.Module (or `{ module }`). */
   function initSync(input) {
+    if (external) return external.exports;
     if (wasm) return wasm;
     if (input && typeof input === "object" && "module" in input && !isWasmModule(input)) input = input.module;
     if (input == null) throw new Error(NEEDS_INPUT.replace("init()", "initSync()"));
@@ -205,6 +335,7 @@ export function createBinding(defaultWasm) {
    * ignores its argument; concurrent calls share one instantiation; a failed call can be retried.
    */
   function init(input) {
+    if (external) return Promise.resolve(external.exports);
     if (wasm) return Promise.resolve(wasm);
     if (!pending) {
       pending = load(input).finally(() => { pending = null; });
@@ -215,10 +346,12 @@ export function createBinding(defaultWasm) {
   class Renderer {
     #h = 0;
     #resSeq = 0;
+    /** attachments of the call being prepared: flat [key, bytes, flags, width, height] groups */
+    #atts = [];
 
     constructor(options = {}) {
-      if (!wasm) throw new Error("bm-engine: call init()/initSync() before creating a Renderer");
-      this.#h = wasm.bm_renderer_new();
+      if (!backend.ready()) throw new Error("bm-engine: call init()/initSync() before creating a Renderer");
+      this.#h = backend.create();
       if (!this.#h) throw new Error("bm-engine: out of memory");
       void options;
     }
@@ -254,14 +387,8 @@ export function createBinding(defaultWasm) {
         if (!woffDecoder) requireFeature("woff");
         bytes = woffDecoder(bytes);
       }
-      const [ptr, len] = copyIn(bytes);
-      const [nptr, nlen, ncap] = copyInString(details.name || "");
       const italic = details.style == null ? -1 : /italic|oblique/.test(String(details.style)) ? 1 : 0;
-      // Ownership of the font bytes moves to the renderer (zero-copy parsing inside wasm).
-      const status = wasm.bm_register_font(h, ptr, len, nptr, nlen, details.weight | 0, italic);
-      wasm.bm_free(nptr, ncap);
-      check(status);
-      return JSON.parse(this.#takeString());
+      return JSON.parse(backend.run(h, "registerFont", (details.weight | 0) >>> 0, italic >>> 0, details.name || "", null, ["", bytes, 0, 0, 0], true));
     }
 
     /** takumi-compatible alias. */
@@ -272,49 +399,34 @@ export function createBinding(defaultWasm) {
     /** Removes every face of `family` (a name or `{ name }`). Returns true when something was removed. */
     unregisterFont(family) {
       const name = family && typeof family === "object" ? family.name : family;
-      const [nptr, nlen, ncap] = copyInString(String(name));
-      const r = wasm.bm_unregister_font(this.#handle(), nptr, nlen);
-      wasm.bm_free(nptr, ncap);
-      return r !== 0;
+      return backend.run(this.#handle(), "unregisterFont", 0, 0, String(name), null, null, false)[0] !== 0;
     }
 
     clearFonts() {
-      wasm.bm_clear_fonts(this.#handle());
+      backend.run(this.#handle(), "clearFonts", 0, 0, null, null, null, false);
     }
 
-    #takeString() {
-      const ptr = wasm.bm_result_ptr(this.#h);
-      const len = wasm.bm_result_len(this.#h);
-      return dec.decode(u8().subarray(ptr, ptr + len));
+    /** Runs a prepared call (`#call` / `#animation`) on the calling thread; `text`: decode the result as UTF-8. */
+    #run(job, text = false) {
+      return backend.run(this.#handle(), job.op, job.kind, 0, job.text, job.opts, job.atts, text);
     }
 
-    #takeBytes() {
-      const ptr = wasm.bm_result_ptr(this.#h);
-      const len = wasm.bm_result_len(this.#h);
-      const out = u8().slice(ptr, ptr + len);
-      wasm.bm_release_result(this.#h);
-      return out;
+    /** Like #run for the async API: off the calling thread when the backend can (native), else the same call. */
+    #runAsync(job, text = false) {
+      return backend.runAsync ? backend.runAsync(this.#handle(), job.op, job.kind, 0, job.text, job.opts, job.atts, text) : this.#run(job, text);
     }
 
+    /** Attaches encoded image bytes to the call being prepared, as the image source `src`. */
     #putImage(src, data) {
-      const [sptr, slen, scap] = copyInString(src);
-      const [dptr, dlen] = copyIn(toBytes(data));
-      const status = wasm.bm_put_image(this.#h, sptr, slen, dptr, dlen);
-      wasm.bm_free(sptr, scap);
-      wasm.bm_free(dptr, dlen || 1);
-      check(status);
+      this.#atts.push(String(src), toBytes(data), 0, 0, 0);
     }
 
+    /** Attaches raw RGBA pixels to the call being prepared, as the image source `src`. */
     #putRgba(src, img) {
-      const [sptr, slen, scap] = copyInString(src);
-      const [dptr, dlen] = copyIn(toBytes(img.data));
-      const status = wasm.bm_put_rgba(this.#h, sptr, slen, dptr, dlen, img.width, img.height, img.premultiplied ? 1 : 0);
-      wasm.bm_free(sptr, scap);
-      wasm.bm_free(dptr, dlen || 1);
-      check(status);
+      this.#atts.push(String(src), toBytes(img.data), img.premultiplied ? 3 : 1, img.width >>> 0, img.height >>> 0);
     }
 
-    /** JSON.stringify where binary / RGBA image `src` values are moved into wasm and replaced by ids. */
+    /** JSON.stringify where binary / RGBA image `src` values become attachments and are replaced by ids. */
     #stringify(value) {
       const self = this;
       return JSON.stringify(value, function (key, v) {
@@ -331,7 +443,7 @@ export function createBinding(defaultWasm) {
       });
     }
 
-    /** Copies the `images` option entries the source text references into wasm. */
+    /** Attaches the `images` option entries the source text references. */
     #putImages(images, text, own) {
       for (const img of imageList(images)) {
         if (typeof img.data === "function") throw new TypeError("bm-engine: lazy images[].data() needs the async API");
@@ -341,11 +453,12 @@ export function createBinding(defaultWasm) {
     }
 
     /**
-     * Serialises the source; binary image sources are moved into wasm and replaced by ids.
+     * Serialises the source; binary image sources become attachments of the call and are replaced by ids.
      * Returns [text, kind] with kind 0 = JSON node tree, 1 = HTML markup.
      */
     #prepareSource(node, options) {
-      wasm.bm_clear_images(this.#handle());
+      this.#handle();
+      this.#atts = [];
       let json;
       let kind = 0;
       let own = false; // true when we produced the JSON ourselves (so escaping is predictable)
@@ -353,11 +466,12 @@ export function createBinding(defaultWasm) {
       if (typeof node === "string") { requireFeature("html"); json = node; kind = 1; }
       else if (node && typeof node === "object" && typeof node.json === "string" && node.type === undefined) json = node.json;
       else { own = true; json = this.#stringify(node); }
-      // Only images the tree actually references are copied into wasm memory.
+      // Only images the tree actually references are passed to the engine.
       this.#putImages(options.images, json, own);
       return [json, kind];
     }
 
+    /** Validates and serialises one render / svg / measure call; returns the job for #run / #runAsync. */
     #call(which, node, options) {
       [node, options] = unwrap(node, options, "render");
       throwIfAborted(options.signal);
@@ -365,19 +479,9 @@ export function createBinding(defaultWasm) {
       if (options.format === "ico") requireFeature("extraCodecs");
       if (which === "svg") requireFeature("renderSvg");
       const [json, kind] = this.#prepareSource(node, options);
-      // `images` were copied in above; `fonts`/`signal` are JS-side takumi options.
+      // `images` were attached above; `fonts`/`signal` are JS-side takumi options.
       const { images: _i, fonts: _f, signal: _s, ...rest } = options;
-      const [jptr, jlen, jcap] = copyInString(json);
-      const [optr, olen, ocap] = copyInString(JSON.stringify(rest));
-      const fn = which === "render" ? wasm.bm_render_src : which === "svg" ? wasm.bm_render_svg : wasm.bm_measure_src;
-      // (older binaries without the *_src exports accept JSON only)
-      const status = fn ? fn(this.#h, kind, jptr, jlen, optr, olen)
-        : kind === 0 ? (which === "render" ? wasm.bm_render : wasm.bm_measure)(this.#h, jptr, jlen, optr, olen)
-        : -1;
-      wasm.bm_free(jptr, jcap);
-      wasm.bm_free(optr, ocap);
-      if (status === -1) throw new Error("bm-engine: this wasm build does not accept HTML sources");
-      check(status);
+      return { op: which, kind, text: json, opts: JSON.stringify(rest), atts: this.#atts };
     }
 
     /** Async option extras (takumi `RenderExtras`): `fonts` loaders and lazy `images`. */
@@ -409,29 +513,29 @@ export function createBinding(defaultWasm) {
      * `fontFamilies`, `lang`, `drawDebugBorder` / `dithering` (accepted, ignored).
      */
     renderSync(node, options = {}) {
-      this.#call("render", node, options);
-      return this.#takeBytes();
+      return this.#run(this.#call("render", node, options));
     }
 
-    /** takumi-compatible async signature (rendering itself is synchronous). */
+    /**
+     * takumi-compatible async signature. On the wasm backend rendering itself is synchronous; the native
+     * backend renders on a thread-pool thread (the inputs are snapshotted when the call is made).
+     */
     async render(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      return this.renderSync(node, await this.#extras(options));
+      return this.#runAsync(this.#call("render", node, await this.#extras(options)));
     }
 
     renderAsDataUrlSync(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      const mime = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" }[options.format || "png"];
-      if (!mime) throw new Error("bm-engine: renderAsDataUrl needs an encoded format");
-      const bytes = this.renderSync(node, options);
-      let bin = "";
-      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-      return `data:${mime};base64,${btoa(bin)}`;
+      mimeCheck(options);
+      return dataUrl(options.format, this.renderSync(node, options));
     }
 
     async renderAsDataUrl(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      return this.renderAsDataUrlSync(node, await this.#extras(options));
+      options = await this.#extras(options);
+      mimeCheck(options);
+      return dataUrl(options.format, await this.#runAsync(this.#call("render", node, options)));
     }
 
     /**
@@ -440,28 +544,22 @@ export function createBinding(defaultWasm) {
      * `render_svg` (the full profile); `format` / `quality` are ignored.
      */
     renderSvgSync(node, options = {}) {
-      this.#call("svg", node, options);
-      const out = this.#takeString();
-      wasm.bm_release_result(this.#h);
-      return out;
+      return this.#run(this.#call("svg", node, options), true);
     }
 
     async renderSvg(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      return this.renderSvgSync(node, await this.#extras(options));
+      return this.#runAsync(this.#call("svg", node, await this.#extras(options)), true);
     }
 
     /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */
     measureSync(node, options = {}) {
-      this.#call("measure", node, options);
-      const out = JSON.parse(this.#takeString());
-      wasm.bm_release_result(this.#h);
-      return out;
+      return JSON.parse(this.#run(this.#call("measure", node, options), true));
     }
 
     async measure(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
-      return this.measureSync(node, await this.#extras(options));
+      return JSON.parse(await this.#runAsync(this.#call("measure", node, await this.#extras(options)), true));
     }
 
     /**
@@ -487,6 +585,11 @@ export function createBinding(defaultWasm) {
      * Max fps: 50 for gif, 90 for webp / apng.
      */
     renderAnimationSync(options) {
+      return this.#run(this.#animation(options));
+    }
+
+    /** Validates and serialises one renderAnimation call; returns the job for #run / #runAsync. */
+    #animation(options) {
       let scenes = options.scenes;
       if (options[PREPARED]) {
         const p = options[PREPARED];
@@ -495,39 +598,38 @@ export function createBinding(defaultWasm) {
         options = { ...p.options };
       }
       throwIfAborted(options.signal);
-      if (!wasm.bm_render_animation) throw unsupported("renderAnimation (this wasm build)");
+      if (!backend.has("animation")) throw unsupported("renderAnimation (this wasm build)");
       requireFeature("animation");
-      const h = this.#handle();
-      wasm.bm_clear_images(h);
+      this.#handle();
+      this.#atts = [];
       const { images, fonts: _f, signal: _s, scenes: _sc, ...rest } = options;
       const text = this.#stringify({ ...rest, scenes: scenes || [] });
       this.#putImages(images, text, true);
-      const [ptr, len, cap] = copyInString(text);
-      const status = wasm.bm_render_animation(h, ptr, len);
-      wasm.bm_free(ptr, cap);
-      check(status);
-      return this.#takeBytes();
+      return { op: "animation", kind: 0, text, opts: null, atts: this.#atts };
     }
 
     async renderAnimation(options, extra = {}) {
       if (options && options[PREPARED]) {
         throwIfAborted(extra.signal);
-        return this.renderAnimationSync(options);
+        return this.#runAsync(this.#animation(options));
       }
-      return this.renderAnimationSync(await this.#extras(options));
+      return this.#runAsync(this.#animation(await this.#extras(options)));
     }
 
-    /** Current wasm linear memory size in bytes (shared by all renderers of this module instance). */
+    /**
+     * Bytes the engine currently holds: the wasm linear memory size (shared by all renderers of this module
+     * instance), or on the native backend the bytes allocated by the addon in this process.
+     */
     memoryBytes() {
-      return wasm.memory.buffer.byteLength;
+      return backend.memoryBytes();
     }
 
     static memoryBytes() {
-      return wasm ? wasm.memory.buffer.byteLength : 0;
+      return backend.ready() ? backend.memoryBytes() : 0;
     }
 
     free() {
-      if (this.#h) wasm.bm_renderer_free(this.#h);
+      if (this.#h) backend.destroy(this.#h);
       this.#h = 0;
     }
 
@@ -546,5 +648,5 @@ export function createBinding(defaultWasm) {
     return defaultWasm ? defaultWasm() : undefined;
   }
 
-  return { init, initSync, Renderer, Prepared, features, setGlyphCacheMaxBytes, wasmUrl };
+  return { init, initSync, Renderer, Prepared, features, setGlyphCacheMaxBytes, wasmUrl, backend: backend.name };
 }

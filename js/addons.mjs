@@ -9,7 +9,7 @@
 // with no imports; registerFont uses it automatically when the main binary has no WOFF support. The
 // converted font is byte-identical to what the built-in path registers. The decoder is shared by every
 // entry (bm-engine, bm-engine/core, ...) in the process.
-import { setWoffDecoder, readFileUrl } from "./engine.mjs";
+import { setWoffDecoder, readFileUrl, builtInWoffDecoder } from "./engine.mjs";
 import { features } from "./index.mjs";
 
 let woff = null;
@@ -32,7 +32,11 @@ async function bytesOf(input) {
 
 /** Converts WOFF / WOFF2 bytes to an sfnt (TTF / OTF) with the loaded add-on. */
 export function decodeWoff(bytes) {
-  if (!woff) throw new Error("bm-engine: call loadWoff() first");
+  if (!woff) {
+    const builtIn = builtInWoffDecoder(); // the native addon decodes WOFF itself
+    if (builtIn) return builtIn(bytes);
+    throw new Error("bm-engine: call loadWoff() first");
+  }
   const W = woff;
   const src = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer ?? bytes, bytes.byteOffset ?? 0, bytes.byteLength);
   const p = W.bm_alloc(src.length || 1);
@@ -53,6 +57,8 @@ export function decodeWoff(bytes) {
  * omitted (Node: the file next to this module; browsers: fetched from the same directory).
  */
 export async function loadWoff(input) {
+  // Native backend loaded (Node.js): WOFF / WOFF2 is compiled in and its decoder already serves every entry.
+  if (builtInWoffDecoder()) return { builtIn: true };
   if (!woff) {
     if (!loading) {
       loading = (async () => {

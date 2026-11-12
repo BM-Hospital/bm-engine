@@ -13,7 +13,7 @@ import { createBinding } from "./engine.mjs";
 
 const binding = createBinding(() => new URL("./bm_engine.wasm", import.meta.url));
 
-export const { init, initSync, Renderer, features, setGlyphCacheMaxBytes, wasmUrl } = binding;
+export const { init, initSync, Renderer, features, setGlyphCacheMaxBytes, wasmUrl, backend } = binding;
 export { Prepared, setWoffDecoder } from "./engine.mjs";
 /** Build profile of this entry. */
 export const profile = "full";

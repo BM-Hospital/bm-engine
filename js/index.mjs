@@ -57,5 +57,7 @@ import { createBinding } from "./engine.mjs";
 const binding = createBinding();
 
 export const { init, initSync, Renderer, features, setGlyphCacheMaxBytes } = binding;
+/** Which engine build is active: "wasm" here; "native" when Node.js loaded the Node-API addon (js/node.mjs). */
+export const backend = "wasm";
 export { Prepared, setWoffDecoder } from "./engine.mjs";
 export default init;
