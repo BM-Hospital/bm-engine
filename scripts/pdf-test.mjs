@@ -712,6 +712,23 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
   await rejects(() => new PdfRenderer().render("<p>x</p>", { footer: "<p>Hello</p>" }), noFont, "no font: text in a band fails");
   isPdf(await new PdfRenderer().render("<p>Hello</p>", { ...vp, uncoveredText: "blank" }), "no font: uncoveredText blank draws nothing");
   isPdf(await new PdfRenderer().render(`<div style="width:10px;height:10px;background:red"> </div>`, vp), "no font: a document without text renders");
+
+  // 2. per-call `fonts` on the sync methods (registered as on the async ones; lazy loaders need the async API)
+  {
+    const t = textOf(new PdfRenderer().renderSync("<p>Hello sync</p>", { ...vp, fonts: [inter] }), "sync_fonts");
+    if (t !== null) check(t === "Hello sync", `renderSync fonts option: text drawn (${JSON.stringify(t)})`);
+    check(new PdfRenderer().measureSync("<p>Hello</p>", { fonts: [{ name: "Inter", data: inter }] }).height > 0, "measureSync fonts option: text measured");
+    try { new PdfRenderer().renderSync("<p>x</p>", { fonts: [{ name: "Lazy", data: () => inter }] }); check(false, "renderSync lazy font throws"); }
+    catch (e) { check(/need the async API/.test(e.message), "renderSync lazy font throws: " + e.message); }
+    const img = new fullMod.Renderer();
+    check(img.measureSync("<p>Hello</p>", { width: 200, fonts: [inter] }).height > 0, "image Renderer.measureSync fonts option: text measured");
+    // a render's `fonts` are registered once per renderer, as takumi-pdf dedupes them across calls
+    const once = new PdfRenderer();
+    for (let k = 0; k < 3; k++) await once.render("<p>x</p>", { ...vp, fonts: [inter, { name: "Inter Again", data: inter }] });
+    once.renderSync("<p>x</p>", { ...vp, fonts: [inter] });
+    const faces = once.registerFont(inter).find((fam) => fam.name === "Inter").faces.length;
+    check(faces === 2, `fonts option: registered once across renders (Inter faces after 4 renders + registerFont: ${faces})`);
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });
