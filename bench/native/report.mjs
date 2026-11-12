@@ -84,10 +84,13 @@ export function aggregateSpeed(passes) {
     const rows = common(f);
     if (!rows.length) continue;
     const rs = rows.map((r) => ratio(r, a, b, f));
-    (pairs[name] ??= {})[f] = { geomean: +geomean(rs).toFixed(3), faster: rs.filter((x) => x < 1).length, slower: rs.filter((x) => x > 1).length, n: rs.length, min: +Math.min(...rs).toFixed(3), max: +Math.max(...rs).toFixed(3) };
+    // the same ratio computed inside each pass (both engines measured interleaved, so load drift cancels out)
+    const pp = maps.map((m) => geomean(rows.map((r) => { const x = m.get(r.id)?.perf; return x?.[a]?.[f]?.median > 0 && x?.[b]?.[f]?.median > 0 ? x[a][f].median / x[b][f].median : null; }).filter((v) => v > 0)));
+    (pairs[name] ??= {})[f] = { geomean: +geomean(rs).toFixed(3), faster: rs.filter((x) => x < 1).length, slower: rs.filter((x) => x > 1).length, n: rs.length, min: +Math.min(...rs).toFixed(3), max: +Math.max(...rs).toFixed(3), perPass: pp.map((v) => +v.toFixed(3)), spreadPct: pp.length > 1 ? +spreadPct(pp).toFixed(1) : null };
   }
   const flags = [];
-  for (const v of VARIANTS) for (const f of FORMATS) if (spread[v]?.[f] > NOISE_LIMIT) flags.push(`${v} ${f}: pass-to-pass spread of the geomean ${spread[v][f]} %`);
+  for (const v of VARIANTS) for (const f of FORMATS) if (spread[v]?.[f] > NOISE_LIMIT) flags.push(`${v} ${f}: geomean range between passes ${spread[v][f]} %`);
+  for (const [p, o] of Object.entries(pairs)) for (const f of FORMATS) if (o[f]?.spreadPct > NOISE_LIMIT) flags.push(`ratio ${p} ${f}: range between passes ${o[f].spreadPct} %`);
   const noisyFixtures = {};
   for (const v of VARIANTS) for (const f of ["raw", "png"]) noisyFixtures[`${v} ${f}`] = fixtures.filter((r) => r.perf[v]?.[f]?.spreadPct > NOISE_LIMIT).length;
   return {
@@ -178,20 +181,21 @@ B.summary = (res, lang) => {
   return table([L(lang, "Metric", "Chỉ số"), "bm-native", "bm-wasm", "takumi-native", "takumi-wasm"], rows) + "\n\n" + note;
 };
 
+const pr = (o, lang) => (o?.perPass?.length > 1 ? ` [${o.perPass.map((v) => x(v, lang)).join(" / ")}]` : "");
 B.highlights = (res, lang) => {
   const s = res.speed, p = s?.pairs, out = [];
   if (p) {
     const a = p["bm-native:async/takumi-native:async"], y = p["bm-native:sync/takumi-native:async"], w = p["bm-native:sync/bm-wasm:sync"], tw = p["takumi-native:async/takumi-wasm:async"];
     out.push(L(lang,
-      `**bm-native vs bm-wasm (sync):** raw ${x(w.raw.geomean, lang)} the wasm time (faster on ${w.raw.faster}/${w.raw.n}), PNG ${x(w.png.geomean, lang)} (faster on ${w.png.faster}/${w.png.n}).`,
-      `**bm-native so với bm-wasm (sync):** raw bằng ${x(w.raw.geomean, lang)} thời gian của wasm (nhanh hơn ở ${w.raw.faster}/${w.raw.n} fixture), PNG ${x(w.png.geomean, lang)} (nhanh hơn ở ${w.png.faster}/${w.png.n}).`));
+      `**bm-native vs bm-wasm (sync):** raw ${x(w.raw.geomean, lang)} the wasm time${pr(w.raw, lang)} (faster on ${w.raw.faster}/${w.raw.n} fixtures), PNG ${x(w.png.geomean, lang)}${pr(w.png, lang)} (faster on ${w.png.faster}/${w.png.n}).`,
+      `**bm-native so với bm-wasm (sync):** raw bằng ${x(w.raw.geomean, lang)} thời gian của wasm${pr(w.raw, lang)} (nhanh hơn ở ${w.raw.faster}/${w.raw.n} fixture), PNG ${x(w.png.geomean, lang)}${pr(w.png, lang)} (nhanh hơn ở ${w.png.faster}/${w.png.n}).`));
     out.push(L(lang,
-      `**bm-native vs takumi-native, both async:** raw ${x(a.raw.geomean, lang)} (bm faster on ${a.raw.faster}/${a.raw.n}, range ${x(a.raw.min, lang)}–${x(a.raw.max, lang)}), PNG ${x(a.png.geomean, lang)} (bm faster on ${a.png.faster}/${a.png.n}, range ${x(a.png.min, lang)}–${x(a.png.max, lang)}). With bm's sync API: raw ${x(y.raw.geomean, lang)}, PNG ${x(y.png.geomean, lang)}. Below 1× = bm-native takes less time.`,
-      `**bm-native so với takumi-native, cùng async:** raw ${x(a.raw.geomean, lang)} (bm nhanh hơn ở ${a.raw.faster}/${a.raw.n}, khoảng ${x(a.raw.min, lang)}–${x(a.raw.max, lang)}), PNG ${x(a.png.geomean, lang)} (bm nhanh hơn ở ${a.png.faster}/${a.png.n}, khoảng ${x(a.png.min, lang)}–${x(a.png.max, lang)}). Với API sync của bm: raw ${x(y.raw.geomean, lang)}, PNG ${x(y.png.geomean, lang)}. Dưới 1× = bm-native tốn ít thời gian hơn.`));
-    const c = s.cpu;
-    if (c?.["takumi-native:async"]?.png) out.push(L(lang,
-      `**CPU time, not just wall time:** takumi-native spreads parts of one render over its own thread pool (measured: ${num(c["takumi-native:async"].png.cores, lang)} cores busy on average during a PNG render, ${num(c["takumi-native:async"].raw.cores, lang)} for raw); bm-native renders one image on one thread (${num(c["bm-native:sync"].png.cores, lang)}). CPU per PNG: bm-native ${ms(c["bm-native:sync"].png.cpuMsPerRender, lang)} ms, takumi-native ${ms(c["takumi-native:async"].png.cpuMsPerRender, lang)} ms.`,
-      `**Thời gian CPU, không chỉ thời gian thực:** takumi-native chia một phần của một lần render cho thread pool riêng của nó (đo được: trung bình ${num(c["takumi-native:async"].png.cores, lang)} lõi bận khi render PNG, ${num(c["takumi-native:async"].raw.cores, lang)} khi raw); bm-native render một ảnh trên một thread (${num(c["bm-native:sync"].png.cores, lang)}). CPU mỗi PNG: bm-native ${ms(c["bm-native:sync"].png.cpuMsPerRender, lang)} ms, takumi-native ${ms(c["takumi-native:async"].png.cpuMsPerRender, lang)} ms.`));
+      `**bm-native vs takumi-native, both async:** raw ${x(a.raw.geomean, lang)}${pr(a.raw, lang)} (bm faster on ${a.raw.faster}/${a.raw.n}, per fixture ${x(a.raw.min, lang)}–${x(a.raw.max, lang)}), PNG ${x(a.png.geomean, lang)}${pr(a.png, lang)} (bm faster on ${a.png.faster}/${a.png.n}, per fixture ${x(a.png.min, lang)}–${x(a.png.max, lang)}). With bm's sync API: raw ${x(y.raw.geomean, lang)}, PNG ${x(y.png.geomean, lang)}. Below 1× = bm-native takes less time; in brackets the same ratio in each pass.`,
+      `**bm-native so với takumi-native, cùng async:** raw ${x(a.raw.geomean, lang)}${pr(a.raw, lang)} (bm nhanh hơn ở ${a.raw.faster}/${a.raw.n}, từng fixture ${x(a.raw.min, lang)}–${x(a.raw.max, lang)}), PNG ${x(a.png.geomean, lang)}${pr(a.png, lang)} (bm nhanh hơn ở ${a.png.faster}/${a.png.n}, từng fixture ${x(a.png.min, lang)}–${x(a.png.max, lang)}). Với API sync của bm: raw ${x(y.raw.geomean, lang)}, PNG ${x(y.png.geomean, lang)}. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.`));
+    const c = s.cpu, bn = c?.["bm-native:async"], tn = c?.["takumi-native:async"];
+    if (tn?.png && bn?.png) out.push(L(lang,
+      `**CPU time per image (both async):** PNG ${ms(bn.png.cpuMsPerRender, lang)} ms bm-native vs ${ms(tn.png.cpuMsPerRender, lang)} ms takumi-native (${num(bn.png.cores, lang)} vs ${num(tn.png.cores, lang)} cores busy during a render); raw ${ms(bn.raw.cpuMsPerRender, lang)} vs ${ms(tn.raw.cpuMsPerRender, lang)} ms. takumi-native runs parts of one render (PNG deflate segments, blur, WebP, animation frames) on its own rayon thread pool; bm renders one image on one thread (bm-native sync: ${num(c["bm-native:sync"].png.cores, lang)} cores for PNG).`,
+      `**Thời gian CPU mỗi ảnh (cùng async):** PNG ${ms(bn.png.cpuMsPerRender, lang)} ms bm-native so với ${ms(tn.png.cpuMsPerRender, lang)} ms takumi-native (${num(bn.png.cores, lang)} so với ${num(tn.png.cores, lang)} lõi bận trong một lần render); raw ${ms(bn.raw.cpuMsPerRender, lang)} so với ${ms(tn.raw.cpuMsPerRender, lang)} ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: ${num(c["bm-native:sync"].png.cores, lang)} lõi với PNG).`));
     out.push(L(lang,
       `**takumi's own two builds:** takumi-native takes ${x(tw.raw.geomean, lang)} the time of takumi-wasm for raw and ${x(tw.png.geomean, lang)} for PNG.`,
       `**Hai bản build của chính takumi:** takumi-native tốn ${x(tw.raw.geomean, lang)} thời gian của takumi-wasm với raw và ${x(tw.png.geomean, lang)} với PNG.`));
@@ -199,8 +203,25 @@ B.highlights = (res, lang) => {
   if (res.identity) out.push(L(lang,
     `**Identity:** bm-native and bm-wasm produced the same bytes in ${res.identity.identical}/${res.identity.compared} comparisons over ${res.identity.fixtures} fixtures (${num(res.identity.mbCompared, lang)} MB; ${res.identity.mismatches} mismatches).`,
     `**Trùng byte:** bm-native và bm-wasm cho cùng byte ở ${res.identity.identical}/${res.identity.compared} phép so trên ${res.identity.fixtures} fixture (${num(res.identity.mbCompared, lang)} MB; ${res.identity.mismatches} khác biệt).`));
-  if (res.speed?.flags?.length) out.push(L(lang, `**Noise flags:** ${res.speed.flags.join("; ")}.`, `**Cờ nhiễu:** ${res.speed.flags.join("; ")}.`));
+  if (s?.spreadPct) {
+    const abs = Object.values(s.spreadPct).flatMap((o) => [o.raw, o.png]).filter((v) => v != null);
+    const rat = Object.values(s.pairs).flatMap((o) => [o.raw?.spreadPct, o.png?.spreadPct]).filter((v) => v != null);
+    if (abs.length && rat.length) out.push(L(lang,
+      `**Noise:** the absolute raw / PNG geomeans moved by up to ${num(Math.max(...abs), lang)} % between passes (the load from other processes changed during the run), while the engine-to-engine ratios, measured interleaved inside each pass, moved by at most ${num(Math.max(...rat), lang)} %. Read the ratios; treat absolute milliseconds as ±${num(Math.max(...abs) / 2, lang)} %.`,
+      `**Nhiễu:** geomean tuyệt đối raw / PNG lệch tới ${num(Math.max(...abs), lang)} % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất ${num(Math.max(...rat), lang)} %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±${num(Math.max(...abs) / 2, lang)} %.`));
+  }
   return out.map((l) => "- " + l).join("\n");
+};
+
+B.ratios = (res, lang) => {
+  const p = res.speed?.pairs;
+  if (!p) return "";
+  const names = { "bm-native:async/takumi-native:async": "bm-native async / takumi-native", "bm-native:sync/takumi-native:async": "bm-native sync / takumi-native", "bm-native:sync/bm-wasm:sync": "bm-native sync / bm-wasm sync", "bm-wasm:sync/takumi-wasm:async": "bm-wasm sync / takumi-wasm", "takumi-native:async/takumi-wasm:async": "takumi-native / takumi-wasm" };
+  const rows = [];
+  for (const [k, o] of Object.entries(p)) for (const f of FORMATS) if (o[f]) rows.push([names[k] ?? k, `${f} (${o[f].n})`, `**${x(o[f].geomean, lang)}**`, o[f].perPass?.map((v) => x(v, lang)).join(" / ") ?? "", `${o[f].faster} / ${o[f].slower}`, `${x(o[f].min, lang)} – ${x(o[f].max, lang)}`]);
+  return table([L(lang, "Ratio (time A / time B)", "Tỉ lệ (thời gian A / thời gian B)"), L(lang, "format (fixtures)", "định dạng (số fixture)"), "geomean", L(lang, "per pass", "từng lượt"), L(lang, "A faster / slower", "A nhanh hơn / chậm hơn"), L(lang, "per-fixture range", "khoảng theo fixture")], rows) + "\n\n" +
+    L(lang, "Geomean over fixtures of the per-fixture ratio of median times; below 1× = A takes less time. The per-pass column is the same ratio computed inside each pass: both engines were measured interleaved, so a change of machine load between passes largely cancels out.",
+      "Geomean trên các fixture của tỉ lệ thời gian median từng fixture; dưới 1× = A tốn ít thời gian hơn. Cột từng lượt là cùng tỉ lệ tính trong mỗi lượt: hai engine được đo xen kẽ nên thay đổi tải giữa các lượt phần lớn bị triệt tiêu.");
 };
 
 B.speed = (res, lang) => {
@@ -358,9 +379,25 @@ B.noise = (res, lang) => {
   for (const [k, n] of [["cold", res.cold], ["memory", res.memory], ["eventloop", res.eventloop], ["throughput", res.throughput]]) if (n?.load) rows.push([k, "", `${n.load.seconds} s`, "", `${num(n.load.meanBusyPct, lang)} % (max ${num(n.load.maxBusyPct, lang)} %)`, num(n.load.otherCores, lang)]);
   const head = [L(lang, "Stage", "Giai đoạn"), L(lang, "start (UTC)", "bắt đầu (UTC)"), L(lang, "duration", "thời lượng"), L(lang, "CPU busy just before", "CPU bận ngay trước"), L(lang, "CPU busy during", "CPU bận trong lúc đo"), L(lang, "other processes, cores", "tiến trình khác, lõi")];
   const nf = s?.noisyFixtures ? Object.entries(s.noisyFixtures).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+  const absF = (s?.flags ?? []).filter((f) => !f.startsWith("ratio"));
+  const ratF = (s?.flags ?? []).filter((f) => f.startsWith("ratio"));
+  const absVals = s?.spreadPct ? Object.values(s.spreadPct).flatMap((o) => Object.values(o)).filter((v) => v != null) : [];
+  const absMax = absVals.length ? Math.max(...absVals) : null;
+  const cpus = res.meta?.cpus ?? 8;
   return table(head, rows) + "\n\n" + L(lang,
-    `"Other processes" = busy core-seconds of the whole machine minus the benchmark's own CPU time, per second of wall time (8 logical CPUs). Fixtures whose median moved more than ${NOISE_LIMIT} % between passes: ${nf || "—"}.${s?.flags?.length ? " Flagged geomeans: " + s.flags.join("; ") + "." : " No geomean moved more than " + NOISE_LIMIT + " % between passes."}`,
-    `"Tiến trình khác" = số lõi-giây bận của cả máy trừ thời gian CPU của chính benchmark, chia cho thời gian thực (8 CPU logic). Số fixture có median lệch quá ${NOISE_LIMIT} % giữa các lượt: ${nf || "—"}.${s?.flags?.length ? " Geomean bị gắn cờ: " + s.flags.join("; ") + "." : " Không geomean nào lệch quá " + NOISE_LIMIT + " % giữa các lượt."}`);
+    `"Other processes" = busy core-seconds of the whole machine minus the benchmark's own CPU time, per second of wall time (${cpus} logical CPUs). Fixtures whose median moved more than ${NOISE_LIMIT} % between passes: ${nf || "—"}. ${absF.length} absolute geomeans (variant × format) moved more than ${NOISE_LIMIT} % between passes (largest range: ${num(absMax, lang)} %), which is why the tables lead with ratios measured inside each pass. Engine-to-engine ratios that moved more than ${NOISE_LIMIT} %: ${ratF.length ? ratF.join("; ") : "none"}.`,
+    `"Tiến trình khác" = số lõi-giây bận của cả máy trừ thời gian CPU của chính benchmark, chia cho thời gian thực (${cpus} CPU logic). Số fixture có median lệch quá ${NOISE_LIMIT} % giữa các lượt: ${nf || "—"}. ${absF.length} geomean tuyệt đối (biến thể × định dạng) lệch quá ${NOISE_LIMIT} % giữa các lượt (khoảng lệch lớn nhất: ${num(absMax, lang)} %), vì vậy các bảng ưu tiên tỉ lệ đo trong từng lượt. Tỉ lệ giữa engine lệch quá ${NOISE_LIMIT} %: ${ratF.length ? ratF.join("; ") : "không có"}.`);
+};
+
+B.diagnose = (res, lang) => {
+  const d = res.diagnose;
+  if (!d?.emptyFrame) return "";
+  const vs = VARIANTS;
+  const t1 = table([L(lang, "Empty white frame", "Khung trắng rỗng"), ...vs.map(vname)], d.emptyFrame.map((r) => [`${r.width}×${r.height} ${r.format}`, ...vs.map((v) => ms(r.ms[v], lang))]));
+  const t2 = table([L(lang, "Animation scene, one 800×420 raw frame", "Cảnh animation, một khung raw 800×420"), ...vs.map(vname)], d.animScene.map((r) => [r.label, ...vs.map((v) => ms(r.ms[v], lang))]));
+  return t1 + "\n\n" + t2 + "\n\n" + L(lang,
+    `Median ms, variants interleaved (${d.iters} iterations for the empty frames, fewer for the scene). An empty frame draws nothing, so its time is the per-pixel cost every frame pays (canvas clear, alpha conversion, copying the result out) plus, for PNG, encoding a flat image. The scene is the one of the event-loop animation: 12 rotated 60×60 discs with \`box-shadow: 0 8px 30px\` and \`filter: blur(2px)\`.`,
+    `Median ms, các biến thể chạy xen kẽ (${d.iters} lần cho khung rỗng, ít hơn cho cảnh). Khung rỗng không vẽ gì, nên thời gian của nó là chi phí theo điểm ảnh mà khung nào cũng trả (xoá canvas, đổi alpha, chép kết quả ra) cộng, với PNG, việc mã hoá một ảnh phẳng. Cảnh là cảnh của animation trong phép đo event loop: 12 hình tròn 60×60 xoay, có \`box-shadow: 0 8px 30px\` và \`filter: blur(2px)\`.`);
 };
 
 B.phase1 = (res, lang) => {
@@ -405,7 +442,7 @@ export function fillBlocks(text, res, lang) {
 
 /** The full Markdown report (English) and, with docs: true, the doc blocks rewritten in place. */
 export function renderAll(res, { docs = true, root } = {}) {
-  const order = ["env", "highlights", "summary", "speed", "cpu", "categories", "best-worst", "formats", "equiv", "cold", "memory", "eventloop", "throughput", "sizes", "phase1", "noise", "per-fixture"];
+  const order = ["env", "highlights", "summary", "ratios", "speed", "cpu", "categories", "best-worst", "formats", "equiv", "cold", "memory", "eventloop", "throughput", "sizes", "diagnose", "phase1", "noise", "per-fixture"];
   const md = ["# Native benchmark: bm-native, bm-wasm, takumi-native, takumi-wasm", "", "Generated by `node bench/run-native.mjs` from `results-native.json`; do not edit.", ""];
   for (const b of order) { const body = B[b](res, "en"); if (body) md.push(`## ${b}`, "", body, ""); }
   if (docs && root) {
@@ -428,6 +465,17 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const file = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? path.join(root, "bench", "out", "native", "results-native.json");
   const res = JSON.parse(readFileSync(file, "utf8"));
+  if (process.argv.includes("--reaggregate")) {
+    // recompute res.speed from the raw pass files next to the JSON (after a change of the aggregation code)
+    const dir = path.dirname(file);
+    const passes = (res.speed?.passes ?? []).map((p) => {
+      const j = JSON.parse(readFileSync(path.join(dir, `speed-pass${p.pass}.tmp.json`), "utf8"));
+      return { ...p, durationMs: j.durationMs, cfg: j.cfg, date: j.date, cases: j.cases };
+    });
+    res.speed = aggregateSpeed(passes);
+    writeFileSync(file, JSON.stringify(res, null, 1));
+    console.error(`re-aggregated ${passes.length} speed passes into ${file}`);
+  }
   const docs = !process.argv.includes("--no-docs");
   const md = renderAll(res, { docs, root });
   writeFileSync(path.join(root, "bench", "out", "native", "NATIVE.md"), md);

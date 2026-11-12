@@ -77,6 +77,28 @@ first `card-og` PNG render, total. `lib/cold.mjs <engine> --mem`: registers all 
 and wasm linear memory before/after. `lib/sizes.mjs`: raw / gzip -9 / brotli (q11) of each `.wasm` (native: `.node`) and JS glue
 (takumi `dist/export.mjs` vs bm `js/*.mjs`).
 
+## Native benchmark (four engines on Node)
+
+`node bench/run-native.mjs` (from the repo root) measures bm-native (the Node-API addon), bm-wasm (`full`), takumi-native and
+takumi-wasm together: byte identity (`native-identity.mjs`), equivalence against takumi-wasm, per-fixture render time (raw / PNG,
+plus JPEG / WebP on three fixtures; sync and async APIs; engines interleaved round by round; 3 passes at different moments; CPU
+time per render), cold start (30 fresh processes per engine minus an empty Node), memory (10 suite passes, 4000x4000 peak RSS),
+event-loop blocking (1 ms timer during a heavy render / 60-frame animation), throughput under concurrency (N = 1..16; K renderers;
+`UV_THREADPOOL_SIZE` 4 and 8; worker pools for wasm) and binary sizes. It samples the machine's CPU load during every stage.
+
+```
+node bench/run-native.mjs                     # full (about 30-40 min on the i3-10100)
+node bench/run-native.mjs --quick             # smoke run (about 5 min)
+node bench/run-native.mjs --stages=cold,memory   # re-measure some stages; the others are kept from the JSON
+node bench/native/report.mjs                  # regenerate NATIVE.md + doc tables from the JSON only
+```
+
+Options: `--passes=N --cold-runs=N --mem-passes=N --tp-ms=N --filter=<regex> --no-docs --out=<dir>`. Output:
+`out/native/results-native.json`, `out/native/NATIVE.md`, `docs/results-native.json`, and the tables between
+`<!-- native-bench:<name> -->` / `<!-- /native-bench:<name> -->` markers in the docs (`native/report.mjs` lists the block names).
+Code: `native/engines.mjs` (the four engines through their public APIs), `native/{speed,equiv,cold-child,memory,eventloop,throughput}.mjs`
+(one child process each), `native/report.mjs` (aggregation + tables).
+
 ## Browser test
 
 Runs the engine in a real Chromium-based browser (Edge or Chrome, found automatically; no download) driven by `puppeteer-core`, and compares it with Node.

@@ -3,7 +3,7 @@
 //
 //   node bench/run-native.mjs                  full run (3 speed passes, 30 cold starts, ...; ~25-35 min)
 //   node bench/run-native.mjs --quick          short budgets, 1 speed pass, 10 cold starts (~5 min); for a smoke test
-//   options: --stages=identity,equiv,speed,cold,memory,eventloop,throughput,sizes   (default: all; the stages not
+//   options: --stages=identity,equiv,speed,cold,memory,eventloop,diagnose,throughput,sizes   (default: all; the stages not
 //              run keep their previous results from the JSON, so one stage can be re-measured cheaply)
 //            --passes=N  --cold-runs=N  --mem-passes=N  --tp-ms=N  --filter=<regex> (fixtures)  --no-docs
 //            --out=<dir> (default bench/out/native)
@@ -33,7 +33,7 @@ const BENCH = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(BENCH, "..");
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
 const quick = !!args.quick;
-const ALL_STAGES = ["identity", "equiv", "speed", "cold", "memory", "eventloop", "throughput", "sizes"];
+const ALL_STAGES = ["identity", "equiv", "speed", "cold", "memory", "eventloop", "diagnose", "throughput", "sizes"];
 const stages = new Set(args.stages ? String(args.stages).split(",") : ALL_STAGES);
 for (const s of stages) if (!ALL_STAGES.includes(s)) throw new Error(`unknown stage ${s} (${ALL_STAGES.join(", ")})`);
 const outDir = path.resolve(args.out ? String(args.out) : path.join(BENCH, "out", "native"));
@@ -239,6 +239,13 @@ S.throughput = async () => {
   out.load = ls.stop(cpu);
   res.throughput = out;
 };
+S.diagnose = async () => {
+  log("diagnose: fixed per-frame cost (empty frames) and the animation scene's effects, interleaved");
+  const ls = loadSampler();
+  const o = lastJson(await child(["native/diagnose.mjs", `--iters=${quick ? 15 : 40}`]));
+  o.load = ls.stop(null);
+  res.diagnose = o;
+};
 S.sizes = async () => {
   log("sizes");
   const man = JSON.parse(readFileSync(path.join(ROOT, "native", "dist", "manifest.json"), "utf8"));
@@ -262,7 +269,7 @@ S.sizes = async () => {
 };
 
 // schedule: the speed passes are spread between the other stages ("different moments")
-const others = ["identity", "equiv", "cold", "memory", "eventloop", "throughput", "sizes"].filter((s) => stages.has(s));
+const others = ["identity", "equiv", "cold", "memory", "eventloop", "diagnose", "throughput", "sizes"].filter((s) => stages.has(s));
 const plan = [];
 if (stages.has("speed")) {
   const slots = Array.from({ length: passes }, () => []);
@@ -278,11 +285,16 @@ for (const s of plan) {
 }
 if (stages.has("speed")) res.speed = aggregateSpeed(speedPasses);
 res.meta.durationMin = +((performance.now() - T0) / 60000).toFixed(1);
+if (ALL_STAGES.some((s) => !stages.has(s)) && prev.meta) {
+  // a partial run: the environment record stays the one of the last full run, this run is appended to it
+  const { stagesRun, durationMin, date, git, engines, quick: q } = res.meta;
+  res.meta = { ...prev.meta, partialRuns: [...(prev.meta.partialRuns ?? []), { date, stages: stagesRun, quick: q, durationMin, git, engines }] };
+}
 
 writeFileSync(jsonPath, JSON.stringify(res, null, 1));
 const docsJson = path.join(ROOT, "docs", "results-native.json");
 const md = renderAll(res, { docs: !args["no-docs"], root: ROOT });
 writeFileSync(path.join(outDir, "NATIVE.md"), md);
 if (!args["no-docs"]) copyFileSync(jsonPath, docsJson);
-log(`wrote ${jsonPath}, ${path.join(outDir, "NATIVE.md")}${args["no-docs"] ? "" : ", docs/results-native.json and the doc tables"} in ${res.meta.durationMin} min`);
+log(`wrote ${jsonPath}, ${path.join(outDir, "NATIVE.md")}${args["no-docs"] ? "" : ", docs/results-native.json and the doc tables"} in ${((performance.now() - T0) / 60000).toFixed(1)} min`);
 process.exit(0);
