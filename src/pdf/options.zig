@@ -361,7 +361,10 @@ pub fn fromValue(a: Allocator, v: json.Value, blobs: []const Blob, diag: *Diag) 
     if (field(v, "cssVariables")) |x| o.css_variables = try parseVars(a, x, diag);
     if (field(v, "fontFamilies")) |x| o.font_families = try strList(a, x, "fontFamilies", diag);
     if (field(v, "failedFontFiles")) |x| o.failed_font_files = try strList(a, x, "failedFontFiles", diag);
-    if (field(v, "lang")) |x| o.lang = try str(x, "lang", diag);
+    if (field(v, "lang")) |x| {
+        const tag = try str(x, "lang", diag);
+        o.lang = try canonicalLang(a, tag) orelse return fail(diag, &.{ "Invalid language tag: ", tag });
+    }
     if (field(v, "metadata")) |x| o.metadata = try parseMetadata(a, x, diag);
     if (field(v, "outline")) |x| o.outline = try boolean(x, "outline", diag);
     if (field(v, "pdfa")) |x| {
@@ -384,6 +387,67 @@ pub fn fromValue(a: Allocator, v: json.Value, blobs: []const Blob, diag: *Diag) 
     }
     try validate(&o, tagged_set, diag);
     return o;
+}
+
+/// takumi-core `Lang::parse`: a language subtag of 2-3 or 5-8 letters, then an optional 4-letter script and an optional
+/// region (2 letters or 3 digits), separated by `-` or `_`; anything after those is dropped. Returns the canonical
+/// form (`zh-Hant-TW`), or null for a tag takumi rejects (also one whose canonical form is longer than 17 bytes).
+pub fn canonicalLang(a: Allocator, tag: []const u8) Allocator.Error!?[]const u8 {
+    var it = std.mem.splitAny(u8, tag, "-_");
+    const language = it.first();
+    if (!(language.len == 2 or language.len == 3 or (language.len >= 5 and language.len <= 8)) or !allAlpha(language)) return null;
+    var buf: [17]u8 = undefined;
+    var n: usize = 0;
+    if (language.len > buf.len) return null;
+    for (language) |ch| {
+        buf[n] = std.ascii.toLower(ch);
+        n += 1;
+    }
+    var next = it.next();
+    if (next) |script| if (script.len == 4 and allAlpha(script)) {
+        if (n + 5 > buf.len) return null;
+        buf[n] = '-';
+        buf[n + 1] = std.ascii.toUpper(script[0]);
+        for (script[1..], 0..) |ch, i| buf[n + 2 + i] = std.ascii.toLower(ch);
+        n += 5;
+        next = it.next();
+    };
+    if (next) |region| if ((region.len == 2 and allAlpha(region)) or (region.len == 3 and allDigits(region))) {
+        if (n + 1 + region.len > buf.len) return null;
+        buf[n] = '-';
+        for (region, 0..) |ch, i| buf[n + 1 + i] = std.ascii.toUpper(ch);
+        n += 1 + region.len;
+    };
+    return try a.dupe(u8, buf[0..n]);
+}
+
+fn allAlpha(s: []const u8) bool {
+    for (s) |ch| if (!std.ascii.isAlphabetic(ch)) return false;
+    return true;
+}
+
+fn allDigits(s: []const u8) bool {
+    for (s) |ch| if (!std.ascii.isDigit(ch)) return false;
+    return true;
+}
+
+test "canonicalLang follows takumi Lang::parse" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try testing.expectEqualStrings("en", (try canonicalLang(a, "EN")).?);
+    try testing.expectEqualStrings("en-US", (try canonicalLang(a, "en_us")).?);
+    try testing.expectEqualStrings("zh-Hant-TW", (try canonicalLang(a, "zh-hant-tw")).?);
+    try testing.expectEqualStrings("es-419", (try canonicalLang(a, "es-419")).?);
+    try testing.expectEqualStrings("de", (try canonicalLang(a, "de-1996")).?);
+    try testing.expectEqualStrings("en", (try canonicalLang(a, "en-x-private")).?);
+    try testing.expect((try canonicalLang(a, "")) == null);
+    try testing.expect((try canonicalLang(a, "e")) == null);
+    try testing.expect((try canonicalLang(a, "engl")) == null);
+    try testing.expect((try canonicalLang(a, "not a lang!!")) == null);
+    try testing.expect((try canonicalLang(a, "e1")) == null);
+    try expectErr("{\"lang\":\"not a lang!!\"}", "Invalid language tag: not a lang!!");
+    try expectErr("{\"lang\":\"\"}", "Invalid language tag: ");
 }
 
 fn str(x: json.Value, name: []const u8, d: *Diag) Error![]const u8 {
@@ -446,12 +510,18 @@ fn dimU32(n: f32) u32 {
     return @intFromFloat(@min(n, 16384));
 }
 
+fn bandSet(v: json.Value, key: []const u8) bool {
+    const x = field(v, key) orelse return false;
+    return !(x == .bool and !x.bool);
+}
+
 fn parseGeometry(v: json.Value, d: *Diag) Error!Geometry {
     const size = field(v, "size");
     const landscape = field(v, "landscape");
     const margin = field(v, "margin");
-    const paged_field_set = size != null or landscape != null or margin != null or field(v, "header") != null or
-        field(v, "footer") != null or field(v, "pages") != null or field(v, "pageRanges") != null;
+    // (takumi-pdf-js drops a top-level `header: false` / `footer: false` before the options reach this check)
+    const paged_field_set = size != null or landscape != null or margin != null or bandSet(v, "header") or
+        bandSet(v, "footer") or field(v, "pages") != null or field(v, "pageRanges") != null;
 
     if (field(v, "viewport")) |vp| {
         if (paged_field_set) return fail(d, &.{"viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)"});
@@ -990,9 +1060,11 @@ test "viewport and the paged options are mutually exclusive" {
         "{\"viewport\":{\"width\":600},\"landscape\":false}",
         "{\"viewport\":{\"width\":600},\"margin\":1}",
         "{\"viewport\":{\"width\":600},\"header\":\"<p>x</p>\"}",
-        "{\"viewport\":{\"width\":600},\"footer\":false}",
+        "{\"viewport\":{\"width\":600},\"footer\":\"<p>x</p>\"}",
         "{\"viewport\":{\"width\":600},\"pages\":{}}",
     }) |t| try expectErr(t, msg);
+    // a top-level band set to `false` counts as unset too (takumi-pdf-js never passes it on)
+    _ = try tparse(arena.allocator(), "{\"viewport\":{\"width\":600},\"footer\":false,\"header\":false}");
     // null members count as unset (JS `undefined`)
     _ = try tparse(arena.allocator(), "{\"viewport\":{\"width\":600},\"size\":null}");
     try expectErr("{\"viewport\":{\"width\":0}}", "invalid viewport: width/height must be > 0");

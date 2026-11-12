@@ -88,10 +88,12 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
         },
     };
     if (o.background_color) |c| {
-        _ = style.color.parse(c) catch {
+        // (takumi-pdf-js `page_background`: only `ColorInput::Value` is a colour, `currentColor` is not)
+        const parsed = style.color.parse(c) catch null;
+        if (parsed == null or parsed.? == .current) {
             r.setErr("backgroundColor is not a color: ", c);
             return error.Invalid;
-        };
+        }
     }
     return o;
 }

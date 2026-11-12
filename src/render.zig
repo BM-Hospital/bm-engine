@@ -1529,6 +1529,8 @@ pub const Frame = struct {
             .viewport_h = if (o.height) |h| @floatFromInt(h) else null,
             .dpr = o.dpr,
             .supports = cssSupports,
+            // PDF output is print media (takumi-pdf `Viewport::with_media_target(MediaTarget::Print)`)
+            .print = if (comptime layout.fragment.enabled) f.tree.paged.pdf else false,
         });
         st.scratch = css.Scratch.init(a);
         st.vt = CssDom.vtable(&f.dom);
