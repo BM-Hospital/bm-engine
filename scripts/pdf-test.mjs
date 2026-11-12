@@ -774,6 +774,45 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
     const clip = content(await ir.render(W("ellipsis"), { viewport: { width: 200, height: 80 }, tagged: false }));
     check(/re\nW\nn/.test(clip), "an overflow box clips its own text");
   }
+
+  // 7. long documents: a page draws only what is on it, time and memory grow linearly with the pages
+  {
+    const perPage = (bytes) => {
+      const s = latin1(bytes); const out = []; let at = 0;
+      for (;;) {
+        const i = s.indexOf("stream\n", at); if (i < 0) break;
+        const j = s.indexOf("\nendstream", i); if (j < 0) break;
+        const dict = s.slice(s.lastIndexOf("obj", i), i);
+        if (/FlateDecode/.test(dict) && !/Subtype|Length1|Type\/|XRef|ObjStm/.test(dict)) {
+          try { const t = inflateSync(Buffer.from(bytes.subarray(i + 7, j))).toString("latin1"); if (/ cm[ \n]/.test(t) &&!t.slice(0, 64).includes("\0")) out.push(t); } catch {}
+        }
+        at = j + 10;
+      }
+      return out;
+    };
+    const lr = new PdfRenderer();
+    lr.registerFont({ name: "Inter", data: inter });
+    const rows = Array.from({ length: 70 }, (_, k) => `<tr style="background:${k % 2 ? "#f1f5f9" : "#fff"}"><td>Row ${k}</td><td>Item ${k}</td><td>${k * 3}</td></tr>`).join("");
+    const table = await lr.render(`<style>body{font-family:Inter;font-size:11px} table{width:100%;border-collapse:collapse} td,th{border:1px solid #cbd5e1;padding:4px}</style><table><thead><tr><th>A</th><th>B</th><th>C</th></tr></thead><tbody>${rows}</tbody></table>`, { size: "a5" });
+    const res = perPage(table).map((t) => (t.match(/ re\n/g) || []).length);
+    check(res.length >= 3 && Math.max(...res) < 450, `a 70-row collapsed table: rectangles per page ${res.join("/")} (takumi-pdf 288/339/326/59; was ~900 a page)`);
+    const sec = (k) => `<section style="break-after:page"><h2>Section ${k + 1}</h2><p>${"Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(8)}</p>` +
+      `<table style="width:100%;border-collapse:collapse"><tbody>${Array.from({ length: 14 }, (_, r) => `<tr><td style="border-bottom:1px solid #e2e8f0">Line ${k * 14 + r}</td><td>${r}</td></tr>`).join("")}</tbody></table></section>`;
+    const doc = (n) => `<div style="font-family:Inter;font-size:11px">${Array.from({ length: n }, (_, k) => sec(k)).join("")}</div>`;
+    const footer = `<div style="font:9px Inter;text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`;
+    const t0 = performance.now();
+    const big = await lr.render(doc(500), { size: "a4", margin: 40, footer });
+    const ms = performance.now() - t0;
+    const streams = perPage(big);
+    const ops = streams.map((t) => t.length);
+    check(streams.length === 500 && ms < 60000, `500 pages render (${streams.length} pages in ${Math.round(ms)} ms; was out of memory)`);
+    check(ops.length === 500 && Math.max(...ops) < 3 * Math.min(...ops.slice(0, -1)), `500 pages: each page's content is its own (bytes per page ${Math.min(...ops)}..${Math.max(...ops)})`);
+    const mem = [];
+    const rr = new pdfMod.Renderer();
+    rr.registerFont({ name: "Inter", data: inter });
+    for (let k = 0; k < 3; k++) { await rr.renderPdf(doc(60), { size: "a4", margin: 40, footer }); mem.push(rr.memoryBytes()); }
+    check(mem[2] <= mem[0] * 1.1, `memory plateaus over renders (${mem.map((m) => Math.round(m / 2 ** 20)).join(" / ")} MiB)`);
+  }
 }
 
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });

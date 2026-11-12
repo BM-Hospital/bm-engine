@@ -193,6 +193,9 @@ pub const Emitter = struct {
     lift_now: u32 = none,
     lift_clips: std.ArrayList(ClipRec) = .empty,
     pre: []u32 = &.{},
+    /// the document's subtree extents (`Extents`): a page's walk skips the subtrees that miss its
+    /// window (null: bands, fixed boxes, tests)
+    ext: ?*const Extents = null,
     /// a paginated document's page windows, this page's index among them, and the page whose
     /// fragments the current pass paints (takumi's page scene visits the root fragments of the
     /// pages reaching the page, in page order; null: one pass over the whole frame), and whether
@@ -448,6 +451,9 @@ pub const Emitter = struct {
         const l = f.tree.layout(n.lid);
         var x = ox + l.x;
         var y = oy + l.y;
+        // a subtree that paints nothing into this page's window is not walked (a paginated
+        // document's pages each walk the frame: without this a page costs the whole document)
+        if (e.ext) |ex| if (ex.misses(e, id, y)) return;
         if (n.kind == .anon_text) return e.paintBox(id, x, y, depth);
         var m_open: ?Affine = null;
         if (localTransform(cs, x, y, l.w, l.h)) |m| {
@@ -522,6 +528,16 @@ pub const Emitter = struct {
         // outlines close the stacking context, and every box Blink paints atomically (flex / grid
         // items, inline-blocks, floats, positioned boxes: takumi's per-item outline chunks)
         if (group or cs.clip_path != null or stacks(cs) or e.atomic(n)) try e.flushOutlines(mark, saved_clips);
+    }
+
+    /// Whether the subtree of `id`, met at frame y `y` of an untransformed walk, misses this
+    /// paginated page's window (the lines a first / last page owns above / below it included).
+    fn missesWindow(e: *const Emitter, lo: f32, hi: f32) bool {
+        const win = e.window;
+        if (!win.paged() or !e.plain()) return false;
+        const top = @min(win.top, win.lines_top);
+        const bottom = @max(win.bottom, win.lines_bottom);
+        return hi < top or lo > bottom;
     }
 
     /// The end of a context: its floats, then its content.
@@ -2138,6 +2154,86 @@ fn blendOf(m: style.computed.BlendMode) sf.Blend {
 }
 
 /// How far a box's own paint reaches past its border box (box shadows, outline).
+/// Per frame, once per document: each node's border-box y as the page walk meets it (`paintNode`,
+/// before its transform; NaN under a transform that is not a translation, where the walk is not
+/// culled), the y range its subtree can paint into (its boxes with their shadow / outline reach
+/// and a font size for glyphs overflowing their line), and the tree order (`Emitter.pre`).
+pub const Extents = struct {
+    y: []f32,
+    lo: []f32,
+    hi: []f32,
+    pre: []u32,
+
+    pub fn compute(a: Allocator, f: *const Frame) Error!Extents {
+        const nn = f.nodes.items.len;
+        const ex: Extents = .{ .y = try a.alloc(f32, nn), .lo = try a.alloc(f32, nn), .hi = try a.alloc(f32, nn), .pre = try a.alloc(u32, nn) };
+        @memset(ex.y, std.math.nan(f32));
+        @memset(ex.lo, std.math.inf(f32));
+        @memset(ex.hi, -std.math.inf(f32));
+        @memset(ex.pre, 0);
+        if (nn == 0) return ex;
+        // the children's origin (the parent's y after a translation), tree order
+        const org = try a.alloc(f32, nn);
+        @memset(org, std.math.nan(f32));
+        const order = try a.alloc(u32, nn);
+        var stack: std.ArrayList(u32) = .empty;
+        try stack.append(a, f.root);
+        var k: u32 = 0;
+        while (stack.pop()) |id| {
+            ex.pre[id] = k;
+            order[k] = id;
+            k += 1;
+            const mark = stack.items.len;
+            var c = f.nodes.items[id].first_child;
+            while (c != none) : (c = f.nodes.items[c].next) try stack.append(a, c);
+            std.mem.reverse(u32, stack.items[mark..]);
+        }
+        for (order[0..k]) |id| {
+            const n = &f.nodes.items[id];
+            const cs = n.cs;
+            if (n.kind != .anon_text and cs.display == .none) continue;
+            const l = f.tree.layout(n.lid);
+            const oy: f32 = if (id == f.root) 0 else if (n.parent != none) org[n.parent] else std.math.nan(f32);
+            var y = oy + l.y;
+            ex.y[id] = y;
+            if (n.kind != .anon_text) if (localTransform(cs, 0, y, l.w, l.h)) |m| {
+                y = if (m.isTranslateOnly()) y + m.f else std.math.nan(f32);
+            };
+            org[id] = y;
+            if (y != y) {
+                ex.lo[id] = -std.math.inf(f32);
+                ex.hi[id] = std.math.inf(f32);
+                continue;
+            }
+            var reach = paintReach(cs) + cs.font_size;
+            for (cs.text_shadow) |sh| reach = @max(reach, cs.font_size + @abs(sh.y) + 3 * @max(sh.blur, 0));
+            ex.lo[id] = y - reach;
+            ex.hi[id] = y + @max(l.h, 0) + reach;
+        }
+        // subtrees: children before their parents
+        var i = k;
+        while (i > 1) {
+            i -= 1;
+            const id = order[i];
+            const p = f.nodes.items[id].parent;
+            if (p == none) continue;
+            ex.lo[p] = @min(ex.lo[p], ex.lo[id]);
+            ex.hi[p] = @max(ex.hi[p], ex.hi[id]);
+        }
+        return ex;
+    }
+
+    /// Whether the walk can skip node `id`, met at frame y `y`, on this page. The first page walks
+    /// everything: the document-wide collections (headings, anchors, link runs: interactive.zig)
+    /// are made during its walk.
+    fn misses(ex: *const Extents, e: *const Emitter, id: u32, y: f32) bool {
+        if (id >= ex.y.len or e.in_repeat or e.win_page == 0) return false;
+        const want = ex.y[id];
+        if (!(@abs(want - y) < 0.001)) return false;
+        return e.missesWindow(ex.lo[id], ex.hi[id]);
+    }
+};
+
 fn paintReach(cs: *const CS) f32 {
     var r: f32 = 0;
     for (cs.box_shadow) |sh| {
@@ -2398,10 +2494,20 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     const outs = try a.alloc(sf.Stream, pages.len);
     var links = try interactive.Collector.init(a, f, pages.len); // [interactive]
     var td = try @import("tagdoc.zig").TagDoc.init(a, &cx, cfg, popts, tagged, f, &links, pages.len);
+    // (a paginated document: computed once, shared by the pages, as are the table parts and the tree
+    // order; per page they would cost the whole document every page)
+    const ext: ?Extents = if (pages.len > 1) try Extents.compute(a, f) else null;
+    var tparts: []etable.Part = &.{};
     for (pages, windows, 0..) |page, win, i| {
         var s = sf.Surface.initPage(&cx, page.height * pt_per_px);
         s.tagging = tagged;
         var e = Emitter.init(f, &cx, &s, &fonts);
+        if (ext) |*x| {
+            e.ext = x;
+            e.pre = x.pre;
+        }
+        e.tparts = tparts;
+        defer tparts = e.tparts;
         links.beginPage(i, page, win); // [interactive]
         e.links = &links;
         e.windows = windows;
