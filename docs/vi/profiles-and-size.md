@@ -32,17 +32,10 @@ wasm vẫn nằm trong gói chính để làm phương án dự phòng. Nên dù
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 010 | 1 077 | 880 | đã chạy (benchmark này) |
-| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 1 570 | 954 | 743 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 1 901 | 1 041 | 856 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 1 900 | 1 041 | 856 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 1 571 | 955 | 743 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 1 571 | 955 | 742 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 1 901 | 1 040 | 855 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 1 594 | 929 | 712 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| bm wasm `core` | wasm32 | 454 | 212 | 180 |  |
-| bm wasm `standard` | wasm32 | 878 | 435 | 374 |  |
-| bm wasm `full` | wasm32 | 1 100 | 538 | 453 |  |
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 083 | 1 120 | 914 | đã chạy (benchmark này) |
+| bm wasm `core` | wasm32 | 487 | 228 | 194 |  |
+| bm wasm `standard` | wasm32 | 934 | 463 | 398 |  |
+| bm wasm `full` | wasm32 | 1 140 | 558 | 470 |  |
 | bm wasm `add-on WOFF` | wasm32 | 84.2 | 67.7 | 65.5 |  |
 | takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
 | takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |

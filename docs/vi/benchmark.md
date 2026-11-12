@@ -22,32 +22,32 @@ nhóm, từng fixture, phương pháp, ghi nhận nhiễu) nằm trong [docs/BEN
 Phần còn lại của trang này là báo cáo bản wasm của giai đoạn 3.
 
 <!-- native-bench:highlights -->
-- **bm-native so với bm-wasm (sync):** raw bằng 0.76× thời gian của wasm [0.77× / 0.75× / 0.80×] (nhanh hơn ở 192/200 fixture), PNG 0.67× [0.68× / 0.67× / 0.68×] (nhanh hơn ở 200/200).
-- **bm-native so với takumi-native, cùng async:** raw 0.89× [0.90× / 0.88× / 0.95×] (bm nhanh hơn ở 136/200, từng fixture 0.22×–2.78×), PNG 0.68× [0.67× / 0.65× / 0.66×] (bm nhanh hơn ở 170/200, từng fixture 0.28×–2.21×). Với API sync của bm: raw 0.69×, PNG 0.66×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
-- **Thời gian CPU mỗi ảnh (cùng async):** PNG 3.29 ms bm-native so với 5.28 ms takumi-native (1.11 so với 1.45 lõi bận trong một lần render); raw 2.25 so với 2.30 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.88 lõi với PNG).
-- **Hai bản build của chính takumi:** takumi-native tốn 0.69× thời gian của takumi-wasm với raw và 0.48× với PNG.
-- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 1457/1457 phép so trên 200 fixture (586 MB; 0 khác biệt).
-- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 40.1 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 17.9 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±20.1 %.
+- **bm-native so với bm-wasm (sync):** raw bằng 0.60× thời gian của wasm [0.60× / 0.59× / 0.60×] (nhanh hơn ở 250/250 fixture), PNG 0.68× [0.68× / 0.68× / 0.68×] (nhanh hơn ở 250/250).
+- **bm-native so với takumi-native, cùng async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm nhanh hơn ở 244/250, từng fixture 0.13×–1.21×), PNG 0.56× [0.56× / 0.58× / 0.56×] (bm nhanh hơn ở 227/250, từng fixture 0.23×–2.28×). Với API sync của bm: raw 0.50×, PNG 0.56×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
+- **Thời gian CPU mỗi ảnh (cùng async):** PNG 2.32 ms bm-native so với 3.81 ms takumi-native (1.47 so với 1.78 lõi bận trong một lần render); raw 1.42 so với 1.71 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.91 lõi với PNG).
+- **Hai bản build của chính takumi:** takumi-native tốn 0.75× thời gian của takumi-wasm với raw và 0.56× với PNG.
+- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 1810/1810 phép so trên 250 fixture (637 MB; 0 khác biệt).
+- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 33.4 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 3.70 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±16.7 %.
 <!-- /native-bench:highlights -->
 
 <!-- native-bench:summary -->
 | Chỉ số | bm-native | bm-wasm | takumi-native | takumi-wasm |
 |:--|--:|--:|--:|--:|
-| raw RGBA, geomean ms — API sync | 0.96 ±7.00 % ⚠ | 1.26 ±5.20 % ⚠ | không có API sync | — |
-| raw RGBA, geomean ms — API async | 1.25 ±20.1 % ⚠ | — | 1.40 ±15.3 % ⚠ | 2.02 ±6.45 % ⚠ |
-| PNG, geomean ms — API sync | 1.80 ±5.85 % ⚠ | 2.67 ±5.50 % ⚠ | không có API sync | — |
-| PNG, geomean ms — API async | 1.83 ±11.8 % ⚠ | — | 2.71 ±11.1 % ⚠ | 5.63 ±5.45 % ⚠ |
-| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 2.46 (0.88 lõi) | 3.19 (0.78 lõi) | 5.28 (1.45 lõi) | 7.29 (0.85 lõi) |
-| Dung lượng PNG, geomean so với takumi | 0.78× | 0.78× | 1.00× | 1.00× |
-| Cold start so với Node rỗng, median / p95 ms | 28.6 / 75.5 | 96.5 / 139 | 60.2 / 83.8 | 238 / 282 |
-| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 91.9 → 93.4 | 126 → 126 | 147 → 160 | 132 → 161 |
-| RSS đỉnh, một PNG 4000×4000, MiB | 146 | 149 | 137 | 151 |
-| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 299 (sync) · 3.90 (async) | 700 (sync) · 604 (async) | 15.3 (async) | 1 095 (async) |
-| Event loop: như trên, animation 60 khung, ms | 5 376 (sync) · 6.50 (async) | 10 866 (sync) · 9 086 (async) | 30.1 (async) | 2 563 (async) |
-| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 177 (many K=4, UV 4) ⚠ | 119 (pool K=8) ⚠ | 170 (many K=2, UV 4) ⚠ | 78.5 (pool K=4) ⚠ |
-| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 247 (many K=8, UV 8) ⚠ | 157 (pool K=8) ⚠ | 200 (one, UV 8) ⚠ | 88.9 (pool K=8) ⚠ |
+| raw RGBA, geomean ms — API sync | 0.51 ±15.5 % ⚠ | 0.85 ±16.1 % ⚠ | không có API sync | — |
+| raw RGBA, geomean ms — API async | 0.56 ±15.7 % ⚠ | — | 1.02 ±15.3 % ⚠ | 1.36 ±15.8 % ⚠ |
+| PNG, geomean ms — API sync | 1.05 ±14.6 % ⚠ | 1.56 ±15.0 % ⚠ | không có API sync | — |
+| PNG, geomean ms — API async | 1.06 ±16.7 % ⚠ | — | 1.89 ±14.5 % ⚠ | 3.36 ±15.8 % ⚠ |
+| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 1.42 (0.91 lõi) | 1.78 (0.77 lõi) | 3.81 (1.78 lõi) | 4.08 (0.86 lõi) |
+| Dung lượng PNG, geomean so với takumi | 0.80× | 0.80× | 1.00× | 1.00× |
+| Cold start so với Node rỗng, median / p95 ms | 31.3 / 69.2 | 99.9 / 138 | 50.9 / 97.5 | 238 / 304 |
+| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 94.7 → 96.0 | 132 → 156 | 102 → 139 | 140 → 176 |
+| RSS đỉnh, một PNG 4000×4000, MiB | 143 | 149 | 135 | 151 |
+| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 227 (sync) · 1.50 (async) | 455 (sync) · 473 (async) | 7.30 (async) | 819 (async) |
+| Event loop: như trên, animation 60 khung, ms | 476 (sync) · 1.20 (async) | 969 (sync) · 954 (async) | 21.6 (async) | 2 072 (async) |
+| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 312 (many K=4, UV 4) ⚠ | 233 (pool K=4) ⚠ | 270 (one, UV 8) ⚠ | 137 (pool K=8) ⚠ |
+| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 402 (many K=8, UV 8) ⚠ | 270 (pool K=8) ⚠ | 316 (one, UV 8) ⚠ | 180 (pool K=8) ⚠ |
 
-Geomean trên 200 fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của 3 lượt so với median của chúng; ⚠ = chênh quá 10 %. Cold start: median / p95 của 30 tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo; ở các dòng thông lượng ⚠ = tiến trình khác dùng trung bình hơn một lõi trong lúc đo.
+Geomean trên 250 fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của 3 lượt so với median của chúng; ⚠ = chênh quá 10 %. Cold start: median / p95 của 30 tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo; ở các dòng thông lượng ⚠ = tiến trình khác dùng trung bình hơn một lõi trong lúc đo.
 <!-- /native-bench:summary -->
 
 ## Điều kiện đo
