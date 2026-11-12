@@ -466,6 +466,7 @@ pub fn regTilingPattern(cx: *Ctx, stream_in: *const sf.Stream, matrix: Tf, opaci
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return r;
     const r = cx.doc.alloc();
+    if (stream.limits.q_over) cx.q_over = true;
     const res = stream.res.write(cx.doc);
     const e = cx.doc.encode(stream.content, .content);
     const b = cx.doc.beginStream(r, .pattern_streams, e);

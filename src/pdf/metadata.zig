@@ -355,7 +355,7 @@ pub fn xmpPacket(a: Allocator, p: *const Parts, version: w.Version, pages: usize
     }
     if (p.validators) |v| try v.run(v.ctx, &x, m);
     if (m) |md| for (md.custom_schemas) |s| {
-        try x.useCustom(s.name, s.prefix, s.namespace);
+        if (s.properties.len > 0) try x.useCustom(s.name, s.prefix, s.namespace);
         for (s.properties) |prop| try x.customElement(s.prefix, prop.name, prop.value);
     };
     try x.element(.pdf, "Producer", p.producer);

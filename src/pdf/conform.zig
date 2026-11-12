@@ -51,6 +51,10 @@ pub const Err = enum {
     embedded_missing_description,
     embedded_missing_mime,
     missing_tagging,
+    too_long_string,
+    too_long_name,
+    too_many_indirect_objects,
+    too_high_q_nesting,
 };
 
 pub const Config = struct {
@@ -143,6 +147,7 @@ pub const Config = struct {
         const a2 = p == .a2a or p == .a2b or p == .a2u;
         return switch (e) {
             .contains_post_script, .contains_notdef, .restricted_license, .missing_document_date => true,
+            .too_long_string, .too_long_name, .too_many_indirect_objects, .too_high_q_nesting => true,
             .embedded_existence => a2,
             .embedded_missing_date, .embedded_missing_description, .embedded_missing_mime => !a2,
             .private_use, .no_document_language, .missing_alt_text, .missing_annotation_alt, .missing_tagging => is_a,
@@ -313,12 +318,14 @@ pub const XmpCtx = struct {
             if (c.ua) |u| {
                 try schemaOpen(xm, "PDF/UA Identification schema", "http://www.aiim.org/pdfua/ns/id/", "pdfuaid");
                 try property(xm, "internal", "Part Number of ISO 14289 (PDF/UA)", "part", "Integer");
-                // (unverified wording: no golden has PDF/UA-2 with an extension schema bag)
-                if (u == .ua2) try property(xm, "internal", "Revision year of ISO 14289 (PDF/UA)", "rev", "Integer");
+                // xmp-writer `describe_rev`
+                if (u == .ua2) try property(xm, "internal", "Revision of ISO 14289 (PDF/UA) as a four-digit year", "rev", "Integer");
                 try schemaClose(xm);
             }
             for (custom) |s| {
-                try xm.useCustom(s.name, s.prefix, s.namespace);
+                // (the namespace is declared by the schema's first property element, so a schema
+                // without properties declares none)
+                if (s.properties.len > 0) try xm.useCustom(s.name, s.prefix, s.namespace);
                 try xm.raw("<rdf:li rdf:parseType=\"Resource\"><pdfaSchema:schema>");
                 try xm.text(s.name);
                 try xm.raw(" schema</pdfaSchema:schema><pdfaSchema:namespaceURI>");
@@ -386,4 +393,26 @@ test "conformance: versions, invalid pairs, prohibitions" {
     try testing.expect(!C.of(.none, .ua1).?.prohibits(.no_document_language));
     try testing.expect(C.of(.none, .ua2).?.prohibits(.no_document_language));
     try testing.expect(srgb_v4.len == 480 and std.mem.eql(u8, srgb_v4[36..40], "acsp"));
+}
+
+test "report: one error per distinct value (krilla dedupes by value)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const o: opt.PdfOptions = .{ .pdfa = .a4 };
+    var r: Report = .{ .a = arena.allocator(), .cfg = Config.of(&o).? };
+    const fo = @import("font_objects.zig");
+    const I = fo.FontIssues.Issue;
+    // the same private-use character on two glyphs of one font, and on a glyph of another font
+    for ([_]I{
+        .{ .kind = .private_use, .font = 0, .glyph = 3, .ch = 0xE000 },
+        .{ .kind = .private_use, .font = 0, .glyph = 3, .ch = 0xE000 },
+        .{ .kind = .private_use, .font = 0, .glyph = 4, .ch = 0xE000 },
+        .{ .kind = .private_use, .font = 1, .glyph = 3, .ch = 0xE000 },
+        .{ .kind = .private_use, .font = 1, .glyph = 3, .ch = 0xE001 },
+    }) |i| r.add(.private_use, i.key());
+    r.add(.restricted_license, (I{ .kind = .restricted_license, .font = 0 }).key());
+    r.add(.restricted_license, (I{ .kind = .restricted_license, .font = 1 }).key());
+    r.add(.missing_heading_title, 0); // not prohibited by PDF/A-4
+    try testing.expectEqual(@as(usize, 6), r.list.items.len);
+    try testing.expectEqualStrings("Writing the PDF failed: validation failed with 6 errors", (try r.message(arena.allocator())).?);
 }

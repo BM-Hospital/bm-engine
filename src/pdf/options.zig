@@ -866,11 +866,35 @@ fn isXmlName(n: []const u8) bool {
     return true;
 }
 
+/// Rust `char::is_whitespace` (the Unicode White_Space property) for some character of UTF-8 `s`.
+fn hasUnicodeWhitespace(s: []const u8) bool {
+    var i: usize = 0;
+    while (i < s.len) {
+        const c0 = s[i];
+        var cp: u32 = c0;
+        var n: usize = 1;
+        if (c0 >= 0xC2 and c0 < 0xE0 and i + 1 < s.len) {
+            cp = (@as(u32, c0 & 0x1F) << 6) | (s[i + 1] & 0x3F);
+            n = 2;
+        } else if (c0 >= 0xE0 and c0 < 0xF0 and i + 2 < s.len) {
+            cp = (@as(u32, c0 & 0x0F) << 12) | (@as(u32, s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F);
+            n = 3;
+        } else if (c0 >= 0xF0) n = @min(4, s.len - i);
+        i += n;
+        const ws = switch (cp) {
+            0x09...0x0D, 0x20, 0x85, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000 => true,
+            else => false,
+        };
+        if (ws) return true;
+    }
+    return false;
+}
+
 fn validateXmp(s: XmpSchema, d: *Diag) Error!void {
     if (!isXmlName(s.prefix)) return fail(d, &.{ "XMP schema cannot be written as XML: ", s.prefix });
     var bad = s.namespace.len == 0;
-    for (s.namespace) |c| bad = bad or std.ascii.isWhitespace(c) or c == '"' or c == '\'' or c == '<' or c == '>' or c == '&';
-    if (bad) return fail(d, &.{ "XMP schema cannot be written as XML: ", s.namespace });
+    for (s.namespace) |c| bad = bad or c == '"' or c == '\'' or c == '<' or c == '>' or c == '&';
+    if (bad or hasUnicodeWhitespace(s.namespace)) return fail(d, &.{ "XMP schema cannot be written as XML: ", s.namespace });
     for (s.properties) |p| {
         if (!isXmlName(p.name)) return fail(d, &.{ "XMP schema cannot be written as XML: ", p.name });
     }
@@ -899,11 +923,12 @@ fn validate(o: *PdfOptions, tagged_set: bool, d: *Diag) Error!void {
     }
 
     // Attachments: names, media types, and what the PDF/A-3 levels require.
+    // (takumi `open_document`: each attachment in order, its media type before its name)
     for (o.attachments, 0..) |at, i| {
+        if (at.mime_type) |m| if (!validMimeType(m)) return fail(d, &.{ "Attachment mime type is not a type/subtype pair: ", m });
         for (o.attachments[0..i]) |prev| {
             if (std.mem.eql(u8, prev.name, at.name)) return fail(d, &.{ "Two attachments are named ", at.name });
         }
-        if (at.mime_type) |m| if (!validMimeType(m)) return fail(d, &.{ "Attachment mime type is not a type/subtype pair: ", m });
     }
 }
 

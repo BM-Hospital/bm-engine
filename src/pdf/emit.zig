@@ -2265,19 +2265,27 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     for (pages, outs, page_refs, fin.annots, 0..) |page, *st, pref, annots, i| {
         const cref = doc.alloc();
         doc.contentStream(cref, st.content);
+        if (st.limits.q_over) cx.q_over = true;
         const rref = st.res.write(&doc);
         const pe = td.pageEntries(i);
         _ = doc.beginPage(pref, .{ .resources = rref, .media_box = .{ 0, 0, page.width * pt_per_px, page.height * pt_per_px }, .contents = cref, .annots = annots, .struct_parents = pe.struct_parents, .tabs = pe.tabs });
         doc.endDict();
     }
+    var out: std.ArrayList(u8) = .empty;
+    const finished = metadata.finish(&doc, &out, &fin.parts);
+    // krilla `check_validator_limits` (after the file is assembled) and the q/Q nesting of the
+    // content streams
+    if (doc.tooManyObjects()) td.report.add(.too_many_indirect_objects, 0);
+    if (doc.limits.str_len > w.Limits.max_str_len) td.report.add(.too_long_string, 0);
+    if (doc.limits.name_len > w.Limits.max_name_len) td.report.add(.too_long_name, 0);
+    if (cx.q_over) td.report.add(.too_high_q_nesting, 0);
     // [conformance] what the validators prohibit fails the render (krilla `KrillaError::Validation`)
     if (td.report.failed) return error.OutOfMemory;
     if (try td.report.message(a)) |msg| {
         f.r.setErr("", msg);
         return error.Invalid;
     }
-    var out: std.ArrayList(u8) = .empty;
-    metadata.finish(&doc, &out, &fin.parts) catch |err| return switch (err) {
+    finished catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => {
             f.r.setErr("PDF writer error: ", @errorName(err));

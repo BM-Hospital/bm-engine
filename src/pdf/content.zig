@@ -37,6 +37,7 @@ pub const Content = struct {
         c.b.list.clearRetainingCapacity();
         c.operands = false;
         c.q_depth = 0;
+        c.b.limits = .{};
     }
 
     // -- generic -------------------------------------------------------------------------------
@@ -78,6 +79,7 @@ pub const Content = struct {
     pub fn save(c: *Content) void {
         c.op("q");
         c.q_depth += 1;
+        if (c.q_depth > w.Limits.max_q_depth) c.b.limits.q_over = true;
     }
 
     pub fn restore(c: *Content) void {
@@ -387,4 +389,16 @@ test "text, marked content, xobjects" {
     c.showHex(&.{ 0, 0x41 });
     try testing.expectEqualStrings("EMC/P<</MCID 0>>BDC\nq 0.0784 0.0784 0.0784 rg\nBT 0 Tr/f0 32 Tf 1 0 0 -1 0 28 Tm" ++
         "[(\\000\\001\\000\\b)34.99951(\\000\\005)]TJ\nET\nQ\nq/g0 gs/x0 Do\nQ[3 2]0 d/Pattern cs/p0 scn<0041>Tj", c.bytes());
+}
+
+test "content: q nesting over 28 is recorded" {
+    var c = Content.init(testing.allocator);
+    defer c.b.list.deinit(testing.allocator);
+    for (0..28) |_| c.save();
+    try testing.expect(!c.b.limits.q_over);
+    c.restore();
+    c.save();
+    try testing.expect(!c.b.limits.q_over);
+    c.save();
+    try testing.expect(c.b.limits.q_over);
 }
