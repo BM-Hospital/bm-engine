@@ -51,7 +51,11 @@
 /* ---------------------------------------------------------------- products: per-product accent
    Image keeps the brand green; the PDF section (/pdf/..., /vi/pdf/...) uses crimson. Link text contrast:
    #be123c on #ffffff 6.2:1, #fb7185 on #1b1b1f 7.0:1 (both >= 4.5). */
+/* --vp-code-color is resolved on :root (green); restate it so inline code follows the PDF accent too */
 .product-pdf {
+  --vp-code-color: var(--vp-c-brand-1);
+  --vp-code-link-color: var(--vp-c-brand-1);
+  --vp-code-link-hover-color: var(--vp-c-brand-2);
   --vp-c-brand-1: #be123c;
   --vp-c-brand-2: #9f1239;
   --vp-c-brand-3: #be123c;
@@ -134,3 +138,19 @@
 /* home hero: the "PDF docs" button (second action) in the PDF accent */
 .VPHome .VPHero .actions .action:nth-child(2) .VPButton.brand { border-color: #be123c; background-color: #be123c; color: #fff; }
 .VPHome .VPHero .actions .action:nth-child(2) .VPButton.brand:hover { border-color: #9f1239; background-color: #9f1239; }
+
+/* ---------------------------------------------------------------- playground pages: compact Image | PDF switcher
+   (doc-before slot; the pages have no sidebar, so the sidebar switcher is not there) */
+.bm-pg-switcher { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 16px; }
+.bm-pg-switcher-label { font-size: 13px; color: var(--vp-c-text-2); }
+.bm-pg-switcher-group { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--vp-c-divider); border-radius: 10px; background: var(--vp-c-bg-soft); }
+.bm-pg-switcher-item {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 14px 3px 3px; border: 1px solid transparent; border-radius: 7px;
+  color: var(--vp-c-text-2); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: color 0.2s, background-color 0.2s;
+}
+.bm-pg-switcher-item:hover { color: var(--vp-c-text-1); }
+.bm-pg-switcher-item.active { background: var(--vp-c-bg); color: var(--vp-c-text-1); border-color: var(--vp-c-divider); box-shadow: var(--vp-shadow-1); }
+.bm-pg-switcher-item:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
+.bm-pg-switcher-item .bm-switcher-icon { width: 26px; height: 26px; border-radius: 6px; }
+.bm-pg-switcher-item .bm-switcher-icon svg { width: 16px; height: 16px; }
+.bm-pg-switcher-item:not(.active) .bm-switcher-icon { opacity: 0.6; }

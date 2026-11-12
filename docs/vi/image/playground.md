@@ -14,7 +14,7 @@ HTML và Tailwind, so sánh ba profile, xem layout bằng `measure()` và xuất
 gì được tải lên máy chủ; font và ảnh bạn thêm vào chỉ nằm trong trang.
 
 <ClientOnly>
-  <PlaygroundFrame lang="vi" />
+  <PlaygroundFrame lang="vi" mode="image" />
 </ClientOnly>
 
 ## Tính năng
@@ -28,6 +28,8 @@ gì được tải lên máy chủ; font và ảnh bạn thêm vào chỉ nằm 
 - Lớp phủ `measure()`, các mẫu có sẵn (thẻ OG, thẻ blog, chữ tiếng Việt, emoji, ảnh SVG, bài viết HTML,
   thẻ Tailwind, demo CSS, animation, gradient, bảng + float), giao diện tiếng Anh / tiếng Việt.
 - **Share link** đặt trạng thái (đã nén deflate) vào hash của URL.
+- **Đầu ra PDF**: nút chuyển phía trên ứng dụng mở [playground PDF](../pdf/playground.md), cùng ứng dụng
+  ở chế độ PDF (`?mode=pdf`); nội dung đang soạn được giữ nguyên.
 
 Những mẫu cần tính năng mà profile đang chọn không có sẽ hiện thông báo rõ ràng hoặc render ở dạng giản
 lược (ví dụ thẻ Tailwind trên `core`), nên playground là cách nhanh để thấy mỗi profile bỏ đi những gì.

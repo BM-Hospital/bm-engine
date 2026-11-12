@@ -6,7 +6,9 @@
 // navigates and swaps the sidebar, the choice persists on shared pages and across a reload, keyboard operation,
 // 390px drawer, dark mode, per-product accent), every sidebar link of both product sidebars in both locales, the
 // redirects of old URLs (client-side layer, and vercel.json against the same table), the cross-locale
-// language-switch fallbacks, the embedded playground, and saves screenshots to bench/out/docs-site/.
+// language-switch fallbacks, the embedded playground (Image and PDF: /image/playground, /pdf/playground and the /vi/
+// versions, with the compact Image | PDF switcher above the app and the product-aware "Playground" nav entry), the
+// sidebar link counts, and saves screenshots to bench/out/docs-site/.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +69,19 @@ async function switcherState(page) {
     };
   });
 }
+const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+/** Links of the sidebar of each product index (both locales). Update when a page is added to a sidebar. */
+const SIDEBAR_LINKS = { "/image/": 45, "/pdf/": 27, "/vi/image/": 46, "/vi/pdf/": 28 };
+/** The compact Image | PDF switcher of the playground pages: [href, aria-current] per item. */
+const pgSwitcher = (page) => page.evaluate(() => [...document.querySelectorAll(".bm-pg-switcher a")].map((a) => [a.getAttribute("href"), a.getAttribute("aria-current") || ""]));
+/** The embedded app in PDF mode has rendered and its preview is up. */
+async function waitPdfPlayground(page) {
+  await page.waitForSelector("iframe.pg-embed-frame", { timeout: 30000 });
+  const frame = await (await page.$("iframe.pg-embed-frame")).contentFrame();
+  await frame.waitForFunction(() => document.body && document.body.dataset.ready === "1" && (+document.body.dataset.renders || 0) > 0 && document.body.dataset.previewReady, { timeout: 60000 });
+  await sleep(1500); // the PDF viewer paints asynchronously
+  return frame;
+}
 async function waitPlayground(page) {
   await page.waitForSelector("iframe.pg-embed-frame", { timeout: 30000 });
   const frame = await (await page.$("iframe.pg-embed-frame")).contentFrame();
@@ -82,7 +97,8 @@ const KEY_PAGES = [
   ["/benchmark", null, { tables: true }], ["/vi/benchmark", "benchmark-vi.png", { tables: true }],
   ["/vi/benchmark-report", "benchmark-report-vi.png", { tables: true }],
   ["/results-full", "results-full.png", { tables: true }], ["/dev/architecture"],
-  ["/image/playground", "playground-en.png", { playground: "en" }], ["/vi/image/playground", "playground-vi.png", { playground: "vi" }],
+  ["/image/playground", "playground-image-en.png", { playground: "en" }], ["/vi/image/playground", "playground-image-vi.png", { playground: "vi" }],
+  ["/pdf/playground", "playground-pdf-en.png", { playground: "en", pdf: true }], ["/vi/pdf/playground", "playground-pdf-vi.png", { playground: "vi", pdf: true }],
 ];
 
 let browser, server;
@@ -109,7 +125,8 @@ try {
   for (const [route, shot, opt = {}] of KEY_PAGES) {
     const sink = [];
     const { ctx, page } = await newPage(sink);
-    const resp = await page.goto(base + route, { waitUntil: "networkidle0" });
+    // (the browser's PDF viewer keeps the network busy: PDF pages wait for the app instead of network idle)
+    const resp = await page.goto(base + route, { waitUntil: opt.pdf ? "load" : "networkidle0" });
     const info = await pageInfo(page);
     let extra = "";
     check(resp.status() === 200 && !info.is404, `${route}: HTTP ${resp.status()} 404page=${info.is404}`);
@@ -125,13 +142,26 @@ try {
       check(cards.join() === (vi ? "/vi/image/,/vi/pdf/" : "/image/,/pdf/"), `${route}: product cards ${cards}`);
       extra = `${n} feature cards, product cards ${cards.join(" ")}`;
     }
-    if (opt.playground) {
+    if (opt.playground && opt.pdf) {
+      const frame = await waitPdfPlayground(page);
+      const s = await frame.evaluate(() => ({ status: document.body.dataset.status, head: document.body.dataset.outHead, pages: +document.body.dataset.outPages, lang: document.documentElement.lang, preview: document.body.dataset.previewReady, tpl: document.getElementById("template").value, mode: document.body.dataset.mode }));
+      check(s.status === "ok" && /^%PDF-/.test(s.head) && s.mode === "pdf" && s.preview === "viewer" && s.lang === opt.playground, `${route}: embedded PDF playground ${JSON.stringify(s)}`);
+      const box = await page.$eval("iframe.pg-embed-frame", (f) => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+      check(box[0] >= 1000 && box[1] >= 700, `${route}: iframe ${box}`);
+      const sw = await pgSwitcher(page);
+      const pre = route.startsWith("/vi") ? "/vi" : "";
+      check(JSON.stringify(sw) === JSON.stringify([[pre + "/image/playground", ""], [pre + "/pdf/playground", "page"]]), `${route}: playground switcher ${JSON.stringify(sw)}`);
+      extra = `iframe ${box.join("x")}, template ${s.tpl}: ${s.pages}-page PDF in the ${s.preview}, ui ${s.lang}, switcher PDF`;
+    } else if (opt.playground) {
       const frame = await waitPlayground(page);
       const s = await frame.evaluate(() => ({ status: document.body.dataset.status, w: +document.body.dataset.outW, h: +document.body.dataset.outH, lang: document.documentElement.lang, img: document.getElementById("outImg").naturalWidth, tpl: document.getElementById("template").value }));
       check(s.status === "ok" && s.img > 0 && s.lang === opt.playground, `${route}: embedded playground ${JSON.stringify(s)}`);
       const box = await page.$eval("iframe.pg-embed-frame", (f) => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
       check(box[0] >= 1000 && box[1] >= 700, `${route}: iframe ${box}`);
-      extra = `iframe ${box.join("x")}, template ${s.tpl} rendered ${s.w}x${s.h}, ui ${s.lang}`;
+      const sw = await pgSwitcher(page);
+      const pre = route.startsWith("/vi") ? "/vi" : "";
+      check(JSON.stringify(sw) === JSON.stringify([[pre + "/image/playground", "page"], [pre + "/pdf/playground", ""]]), `${route}: playground switcher ${JSON.stringify(sw)}`);
+      extra = `iframe ${box.join("x")}, template ${s.tpl} rendered ${s.w}x${s.h}, ui ${s.lang}, switcher Image`;
     }
     if (shot) await page.screenshot({ path: path.join(OUT, shot) });
     if (shot && opt.home) await page.screenshot({ path: path.join(OUT, shot.replace(".png", "-full.png")), fullPage: true });
@@ -313,8 +343,9 @@ try {
     await sleep(700);
     const after = await page.evaluate(() => ({ path: location.pathname, open: document.querySelector(".VPSidebar").classList.contains("open") }));
     check(after.path === "/image/" && !after.open, `mobile: choosing Image: ${JSON.stringify(after)}`);
-    for (const route of ["/", "/results-full", "/vi/benchmark-report", "/image/css-support", "/pdf/css-support", "/image/playground", "/vi/pdf/recipes"]) {
-      await page.goto(base + route, { waitUntil: "networkidle0" });
+    for (const route of ["/", "/results-full", "/vi/benchmark-report", "/image/css-support", "/pdf/css-support", "/image/playground", "/pdf/playground", "/vi/pdf/recipes"]) {
+      await page.goto(base + route, { waitUntil: route.includes("pdf/playground") ? "load" : "networkidle0" });
+      if (route.includes("pdf/playground")) await waitPdfPlayground(page);
       const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       check(o <= 1, `${route} at 390px: horizontal overflow ${o}px`);
       if (route === "/results-full") await page.screenshot({ path: path.join(OUT, "results-full-mobile.png") });
@@ -344,13 +375,78 @@ try {
     await ctx.close();
   }
 
+  // ---- playground pages: the compact switcher moves between the Image and PDF playgrounds (both locales), the app
+  //      follows (mode in the iframe URL, editor content restored), the accent follows; the nav entry is product-aware
+  {
+    const sink = [];
+    const { ctx, page } = await newPage(sink);
+    for (const [from, to] of [["/image/playground", "/pdf/playground"], ["/pdf/playground", "/image/playground"], ["/vi/image/playground", "/vi/pdf/playground"], ["/vi/pdf/playground", "/vi/image/playground"]]) {
+      await page.goto(base + from, { waitUntil: "load" });
+      await (from.includes("/pdf/") ? waitPdfPlayground(page) : waitPlayground(page));
+      const src0 = await (await (await page.$("iframe.pg-embed-frame")).contentFrame()).$eval("#src", (e) => e.value);
+      await page.click(`.bm-pg-switcher a[href="${to}"]`);
+      await page.waitForFunction((t) => location.pathname === t, { timeout: 10000 }, to).catch(() => {});
+      const mode = to.includes("/pdf/") ? "pdf" : "image";
+      await page.waitForFunction((m) => document.querySelector("iframe.pg-embed-frame")?.getAttribute("src")?.includes("mode=" + m), { timeout: 10000 }, mode).catch(() => {});
+      await sleep(300);
+      const frame = await (mode === "pdf" ? waitPdfPlayground(page) : waitPlayground(page));
+      const st = await page.evaluate(() => ({ path: location.pathname, src: document.querySelector("iframe.pg-embed-frame").getAttribute("src"), cls: document.querySelector(".Layout").className, cur: document.querySelector(".bm-pg-switcher a[aria-current=page]")?.getAttribute("href"), nav: [...document.querySelectorAll(".VPNavBarMenuLink")].find((a) => /playground$/.test(a.getAttribute("href")))?.className || "" }));
+      const app = await frame.evaluate(() => ({ mode: document.body.dataset.mode, status: document.body.dataset.status, src: document.getElementById("src").value }));
+      check(st.path === to && st.src.includes("mode=" + mode) && st.cur === to && (mode === "pdf") === /product-pdf/.test(st.cls) && /active/.test(st.nav) && app.mode === mode && app.status === "ok" && app.src === src0,
+        `playground switcher ${from} -> ${to}: ${JSON.stringify({ st, app: { ...app, src: app.src.slice(0, 40) }, kept: app.src === src0 })}`);
+    }
+    // top nav "Playground": the playground of the product the reader is in
+    for (const [route, want] of [["/pdf/pagination", "/pdf/playground"], ["/image/fonts", "/image/playground"], ["/vi/pdf/fonts", "/vi/pdf/playground"], ["/vi/image/api", "/vi/image/playground"], ["/benchmark", "/pdf/playground"]]) {
+      if (route === "/benchmark") { await page.goto(base + "/pdf/api", { waitUntil: "networkidle0" }); } // PDF chosen last: a shared page keeps it
+      await page.goto(base + route, { waitUntil: "networkidle0" });
+      await sleep(200);
+      const href = await page.evaluate(() => [...document.querySelectorAll(".VPNavBarMenuLink")].map((a) => a.getAttribute("href")).find((h) => /playground$/.test(h)));
+      check(href === want, `nav Playground on ${route}: ${href}, expected ${want}`);
+    }
+    check(sink.length === 0, `playground switcher: browser errors:\n  ${sink.join("\n  ")}`);
+    say("  playground switcher: 4 switches (EN + VI, editor kept, accent, nav active), nav Playground entry on 5 pages");
+    report.push("| playground switcher | 4 switches + 5 nav entries | | | | " + sink.length + " | |");
+    await ctx.close();
+  }
+
+  // ---- PDF playground: dark mode (site toggle -> app accent) and the phone layout (pdf.js preview)
+  {
+    const sink = [];
+    const { ctx, page } = await newPage(sink);
+    await page.evaluateOnNewDocument(() => { try { localStorage.setItem("vitepress-theme-appearance", "dark"); } catch {} });
+    await page.goto(base + "/pdf/playground", { waitUntil: "load" });
+    const frame = await waitPdfPlayground(page);
+    const st = await frame.evaluate(() => ({ theme: document.documentElement.dataset.theme, accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().toLowerCase() }));
+    const site = await page.evaluate(() => ({ dark: document.documentElement.classList.contains("dark"), brand: getComputedStyle(document.querySelector(".Layout")).getPropertyValue("--vp-c-brand-1").trim().toLowerCase(), code: getComputedStyle(document.querySelector(".vp-doc code")).color }));
+    check(st.theme === "dark" && st.accent === "#fb7185" && site.dark && site.brand === "#fb7185" && site.code === "rgb(251, 113, 133)", `PDF playground dark: ${JSON.stringify({ st, site })}`);
+    await page.screenshot({ path: path.join(OUT, "playground-pdf-dark.png") });
+    await ctx.close();
+    const m = await newPage(sink, { width: 390, height: 844, isMobile: true, hasTouch: true });
+    await m.page.setUserAgent(IPHONE_UA);
+    await m.page.goto(base + "/pdf/playground", { waitUntil: "load" });
+    const mf = await waitPdfPlayground(m.page);
+    await mf.waitForFunction(() => ["pdfjs", "pdfjs-error"].includes(document.body.dataset.previewReady), { timeout: 30000 });
+    const ms = await mf.evaluate(() => ({ preview: document.body.dataset.previewReady, canvases: document.querySelectorAll("#pdfPages canvas").length }));
+    const o = await m.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    check(ms.preview === "pdfjs" && ms.canvases >= 1 && o <= 1, `PDF playground on a phone: ${JSON.stringify({ ms, o })}`);
+    // the screenshot shows the app's preview: its pane comes first on a phone; scroll it (and the page) into view
+    await mf.evaluate(() => document.querySelector(".pane.preview").scrollIntoView({ block: "start" }));
+    await m.page.evaluate(() => window.scrollBy(0, -60)); // below the sticky local nav
+    await sleep(400);
+    await m.page.screenshot({ path: path.join(OUT, "playground-pdf-mobile.png") });
+    check(sink.length === 0, `PDF playground dark / phone: browser errors:\n  ${sink.join("\n  ")}`);
+    say(`  PDF playground: dark accent ${st.accent}, phone preview ${ms.preview} (${ms.canvases} canvas), overflow ${o}px`);
+    await m.ctx.close();
+  }
+
   // ---- every sidebar link of both product sidebars, both locales: click (SPA navigation) + a direct HTTP load
   for (const start of ["/image/", "/pdf/", "/vi/image/", "/vi/pdf/"]) {
     const sink = [];
-    const { ctx, page } = await newPage(sink);
+    let { ctx, page } = await newPage(sink);
     await page.goto(base + start, { waitUntil: "networkidle0" });
     const links = await page.$$eval(".VPSidebar a.VPLink, .VPSidebar a.link", (as) => as.map((a) => a.getAttribute("href")));
-    check(links.length >= 20, `${start}: only ${links.length} sidebar links`);
+    check(links.length === SIDEBAR_LINKS[start], `${start}: ${links.length} sidebar links, expected ${SIDEBAR_LINKS[start]}`);
+    check(links.includes(start.replace(/\/$/, "") + "/playground"), `${start}: no playground entry in the sidebar`);
     let ok = 0;
     for (const href of links) {
       await page.goto(base + start, { waitUntil: "networkidle0" });
@@ -369,9 +465,13 @@ try {
       const want = start.includes("/pdf/") ? "pdf" : "image";
       // (the playground page has no sidebar at all: full width)
       check(s.sidebarProduct === want || (!s.present && /playground$/.test(href)), `${start}: on ${href} the sidebar is ${s.sidebarProduct}, expected ${want}`);
+      if (/playground$/.test(href)) { // leave the embedded app (and the PDF viewer frame) behind with a fresh tab
+        await page.close();
+        page = await ctx.newPage(); await page.setViewport({ width: 1440, height: 900 }); watch(page, sink);
+      }
     }
     check(sink.length === 0, `${start} sidebar walk: browser errors:\n  ${sink.join("\n  ")}`);
-    say(`  sidebar from ${start}: ${ok}/${links.length} links OK`);
+    say(`  sidebar from ${start}: ${ok}/${links.length} links OK (expected ${SIDEBAR_LINKS[start]})`);
     report.push(`| sidebar ${start} | ${ok}/${links.length} OK | | | | ${sink.length} | |`);
     await ctx.close();
   }
@@ -416,7 +516,8 @@ try {
     const vercel = JSON.parse(readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
     const rules = vercel.redirects.map((r) => {
       const names = [];
-      const re = "^" + r.source.replace(/:(\w+)(\([^)]*\))?(\*)?/g, (_m, n, alt, star) => { names.push(n); return star ? "(.*)" : alt ?? "([^/]+)"; }).replace(/\/\(\.\*\)$/, "(?:/(.*))?") + "/?$";
+      // strict like Vercel (@vercel/routing-utils: path-to-regexp with strict: true): "/pdf" does not match "/pdf/"
+      const re = "^" + r.source.replace(/:(\w+)(\([^)]*\))?(\*)?/g, (_m, n, alt, star) => { names.push(n); return star ? "(.*)" : alt ?? "([^/]+)"; }).replace(/\/\(\.\*\)$/, "(?:/(.*))?") + "$";
       return { r, re: new RegExp(re), names };
     });
     const apply = (p) => {
@@ -431,8 +532,16 @@ try {
     };
     const norm = (p) => (p.length > 1 ? p.replace(/\/$/, "") : p);
     let agree = 0, total = 0;
-    const olds = Object.keys(REDIRECTS).filter((p) => !/\/(pdf|image)$/.test(p)).concat(["/frameworks/", "/frameworks/nextjs", "/vi/migration/from-satori", "/vi/frameworks/sveltekit"]);
-    for (const p of olds) { total++; const v = apply(p); if (check(v && norm(v) === norm(redirectFor(p)), `vercel.json: ${p} -> ${v}, redirects.mjs says ${redirectFor(p)}`)) agree++; }
+    // every old URL of the table (incl. /pdf, /image and their /vi versions: no trailing slash -> the folder route,
+    // answered by the server instead of a client-side hop), followed to the end of its chain
+    const olds = Object.keys(REDIRECTS).concat(["/frameworks/", "/frameworks/nextjs", "/vi/migration/from-satori", "/vi/frameworks/sveltekit"]);
+    const follow = (p) => { const seen = [p]; let v = p; for (let i = 0; i < 5; i++) { const n = apply(v); if (!n) return { end: v, hops: seen.length - 1 }; if (seen.includes(n)) return { loop: [...seen, n] }; seen.push(n); v = n; } return { loop: seen }; };
+    for (const p of olds) {
+      total++;
+      const f = follow(p);
+      const exact = /^(\/vi)?\/(pdf|image)$/.test(p); // these must land on the folder route itself (trailing slash)
+      if (check(!f.loop && f.hops >= 1 && (exact ? f.end === redirectFor(p) : norm(f.end) === norm(redirectFor(p))), `vercel.json: ${p} -> ${JSON.stringify(f)}, redirects.mjs says ${redirectFor(p)}`)) agree++;
+    }
     const routes = [];
     const walk = (rel) => {
       for (const f of readdirSync(path.join(SITE, rel), { withFileTypes: true })) {
@@ -444,6 +553,7 @@ try {
     walk("");
     let loops = 0;
     for (const r of routes) if (apply(r)) { loops++; fail(`vercel.json redirects a current page: ${r} -> ${apply(r)}`); }
+    check(["/pdf/", "/vi/pdf/", "/image/", "/vi/image/", "/pdf/playground", "/vi/pdf/playground"].every((r) => routes.includes(r)), "built routes: product folders / PDF playground missing");
     say(`  vercel.json: ${agree}/${total} old URLs redirect to the same place as redirects.mjs; ${routes.length} current routes, ${loops} redirected`);
     report.push(`| vercel.json redirects | ${agree}/${total} agree, ${loops} current routes redirected | | | | | |`);
   }
@@ -494,7 +604,7 @@ try {
 
 const md = ["# Docs site test", "", `Run: ${new Date().toISOString()}  -  ${failures.length ? "FAILED" : "PASSED"} (${failures.length} failure(s))`, "",
   "| page | HTTP | tables | lang switch | search | browser errors | notes |", "|---|---|--:|---|---|--:|---|", ...report, "",
-  "Screenshots: bench/out/docs-site/*.png (1440x900; switcher-mobile.png 390x844)", ""];
+  "Screenshots: bench/out/docs-site/*.png (1440x900; switcher-mobile.png and playground-pdf-mobile.png 390x844)", ""];
 if (failures.length) md.push("## Failures", "", ...failures.map((f) => "- " + f.replace(/\n/g, "\n  ")), "");
 writeFileSync(path.join(OUT, "DOCS_SITE.md"), md.join("\n"));
 say(failures.length ? `\n${failures.length} FAILURE(S)` : "\nALL DOCS SITE CHECKS PASSED");

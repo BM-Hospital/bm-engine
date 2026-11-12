@@ -31,7 +31,7 @@ export function saveRemembered(p: Product): void {
 }
 
 // Pages that exist in both products under the same name; the switcher keeps the reader on the "same" page.
-const SAME = new Set(["", "fonts", "api", "css-support", "recipes", "differences-from-takumi"]);
+const SAME = new Set(["", "fonts", "api", "css-support", "recipes", "differences-from-takumi", "playground"]);
 /** Route of the page that corresponds to `pathname` in product `to` (its index when there is no counterpart). */
 export function counterpart(pathname: string, to: Product): string {
   const vi = /^\/vi(\/|$)/.test(pathname);
@@ -47,7 +47,8 @@ export function counterpart(pathname: string, to: Product): string {
 
 /** Replaces the injected `theme` data so that shared pages get the sidebar of the remembered product. VitePress's
  *  sidebar is configured per path prefix; config.mts gives "/" (and "/vi/") the Image sidebar, and the PDF sidebar is
- *  available under "/pdf/" ("/vi/pdf/"). Returns the effective product of the current page. */
+ *  available under "/pdf/" ("/vi/pdf/"). The top-nav "Playground" entry (configured as /image/playground) points at
+ *  the PDF playground while the effective product is PDF. Returns the effective product of the current page. */
 export function installProductSidebar(app: App, router: Router): ComputedRef<Product> {
   const data = (app as any)._context.provides[dataSymbol];
   const product = computed<Product>(() => productOfPath(router.route.data.relativePath) ?? remembered.value);
@@ -56,9 +57,16 @@ export function installProductSidebar(app: App, router: Router): ComputedRef<Pro
   data.theme = computed(() => {
     const t = original.value;
     const rel: string = router.route.data.relativePath ?? "";
-    if (!t.sidebar || Array.isArray(t.sidebar) || productOfPath(rel) || remembered.value === "image") return t;
-    const key = (rel.startsWith("vi/") ? "/vi/" : "/") + remembered.value + "/";
-    return t.sidebar[key] ? { ...t, sidebar: { [rel.startsWith("vi/") ? "/vi/" : "/"]: t.sidebar[key] } } : t;
+    let out = t;
+    if (t.sidebar && !Array.isArray(t.sidebar) && !productOfPath(rel) && remembered.value !== "image") {
+      const key = (rel.startsWith("vi/") ? "/vi/" : "/") + remembered.value + "/";
+      if (t.sidebar[key]) out = { ...out, sidebar: { [rel.startsWith("vi/") ? "/vi/" : "/"]: t.sidebar[key] } };
+    }
+    if ((productOfPath(rel) ?? remembered.value) === "pdf" && Array.isArray(t.nav)) {
+      out = { ...out, nav: t.nav.map((item: any) => (typeof item.link === "string" && /^(\/vi)?\/image\/playground$/.test(item.link)
+        ? { ...item, link: item.link.replace("/image/", "/pdf/") } : item)) };
+    }
+    return out;
   });
   return product;
 }

@@ -9,7 +9,7 @@ thẻ (tagged PDF) và PDF/A. Bộ ghi PDF chỉ có trong **profile build `pdf`
 các điểm vào khác không cung cấp nó. Trang này nói về điểm vào, lần render đầu tiên trong Node.js và trình
 duyệt, `measure` và các tùy chọn; mọi đoạn mã Node.js là các đoạn của `docs/examples/pdf.mjs` trong
 repository và đã được chính file đó chạy. Cách cài package nằm ở [Bắt đầu](../getting-started.md).
-[Playground](../image/playground.md) chỉ có đầu ra ảnh; chưa có playground cho PDF.
+[Playground PDF](playground.md) render các tài liệu này ngay trong trình duyệt bằng chính bản build wasm đó.
 
 - [Cài đặt và điểm vào](#cài-đặt-và-điểm-vào)
 - [Render HTML ra PDF](#render-html-ra-pdf)

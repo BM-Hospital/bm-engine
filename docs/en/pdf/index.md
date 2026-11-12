@@ -9,8 +9,8 @@ metadata, attachments, tagged PDF and PDF/A. The PDF writer is only in the **`pd
 (`bm-engine/pdf`); `bm-engine` and the other entries do not expose it. This page covers the entry point, a
 first render in Node.js and in a browser, `measure` and the options; every Node.js snippet is a section of
 `docs/examples/pdf.mjs` in the repository and was executed by it. Installing the package is described in
-[Getting started](../getting-started.md). The [playground](../image/playground.md) covers image output only;
-there is no PDF playground.
+[Getting started](../getting-started.md). The [PDF playground](playground.md) renders
+these documents in your browser with the same wasm build.
 
 - [Install and entry point](#install-and-entry-point)
 - [Render HTML to a PDF](#render-html-to-a-pdf)
