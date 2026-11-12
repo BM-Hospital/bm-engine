@@ -588,15 +588,21 @@ pub const Painter = struct {
 
     // ---- images
 
-    pub noinline fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect) void {
+    /// `ir`: `image-rendering` of the element (pixelated / crisp-edges = nearest-neighbour resize and
+    /// sampling, takumi `ImageScalingAlgorithm::Pixelated`).
+    pub noinline fn drawImage(p: *Painter, ctx: *const Ctx, pm: *const Pixmap, dest: Rect, ir: style.computed.ImageRendering) void {
         if (!(dest.w > 0) or !(dest.h > 0) or pm.width == 0 or pm.height == 0) return;
+        const nearest = ir == .pixelated or ir == .crisp_edges;
         const tw: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.w))));
         const th: u32 = @intFromFloat(@min(16384, @max(1, roundHalfUp(dest.h))));
-        const src = p.f.r.resampled(pm, tw, th);
+        const src = p.f.r.resampled(pm, tw, th, nearest);
         const sx = dest.w / @as(f32, @floatFromInt(src.width));
         const sy = dest.h / @as(f32, @floatFromInt(src.height));
-        const m = ctx.tf.mul(Affine.translate(dest.x, dest.y)).mul(Affine.scale(sx, sy));
-        raster.drawPixmap(ctx.dst, src, m, 1, .bilinear, ctx.clip);
+        const tf = ctx.tf;
+        if (nearest and tf.a == 1 and tf.b == 0 and tf.c == 0 and tf.d == 1)
+            return raster.drawPixmapNearestRect(ctx.dst, src, tf.e + dest.x, tf.f + dest.y, dest.w, dest.h, ctx.clip);
+        const m = tf.mul(Affine.translate(dest.x, dest.y)).mul(Affine.scale(sx, sy));
+        raster.drawPixmap(ctx.dst, src, m, 1, if (nearest) .nearest else .bilinear, ctx.clip);
     }
 
     // ---- background
@@ -825,7 +831,7 @@ pub const Painter = struct {
                 count += 1;
                 const tile: Rect = .{ .x = xx, .y = yy, .w = tw, .h = th };
                 if (pm) |im| {
-                    p.drawImage(&c2, im, tile);
+                    p.drawImage(&c2, im, tile, cs.image_rendering);
                 } else if (svg_src) |src| {
                     try psvg.paintSvg(p, &c2, src, tile, cs.color);
                 } else {
@@ -1310,7 +1316,7 @@ pub const Painter = struct {
         const dest: Rect = .{ .x = dx, .y = dy, .w = dw, .h = dh };
         if (svg_src) |src| {
             try psvg.paintSvg(p, &c2, src, dest, cs.color);
-        } else p.drawImage(&c2, pmx.?, dest);
+        } else p.drawImage(&c2, pmx.?, dest, cs.image_rendering);
     }
 
     fn paintBox(p: *Painter, id: u32, x: f32, y: f32, ctx: *const Ctx, depth: u32) Error!void {

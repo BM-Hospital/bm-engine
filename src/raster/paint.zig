@@ -592,10 +592,14 @@ pub const Shader = struct {
         if (self.filter == .nearest) {
             const wf: f32 = @floatFromInt(w);
             const hf: f32 = @floatFromInt(h);
+            // per-pixel increments like takumi's `PixelSampler` (sample_x += a), not x * a
+            var uu = uu0;
+            var vv = vv0;
             for (0..n) |i| {
-                const fi: f32 = types.fi32(i);
-                var u = uu0 + fi * m.a;
-                var v = vv0 + fi * m.b;
+                var u = uu;
+                var v = vv;
+                uu += m.a;
+                vv += m.b;
                 if (self.extend == .repeat) {
                     u = u - @floor(u / wf) * wf;
                     v = v - @floor(v / hf) * hf;

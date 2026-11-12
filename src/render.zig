@@ -24,6 +24,7 @@ const twc = @import("tw/tw.zig");
 const html = @import("html/html.zig");
 const animate = @import("animate.zig");
 const svgm = @import("svg/svg.zig");
+const mx = @import("measure_xform.zig");
 
 const Allocator = std.mem.Allocator;
 pub const CS = style.ComputedStyle;
@@ -636,7 +637,7 @@ pub const Renderer = struct {
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
         var out: std.ArrayList(u8) = .empty;
-        try f.writeMeasured(&out, f.root, 0, 0);
+        try f.writeMeasured(&out, f.root, .{});
         self.result = out.items;
         return self.result;
     }
@@ -655,7 +656,9 @@ pub const Renderer = struct {
     noinline fn renderSvgImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
         const a = self.arena.allocator();
-        const opts = try self.parseOptions(opts_json);
+        var opts = try self.parseOptions(opts_json);
+        // takumi `RenderOptions::svg`: SVG output always draws at a device pixel ratio of 1
+        opts.dpr = 1;
         self.time_ms = opts.time_ms;
         var f: Frame = .{ .r = self, .a = a, .opts = opts, .tree = LTree.init(a), .ctx = undefined };
         try f.prepare(kind, source);
@@ -874,14 +877,23 @@ pub const Renderer = struct {
         return self.resolveSvg(src);
     }
 
-    /// Catmull-Rom downscaled variant of a cached image (cached as well).
-    pub fn resampled(self: *Renderer, src: *const raster.Pixmap, tw: u32, th: u32) *const raster.Pixmap {
+    /// Catmull-Rom (or, `nearest`, nearest-neighbour) downscaled variant of a cached image (cached as well).
+    pub fn resampled(self: *Renderer, src: *const raster.Pixmap, tw: u32, th: u32, nearest: bool) *const raster.Pixmap {
         if (tw == 0 or th == 0 or (tw >= src.width and th >= src.height)) return src;
-        const w = @min(tw, src.width);
-        const h = @min(th, src.height);
-        const key = @as(u64, @intFromPtr(src.data.ptr)) ^ 0x9e3779b97f4a7c15;
+        var w = @min(tw, src.width);
+        var h = @min(th, src.height);
+        if (nearest) {
+            // takumi `DecodeTarget::covering`: one uniform scale covering the box, never upscaling
+            const sw: f32 = @floatFromInt(src.width);
+            const sh: f32 = @floatFromInt(src.height);
+            const s = @min(1.0, @max(@as(f32, @floatFromInt(tw)) / sw, @as(f32, @floatFromInt(th)) / sh));
+            w = @intFromFloat(std.math.clamp(@round(sw * s), 1, sw));
+            h = @intFromFloat(std.math.clamp(@round(sh * s), 1, sh));
+            if (w >= src.width and h >= src.height) return src;
+        }
+        const key = @as(u64, @intFromPtr(src.data.ptr)) ^ @as(u64, if (nearest) 0x51ed270b27a4f1c3 else 0x9e3779b97f4a7c15);
         if (self.cacheLookup(key, w, h)) |pm| return pm;
-        const pm = raster.resample(self.gpa, src, w, h) catch return src;
+        const pm = (if (nearest) raster.resampleNearest(self.gpa, src, w, h) else raster.resample(self.gpa, src, w, h)) catch return src;
         return self.cacheStore(key, w, h, pm) orelse blk: {
             // could not cache: keep it alive in the arena instead
             const a = self.arena.allocator();
@@ -1116,6 +1128,16 @@ pub fn writeJsonString(a: Allocator, out: *std.ArrayList(u8), s: []const u8) Err
     try out.append(a, '"');
 }
 
+/// `,"transform":[a,b,c,d,e,f]` of a measured node (exact f32 values).
+fn writeAffine(a: Allocator, out: *std.ArrayList(u8), t: mx.Affine) Error!void {
+    try out.appendSlice(a, ",\"transform\":[");
+    for ([6]f32{ t.a, t.b, t.c, t.d, t.e, t.f }, 0..) |v, i| {
+        if (i > 0) try out.append(a, ',');
+        try mx.writeExact(a, out, v);
+    }
+    try out.append(a, ']');
+}
+
 /// Decimal printer (up to 6 fraction digits, trailing zeros trimmed) without std.fmt.
 pub fn writeNum(a: Allocator, out: *std.ArrayList(u8), v_in: f32) Error!void {
     var v: f64 = v_in;
@@ -1192,6 +1214,11 @@ pub const Frame = struct {
     pend_objs: std.ArrayList(PendingObj) = .empty,
     /// A line layout could not be allocated during the layout pass.
     layout_oom: bool = false,
+    /// The inputs mention a Tailwind theme variable (`--color-*`, `--spacing`, `--breakpoint-*`, ...):
+    /// `tw` compiles with theme lookups (else every utility keeps its built-in value).
+    tw_theme: bool = false,
+    /// Computed style of the root element once styled (`--breakpoint-*` lookups).
+    tw_root_cs: ?*const CS = null,
 
     pub const Pseudo = struct { cs: *const CS, text: []const u8 };
 
@@ -1246,6 +1273,9 @@ pub const Frame = struct {
         } else if (nonEmpty(o.css) or nonEmpty(o.stylesheets)) {
             return f.fail("the `css` option is not supported by this build", "");
         }
+        if (comptime config.enable_tw) if (hasThemeVar(source)) {
+            f.tw_theme = true;
+        };
         try f.styleTree(f.dom.root, null, 0);
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
@@ -1333,6 +1363,9 @@ pub const Frame = struct {
             else => return f.fail("the `css` option must be an array", ""),
         };
         for (f.dom.styles) |s| try buf.appendSlice(a, s);
+        if (comptime config.enable_tw) if (hasThemeVar(buf.items)) {
+            f.tw_theme = true;
+        };
         var sheet: css.Stylesheet = .{};
         if (buf.items.len > 0) try css.parse(a, buf.items, &sheet);
         if (comptime config.enable_animation) if (o.keyframes) |k| css.addKeyframesJson(a, &sheet, k) catch |err| switch (err) {
@@ -1360,16 +1393,78 @@ pub const Frame = struct {
 
     /// Matched declarations of element `i` (or its pseudo-element) as style declarations, in cascade
     /// order with `important` flags (the style module orders normal < important itself).
-    fn cssDecls(f: *Frame, i: u32, pseudo: css.Pseudo, sets_content: ?*bool) Error![]const style.Declaration {
+    /// Matched stylesheet declarations with takumi's layer split points (indices into `decls`).
+    const CssOut = struct { decls: []const style.Declaration = &.{}, unlayered: usize = 0, important: usize = 0, imp_layered: usize = 0 };
+
+    fn cssDecls(f: *Frame, i: u32, pseudo: css.Pseudo, sets_content: ?*bool) Error!CssOut {
         const st = &f.cssx;
         st.decls.clearRetainingCapacity();
         const r = try css.match(&st.m, &st.scratch, &st.vt, i, pseudo, &st.decls);
         if (sets_content) |p| p.* = r.sets_content;
-        return convertDecls(f.a, st.decls.items);
+        return .{ .decls = try convertDecls(f.a, st.decls.items), .unlayered = r.unlayered_start, .important = r.important_start, .imp_layered = r.layered_important_start };
+    }
+
+    /// Room for preset, presentation hints, the six author parts, inline style and a keyframe layer.
+    const max_layers = 10;
+
+    /// Appends the author origin in takumi's cascade order (matching.rs `layer_order`): normal
+    /// declarations of named `@layer`s < `tw` utilities < unlayered rules; `!important` ones
+    /// unlayered < `tw` < named layers. (`tw` lists its normal declarations first.)
+    fn authorLayers(layers: []style.Layer, n: *usize, tw: []const style.Declaration, c: CssOut) void {
+        var k: usize = 0;
+        while (k < tw.len and !tw[k].important) k += 1;
+        const d = c.decls;
+        const parts = [_][]const style.Declaration{ d[0..c.unlayered], tw[0..k], d[c.unlayered..c.important], d[c.important..c.imp_layered], tw[k..], d[c.imp_layered..] };
+        for (parts) |p| if (p.len > 0) {
+            layers[n.*] = .{ .decls = p, .lenient = true };
+            n.* += 1;
+        };
     }
 
     /// Tailwind declarations of element `i` for `target` (lenient layer).
-    fn twDecls(f: *Frame, i: u32, target: twc.Target) Error![]const style.Declaration {
+    /// Theme lookups for `tw` (takumi `TwVarRef`): a variable is defined for element `i` when its
+    /// parent's computed style has it, or the element's own inline style / matched rules declare it.
+    const TwTheme = struct {
+        f: *Frame,
+        i: u32,
+        own: []const style.Declaration,
+
+        fn defined(ctx: *const anyopaque, name: []const u8) bool {
+            const t: *const TwTheme = @ptrCast(@alignCast(ctx));
+            const el = t.f.dom.at(t.i);
+            if (el.parent != none) if (t.f.dom.at(el.parent).cs.customProperty(name) != null) return true;
+            for (t.own) |d| if (std.mem.eql(u8, d.name, name)) return true;
+            return switch (el.style) {
+                .json => |v| v.get(name) != null,
+                .text => |s| std.mem.indexOf(u8, s, name) != null,
+                .none => false,
+            };
+        }
+
+        fn breakpoint(ctx: *const anyopaque, token: []const u8) ?[]const u8 {
+            const t: *const TwTheme = @ptrCast(@alignCast(ctx));
+            const root = t.f.tw_root_cs orelse return null;
+            var buf: [96]u8 = undefined;
+            const pre = "--breakpoint-";
+            if (token.len > buf.len - pre.len) return null;
+            @memcpy(buf[0..pre.len], pre);
+            @memcpy(buf[pre.len..][0..token.len], token);
+            return root.customProperty(buf[0 .. pre.len + token.len]);
+        }
+    };
+
+    /// Whether `text` mentions a Tailwind theme variable namespace (`--color-`, `--spacing`, ...).
+    fn hasThemeVar(text: []const u8) bool {
+        const prefixes = [_][]const u8{ "color-", "spacing", "radius-", "text-", "font-", "tracking-", "leading-", "aspect-", "container-", "animate-", "breakpoint-" };
+        var k: usize = 0;
+        while (std.mem.indexOfPos(u8, text, k, "--")) |p| {
+            k = p + 2;
+            for (prefixes) |pr| if (std.mem.startsWith(u8, text[k..], pr)) return true;
+        }
+        return false;
+    }
+
+    fn twDecls(f: *Frame, i: u32, target: twc.Target, own_css: []const style.Declaration) Error![]const style.Declaration {
         const el = f.dom.at(i);
         var env: twc.Env = .{ .viewport_w = f.ctx.viewport_w, .viewport_h = f.ctx.viewport_h, .dpr = f.opts.dpr, .target = target };
         // every variant contains ':'; only then is the structural information needed
@@ -1377,6 +1472,9 @@ pub const Frame = struct {
             const info = f.dom.elementInfo(i);
             env.element = .{ .index = info.index, .count = info.count, .type_index = info.type_index, .type_count = info.type_count, .empty = info.empty };
         }
+        var th: TwTheme = .{ .f = f, .i = i, .own = own_css };
+        const theme: twc.Theme = .{ .ctx = &th, .defined = TwTheme.defined, .breakpoint = TwTheme.breakpoint };
+        if (f.tw_theme) env.theme = &theme;
         var out: std.ArrayList(twc.Declaration) = .empty;
         twc.compile(f.a, el.tw, env, &out) catch return error.OutOfMemory;
         return convertDecls(f.a, out.items);
@@ -1388,6 +1486,7 @@ pub const Frame = struct {
         if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
         try f.styleElement(i, parent_cs);
         const cs = f.dom.at(i).cs;
+        if (parent_cs == null) f.tw_root_cs = cs;
         var c = f.dom.at(i).first;
         while (c != none) : (c = f.dom.at(c).next) try f.styleTree(c, cs, depth + 1);
     }
@@ -1418,7 +1517,7 @@ pub const Frame = struct {
 
     /// Cascade layers of element `i`: preset (UA) < presentation hints < tw utilities < stylesheet
     /// rules < inline style. Returns the count written to `layers` (room for one extra layer).
-    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[6]style.Layer) Error!usize {
+    fn elementLayers(f: *Frame, i: u32, diag: *style.Diagnostics, layers: *[max_layers]style.Layer) Error!usize {
         const a = f.a;
         const el = f.dom.at(i);
         var n: usize = 0;
@@ -1431,14 +1530,9 @@ pub const Frame = struct {
             layers[n] = .{ .decls = list.items, .lenient = true };
             n += 1;
         }
-        if (comptime config.enable_tw) if (el.tw.len > 0) {
-            layers[n] = .{ .decls = try f.twDecls(i, .element), .lenient = true };
-            n += 1;
-        };
-        if (comptime config.enable_css) if (f.css_on) {
-            layers[n] = .{ .decls = try f.cssDecls(i, .none, null), .lenient = true };
-            n += 1;
-        };
+        const cs_out: CssOut = if (comptime config.enable_css) (if (f.css_on) try f.cssDecls(i, .none, null) else .{}) else .{};
+        const tw: []const style.Declaration = if (comptime config.enable_tw) (if (el.tw.len > 0) try f.twDecls(i, .element, cs_out.decls) else &.{}) else &.{};
+        authorLayers(layers, &n, tw, cs_out);
         layers[n] = try f.srcLayer(el.style, diag);
         n += 1;
         return n;
@@ -1456,13 +1550,21 @@ pub const Frame = struct {
             /// The element's style with `decls` as the top (lenient) layer.
             pub fn keyframeStyle(h: @This(), decls: []const style.Declaration) Error!*const CS {
                 var diag: style.Diagnostics = .{};
-                var layers: [6]style.Layer = undefined;
+                var layers: [max_layers]style.Layer = undefined;
                 var n = try h.f.elementLayers(h.i, &diag, &layers);
                 layers[n] = .{ .decls = decls, .lenient = true };
                 n += 1;
                 const out = try h.f.a.create(CS);
                 out.* = style.computeLayers(h.f.a, &h.f.ctx, h.parent, layers[0..n], &diag) catch |e| return h.f.styleFail(e, &diag);
                 return out;
+            }
+            /// The element's style with its font size forced to `px` (device px; animated font-size).
+            pub fn fontSizeStyle(h: @This(), px: f32) Error!*const CS {
+                var txt: std.ArrayList(u8) = .empty;
+                try writeNum(h.f.a, &txt, px / h.f.opts.dpr);
+                try txt.appendSlice(h.f.a, "px");
+                const decls = [1]style.Declaration{.{ .name = "font-size", .value = txt.items, .important = true }};
+                return h.keyframeStyle(&decls);
             }
         };
         const r = animate.apply(f.a, cs, f.opts.time_ms, Host{ .f = f, .i = i, .parent = parent_cs }) catch |e| return e;
@@ -1482,7 +1584,7 @@ pub const Frame = struct {
             // fast path (JSON source, no stylesheet, no tw): exactly the phase-1 computation
             cs.* = style.compute(a, &f.ctx, parent_cs, jsonOf(el.preset), jsonOf(el.style), &diag) catch |e| return f.styleFail(e, &diag);
         } else {
-            var layers: [6]style.Layer = undefined;
+            var layers: [max_layers]style.Layer = undefined;
             const n = try f.elementLayers(i, &diag, &layers);
             cs.* = style.computeLayers(a, &f.ctx, parent_cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
         }
@@ -1511,26 +1613,20 @@ pub const Frame = struct {
     /// `before:` / `after:` utility sets `content` to something other than none/normal.
     fn pseudoBox(f: *Frame, i: u32, which: enum { before, after }) Error!u32 {
         const el = f.dom.at(i);
-        var layers: [2]style.Layer = undefined;
+        var layers: [6]style.Layer = undefined;
         var n: usize = 0;
+        var tw: []const style.Declaration = &.{};
         if (comptime config.enable_tw) {
             const key = if (which == .before) "before:" else "after:";
-            if (el.tw.len > 0 and std.mem.indexOf(u8, el.tw, key) != null) {
-                const d = try f.twDecls(i, if (which == .before) .before else .after);
-                if (d.len > 0) {
-                    layers[n] = .{ .decls = d, .lenient = true };
-                    n += 1;
-                }
-            }
+            if (el.tw.len > 0 and std.mem.indexOf(u8, el.tw, key) != null) tw = try f.twDecls(i, if (which == .before) .before else .after, &.{});
         }
+        var cs_out: CssOut = .{};
         if (comptime config.enable_css) if (f.css_on and (if (which == .before) f.cssx.m.has_before else f.cssx.m.has_after)) {
             var sets = false;
             const d = try f.cssDecls(i, if (which == .before) .before else .after, &sets);
-            if (sets) {
-                layers[n] = .{ .decls = d, .lenient = true };
-                n += 1;
-            }
+            if (sets) cs_out = d;
         };
+        authorLayers(&layers, &n, tw, cs_out);
         if (n == 0) return none;
         var diag: style.Diagnostics = .{};
         const pcs = try f.a.create(CS);
@@ -1677,6 +1773,17 @@ pub const Frame = struct {
         }
     }
 
+    /// takumi `participates_in_inflow_inline_formatting_context` after an in-flow child; floats and
+    /// out-of-flow boxes keep `prev`.
+    fn afterInline(f: *const Frame, item: Item, prev: bool) bool {
+        const cs = f.itemStyle(item);
+        if (cs.display == .none or cs.position == .absolute or cs.position == .fixed or cs.float != .none) return prev;
+        return switch (cs.display) {
+            .@"inline", .inline_block, .inline_flex, .inline_grid, .inline_table, .webkit_inline_box => true,
+            else => false,
+        };
+    }
+
     fn inFlowInline(cs: *const CS) bool {
         // (a float is blockified)
         return cs.display == .@"inline" and cs.position != .absolute and cs.position != .fixed and cs.float == .none;
@@ -1725,13 +1832,16 @@ pub const Frame = struct {
         };
     }
 
-    fn isBlankRun(f: *const Frame, item: Item) bool {
+    /// Collapsible white-space-only text (takumi `is_collapsible_whitespace_only_text_node`): a bare
+    /// run, or with `elements` also a text element (class / style / tw ...), never `<br>`.
+    fn isBlankText(f: *const Frame, item: Item, elements: bool) bool {
         const i = switch (item) {
             .el => |i| i,
             .ps => return false,
         };
         const el = f.dom.at(i);
-        if (!el.run or el.cs.white_space_collapse != .collapse) return false;
+        if (el.kind != .text or el.own != none or el.cs.white_space_collapse != .collapse) return false;
+        if (!el.run and (!elements or std.ascii.eqlIgnoreCase(el.tag, "br"))) return false;
         for (el.text) |c| if (c != ' ' and c != '\n' and c != '\t' and c != '\r' and c != 0x0c) return false;
         return true;
     }
@@ -1790,9 +1900,18 @@ pub const Frame = struct {
         var run_start = it;
         var run_len: u32 = 0;
         var run_content = false;
+        // takumi `drop_collapsible_boundary_whitespace`: white-space-only text (bare or a text element)
+        // not preceded by in-flow inline content generates nothing.
+        var after_inline = cs.display == .@"inline";
         while (true) {
             const before = it;
             const c = it.next();
+            var drop = false;
+            if (c) |x| {
+                drop = !after_inline and f.isBlankText(x, true);
+                if (!drop) after_inline = f.afterInline(x, after_inline);
+            }
+            if (drop and run_len == 0) continue;
             var joins = false;
             if (c) |x| {
                 if (inline_ctx) {
@@ -1812,7 +1931,7 @@ pub const Frame = struct {
             }
             const x = c orelse break;
             // white-space-only text between boxes generates nothing
-            if (f.isBlankRun(x)) continue;
+            if (drop or f.isBlankText(x, !inline_ctx)) continue;
             try f.buildItem(x, id, depth + 1);
         }
         return id;
@@ -2413,32 +2532,29 @@ pub const Frame = struct {
     /// own `runs` (x / y relative to its content box) with its atomic inline boxes as `children`;
     /// anonymous paragraph leaves / line containers only appear as boxes of their own beside
     /// block-level siblings (takumi's anonymous block wrappers).
-    fn writeMeasured(f: *Frame, out: *std.ArrayList(u8), id: u32, ox: f32, oy: f32) Error!void {
+    /// `pt` = the parent's measured transform (takumi: parent * T(location) * own local transform).
+    fn writeMeasured(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine) Error!void {
         const a = f.a;
         const n = &f.nodes.items[id];
         const l = f.tree.layout(n.lid);
-        const x = ox + l.x;
-        const y = oy + l.y;
+        const t = mx.mul(mx.mul(pt, mx.Affine.translate(l.x, l.y)), mx.local(n.cs, l.w, l.h));
         try out.appendSlice(a, "{\"width\":");
-        try writeNum(a, out, l.w);
+        try mx.writeExact(a, out, l.w);
         try out.appendSlice(a, ",\"height\":");
-        try writeNum(a, out, l.h);
-        try out.appendSlice(a, ",\"transform\":[1,0,0,1,");
-        try writeNum(a, out, x);
-        try out.append(a, ',');
-        try writeNum(a, out, y);
-        try out.appendSlice(a, "],\"children\":[");
+        try mx.writeExact(a, out, l.h);
+        try writeAffine(a, out, t);
+        try out.appendSlice(a, ",\"children\":[");
         // the anonymous child holding all in-flow content, reported as this box's inline content
         var inl = if (n.kind == .container and hasLines(n.cs.display)) f.soleInline(id) else none;
         // (inline content holding out-of-flow boxes is reported as takumi's anonymous block around it)
         if (inl != none and f.hasOutOfFlow(inl)) inl = none;
         var first = true;
-        if (n.kind == .anon_box) try f.writePlaceholders(out, id, x, y, &first);
+        if (n.kind == .anon_box) try f.writePlaceholders(out, id, t, &first);
         if (inl != none and f.nodes.items[inl].kind == .anon_box) {
             const il = f.tree.layout(f.nodes.items[inl].lid);
-            try f.writeChildren(out, inl, x + il.x, y + il.y, none, &first);
+            try f.writeChildren(out, inl, mx.mul(t, mx.Affine.translate(il.x, il.y)), none, &first);
         }
-        try f.writeChildren(out, id, x, y, inl, &first);
+        try f.writeChildren(out, id, t, inl, &first);
         try out.appendSlice(a, "],\"runs\":[");
         first = true;
         const cx = l.border.left + l.padding.left;
@@ -2454,7 +2570,7 @@ pub const Frame = struct {
 
     /// Children of `id` except `skip` (and the inline-level boxes of an inline formatting context
     /// that are on no line, e.g. cut off by a line clamp).
-    fn writeChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, skip: u32, first: *bool) Error!void {
+    fn writeChildren(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine, skip: u32, first: *bool) Error!void {
         const tl: ?*const font.TextLayout = if (f.nodes.items[id].kind == .anon_box) f.nodes.items[id].tl else null;
         var k: u32 = 0;
         var c = f.nodes.items[id].first_child;
@@ -2473,7 +2589,7 @@ pub const Frame = struct {
             }
             if (!first.*) try out.append(f.a, ',');
             first.* = false;
-            try f.writeMeasured(out, c, x, y);
+            try f.writeMeasured(out, c, pt);
         }
     }
 
@@ -2492,7 +2608,7 @@ pub const Frame = struct {
 
     /// takumi reports an empty box at the static position of every out-of-flow box of an inline
     /// formatting context, before its boxes.
-    noinline fn writePlaceholders(f: *Frame, out: *std.ArrayList(u8), id: u32, x: f32, y: f32, first: *bool) Error!void {
+    noinline fn writePlaceholders(f: *Frame, out: *std.ArrayList(u8), id: u32, pt: mx.Affine, first: *bool) Error!void {
         const n = &f.nodes.items[id];
         const tl = n.tl orelse return;
         var k: u32 = 0;
@@ -2505,11 +2621,9 @@ pub const Frame = struct {
                 if (o.id != k) continue;
                 if (!first.*) try out.append(f.a, ',');
                 first.* = false;
-                try out.appendSlice(f.a, "{\"width\":0,\"height\":0,\"transform\":[1,0,0,1,");
-                try writeNum(f.a, out, x + o.x);
-                try out.append(f.a, ',');
-                try writeNum(f.a, out, y + o.y);
-                try out.appendSlice(f.a, "],\"children\":[],\"runs\":[]}");
+                try out.appendSlice(f.a, "{\"width\":0,\"height\":0");
+                try writeAffine(f.a, out, mx.mul(pt, mx.Affine.translate(o.x, o.y)));
+                try out.appendSlice(f.a, ",\"children\":[],\"runs\":[]}");
                 break;
             }
         }
@@ -2550,13 +2664,13 @@ pub const Frame = struct {
                 if (!first.*) try out.append(a, ',');
                 first.* = false;
                 try out.appendSlice(a, "{\"x\":");
-                try writeNum(a, out, ox + @min(sg.x0, sg.x1));
+                try mx.writeExact(a, out, ox + @min(sg.x0, sg.x1));
                 try out.appendSlice(a, ",\"y\":");
-                try writeNum(a, out, oy + line.top + (sg.baseline - line.baseline));
+                try mx.writeExact(a, out, oy + line.top + (sg.baseline - line.baseline));
                 try out.appendSlice(a, ",\"width\":");
-                try writeNum(a, out, @abs(sg.x1 - sg.x0));
+                try mx.writeExact(a, out, @abs(sg.x1 - sg.x0));
                 try out.appendSlice(a, ",\"height\":");
-                try writeNum(a, out, line.height);
+                try mx.writeExact(a, out, line.height);
                 try out.append(a, '}');
             }
             return;
@@ -2578,13 +2692,13 @@ pub const Frame = struct {
                 if (!first.*) try out.append(a, ',');
                 first.* = false;
                 try out.appendSlice(a, "{\"x\":");
-                try writeNum(a, out, ox + @min(x0, x1));
+                try mx.writeExact(a, out, ox + @min(x0, x1));
                 try out.appendSlice(a, ",\"y\":");
-                try writeNum(a, out, oy + line.top);
+                try mx.writeExact(a, out, oy + line.top);
                 try out.appendSlice(a, ",\"width\":");
-                try writeNum(a, out, @abs(x1 - x0));
+                try mx.writeExact(a, out, @abs(x1 - x0));
                 try out.appendSlice(a, ",\"height\":");
-                try writeNum(a, out, line.height);
+                try mx.writeExact(a, out, line.height);
                 try out.append(a, '}');
                 if (g >= end) break;
             }

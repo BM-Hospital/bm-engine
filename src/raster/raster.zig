@@ -58,6 +58,8 @@ pub const fillRect = paint_mod.fillRect;
 
 pub const drawPixmap = image.drawPixmap;
 pub const resample = image.resample;
+pub const resampleNearest = image.resampleNearest;
+pub const drawPixmapNearestRect = image.drawPixmapNearestRect;
 
 /// Layer compositing with a CSS `mix-blend-mode` (integer translation), and mask helpers for
 /// `mask-image` / `clip-path` (multiply a layer by coverage in place). See blend.zig.

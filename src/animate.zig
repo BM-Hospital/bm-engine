@@ -217,6 +217,8 @@ fn animatable(name: []const u8) ?Prop {
 pub fn apply(a: Allocator, base: *const CS, time_ms: f32, host: anytype) !?*CS {
     if (base.animation_name.len == 0) return null;
     var out: ?*CS = null;
+    // every animated property (union over the animations)
+    var all: std.ArrayList(Prop) = .empty;
     const t = @floor(@max(time_ms, 0));
     for (0..base.animation_name.len) |i| {
         const an = base.animation(i);
@@ -239,8 +241,23 @@ pub fn apply(a: Allocator, base: *const CS, time_ms: f32, host: anytype) !?*CS {
             out = c;
             break :blk c;
         };
-        for (mask.items) |p| style.props.copyProp(p, acc, &r);
+        for (mask.items) |p| {
+            style.props.copyProp(p, acc, &r);
+            if (std.mem.indexOfScalar(Prop, all.items, p) == null) try all.append(a, p);
+        }
     }
+    // An animated font-size is the element's font size for its own em lengths too (takumi keeps
+    // lengths specified and resolves them against the animated font size): recompute the
+    // element's style with it, then put the animated values back on top.
+    if (out) |o| if (std.mem.indexOfScalar(Prop, all.items, .fontSize) != null and o.font_size != base.font_size) {
+        if (comptime @hasDecl(@TypeOf(host), "fontSizeStyle")) {
+            const re = try host.fontSizeStyle(o.font_size);
+            const c = try a.create(CS);
+            c.* = re.*;
+            for (all.items) |p| style.props.copyProp(p, c, o);
+            return c;
+        }
+    };
     return out;
 }
 
