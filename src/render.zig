@@ -3044,7 +3044,8 @@ pub const Frame = struct {
     /// (takumi-pdf `PageFrame::column` / `page_root`).
     pub fn setPaged(f: *Frame, page_w: f32, page_h: f32) void {
         if (comptime !layout.fragment.enabled) return;
-        f.tree.paged.page_w = page_w;
+        // (takumi lays the root out in the page area truncated to the LayoutUnit grid, 1/64 px)
+        f.tree.paged.page_w = @floor(page_w * 64) / 64;
         f.tree.paged.page_h = page_h;
         f.opts.width = @intFromFloat(std.math.clamp(page_w, 1, 16384));
         f.opts.height = null;
