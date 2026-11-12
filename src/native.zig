@@ -159,9 +159,15 @@ const Instance = struct {
     stack_mode: StackMode = .auto,
     stack_need: usize = default_stack_need,
     max_bytes: usize = default_max_bytes,
+    /// `napi_create_arraybuffer` is known to return zero-filled memory here (V8; told by
+    /// js/native.mjs through `tune`): raw frames are painted into it without clearing it first.
+    zeroed_buffers: bool = false,
 };
 
 const Stack = struct { mode: StackMode, need: usize };
+
+/// Largest raw result an async call pre-allocates (the engine's canvas limit: 40e6 pixels).
+const max_raw_hint: u32 = 160_000_000;
 
 const handle_magic: u32 = 0x626d4e31;
 
@@ -326,6 +332,16 @@ const Exec = struct {
     env: Env = null,
     js_result: Value = null,
     out: []u8 = &.{},
+    /// A raw frame painted straight into the result's ArrayBuffer (`rawTarget`): created during
+    /// the call (sync, `raw_ab`) or before the job was queued (async, `pre_*`, kept by `Job.pre_ref`).
+    raw_ab: Value = null,
+    raw_ptr: ?[*]u8 = null,
+    pre_ptr: ?[*]u8 = null,
+    pre_len: usize = 0,
+    /// the result is the frame in the `pre_*` buffer
+    pre_hit: bool = false,
+    /// ArrayBuffers of this environment are known to be zero-filled (`Instance.zeroed_buffers`)
+    zeroed: bool = false,
     /// "" = success
     err: []const u8 = "",
     err_buf: [300]u8 = undefined,
@@ -359,10 +375,44 @@ const Exec = struct {
         }
     }
 
+    /// `render.Renderer.RawTarget`: the memory a raw frame is painted into, so that it is not
+    /// copied out of the renderer's canvas afterwards. On the JS thread that is the ArrayBuffer of
+    /// the result itself; on any other thread (async job, sync call moved to a helper thread)
+    /// zeroed process memory that becomes `out`.
+    fn rawTarget(ctx: ?*anyopaque, len: usize) ?[*]u8 {
+        const x: *Exec = @ptrCast(@alignCast(ctx.?));
+        if (x.raw_ptr != null or x.out.len != 0) return null;
+        if (x.env != null) {
+            var ptr: ?[*]u8 = null;
+            var ab: Value = null;
+            if (api.napi_create_arraybuffer(x.env, len, &ptr, &ab) != .ok) return null;
+            const p = ptr orelse return null;
+            if (!x.zeroed) @memset(p[0..len], 0);
+            x.raw_ab = ab;
+            x.raw_ptr = p;
+            return p;
+        }
+        if (x.pre_ptr) |p| {
+            if (len == x.pre_len) {
+                if (!x.zeroed) @memset(p[0..len], 0);
+                x.raw_ptr = p;
+                return p;
+            }
+        }
+        if (x.h) |h| {
+            if (len > h.limit -| h.used) return null;
+        }
+        const p = os.allocZeroed(len) orelse return null;
+        _ = live_bytes.fetchAdd(len, .monotonic);
+        x.out = p[0..len];
+        return p;
+    }
+
     /// The engine call itself (any thread; the renderer is locked).
     fn runOp(x: *Exec) void {
         const r: ?*Renderer = if (x.h) |h| h.r else null;
         if (x.op.renderer and r == null) return x.fail("renderer has been freed");
+        if (r) |rr| rr.raw_target = .{ .ctx = x, .alloc = rawTarget };
         var call: ops.Call = .{
             .r = r,
             .gpa = if (x.h) |h| h.gpa() else counted,
@@ -391,10 +441,20 @@ const Exec = struct {
             break :blk x.op.run(&call);
         };
         if (status) |_| {
-            if (x.env != null) {
+            if (x.raw_ptr != null and call.result.ptr == x.raw_ptr.? and x.raw_ab == null) {
+                // the frame is already in the ArrayBuffer made for this job (`Job.settle` wraps it)
+                x.pre_hit = true;
+            } else if (x.raw_ptr != null and call.result.ptr == x.raw_ptr.? and x.env != null) {
+                // the frame is already in the result's ArrayBuffer
+                if (api.napi_create_typedarray(x.env, .uint8, call.result.len, x.raw_ab, 0, &x.js_result) != .ok) x.js_result = null;
+                if (x.js_result == null) x.fail("out of memory");
+            } else if (x.out.len != 0 and call.result.ptr == x.out.ptr) {
+                // the frame is already in `out`
+            } else if (x.env != null) {
                 x.js_result = makeBytes(x.env, call.result);
                 if (x.js_result == null) x.fail("out of memory");
             } else {
+                if (x.out.len != 0) counted.free(x.out);
                 x.out = counted.dupe(u8, call.result) catch blk: {
                     x.fail("out of memory");
                     break :blk &.{};
@@ -405,8 +465,13 @@ const Exec = struct {
             // the wasm binding's message: `last_error`, or "error <status>" when it is empty
             error.Invalid => x.fail(if (call.err.len != 0) call.err else if (r != null and r.?.err.len != 0) r.?.err else "error 1"),
         }
+        if (x.err.len != 0 and x.out.len != 0) {
+            counted.free(x.out);
+            x.out = &.{};
+        }
         if (call.owned) call.gpa.free(call.result);
         if (r) |rr| {
+            rr.raw_target = null;
             rr.releaseResult();
             if (x.op.images) rr.clearImages();
         }
@@ -465,6 +530,8 @@ const Job = struct {
     work: napi.AsyncWork = null,
     deferred: napi.Deferred = null,
     next: ?*Job = null,
+    /// keeps the ArrayBuffer of `x.pre_ptr` alive until the job settles
+    pre_ref: napi.Ref = null,
 
     fn destroy(j: *Job) void {
         j.in.deinit();
@@ -494,8 +561,17 @@ const Job = struct {
 
     /// Resolves / rejects the promise and frees the job (not its handle reference).
     fn settle(j: *Job, env: Env) void {
+        var pre: Value = null;
+        if (j.pre_ref != null) {
+            if (api.napi_get_reference_value(env, j.pre_ref, &pre) != .ok) pre = null;
+            _ = api.napi_delete_reference(env, j.pre_ref);
+            j.pre_ref = null;
+        }
         if (j.x.err.len == 0) {
-            const v = makeBytes(env, j.x.out);
+            var v: Value = null;
+            if (j.x.pre_hit) {
+                if (pre == null or api.napi_create_typedarray(env, .uint8, j.x.pre_len, pre, 0, &v) != .ok) v = null;
+            } else v = makeBytes(env, j.x.out);
             if (v != null) {
                 _ = api.napi_resolve_deferred(env, j.deferred, v);
             } else {
@@ -617,7 +693,7 @@ fn jsRun(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
     if (p.h) |h| {
         if (h.closed) return throwError(env, "renderer has been freed", false);
     }
-    var x: Exec = .{ .h = p.h, .op = p.op, .arg0 = p.arg0, .arg1 = p.arg1, .in = &in, .stack = .{ .mode = a.inst.stack_mode, .need = a.inst.stack_need }, .env = env };
+    var x: Exec = .{ .h = p.h, .op = p.op, .arg0 = p.arg0, .arg1 = p.arg1, .in = &in, .stack = .{ .mode = a.inst.stack_mode, .need = a.inst.stack_need }, .env = env, .zeroed = a.inst.zeroed_buffers };
     x.execute(a.inst.stack_low);
     if (p.h) |h| h.report(env);
     if (x.err.len != 0) return throwError(env, x.err, false);
@@ -645,6 +721,18 @@ fn jsRunAsync(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
         j.destroy();
         return throwError(env, "out of memory", false);
     }
+    if (p.op.raw_hint and p.arg1 != 0 and p.arg1 <= max_raw_hint) {
+        // a raw frame of a known size: paint it straight into the result's ArrayBuffer
+        var ptr: ?[*]u8 = null;
+        var ab: Value = null;
+        if (api.napi_create_arraybuffer(env, p.arg1, &ptr, &ab) == .ok and ptr != null) {
+            if (api.napi_create_reference(env, ab, 1, &j.pre_ref) == .ok) {
+                j.x.pre_ptr = ptr;
+                j.x.pre_len = p.arg1;
+                j.x.zeroed = a.inst.zeroed_buffers;
+            } else j.pre_ref = null;
+        }
+    }
     if (p.h) |h| {
         h.refs += 1;
         if (h.running) {
@@ -669,14 +757,17 @@ fn jsMemoryBytes(env: Env, _: napi.CallbackInfo) callconv(.c) Value {
     return v;
 }
 
-/// tune(stackMode, stackBytes, maxBytes): test hook; 0 / undefined keeps the current value.
+/// tune(stackMode, stackBytes, maxBytes, zeroedBuffers): test hook; 0 / undefined keeps the current
+/// value. `zeroedBuffers`: 1 = new ArrayBuffers are zero-filled in this environment (js/native.mjs
+/// says so on V8), 2 = not known (the default: raw frames clear their buffer first).
 fn jsTune(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
     const a = getArgs(env, info) orelse return throwError(env, "invalid native call", true);
-    var nums: [3]f64 = .{ 0, 0, 0 };
+    var nums: [4]f64 = .{ 0, 0, 0, 0 };
     for (&nums, 0..) |*n, i| _ = api.napi_get_value_double(env, a.argv[i], n);
     if (nums[0] >= 1 and nums[0] <= 3) a.inst.stack_mode = @enumFromInt(@as(u32, @intFromFloat(nums[0])));
     if (nums[1] >= 16384 and nums[1] <= 1 << 30) a.inst.stack_need = @intFromFloat(nums[1]);
     if (nums[2] >= 1 and nums[2] <= 1 << 46) a.inst.max_bytes = @intFromFloat(nums[2]);
+    if (nums[3] == 1 or nums[3] == 2) a.inst.zeroed_buffers = nums[3] == 1;
     return undefinedValue(env);
 }
 

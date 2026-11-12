@@ -20,4 +20,5 @@ test {
     _ = @import("raster/raster.zig");
     _ = @import("codec/codec.zig");
     _ = @import("test_layout_fix.zig");
+    _ = @import("perf_tests.zig");
 }

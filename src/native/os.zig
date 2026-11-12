@@ -26,6 +26,7 @@ const heap = struct {
     extern "kernel32" fn HeapReAlloc(h: *anyopaque, flags: u32, p: *anyopaque, n: usize) callconv(.winapi) ?[*]u8;
     extern "kernel32" fn HeapFree(h: *anyopaque, flags: u32, p: *anyopaque) callconv(.winapi) c_int;
     const REALLOC_IN_PLACE_ONLY: u32 = 0x10;
+    const ZERO_MEMORY: u32 = 0x08;
     /// HeapAlloc aligns to 2 * @sizeOf(usize) (MEMORY_ALLOCATION_ALIGNMENT).
     const natural: usize = 2 * @sizeOf(usize);
 
@@ -66,6 +67,17 @@ const heap = struct {
         }
     }
 };
+
+/// `len` zero bytes, freed with `allocator.free` (a byte slice). Large blocks come from fresh
+/// zero pages of the system (HeapAlloc HEAP_ZERO_MEMORY / calloc), so they are not cleared twice.
+pub fn allocZeroed(len: usize) ?[*]u8 {
+    const n = if (len == 0) 1 else len;
+    if (is_windows) {
+        const h = heap.GetProcessHeap() orelse return null;
+        return heap.HeapAlloc(h, heap.ZERO_MEMORY, n);
+    }
+    return @ptrCast(std.c.calloc(1, n));
+}
 
 // ---------------------------------------------------------------------------------------------
 // mutex

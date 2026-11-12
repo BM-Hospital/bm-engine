@@ -1,13 +1,24 @@
-//! CRC-32 (PNG/zlib polynomial, single 1 KB table) and Adler-32 (16-byte SIMD blocks).
+//! CRC-32 (PNG/zlib polynomial; slicing-by-4 with four 1 KB tables in the native build, one table
+//! in the size-budgeted wasm build) and Adler-32 (16-byte SIMD blocks).
 const std = @import("std");
+const builtin = @import("builtin");
+const bytes = @import("bytes.zig");
 
-const crc_table: [256]u32 = blk: {
-    @setEvalBranchQuota(10000);
-    var t: [256]u32 = undefined;
+/// Tables used: 3 KiB more buy about 2x on the megabyte-long IDAT stream of a photo-like PNG
+/// (1 ms of a 35 ms encode); the wasm binaries keep the single table.
+const crc_slices = if (builtin.cpu.arch.isWasm()) 1 else 4;
+
+/// `crc_tables[k][b]`: the CRC of byte `b` followed by `k` zero bytes.
+const crc_tables: [crc_slices][256]u32 = blk: {
+    @setEvalBranchQuota(20000);
+    var t: [crc_slices][256]u32 = undefined;
     for (0..256) |i| {
         var c: u32 = @intCast(i);
         for (0..8) |_| c = if (c & 1 != 0) 0xEDB88320 ^ (c >> 1) else c >> 1;
-        t[i] = c;
+        t[0][i] = c;
+    }
+    for (1..crc_slices) |k| {
+        for (0..256) |i| t[k][i] = (t[k - 1][i] >> 8) ^ t[0][t[k - 1][i] & 0xff];
     }
     break :blk t;
 };
@@ -15,7 +26,15 @@ const crc_table: [256]u32 = blk: {
 /// Continues a CRC-32: start with `crc = 0`.
 pub fn crc32(crc: u32, data: []const u8) u32 {
     var c = ~crc;
-    for (data) |b| c = crc_table[(c ^ b) & 0xff] ^ (c >> 8);
+    var p = data;
+    if (crc_slices == 4) {
+        // four bytes per step
+        while (p.len >= 4) : (p = p[4..]) {
+            c ^= bytes.le32(p, 0);
+            c = crc_tables[3][c & 0xff] ^ crc_tables[2][(c >> 8) & 0xff] ^ crc_tables[1][(c >> 16) & 0xff] ^ crc_tables[0][c >> 24];
+        }
+    }
+    for (p) |b| c = crc_tables[0][(c ^ b) & 0xff] ^ (c >> 8);
     return ~c;
 }
 
@@ -63,4 +82,14 @@ test "crc32 and adler32 known values" {
     try std.testing.expectEqual((b << 16) | a, adler32(1, &buf));
     try std.testing.expectEqual(adler32(adler32(1, buf[0..777]), buf[777..]), adler32(1, &buf));
     try std.testing.expectEqual(crc32(crc32(0, buf[0..777]), buf[777..]), crc32(0, &buf));
+    // every length and split against the bit-by-bit definition
+    for (0..70) |n| {
+        var c: u32 = 0xFFFFFFFF;
+        for (buf[3..][0..n]) |x| {
+            c ^= x;
+            for (0..8) |_| c = if (c & 1 != 0) 0xEDB88320 ^ (c >> 1) else c >> 1;
+        }
+        try std.testing.expectEqual(~c, crc32(0, buf[3..][0..n]));
+        for (0..n + 1) |cut| try std.testing.expectEqual(~c, crc32(crc32(0, buf[3..][0..cut]), buf[3 + cut ..][0 .. n - cut]));
+    }
 }

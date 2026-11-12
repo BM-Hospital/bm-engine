@@ -544,8 +544,10 @@ pub fn encode(alloc: std.mem.Allocator, rgba: []const u8, w: u32, h: u32, opts: 
     var rows = Rows{ .rgba = rgba, .w = w, .bpp = bpp, .rb = rb, .pal = if (use_pal) &pal else null, .depth = depth };
 
     // Scratch, allocated first: 3 rows (prev, cur, filtered). Everything else streams.
-    const bufs = try alloc.alloc(u8, 3 * rb + 1);
+    // (1 / 2 / 4-bit palette rows: one more row of 8-bit indices, packed afterwards)
+    const bufs = try alloc.alloc(u8, 3 * rb + 1 + (if (use_pal and depth < 8) @as(usize, w) else 0));
     defer alloc.free(bufs);
+    rows.idx = bufs[3 * rb + 1 ..];
 
     var strat: FilterStrategy = .none;
     if (!use_pal) {
@@ -741,6 +743,8 @@ const Rows = struct {
     last: u32 = 0,
     last_idx: u8 = 0,
     have_last: bool = false,
+    /// scratch for one row of 8-bit palette indices (depth < 8), `w` bytes; empty = unused
+    idx: []u8 = &.{},
 
     fn pack(r: *Rows, y: usize, dst: []u8) void {
         const src = r.rgba[y * r.w * 4 ..][0 .. r.w * 4];
@@ -750,12 +754,14 @@ const Rows = struct {
                 r.last_idx = p.lookup(r.last).?;
                 r.have_last = true;
             }
-            if (r.depth == 8) {
+            if (r.depth == 8 or r.idx.len >= r.w) {
+                // 8-bit indices: straight into the scanline, or (lower depths) into `idx`, packed below
+                const dst8 = if (r.depth == 8) dst else r.idx[0..r.w];
                 const px: [*]align(1) const u32 = @ptrCast(src.ptr);
                 const w = r.w;
                 var idx = r.last_idx;
                 if (pixel(px, 0) != r.last) idx = p.find(pixel(px, 0));
-                dst[0] = idx;
+                dst8[0] = idx;
                 var x: usize = 1;
                 const B = @Vector(16, u8);
                 while (x + 16 <= w) : (x += 16) {
@@ -769,14 +775,15 @@ const Rows = struct {
                         idx = p.find(pixel(px, x + j));
                         @as(*align(1) B, @ptrCast(&tmp[j])).* = @splat(idx);
                     }
-                    @as(*align(1) B, @ptrCast(dst.ptr + x)).* = @as(*B, @ptrCast(&tmp)).*;
+                    @as(*align(1) B, @ptrCast(dst8.ptr + x)).* = @as(*B, @ptrCast(&tmp)).*;
                 }
                 while (x < w) : (x += 1) {
                     if (pixel(px, x) != pixel(px, x - 1)) idx = p.find(pixel(px, x));
-                    dst[x] = idx;
+                    dst8[x] = idx;
                 }
                 r.last = pixel(px, w - 1);
                 r.last_idx = idx;
+                if (r.depth != 8) packBits(dst, dst8, r.depth);
                 return;
             }
             @memset(dst, 0);
@@ -807,6 +814,55 @@ const Rows = struct {
         }
     }
 };
+
+/// Packs 8-bit palette indices (each < 2^depth) into `depth`-bit samples, most significant
+/// first; the last byte is padded with zero bits. `dst.len` = ceil(idx.len * depth / 8).
+fn packBits(dst: []u8, idx: []const u8, depth: u8) void {
+    const per: usize = 8 / @as(usize, depth);
+    const full = idx.len / per;
+    switch (depth) {
+        // one multiplication moves every sample of a group to its place in the top byte
+        // (the partial products are distinct bit ranges, so nothing carries)
+        1 => for (0..full) |i| {
+            dst[i] = @truncate((byt.le64(idx, i * 8) *% 0x8040201008040201) >> 56);
+        },
+        2 => for (0..full) |i| {
+            dst[i] = @truncate((byt.le32(idx, i * 4) *% 0x40100401) >> 24);
+        },
+        else => for (0..full) |i| {
+            dst[i] = (idx[2 * i] << 4) | idx[2 * i + 1];
+        },
+    }
+    if (full < dst.len) {
+        var v: u32 = 0;
+        for (idx[full * per ..], 0..) |ix, k| v |= @as(u32, ix) << @intCast(8 - depth - k * depth);
+        dst[full] = @truncate(v);
+    }
+}
+
+test "packBits equals bit-by-bit packing" {
+    var idx: [67]u8 = undefined;
+    var got: [67]u8 = undefined;
+    var want: [67]u8 = undefined;
+    var seed: u32 = 12345;
+    for ([_]u8{ 1, 2, 4 }) |depth| {
+        for (1..idx.len + 1) |n| {
+            for (idx[0..n]) |*v| {
+                seed = seed *% 1664525 +% 1013904223;
+                v.* = @truncate((seed >> 24) & ((@as(u32, 1) << @intCast(depth)) - 1));
+            }
+            const rb = (n * depth + 7) / 8;
+            @memset(want[0..rb], 0);
+            for (idx[0..n], 0..) |v, x| {
+                const bit = x * depth;
+                want[bit >> 3] |= v << @intCast(8 - depth - (bit & 7));
+            }
+            @memset(&got, 0xAA);
+            packBits(got[0..rb], idx[0..n], depth);
+            try std.testing.expectEqualSlices(u8, want[0..rb], got[0..rb]);
+        }
+    }
+}
 
 /// Filters rows [y0, y1) and feeds the scanlines to `s`. `bufs`: 3*rb+1 bytes of scratch.
 /// The row above y0 (when y0 > 0) is used as predictor, as in the full image.
