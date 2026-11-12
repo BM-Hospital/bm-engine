@@ -3,7 +3,7 @@
 [English](../en/profiles-and-size.md) · [Tiếng Việt](profiles-and-size.md)
 
 bm-engine được biên dịch thành ba binary với tập tính năng khác nhau để bạn chỉ phải tải những gì mình
-dùng: `core` (454.5 KiB), `standard` (877.5 KiB) và `full` (1 099.8 KiB), so với 4 234.9 KiB của bản wasm
+dùng: `core` (487.0 KiB), `standard` (933.9 KiB) và `full` (1 140.5 KiB), so với 4 234.9 KiB của bản wasm
 takumi 2.20. Trang này liệt kê nội dung từng profile, chi phí của từng tính năng tùy chọn, cách một
 profile nhỏ xử lý đầu vào nó không hỗ trợ, cách tự build bản riêng, và lý do chỉ có WOFF được tách thành
 add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 1024 byte.
@@ -12,9 +12,9 @@ add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 
 
 | Bản build | Gốc | gzip -9 | brotli (q11) | so với takumi (gốc) |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | nhỏ hơn 9.3× |
-| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | nhỏ hơn 4.8× |
-| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | nhỏ hơn 3.9× |
+| `core` — `bm_engine.core.wasm` | 487.0 KiB | 228.3 KiB | 194.3 KiB | nhỏ hơn 8.7× |
+| `standard` — `bm_engine.standard.wasm` | 933.9 KiB | 463.5 KiB | 397.7 KiB | nhỏ hơn 4.5× |
+| `full` — `bm_engine.wasm` | 1 140.5 KiB | 558.2 KiB | 469.6 KiB | nhỏ hơn 3.7× |
 | Add-on WOFF — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 

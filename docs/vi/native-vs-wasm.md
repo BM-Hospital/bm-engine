@@ -5,7 +5,7 @@
 Trên Node.js, bm-engine chạy dưới dạng addon Node-API native hoặc dưới dạng WebAssembly. Cả hai được biên dịch
 từ cùng một mã nguồn Zig, có cùng API và cho ra cùng từng byte. Trang này giải thích bạn nhận được backend nào,
 khi nào nên chọn backend kia, backend native dùng thread ra sao, và cả hai so với bản native và bản wasm của
-takumi thế nào trên bộ benchmark 200 fixture. Cài đặt: [Bắt đầu](./getting-started.md). Cách build và phát hành
+takumi thế nào trên bộ benchmark 250 fixture. Cài đặt: [Bắt đầu](./getting-started.md). Cách build và phát hành
 các gói theo nền tảng: [Phát hành](./publishing.md).
 
 ## Nên dùng backend nào

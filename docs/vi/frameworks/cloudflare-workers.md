@@ -96,9 +96,9 @@ vụ và thay đổi theo thời gian — hãy xem tài liệu hiện hành củ
 
 | Module | raw | gzip -9 |
 |:--|--:|--:|
-| `bm_engine.core.wasm` | 454.5 KiB | 209.8 KiB |
-| `bm_engine.standard.wasm` | 877.5 KiB | 432.7 KiB |
-| `bm_engine.wasm` (full) | 1 099.8 KiB | 535.6 KiB |
+| `bm_engine.core.wasm` | 487.0 KiB | 228.3 KiB |
+| `bm_engine.standard.wasm` | 933.9 KiB | 463.5 KiB |
+| `bm_engine.wasm` (full) | 1 140.5 KiB | 558.2 KiB |
 | JS wrapper (đã bundle) | ~23 KiB | — |
 
 Bản dry-run của Worker ở trên báo **Total Upload: 1290.11 KiB / gzip: 618.63 KiB**, phần lớn là hai file

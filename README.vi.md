@@ -13,23 +13,24 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
 
 ## Điểm nổi bật
 
-Đo so với `@takumi-rs/wasm` 2.20.0 trên 200 fixture dùng chung (Node 26, i3-10100; chi tiết ở
+Đo so với `@takumi-rs/wasm` 2.20.0 trên 250 fixture dùng chung (Node 26, i3-10100; chi tiết ở
 [docs/vi/benchmark.md](docs/vi/benchmark.md)):
 
-- **Nhỏ**: wasm `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB (brotli 180 / 375 / 453 KiB),
-  so với 4 234.9 KiB của takumi — nhỏ hơn 9.3× / 4.8× / 3.9×. Module **không có import nào** (không
+- **Nhỏ**: wasm `core` 487.0 KiB, `standard` 933.9 KiB, `full` 1 140.5 KiB (brotli 194 / 398 / 470 KiB),
+  so với 4 234.9 KiB của takumi — nhỏ hơn 8.7× / 4.5× / 3.7×. Module **không có import nào** (không
   WASI, không glue wasm-bindgen) và wrapper JS không có dependency.
 - **Đầu ra giống nhau**: 81 fixture trùng từng byte, 169 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
-  mép khử răng cưa), 1 fixture gần giống, 0 fixture khác. Layout của `measure()` khớp takumi tới 0.001 px.
-- **Nhanh**: render PNG mất 0.48× thời gian của takumi (trung bình nhân; nhanh hơn ở 175/175 ca), RGBA
-  thô 0.65× (nhanh hơn ở 155/175 ca); cold start (init + font + PNG đầu tiên) 72 ms so với 187 ms; file
-  PNG nhỏ hơn 24 %.
+  mép khử răng cưa), 0 fixture gần giống, 0 fixture khác, 0 lỗi. Layout của `measure()` khớp takumi tới 0.001 px
+  (246/247 ca không-transform).
+- **Nhanh**: render PNG mất 0.45× thời gian của takumi (trung bình nhân; nhanh hơn ở 248/250 ca), RGBA
+  thô 0.63× (nhanh hơn ở 229/250 ca); cold start (init + font + PNG đầu tiên) 78 ms so với 194 ms; file
+  PNG nhỏ hơn 20 %.
 - **Đồng bộ hoặc bất đồng bộ**: mọi method đều có bản `*Sync`; `init` / `initSync` nhận bytes, URL,
   `Response` hoặc một `WebAssembly.Module` đã biên dịch sẵn.
 
 Chỗ còn thua: bộ nhớ tuyến tính wasm **lớn hơn 9 %** so với takumi sau 50 lần render (11.6 so với
-10.6 MiB); render thô chậm hơn ở nhóm `border-radius` (1.20×), `text-stroke` (1.61×), `svg-image`
-(1.46×) và `text-decoration` (1.10×). Xem [Tình trạng](#tình-trạng-và-hạn-chế).
+10.6 MiB); render thô chậm hơn ở nhóm `border-radius` (1.20×), `text-stroke` (1.58×), `svg-image`
+(1.48×) và `text-decoration` (1.12×). Xem [Tình trạng](#tình-trạng-và-hạn-chế).
 
 ## Cài đặt
 
@@ -49,7 +50,7 @@ worker và edge runtime luôn dùng WebAssembly. Kiểm tra bằng `import { bac
 
 | Platform package | Trạng thái |
 |:--|:--|
-| `win32-x64-msvc` | đã chạy: giống hệt từng byte với wasm trên 200 fixture, test luồng, bộ nhớ, fuzz và cài đặt |
+| `win32-x64-msvc` | đã chạy: giống hệt từng byte với wasm trên 250 fixture, test luồng, bộ nhớ, fuzz và cài đặt |
 | `win32-arm64-msvc`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64` | đã cross-compile và kiểm tra cấu trúc, **chưa từng chạy** (fallback sang wasm nếu không nạp được) |
 
 Chi tiết: [Bắt đầu → Cài đặt](docs/vi/getting-started.md#cài-đặt) (package manager, Docker, serverless,
@@ -100,9 +101,9 @@ initSync(wasm)`. Xem [Bắt đầu](docs/vi/getting-started.md) cho bundler, Wor
 
 | Profile | Import | wasm (thô / brotli) | Thêm |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 454.5 / 180.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
-| `standard` | `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 099.8 / 453.4 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
+| `core` | `bm-engine/core` | 487.0 / 194.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
+| `standard` | `bm-engine/standard` | 933.9 / 397.7 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 140.5 / 469.6 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
 
 Một add-on 84 KiB (`bm-engine/woff`) giúp `core` đọc được WOFF / WOFF2. `features` cho biết binary đang
 nạp có những gì. Chi tiết: [Profile và kích thước](docs/vi/profiles-and-size.md).

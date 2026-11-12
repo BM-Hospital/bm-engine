@@ -13,24 +13,24 @@ Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNE
 
 ## Highlights
 
-Measured against `@takumi-rs/wasm` 2.20.0 on 200 shared fixtures (Node 26, i3-10100; details in
+Measured against `@takumi-rs/wasm` 2.20.0 on 250 shared fixtures (Node 26, i3-10100; details in
 [docs/en/benchmark.md](docs/en/benchmark.md)):
 
-- **Small**: `core` 454.5 KiB, `standard` 877.5 KiB, `full` 1 099.8 KiB of wasm (180 / 375 / 453 KiB
-  brotli), against 4 234.9 KiB for takumi — 9.3× / 4.8× / 3.9× smaller. The module has **no imports**
+- **Small**: `core` 487.0 KiB, `standard` 933.9 KiB, `full` 1 140.5 KiB of wasm (194 / 398 / 470 KiB
+  brotli), against 4 234.9 KiB for takumi — 8.7× / 4.5× / 3.7× smaller. The module has **no imports**
   (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
 - **Same output**: 81 fixtures byte-identical, 169 equivalent (SSIM ≥ 0.99, differences at
   anti-aliased edges), 0 close, 0 different, 0 errors. `measure()` layouts match takumi to 0.001 px
-  (197/197 non-transform cases).
-- **Fast**: PNG rendering 0.49× takumi's time (geometric mean; faster in 191/191 cases), raw RGBA
-  0.68× (faster in 171/191); cold start (init + font + first PNG) 71 ms vs 178 ms; PNG files 22 %
+  (246/247 non-transform cases).
+- **Fast**: PNG rendering 0.45× takumi's time (geometric mean; faster in 248/250 cases), raw RGBA
+  0.63× (faster in 229/250); cold start (init + font + first PNG) 78 ms vs 194 ms; PNG files 20 %
   smaller.
 - **Synchronous or async**: every method has a `*Sync` twin; `init` / `initSync` accept bytes, URLs,
   `Response`s or a precompiled `WebAssembly.Module`.
 
 Where it still loses: wasm linear memory is **9 % larger** than takumi's after 50 renders (11.6 vs
-10.6 MiB); raw rendering is slower in the `border-radius` group (1.20×), `text-stroke` (1.61×),
-`svg-image` (1.46×) and `text-decoration` (1.10×). See [Status](#status-and-limitations).
+10.6 MiB); raw rendering is slower in the `border-radius` group (1.20×), `text-stroke` (1.58×),
+`svg-image` (1.48×) and `text-decoration` (1.12×). See [Status](#status-and-limitations).
 
 ## Install
 
@@ -50,7 +50,7 @@ runtimes always use WebAssembly. Check with `import { backend } from "bm-engine"
 
 | Platform package | Status |
 |:--|:--|
-| `win32-x64-msvc` | executed: byte identity with wasm on 200 fixtures, threading, memory, fuzz and install tests |
+| `win32-x64-msvc` | executed: byte identity with wasm on 250 fixtures, threading, memory, fuzz and install tests |
 | `win32-arm64-msvc`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64` | cross-compiled and structurally verified, **never executed** yet (wasm fallback if they do not load) |
 
 Details: [Getting started → Install](docs/en/getting-started.md#install) (package managers, Docker,
@@ -102,9 +102,9 @@ initSync(wasm)`. See [Getting started](docs/en/getting-started.md) for bundlers,
 
 | Profile | Import | wasm (raw / brotli) | Adds |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 454.5 / 180.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
-| `standard` | `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 099.8 / 453.4 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
+| `core` | `bm-engine/core` | 487.0 / 194.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
+| `standard` | `bm-engine/standard` | 933.9 / 397.7 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 140.5 / 469.6 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
 
 An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the
 loaded binary contains. Details: [Profiles and size](docs/en/profiles-and-size.md).

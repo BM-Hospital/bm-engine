@@ -17,18 +17,20 @@ Measured on an Intel Core i3-10100, Windows 11, Node 26.13, `full` profile, agai
 
 | Metric | bm-engine | takumi-wasm |
 |:--|--:|--:|
-| Cold start: init + register a font + first og-card PNG | **70.8 ms** | 178.4 ms |
-| Compile + instantiate the wasm (phase-1 build, Node) | 2.7 ms | 34.1 ms |
+| Cold start: init + register a font + first og-card PNG | **78.1 ms** | 193.8 ms |
+| Compile + instantiate the wasm (cold-start run, Node) | 8.0 ms | 33.9 ms |
 | Streaming compile + instantiate in headless Edge 157 | 20.4 ms | — |
-| `raw` render, geometric mean over 191 fixtures | **0.69 ms** | 1.02 ms |
-| `png` render (render + encode), geometric mean | **1.59 ms** | 3.26 ms |
-| og-card / blog-card / stress (3000 × 2000) PNG, phase-2 run | 9.23 / 16.47 / 24.00 ms | 13.41 / 31.14 / 36.71 ms |
+| `raw` render, geometric mean over 250 fixtures | **0.64 ms** | 1.01 ms |
+| `png` render (render + encode), geometric mean | **1.33 ms** | 2.95 ms |
+| og-card / blog-card / stress (3000 × 2000) PNG | 14.51 / 30.48 / 83.20 ms | 22.26 / 49.99 / 143.20 ms |
 | wasm memory after 50 og-card PNG renders | 11.6 MiB | 10.6 MiB |
-| Peak process RSS | 89.1 MiB | 107.9 MiB |
-| wasm download, brotli: core / standard / full | 180.3 / 374.5 / 453.4 KiB | 1 409.3 KiB |
+| Peak process RSS | 92.3 MiB | 105.0 MiB |
+| wasm download, brotli: core / standard / full | 194.3 / 397.7 / 469.6 KiB | 1 409.3 KiB |
 
-Absolute times depend on the machine; the ratios are more stable. PNG rendering was faster than takumi
-in 191/191 cases and raw rendering in 171/191.
+All figures on this page are for the **wasm** build. Absolute times depend on the machine; the ratios are
+more stable. Over the 250 fixtures, PNG rendering was faster than takumi-wasm in 248/250 cases (0.45× its
+time) and raw rendering in 229/250 (0.63×). The native addon is faster still: see
+[Native vs WebAssembly](./native-vs-wasm.md).
 
 ## Create the renderer once
 
@@ -75,8 +77,8 @@ A renderer per request multiplies font parsing and memory; if you really need a 
 
 On Node.js the `bm-engine` entries read and instantiate their binary synchronously **on import**, so
 the first `new Renderer()` can follow immediately. Cold start is the sum of instantiating the module,
-registering fonts and the first render (which also fills the glyph cache) — 70.8 ms in total for the
-og-card fixture in the benchmark, against 178.4 ms for takumi-wasm.
+registering fonts and the first render (which also fills the glyph cache) — 78.1 ms in total for the
+og-card fixture in the benchmark, against 193.8 ms for takumi-wasm.
 
 - In serverless functions, do the import, `new Renderer()` and `registerFont` at **module scope**, not
   inside the handler, so warm invocations skip them.
@@ -110,9 +112,9 @@ share:
 
 | Profile | wasm raw / brotli | Use it for |
 |:--|--:|:--|
-| `bm-engine/core` | 454.5 / 180.3 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
-| `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
-| `bm-engine/full` (and `bm-engine` on Node) | 1 099.8 / 453.4 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
+| `bm-engine/core` | 487.0 / 194.3 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
+| `bm-engine/standard` | 933.9 / 397.7 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
+| `bm-engine/full` (and `bm-engine` on Node) | 1 140.5 / 469.6 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
 
 Size matters in browsers and on edge runtimes with a script-size limit; on a Node server the difference
 is a few hundred KiB read once at startup. Check the loaded profile at startup instead of discovering a
@@ -132,8 +134,8 @@ Details in [Profiles and size](./profiles-and-size.md).
 
 ## Raw or encoded output
 
-Encoding is a large part of a render: in the benchmark the geometric mean is 0.69 ms for `raw` and
-1.59 ms for PNG. If you are going to process the pixels anyway (compare images, composite them, hand
+Encoding is a large part of a render: in the benchmark the geometric mean is 0.64 ms for `raw` and
+1.33 ms for PNG. If you are going to process the pixels anyway (compare images, composite them, hand
 them to a `<canvas>` or a video encoder), ask for `raw` and skip the encoder:
 
 <!-- @example performance#raw-vs-png -->

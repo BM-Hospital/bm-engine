@@ -156,8 +156,8 @@ request được phép.
 
 | Profile | wasm brotli | Khi nào |
 |:--|--:|:--|
-| `core` | 180.3 KiB | cây node, inline style, TTF, ảnh PNG / JPEG |
-| `standard` | 374.5 KiB | + HTML, CSS, Tailwind, SVG, WOFF2, hiệu ứng, bảng |
-| `full` | 453.4 KiB | + chữ phức tạp, emoji màu, animation, `renderSvg` |
+| `core` | 194.3 KiB | cây node, inline style, TTF, ảnh PNG / JPEG |
+| `standard` | 397.7 KiB | + HTML, CSS, Tailwind, SVG, WOFF2, hiệu ứng, bảng |
+| `full` | 469.6 KiB | + chữ phức tạp, emoji màu, animation, `renderSvg` |
 
 Font thường là phần tải về lớn nhất; hãy subset chúng. Xem [Profile và kích thước](../profiles-and-size.md).

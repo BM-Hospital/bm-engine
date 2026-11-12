@@ -5,7 +5,7 @@
 On Node.js, bm-engine runs either as a native Node-API addon or as WebAssembly. Both are compiled from the
 same Zig source, expose the same API and produce the same bytes. This page explains which one you get, when
 to choose the other, how the native backend uses threads, and how both compare with takumi's native and wasm
-builds on the 200-fixture benchmark suite. Installation: [Getting started](./getting-started.md).
+builds on the 250-fixture benchmark suite. Installation: [Getting started](./getting-started.md).
 How the platform packages are built and published: [Publishing](./publishing.md).
 
 ## Which backend to use

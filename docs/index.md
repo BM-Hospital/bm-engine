@@ -21,12 +21,12 @@ hero:
 features:
   - icon: 📦
     title: 4–9× smaller than takumi
-    details: "<strong>core</strong> 454.5 KiB (9.3× smaller), <strong>standard</strong> 877.5 KiB (4.8×), <strong>full</strong> 1 099.8 KiB (3.9×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 180.3 / 374.5 / 453.4 KiB."
+    details: "<strong>core</strong> 487.0 KiB (8.7× smaller), <strong>standard</strong> 933.9 KiB (4.5×), <strong>full</strong> 1 140.5 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 397.7 / 469.6 KiB."
     link: /profiles-and-size
     linkText: Profiles and size
   - icon: ⚡
     title: Faster rendering
-    details: "PNG render at <strong>0.49×</strong> takumi's time (1.59 vs 3.26 ms geomean, faster in 191/191 cases); raw at <strong>0.68×</strong> (faster in 171/191). Cold start 70.8 ms vs 178.4 ms (2.5× faster)."
+    details: "PNG render at <strong>0.45×</strong> takumi's time (1.33 vs 2.95 ms geomean, faster in 248/250 cases); raw at <strong>0.63×</strong> (faster in 229/250). Cold start 78.1 ms vs 193.8 ms (2.5× faster). Figures are for the wasm build; the native addon is faster still (see Native vs WebAssembly)."
     link: /benchmark
     linkText: Benchmark summary
   - icon: 🎯

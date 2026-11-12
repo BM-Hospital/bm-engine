@@ -77,7 +77,7 @@ after converting the JSX with `fromJsx` (see step 5).
 | Area | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / module format | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, ESM only (CommonJS via `require(esm)`), WebAssembly only — no native binding |
-| Binary | one 4.2 MB wasm | three profiles (454.5 KiB – 1.07 MiB) + WOFF add-on; `features` reports the loaded one |
+| Binary | one 4.2 MB wasm | three profiles (487.0 KiB – 1.11 MiB) + WOFF add-on; `features` reports the loaded one |
 | Wasm imports | wasm-bindgen glue | none |
 | Sync API | wrapper methods are async | every method has a `*Sync` twin; async methods resolve immediately |
 | `registerFont` | returns `Promise<RegisteredFamily[]>` (wrapper) | returns `RegisteredFamily[]` synchronously for bytes / `{ data: bytes }`; a `Promise` only for URLs and lazy data |
@@ -116,7 +116,7 @@ within anti-aliasing noise.
 - **SVG images**: `<text>` is drawn in a simplified model (one run per element, `<tspan>` styling ignored, solid fills only; see [Charts](charts.md#what-svg-text-supports)), and a few filter primitives (`feTurbulence`, `feImage`,
   `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, lighting, `feTile`) are not supported.
 - **Encoders**: encoded files are different bytes (bm-engine's encoders are its own; PNG files are
-  24 % smaller, geometric mean over the fixtures); decoded pixels are what the benchmark compares.
+  20 % smaller, geometric mean over the fixtures); decoded pixels are what the benchmark compares.
 
 ## Deliberate differences (bm-engine follows Chrome)
 

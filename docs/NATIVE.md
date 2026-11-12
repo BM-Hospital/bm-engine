@@ -358,7 +358,7 @@ running on the machine; `win32-x64-msvc` is the only artifact that was executed)
 | | |
 | --- | --- |
 | artifacts | 8 / 8 compile and pass the structural checks; 1.6 MB (arm64) to 2.1 MB (x64), 0.95 to 1.1 MB gzip |
-| identity | 200 fixtures, 1457 comparisons (586 MB of output), 0 mismatches |
+| identity | 250 fixtures, 1810 comparisons (637 MB of output), 0 mismatches |
 | differential fuzz | 17 800 mutated inputs (HTML, JSON trees, CSS, SVG, images, fonts): same bytes or same error on both backends, 0 crashes; plus the three existing fuzz probes (16 900 inputs) without a crash |
 | libm | 5 functions x f32 / f64 x 2^20 values, bit-exact |
 | stack | 61 deepest-allowed / hostile inputs: the smallest stack on which all behave is 768 KiB (512-level trees, PNG path); guaranteed: 3072 KiB |
@@ -366,9 +366,9 @@ running on the machine; `win32-x64-msvc` is the only artifact that was executed)
 | event loop | a 6 s animation render: longest delay of a 1 ms timer 30 ms natively (415 ticks) against 11.5 s on wasm (0 ticks, the whole render) |
 | memory | 4000 renderers with 1 MB of fonts each created and dropped without `free()`: RSS flat at 68 to 69 MB, 9.6 MB live in the addon; with `free()` 0 live; 0 after the final GC |
 | workers | 8 workers loading at once render the main thread's bytes; 100 workers terminated mid-render, no crash |
-| speed (sync; geometric mean over the 200 fixtures of each fixture's median time) | raw RGBA 0.70 ms against 0.99 ms for the wasm build (1.42x), PNG 1.44 ms against 2.22 ms (1.54x); per fixture 0.72x to 2.75x (a few small ones are slower natively) |
+| speed (sync; geometric mean over the 250 fixtures of each fixture's median time) | raw RGBA 0.51 ms against 0.85 ms for the wasm build (1.67x), PNG 1.05 ms against 1.56 ms (1.47x); per fixture 1.25x to 2.78x for raw and 1.20x to 2.22x for PNG (native is faster on 250/250); absolute times moved by up to about 15 % between passes, the ratios by about 1 % |
 | optimisation modes | ReleaseFast 1.26x, ReleaseSafe 1.00x, ReleaseSmall 0.60x the wasm build (raw, measured before the move to x86-64-v2); ReleaseFast is what ships |
-| cold start | process start to first 1200x630 PNG to exit: 86 ms native, 142 ms wasm, 68 ms for an empty Node process |
+| cold start | process start to first 1200x630 PNG to exit (median of 30): 99.9 ms native, 168.4 ms wasm, 68.6 ms for an empty Node process (31.3 ms and 99.9 ms above it) |
 
 ## Limits and known gaps
 

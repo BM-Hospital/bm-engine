@@ -77,7 +77,7 @@ Hàm `render(jsx, options)` cấp cao nhất của `takumi-js` tương ứng v�
 | Hạng mục | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / định dạng module | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, chỉ ESM (CommonJS qua `require(esm)`), chỉ WebAssembly — không có binding native |
-| Binary | một file wasm 4.2 MB | ba profile (454.5 KiB – 1.07 MiB) + add-on WOFF; `features` cho biết bản đang nạp |
+| Binary | một file wasm 4.2 MB | ba profile (487.0 KiB – 1.11 MiB) + add-on WOFF; `features` cho biết bản đang nạp |
 | Import của wasm | glue wasm-bindgen | không có |
 | API đồng bộ | các phương thức của wrapper đều async | mọi phương thức có bản `*Sync`; bản async resolve ngay |
 | `registerFont` | trả về `Promise<RegisteredFamily[]>` (wrapper) | trả về `RegisteredFamily[]` đồng bộ với byte / `{ data: bytes }`; chỉ trả `Promise` với URL và dữ liệu lười |
@@ -116,7 +116,7 @@ trong mức nhiễu khử răng cưa.
 - **Ảnh SVG**: `<text>` được vẽ theo mô hình đơn giản (mỗi phần tử một run, style của `<tspan>` bị bỏ qua,
   chỉ tô màu đặc; xem [Biểu đồ](charts.md#svg-text-hỗ-trợ-những-gì)); một vài filter primitive (`feTurbulence`,
   `feImage`, `feMorphology`, `feConvolveMatrix`, `feDisplacementMap`, chiếu sáng, `feTile`) chưa được hỗ trợ.
-- **Bộ mã hoá**: file mã hoá ra khác byte (bm-engine dùng bộ mã hoá riêng; file PNG nhỏ hơn 24 %, trung
+- **Bộ mã hoá**: file mã hoá ra khác byte (bm-engine dùng bộ mã hoá riêng; file PNG nhỏ hơn 20 %, trung
   bình nhân trên các fixture); benchmark so sánh điểm ảnh sau khi giải mã.
 
 ## Khác biệt có chủ ý (bm-engine theo Chrome)

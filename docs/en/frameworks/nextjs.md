@@ -214,7 +214,7 @@ import is expected to work with `--webpack`, but that could not be tested (see t
 `Object.setPrototypeOf` workaround older versions of this page needed is gone: `initSync` accepts the
 module Next.js passes.
 
-Size matters on Edge: the `core` binary is 454.5 KiB raw (about 210 KiB gzip) and fonts add their own
+Size matters on Edge: the `core` binary is 487.0 KiB raw (about 210 KiB gzip) and fonts add their own
 size; see [Profiles and size](../profiles-and-size.md). The Edge runtime is deprecated in Next.js 16 (the
 build prints a warning) and has no native addon: prefer the Node.js runtime.
 

@@ -59,7 +59,7 @@ installed)`.
 
 | Platform package | `os` / `cpu` / `libc` | Status |
 |:--|:--|:--|
-| `bm-engine-win32-x64-msvc` | win32 / x64 | **executed**: byte identity with wasm on 200 fixtures, thread / memory / fuzz tests, install tests |
+| `bm-engine-win32-x64-msvc` | win32 / x64 | **executed**: byte identity with wasm on 250 fixtures, thread / memory / fuzz tests, install tests |
 | `bm-engine-win32-arm64-msvc` | win32 / arm64 | built and structurally verified, **never executed** |
 | `bm-engine-linux-x64-gnu` | linux / x64 / glibc 2.17+ | built and structurally verified, **never executed** |
 | `bm-engine-linux-x64-musl` | linux / x64 / musl (Alpine) | built and structurally verified, **never executed** |
@@ -307,8 +307,8 @@ export default {
 
 What was tested: `initSync(new WebAssembly.Module(bytes))` was executed in Node, and the package test
 resolves the entries with `node --conditions=workerd` and initialises them from a `WebAssembly.Module`;
-the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 211.5 KiB,
-standard 435.2 KiB, full 538.2 KiB) is what counts against the Workers script-size limit of your plan. The
+the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 228.3 KiB,
+standard 463.5 KiB, full 558.2 KiB) is what counts against the Workers script-size limit of your plan. The
 WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` tries the native
@@ -319,9 +319,9 @@ WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await l
 
 | Profile | wasm raw / brotli | Pick it when |
 |:--|:--|:--|
-| `core` | 454.5 / 180.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
-| `standard` | 877.5 / 374.5 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
-| `full` | 1 099.8 / 453.4 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
+| `core` | 487.0 / 194.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
+| `standard` | 933.9 / 397.7 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
+| `full` | 1 140.5 / 469.6 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
 
 Details, and what a smaller profile does with input it cannot handle, are in
 [Profiles and size](profiles-and-size.md). At runtime `features` tells you what the loaded binary has:

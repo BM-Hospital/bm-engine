@@ -98,8 +98,8 @@ cases (time = render + encode, median; numbers from [docs/BENCHMARK.md](../BENCH
 
 The photo WebP case was optimised afterwards (45.9 → 19.9 ms, 414 → 376 KB, see
 [Benchmark](./benchmark.md#phase-1-losses-and-what-was-done)); the other numbers have not been
-re-measured per format since. Overall, the final 0.1.0 run renders a PNG in 1.59 ms and a raw buffer
-in 0.69 ms (geometric means over 191 fixtures on an Intel i3-10100).
+re-measured per format since. Overall, the final 0.1.0 run renders a PNG in 1.33 ms and a raw buffer
+in 0.64 ms (geometric means over 250 fixtures on an Intel i3-10100).
 
 ## JPEG and `quality`
 
@@ -184,7 +184,7 @@ console.log(pixel(200, 100)); // an opaque pixel of the gradient
 ```
 
 The printed opaque pixel was `[222, 46, 110, 255]`. Raw output is also the fastest path, because the
-encoder is skipped (0.69 ms vs 1.59 ms geometric mean in the benchmark).
+encoder is skipped (0.64 ms vs 1.33 ms geometric mean in the benchmark).
 
 A raw buffer can go straight back into bm-engine as an image source, which is handy for composing
 thumbnails or frame strips without an extra image library:

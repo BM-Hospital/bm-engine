@@ -21,12 +21,12 @@ hero:
 features:
   - icon: 📦
     title: Nhỏ hơn takumi 4–9×
-    details: "<strong>core</strong> 454.5 KiB (nhỏ hơn 9.3×), <strong>standard</strong> 877.5 KiB (4.8×), <strong>full</strong> 1 099.8 KiB (3.9×) so với 4 234.9 KiB của <code>@takumi-rs/wasm</code> 2.20. Brotli: 180.3 / 374.5 / 453.4 KiB."
+    details: "<strong>core</strong> 487.0 KiB (nhỏ hơn 8.7×), <strong>standard</strong> 933.9 KiB (4.5×), <strong>full</strong> 1 140.5 KiB (3.7×) so với 4 234.9 KiB của <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 397.7 / 469.6 KiB."
     link: /vi/profiles-and-size
     linkText: Profile và kích thước
   - icon: ⚡
     title: Render nhanh hơn
-    details: "Render PNG mất <strong>0.49×</strong> thời gian của takumi (geomean 1.59 so với 3.26 ms, nhanh hơn ở 191/191 ca); raw <strong>0.68×</strong> (nhanh hơn ở 171/191). Cold start 70.8 ms so với 178.4 ms (nhanh hơn 2.5×)."
+    details: "Render PNG mất <strong>0.45×</strong> thời gian của takumi (geomean 1.33 so với 2.95 ms, nhanh hơn ở 248/250 ca); raw <strong>0.63×</strong> (nhanh hơn ở 229/250). Cold start 78.1 ms so với 193.8 ms (nhanh hơn 2.5×). Số liệu là của bản wasm; addon native còn nhanh hơn nữa (xem Native và WebAssembly)."
     link: /vi/benchmark
     linkText: Benchmark
   - icon: 🎯

@@ -1,5 +1,7 @@
 # bm-engine vs takumi — benchmark & equivalence results
 
+> This table reflects the 200-fixture phase-3 run (historical). Current per-fixture results for the 250-fixture suite, including the native addon, are in [BENCHMARK.md](BENCHMARK.md).
+
 - Date: 2026-11-11T23:59:23.163Z  |  Node v26.13.0  |  win32 10.0.26200 x64
 - CPU: Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz (8 logical)  |  RAM 7.8 GB
 - Command: `node run.mjs `  |  iterations: >=20 and >=300ms (cap 2000ms), 3 warm-up

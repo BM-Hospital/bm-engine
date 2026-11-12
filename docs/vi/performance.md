@@ -17,18 +17,19 @@ giữ bộ nhớ ổn định và chia việc cho các worker thread. Số liệ
 
 | Chỉ số | bm-engine | takumi-wasm |
 |:--|--:|--:|
-| Cold start: init + đăng ký một font + PNG og-card đầu tiên | **70.8 ms** | 178.4 ms |
-| Compile + instantiate wasm (bản build giai đoạn 1, Node) | 2.7 ms | 34.1 ms |
+| Cold start: init + đăng ký một font + PNG og-card đầu tiên | **78.1 ms** | 193.8 ms |
+| Compile + instantiate wasm (lượt chạy cold start, Node) | 8.0 ms | 33.9 ms |
 | Compile + instantiate dạng streaming trong Edge 157 headless | 20.4 ms | — |
-| Render `raw`, trung bình nhân trên 191 fixture | **0.69 ms** | 1.02 ms |
-| Render `png` (render + mã hoá), trung bình nhân | **1.59 ms** | 3.26 ms |
-| PNG og-card / blog-card / stress (3000 × 2000), lượt chạy giai đoạn 2 | 9.23 / 16.47 / 24.00 ms | 13.41 / 31.14 / 36.71 ms |
+| Render `raw`, trung bình nhân trên 250 fixture | **0.64 ms** | 1.01 ms |
+| Render `png` (render + mã hoá), trung bình nhân | **1.33 ms** | 2.95 ms |
+| PNG og-card / blog-card / stress (3000 × 2000) | 14.51 / 30.48 / 83.20 ms | 22.26 / 49.99 / 143.20 ms |
 | Bộ nhớ wasm sau 50 lần render PNG og-card | 11.6 MiB | 10.6 MiB |
-| Peak RSS của tiến trình | 89.1 MiB | 107.9 MiB |
-| Dung lượng tải wasm, brotli: core / standard / full | 180.3 / 374.5 / 453.4 KiB | 1 409.3 KiB |
+| Peak RSS của tiến trình | 92.3 MiB | 105.0 MiB |
+| Dung lượng tải wasm, brotli: core / standard / full | 194.3 / 397.7 / 469.6 KiB | 1 409.3 KiB |
 
-Thời gian tuyệt đối phụ thuộc máy; các tỉ lệ ổn định hơn. Render PNG nhanh hơn takumi ở 191/191 ca và
-render raw ở 171/191 ca.
+Mọi số liệu ở trang này là của bản **wasm**. Thời gian tuyệt đối phụ thuộc máy; các tỉ lệ ổn định hơn. Trên
+250 fixture, render PNG nhanh hơn takumi-wasm ở 248/250 ca (0.45× thời gian của nó) và render raw ở 229/250
+ca (0.63×). Addon native còn nhanh hơn nữa: xem [Native và WebAssembly](./native-vs-wasm.md).
 
 ## Tạo renderer một lần
 
@@ -75,8 +76,8 @@ request nhân bội việc parse font và bộ nhớ; nếu thật sự cần re
 
 Trên Node.js, các điểm vào `bm-engine` đọc và instantiate binary một cách đồng bộ **ngay khi import**, nên
 `new Renderer()` đầu tiên có thể theo ngay sau. Cold start là tổng của việc instantiate module, đăng ký font
-và lần render đầu (lần này còn lấp đầy cache glyph) — tổng cộng 70.8 ms với fixture og-card trong benchmark,
-so với 178.4 ms của takumi-wasm.
+và lần render đầu (lần này còn lấp đầy cache glyph) — tổng cộng 78.1 ms với fixture og-card trong benchmark,
+so với 193.8 ms của takumi-wasm.
 
 - Trong hàm serverless, hãy import, `new Renderer()` và `registerFont` ở **phạm vi module**, không đặt
   trong handler, để các lần gọi khi đã "ấm" bỏ qua được chúng.
@@ -108,9 +109,9 @@ Ba binary khác nhau về dung lượng tải và về khả năng, chứ không
 
 | Profile | wasm raw / brotli | Dùng cho |
 |:--|--:|:--|
-| `bm-engine/core` | 454.5 / 180.3 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
-| `bm-engine/standard` | 877.5 / 374.5 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
-| `bm-engine/full` (và `bm-engine` trên Node) | 1 099.8 / 453.4 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
+| `bm-engine/core` | 487.0 / 194.3 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
+| `bm-engine/standard` | 933.9 / 397.7 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
+| `bm-engine/full` (và `bm-engine` trên Node) | 1 140.5 / 469.6 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
 
 Dung lượng quan trọng trong trình duyệt và trên edge runtime có giới hạn kích thước script; trên server
 Node, khác biệt chỉ là vài trăm KiB đọc một lần khi khởi động. Hãy kiểm tra profile đã nạp ngay khi khởi
@@ -130,7 +131,7 @@ Chi tiết ở [Profile và kích thước](./profiles-and-size.md).
 
 ## Đầu ra raw hay đã mã hoá
 
-Mã hoá chiếm phần lớn một lần render: trong benchmark, trung bình nhân là 0.69 ms với `raw` và 1.59 ms với
+Mã hoá chiếm phần lớn một lần render: trong benchmark, trung bình nhân là 0.64 ms với `raw` và 1.33 ms với
 PNG. Nếu đằng nào bạn cũng xử lý điểm ảnh (so sánh ảnh, ghép ảnh, đưa vào `<canvas>` hoặc bộ mã hoá video),
 hãy lấy `raw` và bỏ qua bộ mã hoá:
 

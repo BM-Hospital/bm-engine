@@ -372,9 +372,9 @@ expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 })
 ## Profile trong một đoạn {#profiles-in-one-paragraph}
 
 Engine được biên dịch thành ba binary: `core` (node tree, style inline, font TrueType tĩnh, ảnh PNG /
-JPEG; 454.5 KiB), `standard` (thêm stylesheet, Tailwind, HTML, ảnh SVG, WOFF2, font variable và CFF,
-hiệu ứng như clip-path và blend mode, màu hiện đại, bảng, float; 877.5 KiB) và `full` (thêm bidi và chữ
-phức, emoji màu, animation CSS và `renderAnimation`, `renderSvg`, codec bổ sung; 1 099.8 KiB). Trên
+JPEG; 487.0 KiB), `standard` (thêm stylesheet, Tailwind, HTML, ảnh SVG, WOFF2, font variable và CFF,
+hiệu ứng như clip-path và blend mode, màu hiện đại, bảng, float; 933.9 KiB) và `full` (thêm bidi và chữ
+phức, emoji màu, animation CSS và `renderAnimation`, `renderSvg`, codec bổ sung; 1 140.5 KiB). Trên
 Node.js, `bm-engine` nạp `full`; `bm-engine/core` và `bm-engine/standard` nạp các bản nhỏ hơn.
 `features` cho biết binary đang nạp làm được gì:
 

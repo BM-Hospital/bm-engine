@@ -98,7 +98,7 @@ hơn JPEG và không bị nhiễu nén. Benchmark giai đoạn 1 đã đo ba ca 
 
 Ca WebP ảnh chụp đã được tối ưu sau đó (45.9 → 19.9 ms, 414 → 376 KB, xem
 [Benchmark](./benchmark.md)); các số còn lại chưa được đo lại theo từng định dạng. Nhìn chung, lượt chạy
-cuối của 0.1.0 render một PNG trong 1.59 ms và một buffer raw trong 0.69 ms (trung bình nhân trên 191
+cuối của 0.1.0 render một PNG trong 1.33 ms và một buffer raw trong 0.64 ms (trung bình nhân trên 250
 fixture, máy Intel i3-10100).
 
 ## JPEG và `quality`
@@ -183,7 +183,7 @@ console.log(pixel(200, 100)); // an opaque pixel of the gradient
 ```
 
 Điểm ảnh đục được in ra là `[222, 46, 110, 255]`. Raw cũng là đường nhanh nhất vì bỏ qua bộ mã hoá
-(0.69 ms so với 1.59 ms trung bình nhân trong benchmark).
+(0.64 ms so với 1.33 ms trung bình nhân trong benchmark).
 
 Buffer raw có thể đưa ngược vào bm-engine làm nguồn ảnh, rất tiện để ghép thumbnail hay dải khung hình mà
 không cần thêm thư viện xử lý ảnh:

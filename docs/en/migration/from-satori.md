@@ -108,7 +108,7 @@ Verified on the bm-engine side (see the [CSS support](../css-support.md) matrix 
 - CSS animations rendered to animated WebP / APNG / GIF (`full`), or a single frame with `timeMs`.
 - Bidi and complex scripts (Arabic, Hebrew, Indic, Thai) and colour emoji fonts on `full`.
 - `measure()` for layout boxes and text line runs (see [Measure](../measure.md)).
-- Synchronous API, no dependencies, one `.wasm` per profile (454.5 KiB – 1.07 MiB raw).
+- Synchronous API, no dependencies, one `.wasm` per profile (487.0 KiB – 1.11 MiB raw).
 
 ## What satori has that bm-engine does not
 

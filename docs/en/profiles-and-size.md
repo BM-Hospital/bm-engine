@@ -3,7 +3,7 @@
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
 bm-engine is compiled into three binaries with different feature sets so that you only download what you
-use: `core` (454.5 KiB), `standard` (877.5 KiB) and `full` (1 099.8 KiB), against 4 234.9 KiB for
+use: `core` (487.0 KiB), `standard` (933.9 KiB) and `full` (1 140.5 KiB), against 4 234.9 KiB for
 takumi 2.20's wasm. This page lists what each profile contains, what each optional feature costs, what a
 smaller profile does with input it cannot handle, how to make a custom build, and why only WOFF is
 available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1024 bytes.
@@ -12,9 +12,9 @@ available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1
 
 | Build | Raw | gzip -9 | brotli (q11) | vs. takumi raw |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 454.5 KiB | 211.5 KiB | 180.3 KiB | 9.3× smaller |
-| `standard` — `bm_engine.standard.wasm` | 877.5 KiB | 435.2 KiB | 374.5 KiB | 4.8× smaller |
-| `full` — `bm_engine.wasm` | 1 099.8 KiB | 538.2 KiB | 453.4 KiB | 3.9× smaller |
+| `core` — `bm_engine.core.wasm` | 487.0 KiB | 228.3 KiB | 194.3 KiB | 8.7× smaller |
+| `standard` — `bm_engine.standard.wasm` | 933.9 KiB | 463.5 KiB | 397.7 KiB | 4.5× smaller |
+| `full` — `bm_engine.wasm` | 1 140.5 KiB | 558.2 KiB | 469.6 KiB | 3.7× smaller |
 | WOFF add-on — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 

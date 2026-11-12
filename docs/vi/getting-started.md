@@ -59,7 +59,7 @@ installed)`.
 
 | Platform package | `os` / `cpu` / `libc` | Trạng thái |
 |:--|:--|:--|
-| `bm-engine-win32-x64-msvc` | win32 / x64 | **đã chạy**: giống hệt từng byte với wasm trên 200 fixture, test luồng / bộ nhớ / fuzz, test cài đặt |
+| `bm-engine-win32-x64-msvc` | win32 / x64 | **đã chạy**: giống hệt từng byte với wasm trên 250 fixture, test luồng / bộ nhớ / fuzz, test cài đặt |
 | `bm-engine-win32-arm64-msvc` | win32 / arm64 | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
 | `bm-engine-linux-x64-gnu` | linux / x64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
 | `bm-engine-linux-x64-musl` | linux / x64 / musl (Alpine) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
@@ -308,7 +308,7 @@ export default {
 Những gì đã kiểm thử: `initSync(new WebAssembly.Module(bytes))` đã chạy trong Node, và bài test package
 resolve các điểm vào với `node --conditions=workerd` rồi khởi tạo chúng từ một `WebAssembly.Module`;
 đoạn mã trên **chưa** được chạy dưới wrangler / workerd. Kích thước nén của từng profile (gzip -9: core
-200 KiB, standard 435.2 KiB, full 538.2 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
+200 KiB, standard 463.5 KiB, full 558.2 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
 của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` thử addon native và
@@ -319,9 +319,9 @@ của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.w
 
 | Profile | wasm thô / brotli | Chọn khi |
 |:--|:--|:--|
-| `core` | 454.5 / 180.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
-| `standard` | 877.5 / 374.5 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
-| `full` | 1 099.8 / 453.4 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
+| `core` | 487.0 / 194.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
+| `standard` | 933.9 / 397.7 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
+| `full` | 1 140.5 / 469.6 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
 
 Chi tiết, kể cả việc profile nhỏ xử lý ra sao với đầu vào nó không hỗ trợ, nằm ở
 [Profile và kích thước](profiles-and-size.md). Lúc chạy, `features` cho biết binary đang nạp có gì:

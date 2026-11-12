@@ -6,7 +6,7 @@
 
 ## Giai đoạn 4 — native Node.js
 
-Bốn engine trên cùng một máy, cùng Node, cùng 200 fixture, cùng font, cùng ảnh, cùng kích thước đầu ra:
+Bốn engine trên cùng một máy, cùng Node, cùng 250 fixture, cùng font, cùng ảnh, cùng kích thước đầu ra:
 **bm-native** (addon Node-API của bm-engine, `native/dist/win32-x64-msvc`), **bm-wasm** (bản wasm profile `full`),
 **takumi-native** (`@takumi-rs/core`) và **takumi-wasm** (`@takumi-rs/wasm`). Mọi bảng trong phần này được sinh từ
 `docs/results-native.json` bởi `node bench/run-native.mjs` (giữa các comment `native-bench`); không con số nào được gõ tay.
@@ -737,6 +737,10 @@ median / p95 ms từng fixture (median qua các lượt của median và p95 m�
 <!-- /native-bench:per-fixture -->
 
 ## Giai đoạn 3 — trạng thái cuối cùng của 0.1.0
+
+> **Ghi chú (2026-11-12): số liệu giai đoạn 3 bên dưới là lịch sử (200 fixture).** Bản build cuối (wasm, so với `@takumi-rs/wasm` 2.20.0, 250 fixture) cho: kích thước (KiB, raw / gzip -9 / brotli) core 487.0 / 228.3 / 194.3, standard 933.9 / 463.5 / 397.7, full 1 140.5 / 558.2 / 469.6 (nhỏ hơn takumi 8.7× / 4.5× / 3.7×);
+> tương đương 81 identical / 169 equivalent / 0 close / 0 different / 0 lỗi; tỉ lệ thời gian bm / takumi-wasm (geomean) raw 0.63×, PNG 0.45×; cold start 78.1 ms so với 193.8 ms; bộ nhớ wasm sau 50 lần render 11.6 so với 10.6 MiB; 436 unit test.
+> Số liệu native của giai đoạn 4 ở đầu file là số hiện hành.
 
 Đo trên bản build cuối (sau `wasm-opt`), so với `@takumi-rs/wasm` 2.20.0.
 
