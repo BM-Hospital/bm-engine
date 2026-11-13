@@ -1073,7 +1073,7 @@ pub const Emitter = struct {
         const cs = e.f.nodes.items[id].cs;
         if (cs.box_shadow.len > 0) try e.paintOuterShadows(cs, g);
         try e.paintBackground(cs, g, x, y);
-        if (textClipped(cs)) try e.paintTextClip(id, cs, g, x, y);
+        if (textClipped(cs)) try e.paintTextClip(id, cs, g, x, y, null);
         if (cs.box_shadow.len > 0) try e.paintInsetShadows(cs, g);
         try border.paintBorder(&e.d, cs, g);
     }
@@ -1347,8 +1347,9 @@ pub const Emitter = struct {
 
     /// takumi `fill_text_clip` + `background_fills`: inside the border box, the background's
     /// colour (clipped to the border box) and each image layer (a pattern clipped to its paint
-    /// area) seen through the glyphs of the box's subtree.
-    fn paintTextClip(e: *Emitter, id: u32, cs: *const CS, g: *const Geom, x: f32, y: f32) Error!void {
+    /// area) seen through the glyphs of the box's subtree, or of the runs of an inline box's
+    /// fragment `frag` (takumi `FragmentBackground::paint`).
+    pub fn paintTextClip(e: *Emitter, id: u32, cs: *const CS, g: *const Geom, x: f32, y: f32, frag: ?*const etext.FragmentMask) Error!void {
         var fills: std.ArrayList(text.GlyphBackground) = .empty;
         const rectPath = struct {
             fn f(em: *Emitter, r: LRect) Error!*const Path {
@@ -1386,6 +1387,7 @@ pub const Emitter = struct {
         const depth0 = e.d.depth();
         defer e.d.restore(depth0);
         e.d.pushClip(try rectPath(e, bx), 0, 0, .nonzero);
+        if (frag) |m| return etext.paintFragmentClip(e, m, fills.items);
         try etext.paintClipText(e, id, x, y, fills.items);
     }
 
@@ -2294,7 +2296,7 @@ noinline fn repeats(f: *const Frame, id: u32) bool {
 }
 
 /// `background-clip: text` on the colour or any layer.
-fn textClipped(cs: *const CS) bool {
+pub fn textClipped(cs: *const CS) bool {
     if (cs.bgColorClip() == .text) return true;
     for (cs.background_clip) |bc| {
         if (bc == .text) return true;

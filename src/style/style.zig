@@ -198,8 +198,10 @@ fn isCustomName(n: []const u8) bool {
 
 /// Property id for a declaration name: camelCase exact, kebab-case/vendor case-insensitive.
 /// Null for unknown names and custom properties.
+/// A vendor-prefixed name that no property of its own matches is the unprefixed property (takumi
+/// `strip_vendor_prefix`: `-webkit-background-clip` is `background-clip`).
 pub fn propertyId(name: []const u8) ?Prop {
-    if (std.mem.indexOfScalar(u8, name, '-') == null) return props.lookup(name);
+    if (std.mem.indexOfScalar(u8, name, '-') == null) return props.lookup(name) orelse unprefixed(name);
     if (isCustomName(name) or name.len >= 48) return null;
     var buf: [48]u8 = undefined;
     var n: usize = 0;
@@ -214,7 +216,21 @@ pub fn propertyId(name: []const u8) ?Prop {
         up = false;
         n += 1;
     }
-    return props.lookup(buf[0..n]);
+    return props.lookup(buf[0..n]) orelse unprefixed(buf[0..n]);
+}
+
+/// The property of camelCase `name` without its `Webkit` / `Moz` / `Ms` / `O` prefix, if any.
+fn unprefixed(name: []const u8) ?Prop {
+    inline for (.{ "Webkit", "webkit", "Moz", "moz", "Ms", "ms", "O", "o" }) |pre| {
+        if (name.len > pre.len and name.len <= 48 + pre.len and std.mem.startsWith(u8, name, pre) and std.ascii.isUpper(name[pre.len])) {
+            var buf: [48]u8 = undefined;
+            const rest = name[pre.len..];
+            @memcpy(buf[0..rest.len], rest);
+            buf[0] = std.ascii.toLower(buf[0]);
+            return props.lookup(buf[0..rest.len]);
+        }
+    }
+    return null;
 }
 
 const SplitValue = struct { value: []const u8, important: bool };
@@ -1628,6 +1644,11 @@ test "property names: camel, kebab, vendor" {
     try T.expectEqual(Prop.WebkitMaskImage, propertyId("-webkit-mask-image").?);
     try T.expectEqual(Prop.borderStartStartRadius, propertyId("border-start-start-radius").?);
     try T.expect(propertyId("--x") == null);
+    try T.expectEqual(Prop.backgroundClip, propertyId("-webkit-background-clip").?);
+    try T.expectEqual(Prop.backgroundClip, propertyId("WebkitBackgroundClip").?);
+    try T.expectEqual(Prop.WebkitTextFillColor, propertyId("-webkit-text-fill-color").?);
+    try T.expect(propertyId("-webkit-nonsense") == null);
+    try T.expect(propertyId("Webkit") == null);
     try T.expect(propertyId("-moz-thing") == null);
     try T.expect(propertyId("background--color") != null); // empty segment collapses; harmless
     try T.expect(propertyId("") == null);

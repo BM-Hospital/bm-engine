@@ -417,6 +417,9 @@ pub const ComputedStyle = struct {
     text_decoration_color: ColorValue = .current,
     /// null = auto / from-font
     text_decoration_thickness: ?f32 = null,
+    /// `text-decoration-thickness: from-font` (read by the PDF output only; the raster and SVG
+    /// paths draw it as `auto`)
+    text_decoration_from_font: bool = false,
     text_overflow: TextOverflow = .clip,
     text_overflow_string: []const u8 = "",
     /// 0 = none
