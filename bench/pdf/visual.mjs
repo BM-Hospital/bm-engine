@@ -168,7 +168,31 @@ const summary = {
 const out = { date: new Date().toISOString(), build: manifest.date, args: process.argv.slice(2), summary, docs: rows, pdfVsImage: imageRows, seconds: +((performance.now() - T0) / 1000).toFixed(1) };
 writeFileSync(path.join(OUT_DIR, "visual.json"), JSON.stringify(out, null, 1));
 writeFileSync(path.join(OUT_DIR, "VISUAL.md"), md(out));
-const bad = done.filter((x) => x.consensus === "different");
+// A golden fixture that bm-engine draws differently from the published takumi-pdf 0.20.0 is checked against
+// takumi-pdf's own golden PDF of it (ref/takumi/takumi-pdf/tests/fixtures-generated, written by a takumi newer than
+// 0.20.0): when bm-engine matches the golden (identical / equivalent under some rasteriser), the difference is
+// 0.20.0's, not bm-engine's, and does not fail the gate. Recorded per document as `golden`.
+for (const x of done.filter((r) => r.consensus === "different" && r.id.startsWith("golden/"))) {
+  const gp = path.join(ROOT, "ref", "takumi", "takumi-pdf", "tests", "fixtures-generated", x.id.slice(7) + ".pdf");
+  let G;
+  try { G = new Uint8Array(readFileSync(gp)); } catch { continue; }
+  const A = new Uint8Array(readFileSync(fileOf(BM, x.id)));
+  const best = {};
+  for (const r of rasterisers) {
+    const n = Math.min(await pageCountOf(r, A), await pageCountOf(r, G), maxPages);
+    let v = "identical";
+    for (const dpi of dpis) for (let p = 0; p < n; p++) {
+      const ra = await rasterise(r, A, p, dpi), rg = await rasterise(r, G, p, dpi);
+      const [u, w2, W, H] = common(ra, rg);
+      v = worse(v, verdict(compare(u, w2, W, H, { diff: false })));
+    }
+    best[r] = v;
+  }
+  x.golden = best;
+  x.matchesGolden = Object.values(best).some((v) => v === "identical" || v === "equivalent");
+  log(`  ${x.id}: different from takumi-pdf 0.20.0; against takumi-pdf's golden PDF: ${JSON.stringify(best)}`);
+}
+const bad = done.filter((x) => x.consensus === "different" && !x.matchesGolden);
 log(`visual: ${done.length} docs; overall ${JSON.stringify(summary.overall)}; consensus ${JSON.stringify(summary.consensus)}; pdf-vs-image ${JSON.stringify(summary.pdfVsImage)}; ${out.seconds} s`);
 log(`  wrote ${path.join(OUT_DIR, "visual.json")}, VISUAL.md, visual/sheets/*.png, visual/worst/*.png; gate=${gate}: ${gate === "none" || !bad.length ? "pass" : "FAIL (" + bad.length + " documents different under every rasteriser)"}`);
 process.exit(gate !== "none" && bad.length ? 1 : 0);

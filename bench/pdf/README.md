@@ -53,7 +53,9 @@ error), `--gate=bm-only`, `--gate=none`.
 and compares each page with the image suite's metrics (`bench/lib/metrics.mjs`: identical / equivalent = SSIM >= 0.99
 and <= 0.5 % pixels / close / different); a verdict that depends on the rasteriser is flagged. For the single-page
 (viewport) documents it also compares bm's PDF raster at 96 dpi with bm's own PNG render of the same tree. Gate: a
-document "different" under every rasteriser.
+document "different" under every rasteriser, unless it is one of takumi-pdf's golden fixtures and bm's raster is
+identical or equivalent to takumi-pdf's own golden PDF of it (the goldens were written by a takumi newer than 0.20.0,
+e.g. `text-stroke-paint-order`, where 0.20.0 ignores `paint-order`); `visual.json` records that comparison as `golden`.
 
 `bench.mjs` stages (`--stages=`; the JSON is merged per stage, so one stage can be re-measured cheaply):
 `speed` (warm render time per document, variants interleaved, 3 passes at different moments, spread flagged > 10 %),
