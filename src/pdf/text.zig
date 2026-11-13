@@ -87,7 +87,7 @@ pub const Uncovered = fo.Uncovered;
 /// takumi `run_glyphs`: the run's glyphs with their text ranges (overlapping clusters merged so
 /// krilla spans them together), `.notdef` glyphs recorded in `uncovered` and dropped unless a
 /// placeholder is drawn. `text.len` bounds the ranges.
-pub fn runGlyphs(a: Allocator, shaped: []const ShapedGlyph, size: f32, text: []const u8, uncovered: *Uncovered) ![]Glyph {
+pub fn runGlyphs(a: Allocator, keep: Allocator, shaped: []const ShapedGlyph, size: f32, text: []const u8, uncovered: *Uncovered) ![]Glyph {
     const out = try a.alloc(Glyph, shaped.len);
     for (shaped, out) |g, *o| {
         const s0 = @min(g.start, text.len);
@@ -99,7 +99,7 @@ pub fn runGlyphs(a: Allocator, shaped: []const ShapedGlyph, size: f32, text: []c
             while (i < o.end) {
                 const d = uni.decodeUtf8(text, i);
                 i += d.len;
-                try uncovered.record(a, d.cp);
+                try uncovered.record(keep, d.cp); // (the document's memory: page memory is rewound)
             }
         }
     }
@@ -1054,10 +1054,10 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
             sg.* = .{ .gid = g.gid, .x = g.x, .y = g.y, .start = st, .end = clusterEnd(text, starts, st) };
         }
         const shown = try hideIgnorables(a, font, size, gs, shaped, text);
-        const glyphs = try runGlyphs(a, shown, size, text, &reg.uncovered);
+        const glyphs = try runGlyphs(a, reg.a, shown, size, text, &reg.uncovered);
         return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
     }
-    const glyphs = try runGlyphs(a, shaped, size, text, &reg.uncovered);
+    const glyphs = try runGlyphs(a, reg.a, shaped, size, text, &reg.uncovered);
     return .{ .font = .{ .font = font, .face_index = face.index, .variant = variant }, .glyphs = glyphs, .text = text, .size = size };
 }
 

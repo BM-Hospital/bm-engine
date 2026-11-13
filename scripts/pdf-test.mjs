@@ -335,6 +335,8 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
   // uncoveredText: a character no font draws
   const deva = { type: "text", text: "abक", style: { fontSize: 20 } };
   await rejects(() => r.render(deva, { viewport: { width: 100, height: 40 } }), /No font the text can use draws क \(U\+0915\)/, "uncoveredText error (default)");
+  // (met in a band and on later pages, whose drawing memory is rewound before the message is made)
+  await rejects(() => r.render("<p>one</p><p style=\"break-before:page\">two</p><p style=\"break-before:page\">three</p>", { size: "a5", footer: "<div>ख क ग</div>" }), /No font the text can use draws ख \(U\+0916\), क \(U\+0915\), ग \(U\+0917\)\./, "uncoveredText error from a band on several pages names the right characters");
   const ph = await r.render(deva, { viewport: { width: 100, height: 40 }, uncoveredText: "placeholder" });
   isPdf(ph, "uncoveredText placeholder");
   const bl = await r.render(deva, { viewport: { width: 100, height: 40 }, uncoveredText: "blank" });
