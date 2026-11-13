@@ -293,6 +293,9 @@ pub const PdfOptions = struct {
     tagged: Tagging = .on,
     attachments: []const Attachment = &.{},
     uncovered_text: UncoveredText = .@"error",
+    /// (not an option) `css` already holds the `<style>` sheets of the HTML document and its HTML bands, so a
+    /// frame does not add its own again (pdf.zig `poolStyles`).
+    pooled_styles: bool = false,
 
     /// Whether the document carries a structure tree: asked for, or required by the standard.
     pub fn writesStructure(self: PdfOptions) bool {
@@ -325,6 +328,24 @@ pub const Diag = struct {
 fn fail(d: *Diag, parts: []const []const u8) Error {
     d.set(parts);
     return error.Invalid;
+}
+
+/// serde's `invalid type: <what>, expected <expected>` for a value of the wrong JSON type (worded as
+/// serde_wasm_bindgen words it: a JS number is a `floating point`).
+fn invalidType(d: *Diag, v: json.Value, expected: []const u8) Error {
+    var buf: [64]u8 = undefined;
+    const what: []const u8 = switch (v) {
+        .null => "unit value",
+        .bool => |b| if (b) "boolean `true`" else "boolean `false`",
+        .number => |n| if (n == @trunc(n) and @abs(n) < 1e15)
+            std.fmt.bufPrint(&buf, "floating point `{d}.0`", .{@as(i64, @intFromFloat(n))}) catch "floating point"
+        else
+            std.fmt.bufPrint(&buf, "floating point `{d}`", .{n}) catch "floating point",
+        .string => "string",
+        .array => "sequence",
+        .object => "map",
+    };
+    return fail(d, &.{ "invalid type: ", what, ", expected ", expected });
 }
 
 // ---- parsing
@@ -368,16 +389,16 @@ pub fn fromValue(a: Allocator, v: json.Value, blobs: []const Blob, diag: *Diag) 
     if (field(v, "metadata")) |x| o.metadata = try parseMetadata(a, x, diag);
     if (field(v, "outline")) |x| o.outline = try boolean(x, "outline", diag);
     if (field(v, "pdfa")) |x| {
-        const s = x.asString() orelse return fail(diag, &.{"invalid pdfa: expected \"2a\", \"2b\", \"2u\", \"3a\", \"3b\", \"3u\", \"4\" or \"4f\""});
-        o.pdfa = Pdfa.fromString(s) orelse return fail(diag, &.{ "unknown pdfa level: ", s, " (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)" });
+        const s = x.asString() orelse return invalidType(diag, x, "enum PdfaInput");
+        o.pdfa = Pdfa.fromString(s) orelse return fail(diag, &.{ "unknown variant `", s, "`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`" });
     }
     var tagged_set = false;
     if (field(v, "tagged")) |x| {
         tagged_set = true;
         o.tagged = switch (x) {
             .bool => |b| if (b) .on else .off,
-            .string => |s| if (std.mem.eql(u8, s, "ua1")) .ua1 else if (std.mem.eql(u8, s, "ua2")) .ua2 else return fail(diag, &.{"invalid tagged: expected true, false, \"ua1\" or \"ua2\""}),
-            else => return fail(diag, &.{"invalid tagged: expected true, false, \"ua1\" or \"ua2\""}),
+            .string => |s| if (std.mem.eql(u8, s, "ua1")) .ua1 else if (std.mem.eql(u8, s, "ua2")) .ua2 else return fail(diag, &.{"data did not match any variant of untagged enum TaggedInput"}),
+            else => return fail(diag, &.{"data did not match any variant of untagged enum TaggedInput"}),
         };
     }
     if (field(v, "attachments")) |x| o.attachments = try parseAttachments(a, x, blobs, diag);
@@ -775,20 +796,20 @@ fn parseMetadata(a: Allocator, x: json.Value, d: *Diag) Error!Metadata {
         const out = try a.alloc(XmpSchema, t.array.len);
         for (t.array, 0..) |s, i| {
             if (s != .object) return fail(d, &.{"invalid metadata.xmp: expected an array of schemas"});
-            const props_v = field(s, "properties") orelse return fail(d, &.{"invalid metadata.xmp: a schema needs properties"});
+            const props_v = field(s, "properties") orelse return fail(d, &.{"missing field `properties`"});
             if (props_v != .array) return fail(d, &.{"invalid metadata.xmp: properties is an array"});
             const props = try a.alloc(XmpProperty, props_v.array.len);
             for (props_v.array, 0..) |p, j| {
                 props[j] = .{
                     .name = try str(field(p, "name") orelse return fail(d, &.{"invalid metadata.xmp: a property needs a name"}), "xmp property name", d),
                     .value = try str(field(p, "value") orelse return fail(d, &.{"invalid metadata.xmp: a property needs a value"}), "xmp property value", d),
-                    .description = try str(field(p, "description") orelse return fail(d, &.{"invalid metadata.xmp: a property needs a description"}), "xmp property description", d),
+                    .description = try str(field(p, "description") orelse return fail(d, &.{"missing field `description`"}), "xmp property description", d),
                 };
             }
             out[i] = .{
-                .name = try str(field(s, "name") orelse return fail(d, &.{"invalid metadata.xmp: a schema needs a name"}), "xmp name", d),
-                .prefix = try str(field(s, "prefix") orelse return fail(d, &.{"invalid metadata.xmp: a schema needs a prefix"}), "xmp prefix", d),
-                .namespace = try str(field(s, "namespace") orelse return fail(d, &.{"invalid metadata.xmp: a schema needs a namespace"}), "xmp namespace", d),
+                .name = try str(field(s, "name") orelse return fail(d, &.{"missing field `name`"}), "xmp name", d),
+                .prefix = try str(field(s, "prefix") orelse return fail(d, &.{"missing field `prefix`"}), "xmp prefix", d),
+                .namespace = try str(field(s, "namespace") orelse return fail(d, &.{"missing field `namespace`"}), "xmp namespace", d),
                 .properties = props,
             };
         }
@@ -802,7 +823,7 @@ fn parseAttachments(a: Allocator, x: json.Value, blobs: []const Blob, d: *Diag) 
     const out = try a.alloc(Attachment, x.array.len);
     for (x.array, 0..) |e, i| {
         if (e != .object) return fail(d, &.{"invalid attachments: each attachment is an object"});
-        const name = try str(field(e, "name") orelse return fail(d, &.{"invalid attachments: an attachment needs a name"}), "attachment name", d);
+        const name = try str(field(e, "name") orelse return fail(d, &.{"missing field `name`"}), "attachment name", d);
         var at: Attachment = .{ .name = name, .data = "" };
         if (field(e, "dataRef")) |r| {
             const id = try str(r, "attachment dataRef", d);
@@ -819,7 +840,7 @@ fn parseAttachments(a: Allocator, x: json.Value, blobs: []const Blob, d: *Diag) 
             if (!found) return fail(d, &.{ "attachment data is missing: ", name });
         } else if (field(e, "data")) |dv| {
             at.data = dv.asString() orelse return fail(d, &.{ "attachment data must be bytes or a string: ", name });
-        } else return fail(d, &.{ "attachment data is missing: ", name });
+        } else return fail(d, &.{"missing field `data`"});
         if (field(e, "mimeType")) |t| at.mime_type = try str(t, "attachment mimeType", d);
         if (field(e, "description")) |t| at.description = try str(t, "attachment description", d);
         if (field(e, "relationship")) |t| {
@@ -830,7 +851,7 @@ fn parseAttachments(a: Allocator, x: json.Value, blobs: []const Blob, d: *Diag) 
             };
             at.relationship = for (table) |r| {
                 if (std.mem.eql(u8, s, r[0])) break r[1];
-            } else return fail(d, &.{ "unknown attachment relationship: ", s });
+            } else return fail(d, &.{ "unknown variant `", s, "`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified`" });
         }
         if (field(e, "modificationDate")) |t| {
             const s = try str(t, "attachment modificationDate", d);
@@ -1213,8 +1234,8 @@ test "attachments: text, blob refs, mime and duplicates" {
     try expectErr("{\"attachments\":[{\"name\":\"a\",\"data\":\"x\",\"mimeType\":\"plain\"}]}", "Attachment mime type is not a type/subtype pair: plain");
     try expectErr("{\"attachments\":[{\"name\":\"a\",\"data\":\"x\",\"mimeType\":\"a/b/c\"}]}", "Attachment mime type is not a type/subtype pair: a/b/c");
     try expectErr("{\"attachments\":[{\"name\":\"a\",\"dataRef\":\"bm-att:9\"}]}", "attachment data is missing: a");
-    try expectErr("{\"attachments\":[{\"name\":\"a\"}]}", "attachment data is missing: a");
-    try expectErr("{\"attachments\":[{\"name\":\"a\",\"data\":\"x\",\"relationship\":\"parent\"}]}", "unknown attachment relationship: parent");
+    try expectErr("{\"attachments\":[{\"name\":\"a\"}]}", "missing field `data`");
+    try expectErr("{\"attachments\":[{\"name\":\"a\",\"data\":\"x\",\"relationship\":\"parent\"}]}", "unknown variant `parent`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified`");
     try expectErr("{\"attachments\":[{\"name\":\"a\",\"data\":\"x\",\"modificationDate\":\"nope\"}]}", "invalid modificationDate: expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS");
     try testing.expect(validMimeType("application/vnd.ms-excel") and validMimeType("text/plain+charset"));
     try testing.expect(!validMimeType("text/") and !validMimeType("/plain") and !validMimeType("te xt/plain"));
@@ -1245,8 +1266,8 @@ test "pdfa / tagged / attachments / uncoveredText combinations" {
     _ = try tparse(a, "{\"tagged\":\"ua1\",\"uncoveredText\":\"placeholder\"}");
     const ok = try tparse(a, "{\"uncoveredText\":\"placeholder\"}");
     try testing.expectEqual(UncoveredText.placeholder, ok.uncovered_text);
-    try expectErr("{\"pdfa\":\"1b\"}", "unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)");
-    try expectErr("{\"tagged\":\"ua3\"}", "invalid tagged: expected true, false, \"ua1\" or \"ua2\"");
+    try expectErr("{\"pdfa\":\"1b\"}", "unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`");
+    try expectErr("{\"tagged\":\"ua3\"}", "data did not match any variant of untagged enum TaggedInput");
     try expectErr("{\"uncoveredText\":\"skip\"}", "unknown uncoveredText: skip");
 }
 

@@ -123,9 +123,16 @@ pub const Pages = struct {
     }
     /// Index of the page that holds stitched block offset `y` (the last page for anything below).
     pub fn pageAt(p: *const Pages, y: f32) u32 {
-        var i: u32 = 0;
-        while (i + 1 < p.pages.len and y >= p.pages[i + 1].top) i += 1;
-        return i;
+        // (binary search: the last page whose top is at or above `y`, the first page for anything
+        // above it; a linear walk made per-box lookups quadratic in the page count)
+        if (p.pages.len < 2) return 0;
+        var lo: usize = 0;
+        var hi: usize = p.pages.len - 1;
+        while (lo < hi) {
+            const mid = lo + (hi - lo + 1) / 2;
+            if (y >= p.pages[mid].top) lo = mid else hi = mid - 1;
+        }
+        return @intCast(lo);
     }
     /// The part of a box (stitched border-box block start `top`, block size `h`) that is on page `page`:
     /// null when the page shows none of it. `y` is relative to the page start; `from_prev` / `to_next`:
@@ -206,6 +213,12 @@ pub const PagedState = struct {
     /// (`font.Paragraph.cut`); `no_node`: none.
     cut_node: u32 = no_node,
     cut_glyph: u32 = 0,
+    /// What viewport units resolve against when set (a header / footer band: the whole page, takumi-pdf
+    /// `band_viewport`'s unit reference), whatever the frame's own viewport.
+    units: ?[2]f32 = null,
+    /// The HTML source's own `<style>` texts are already in the frame's `css` option (a PDF pools the
+    /// document's and its bands' `<style>` sheets into one stylesheet, src/pdf/pdf.zig `poolStyles`).
+    skip_dom_styles: bool = false,
 };
 
 /// Paginates the subtree of `root` (laid out by `t.compute`, normally with a definite available width =
@@ -217,6 +230,12 @@ pub fn paginate(t: anytype, a: Allocator, root: tr.NodeId, opts: Options) Error!
     var e: E = .{ .t = t, .a = a, .opts = opts };
     defer e.deinit();
     return e.run(root);
+}
+
+/// The box clips its block-axis overflow: `overflow-y` other than `visible`, or `visible` computing to
+/// `auto` because `overflow-x` is neither `visible` nor `clip` (CSS Overflow 3 §3.1).
+fn clipsY(s: anytype) bool {
+    return s.overflow_y != .visible or (s.overflow_x != .visible and s.overflow_x != .clip);
 }
 
 /// Blink's BreakAppeal, worst first.
@@ -445,11 +464,24 @@ fn Engine(comptime T: type) type {
             return .{ .start = s, .end = s + h, .next = en };
         }
         fn pageAt(e: *Self, y: f32) Error!u32 {
-            var p: u32 = 0;
-            while (true) : (p += 1) {
-                try e.need(p);
-                if (y < e.tops.items[p + 1] - eps) return p;
+            // the first page whose end is below `y`: pages are added until one is, then a binary
+            // search over those known (a walk from the first page made pagination quadratic)
+            try e.need(0);
+            var n: u32 = @intCast(e.tops.items.len - 2);
+            if (!(y < e.tops.items[n + 1] - eps)) {
+                while (true) {
+                    n += 1;
+                    try e.need(n);
+                    if (y < e.tops.items[n + 1] - eps) return n;
+                }
             }
+            var lo: u32 = 0;
+            var hi: u32 = n;
+            while (lo < hi) {
+                const mid = lo + (hi - lo) / 2;
+                if (y < e.tops.items[mid + 1] - eps) hi = mid else lo = mid + 1;
+            }
+            return lo;
         }
 
         // ------------------------------------------------------------------------------------ tree access
@@ -828,7 +860,7 @@ fn Engine(comptime T: type) type {
             // Blink's is_known_to_fit_in_fragmentainer: a box of bounded block size that ends on this page
             const known_fit = e.bounded(n) and bottom <= pg.end + eps;
             // (a clipping box that fits is not fragmented for its content: Blink's DisableFragmentation)
-            if (known_fit and e.style(n).overflow_y != .visible and n != e.t.root) return .{ .end = bottom };
+            if (known_fit and clipsY(e.style(n)) and n != e.t.root) return .{ .end = bottom };
             var first: BB = .auto;
             var r = try e.probeSeq(n, top, pg, k, known_fit, requires, &first);
             // (the break value before the first child reaches the container even where the box breaks)
@@ -1493,7 +1525,7 @@ fn Engine(comptime T: type) type {
                     const pk = e.kindOf(ns[cur].parent);
                     const is_abs = s.position == .absolute;
                     const is_float = floats_on and !is_abs and s.float != .none and (pk == .block or pk == .text);
-                    var descend = s.display != .none and !ns[cur].measured and e.kindOf(cur) != .mono and (s.overflow_y == .visible or e.st[cur].started);
+                    var descend = s.display != .none and !ns[cur].measured and e.kindOf(cur) != .mono and (!clipsY(s) or e.st[cur].started);
                     // (an atomic inline box is monolithic)
                     if (pk == .text and !is_abs and !is_float) descend = false;
                     if (s.display != .none) {
@@ -1581,7 +1613,7 @@ fn Engine(comptime T: type) type {
                 if (s.display != .none and (s.position != .fixed or cur == root)) {
                     const y = base + l.y;
                     extent.* = @max(extent.*, y + l.h);
-                    descend = !ns[cur].measured and (s.overflow_y == .visible or cur == root) and ns[cur].first_child != no_node and sp < stack.len;
+                    descend = !ns[cur].measured and (!clipsY(s) or cur == root) and ns[cur].first_child != no_node and sp < stack.len;
                     if (descend) {
                         stack[sp] = base;
                         sp += 1;

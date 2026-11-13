@@ -490,6 +490,36 @@ fn inlineRole(f: *const Frame, el: u32) ?Role {
     return null;
 }
 
+/// Whether the inline content element `el` lays out holds an inline element with a text role
+/// (`strong` / `b`, `em` / `i`, `code`): elements that generate a box of their own (blocks, inline
+/// blocks, out-of-flow and floating boxes) are not looked into.
+fn hasInlineRoleText(f: *const Frame, el: u32) bool {
+    var stack: [64]u32 = undefined;
+    var sp: usize = 0;
+    var k = f.dom.at(el).first;
+    var guard: u32 = 0;
+    while (guard < 1 << 16) : (guard += 1) {
+        if (k == none) {
+            if (sp == 0) return false;
+            sp -= 1;
+            k = f.dom.at(stack[sp]).next;
+            continue;
+        }
+        const c = f.dom.at(k);
+        if (c.run or c.kind == .text and c.tag.len == 0 or c.cs.display != .@"inline" or c.cs.position == .absolute or c.cs.position == .fixed or c.cs.float != .none) {
+            k = c.next;
+            continue;
+        }
+        if (eq(c.tag, "strong") or eq(c.tag, "b") or eq(c.tag, "em") or eq(c.tag, "i") or eq(c.tag, "code")) return true;
+        if (c.first != none and sp < stack.len) {
+            stack[sp] = k;
+            sp += 1;
+            k = c.first;
+        } else k = c.next;
+    }
+    return false;
+}
+
 /// An inline element with a role around inline-level boxes (takumi builds it as an element of
 /// its own: `<a href><img alt></a>` is `Link > Figure`).
 const InlineOpen = struct { el: u32, g: *Group, pending: std.ArrayList(Ident) = .empty };
@@ -619,6 +649,10 @@ fn buildNode(wk: *Walk, id: u32, parent: *std.ArrayList(Kid), pending: *std.Arra
     if (block) try flushParagraph(wk, pending, parent);
     try pending.appendSlice(wk.a, rec.labels.items);
     try pending.appendSlice(wk.a, rec.ids.items);
+    // takumi walks the inline elements of the box's text as render nodes of their own, after the
+    // box's content: one with a role (`<b>`, `<em>`, `<code>`...) ends the run of bare content
+    // collected so far, and draws nothing of its own (its text is the box's), so its element goes
+    if (rec.ids.items.len > 0 and n.el != none and n.kind != .anon_text and n.kind != .anon_box and hasInlineRoleText(wk.f, n.el)) try flushParagraph(wk, pending, parent);
     try buildChildren(wk, id, parent, pending, nesting);
     if (block) try flushParagraph(wk, pending, parent);
     if (rec.annots.items.len > 0) {

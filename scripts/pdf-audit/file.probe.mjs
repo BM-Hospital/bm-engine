@@ -1,7 +1,7 @@
 // The PDF file layer: header, versions, cross-reference, object streams, stream filters, object order, trailer,
 // features krilla has but takumi does not reach (page labels, boxes, ...), and the error prefix.
 import { probe, Name, fmt } from "./lib.mjs";
-import { outcome, fileShape, fileId, catalogText, deep, sameText, META, PNG1 } from "./filelayer.util.mjs";
+import { outcome, outcomes, fileShape, fileId, catalogText, deep, sameText, META, PNG1 } from "./filelayer.util.mjs";
 
 const RICH = `<html lang="en"><body><h1 id="top">Title</h1><p>Hello <a href="https://example.com/">link</a> and <a href="#top">top</a></p>
 <img alt="dot" width="20" height="20" src="${PNG1}"><div style="width:60px;height:20px;background:linear-gradient(90deg,red,blue);opacity:.5"></div>
@@ -24,7 +24,7 @@ const OPTS = [
 probe("file.shape", "header version + binary marker, xref stream vs table, object streams, filters per stream kind, trailer keys, object count", async (t) => {
   for (const [name, o] of OPTS) {
     const r = await t.both(RICH, o);
-    if (!t.same(name + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     sameText(t, name + " file shape", fileShape(r.bm), fileShape(r.ref));
     if (name === "default") t.note("takumi shape: " + JSON.stringify(fileShape(r.ref)));
   }
@@ -50,7 +50,7 @@ function objectOrder(d) {
 probe("file.object-order", "object numbering / order of object kinds through the file (krilla chunk order), objects inside object streams", async (t) => {
   for (const [name, o] of OPTS) {
     const r = await t.both(RICH, o);
-    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", outcome(r.bm), outcome(r.ref)); continue; }
+    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", ...outcomes(r.bm, r.ref)); continue; }
     sameText(t, name + " object order", objectOrder(r.bm).join(" | "), objectOrder(r.ref).join(" | "));
   }
 });
@@ -66,7 +66,7 @@ probe("file.bytes.identical-outside-fonts", "byte comparison of the whole file a
     ["empty document A4", ``, { size: "A4" }],
   ]) {
     const r = await t.both(html, o);
-    if (!t.same(name + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     // every object in file order: number, dictionary as written, and the DECODED stream data (the deflate implementations
     // differ, so compressed bytes are not comparable); ids, the producer and stream lengths are normalised
     const prod = (s) => s.replace(/\/Producer ?\([^)]*\)/, "/Producer(P)");
@@ -93,7 +93,7 @@ function xmpProducer(d) { const o = d.pdf.obj(d.catalog.Metadata); return o ? (o
 probe("file.xref", "cross-reference stream dictionary (/W /Index /Size /Root /Info /ID, predictor) and startxref", async (t) => {
   for (const [name, o] of [["1.7", {}], ["2.0", { tagged: "ua2", lang: "en", metadata: META }], ["a-4 (no Info)", { pdfa: "4", metadata: META }]]) {
     const r = await t.both(RICH, o);
-    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", outcome(r.bm), outcome(r.ref)); continue; }
+    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", ...outcomes(r.bm, r.ref)); continue; }
     const x = (d) => { const tr = d.pdf.trailer; return Object.fromEntries(Object.entries(tr).map(([k, v]) => [k, k === "ID" ? "ids" : k === "Length" || k === "Size" ? "n" : k === "Index" ? "[" + v.length + "]" : deep(d, v, 0, 0)])); };
     t.same(name + " xref stream dictionary", x(r.bm), x(r.ref));
     const tail = (d) => d.pdf.source.slice(d.pdf.source.lastIndexOf("endstream")).replace(/\d+/g, "N").replace(/\r/g, "");
@@ -106,7 +106,7 @@ probe("file.objstm", "object streams: which objects go in (struct elements only)
   const big = `<h1>T</h1>` + Array.from({ length: 450 }, (_, i) => `<p>para ${i} <b>b</b> <i>i</i></p>`).join("");
   for (const [name, html, o] of [["small tagged", RICH, {}], ["450 paragraphs (several object streams?)", big, { size: "A4" }], ["untagged", RICH, { tagged: false }]]) {
     const r = await t.both(html, o);
-    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", outcome(r.bm), outcome(r.ref)); continue; }
+    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", ...outcomes(r.bm, r.ref)); continue; }
     const s = (d) => ({ streams: d.typed("ObjStm").map((x) => ({ n: x.dict.N, filter: String(x.dict.Filter), extends: x.dict.Extends !== undefined })), inside: [...new Set([...d.pdf.objs.values()].filter((x) => x.inObjStm).map((x) => (x.dict && x.dict.Type instanceof Name ? x.dict.Type.s : x.dict && x.dict.S ? "StructElem" : "other")))].sort(), count: [...d.pdf.objs.values()].filter((x) => x.inObjStm).length });
     sameText(t, name + " object streams", s(r.bm), s(r.ref));
   }
@@ -114,7 +114,7 @@ probe("file.objstm", "object streams: which objects go in (struct elements only)
 
 probe("file.streams.filters", "which streams are Flate'd: content, XMP (never), ToUnicode, font file, ICC, images, attachments; /Length direct", async (t) => {
   const r = await t.both(RICH, { pdfa: "3b", metadata: META, attachments: [{ name: "a.txt", data: "hello ".repeat(100), mimeType: "text/plain", description: "d" }] });
-  if (!t.same("outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) return;
+  if (!t.same("outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) return;
   sameText(t, "stream kinds and filters", fileShape(r.bm).streamKinds, fileShape(r.ref).streamKinds);
   const direct = (d) => [...d.pdf.objs.values()].filter((o) => o.raw).every((o) => typeof o.dict.Length === "number");
   t.same("every /Length is a direct integer", direct(r.bm), direct(r.ref));
@@ -127,7 +127,7 @@ probe("file.streams.filters", "which streams are Flate'd: content, XMP (never), 
 
 probe("file.streams.sizes", "compressed sizes of the Flate streams (deflate implementation / level): content, ToUnicode, font file", async (t) => {
   const r = await t.both(`<p>${"The quick brown fox jumps over the lazy dog. ".repeat(60)}</p>`, { size: "A4" });
-  if (!r.ref || r.bm.error || r.ref.error) { t.same("outcome", outcome(r.bm), outcome(r.ref)); return; }
+  if (!r.ref || r.bm.error || r.ref.error) { t.same("outcome", ...outcomes(r.bm, r.ref)); return; }
   const c = (d) => { const o = d.pdf.obj(d.pdf.pages[0].dict.Contents); return { raw: o.raw.length, data: o.data.length }; };
   t.same("content stream decoded length", c(r.bm).data, c(r.ref).data);
   t.same("content stream compressed length", c(r.bm).raw, c(r.ref).raw);
@@ -137,7 +137,7 @@ probe("file.streams.sizes", "compressed sizes of the Flate streams (deflate impl
 probe("file.catalog.unreachable", "krilla features takumi does not reach: /PageLabels, /PageMode, /PageLayout, /OpenAction, /AcroForm, /OCProperties, boxes, /Rotate, /UserUnit, /Thumb, encryption, linearization", async (t) => {
   for (const [name, html, o] of [["single", RICH, {}], ["paged + ranges", `<p>a</p><p style="break-before:page">b</p><p style="break-before:page">c</p>`, { size: "A4", pageRanges: [{ from: 2, to: 3 }], outline: true }], ["landscape", `<p>a</p>`, { size: "A4", landscape: true }]]) {
     const r = await t.both(html, o);
-    if (!t.same(name + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     t.same(name + " catalog keys", Object.keys(r.bm.catalog).sort(), Object.keys(r.ref.catalog).sort());
     const pk = (d) => d.pdf.pages.map((p) => Object.keys(p.dict).sort().join(","));
     t.same(name + " page keys", pk(r.bm), pk(r.ref));
@@ -150,7 +150,7 @@ probe("file.catalog.unreachable", "krilla features takumi does not reach: /PageL
 probe("file.version.selection", "what selects the PDF version: only pdfa / tagged (1.7 default, 2.0 for A-4 / UA-2); no `version` option", async (t) => {
   for (const o of [{}, { version: "1.4" }, { pdfVersion: "2.0" }, { pdfa: "2b", metadata: META }, { pdfa: "4", metadata: META }, { tagged: "ua2", lang: "en", metadata: META }, { tagged: "ua1", lang: "en", metadata: META }]) {
     const r = await t.both(`<h1>T</h1>`, o);
-    if (!t.same(JSON.stringify(o) + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(JSON.stringify(o) + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     t.same(JSON.stringify(o) + " header", r.bm.pdf.source.slice(0, 8), r.ref.pdf.source.slice(0, 8));
     t.same(JSON.stringify(o) + " catalog /Version", String(r.bm.catalog.Version), String(r.ref.catalog.Version));
   }
@@ -159,7 +159,7 @@ probe("file.version.selection", "what selects the PDF version: only pdfa / tagge
 probe("file.pdf20.differences", "PDF 2.0 output (UA-2 / A-4): no /ProcSet, no Info text fields, /Namespaces, MarkInfo without /Suspects, AF", async (t) => {
   for (const [name, o] of [["1.7", {}], ["ua2", { tagged: "ua2", lang: "en", metadata: META }], ["a-4", { pdfa: "4", metadata: META }]]) {
     const r = await t.both(RICH, o);
-    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", outcome(r.bm), outcome(r.ref)); continue; }
+    if (!r.ref || r.bm.error || r.ref.error) { t.same(name + " outcome", ...outcomes(r.bm, r.ref)); continue; }
     const res = (d) => deep(d, d.pdf.pages[0].dict.Resources, 0, 1).replace(/\/(\w+) R/g, "/$1 R");
     sameText(t, name + " page resources", res(r.bm), res(r.ref));
     sameText(t, name + " catalog", catalogText(r.bm), catalogText(r.ref));

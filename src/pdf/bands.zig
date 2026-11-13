@@ -77,6 +77,12 @@ pub fn buildFrameCut(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?jso
     const f = try a.create(Frame);
     f.* = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined, .pre = pre };
     f.tree.paged.pdf = true;
+    f.tree.paged.skip_dom_styles = o.pooled_styles;
+    // a band's viewport units take the whole page (takumi-pdf `band_viewport`: `with_unit_reference(page.size())`)
+    if (area == null) switch (o.geometry) {
+        .page => |p| f.tree.paged.units = .{ p.width, p.height },
+        .viewport => {},
+    };
     if (area) |ar| f.setPaged(ar[0], ar[1]);
     if (cut) |c| {
         f.tree.paged.cut_node = c.node;

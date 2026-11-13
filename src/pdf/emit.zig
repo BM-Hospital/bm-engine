@@ -148,6 +148,7 @@ const Queued = struct {
     whole: bool,
     /// [interactive] the place of its links in the page's link order (`interactive.Collector.reserve`)
     lgroup: u32 = none,
+    clip_y: [2]f32,
 };
 /// A positioned / stacking box lifted to the end of its stacking context (`liftOf`), with what
 /// the walk was in where it met it.
@@ -165,6 +166,7 @@ const Lift = struct {
     pass: ?u32,
     tpage: bool,
     in_repeat: bool,
+    clip_y: [2]f32,
 };
 
 pub const Emitter = struct {
@@ -179,6 +181,11 @@ pub const Emitter = struct {
     /// absolute transform of the current coordinates (snapping: only untransformed boxes snap)
     tf: Affine = Affine.identity,
     window: Window = .{},
+    /// The vertical extent the overflow clips around the current box leave, in frame coordinates
+    /// (takumi-pdf `Window::narrow`): a page's walk paints nothing those clips cut away, text
+    /// included, which a clip would hide from view but not from the text layer. Narrowed by an
+    /// untransformed overflow clip on a page of a paginated document only.
+    clip_y: [2]f32 = .{ -std.math.inf(f32), std.math.inf(f32) },
     path: Path = .empty,
     path2: Path = .empty,
     outlines: std.ArrayList(Deferred) = .empty,
@@ -294,6 +301,21 @@ pub const Emitter = struct {
         return e.tf.isIdentity();
     }
 
+    /// The overflow clips around the current box cut frame y range `y0`..`y1` away (`clip_y`).
+    pub fn clipExcludes(e: *const Emitter, y0: f32, y1: f32) bool {
+        return y1 <= e.clip_y[0] or y0 >= e.clip_y[1];
+    }
+
+    /// takumi-pdf `push_clip` -> `Window::narrow`: the vertical extent of the overflow clip of a box
+    /// (`overflowPath`'s shape: none for a band unbounded vertically) narrows `clip_y`, when the clip
+    /// is in page space (no transform) on a page of a paginated document.
+    fn narrowClip(e: *Emitter, cs: *const CS, g: *const Geom) void {
+        if (!e.plain() or !e.window.paged()) return;
+        if (cs.overflow_x == .clip and cs.overflow_y == .visible) return;
+        const pr = g.padRect();
+        e.clip_y = .{ @max(e.clip_y[0], pr.y), @min(e.clip_y[1], pr.y + pr.h) };
+    }
+
     pub noinline fn fail(e: *Emitter, msg: []const u8, arg: []const u8) void {
         if (e.fail_msg == null) {
             e.fail_msg = msg;
@@ -345,6 +367,7 @@ pub const Emitter = struct {
         const g = pm.Painter.geomOf(cs, e.f.tree.layout(n.lid), x, y, &c);
         if (!try e.pushOverflow(cs, &g)) return false;
         e.clips.items[e.clips.items.len - 1].overflow_of = e.f.nodeId(n);
+        e.narrowClip(cs, &g);
         return true;
     }
 
@@ -408,13 +431,18 @@ pub const Emitter = struct {
     noinline fn queueContent(e: *Emitter, id: u32, x: f32, y: f32) Error!void {
         const n = &e.f.nodes.items[id];
         const saved = e.clips.items.len;
-        defer e.clips.items.len = saved;
+        const saved_cy = e.clip_y;
+        defer {
+            e.clips.items.len = saved;
+            e.clip_y = saved_cy;
+        }
         if (n.kind != .anon_text and (n.cs.overflow_x != .visible or n.cs.overflow_y != .visible)) {
             const c = e.ctx();
             const g = pm.Painter.geomOf(n.cs, e.f.tree.layout(n.lid), x, y, &c);
             if (!try e.overflowPath(n.cs, &g)) return;
             try e.recordClip(&e.path, .nonzero);
             e.clips.items[e.clips.items.len - 1].overflow_of = id;
+            e.narrowClip(n.cs, &g);
         }
         try e.enqueue(&e.content_q, id, x, y, 0, false);
     }
@@ -438,6 +466,7 @@ pub const Emitter = struct {
             .whole = whole,
             // [interactive] takumi collects links in tree order: content painted later keeps its place
             .lgroup = if (e.links) |lk| (if (list == &e.content_q) lk.reserve() else none) else none,
+            .clip_y = e.clip_y,
         });
     }
 
@@ -475,10 +504,12 @@ pub const Emitter = struct {
         const saved_now = e.queue_now;
         const saved_defer = e.defer_on;
         const saved_group = if (e.links) |lk| lk.enter(it.lgroup) else none;
+        const saved_cy = e.clip_y;
         defer {
             if (e.links) |lk| lk.leave(saved_group);
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
+            e.clip_y = saved_cy;
             e.tf = saved_tf;
             e.pass = saved_pass;
             e.tpage = saved_tpage;
@@ -499,6 +530,7 @@ pub const Emitter = struct {
         }
         if (!it.ctm.eql(cur)) e.s.pushTransform(inv.pre(it.ctm));
         e.tf = it.tf;
+        e.clip_y = it.clip_y;
         e.pass = it.pass;
         e.tpage = it.tpage;
         e.in_repeat = it.in_repeat;
@@ -695,6 +727,7 @@ pub const Emitter = struct {
             .pass = e.pass,
             .tpage = e.tpage,
             .in_repeat = e.in_repeat,
+            .clip_y = e.clip_y,
         });
         return true;
     }
@@ -836,9 +869,11 @@ pub const Emitter = struct {
         const saved_tpage = e.tpage;
         const saved_rep = e.in_repeat;
         const saved_phase = e.tphase;
+        const saved_cy = e.clip_y;
         defer {
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
+            e.clip_y = saved_cy;
             e.tf = saved_tf;
             e.lift_now = saved_now;
             e.pass = saved_pass;
@@ -858,6 +893,7 @@ pub const Emitter = struct {
         if (!it.ctm.eql(cur)) e.s.pushTransform(inv.pre(it.ctm));
         e.tf = it.tf;
         e.lift_now = it.id;
+        e.clip_y = it.clip_y;
         e.pass = it.pass;
         e.tpage = it.tpage;
         e.in_repeat = it.in_repeat;
@@ -973,9 +1009,11 @@ pub const Emitter = struct {
         }
         const base = e.s.depth();
         const saved_clips = e.clips.items.len;
+        const saved_cy = e.clip_y;
         defer {
             e.s.popTo(base);
             e.clips.items.len = saved_clips;
+            e.clip_y = saved_cy;
         }
         if (!try e.pushOverflowOf(n, x, y)) return;
         if (e.stackingContext(id)) try e.paintNegatives(id, x, y, depth);
@@ -1050,9 +1088,11 @@ pub const Emitter = struct {
         const n = &f.nodes.items[id];
         const base = e.s.depth();
         const saved_clips = e.clips.items.len;
+        const saved_cy = e.clip_y;
         defer {
             e.s.popTo(base);
             e.clips.items.len = saved_clips;
+            e.clip_y = saved_cy;
         }
         if (!try e.pushOverflowOf(n, x, y)) return;
         inline for (.{ Phase.decorations, Phase.content }) |ph| {
@@ -1145,7 +1185,7 @@ pub const Emitter = struct {
         // whole pixels meet this page's window (tables: on this page's own pass only).
         var gd = g;
         const excluded = if (e.pass == null) blk: {
-            const ex = e.plain() and e.window.excludes(g.bx.y - paintReach(cs), g.bx.y + g.bx.h + paintReach(cs));
+            const ex = e.plain() and (e.window.excludes(g.bx.y - paintReach(cs), g.bx.y + g.bx.h + paintReach(cs)) or e.clipExcludes(g.bx.y - paintReach(cs), g.bx.y + g.bx.h + paintReach(cs)));
             if (!ex and e.plain() and e.window.paged()) gd = e.windowSlice(cs, l, x, y, g, e.window);
             break :blk ex;
         } else blk: {

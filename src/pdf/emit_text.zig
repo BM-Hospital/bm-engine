@@ -295,8 +295,10 @@ fn disowns(e: *const Emitter, it: LineItem) bool {
 }
 
 /// takumi `Window::shows_line_item`: this page draws the item (on the page owning its line, and
-/// on every other page its line box reaches).
+/// on every other page its line box reaches), unless the overflow clips around it cut it away
+/// (`Emitter.clip_y`, takumi's narrowed window).
 fn showsItem(e: *const Emitter, it: LineItem) bool {
+    if (e.clipExcludes(it.top, it.bottom)) return false;
     return !e.window.excludes(it.top, it.bottom) and (!disowns(e, it) or !e.window.excludes(it.l0, it.l1));
 }
 
@@ -1084,16 +1086,19 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const ext = shadowReach(n.cs);
     top = @floor(top + ext[0]);
     bottom = @ceil(bottom + ext[1]);
-    const shows = run_shows or !e.window.excludes(top, bottom);
+    const shows = run_shows or !(e.window.excludes(top, bottom) or e.clipExcludes(top, bottom));
     if (!shows) return .{ .shows = false };
     // the box's fragments (one per page it reaches), each with its part of the box and the
     // glyphs of its lines; those this page's window meets each open a region
     const pg = e.f.paginated() orelse return .{ .shows = true };
     const box_top = y - l.border.top - l.padding.top;
     const box_bottom = box_top + l.h;
+    // (only the pages the box reaches: a scan of every page made each box cost the page count)
+    const p0: usize = pg.pageAt(box_top);
+    const p1: usize = @min(pg.pages.len, @as(usize, pg.pageAt(box_bottom)) + 1);
     var cur: ?usize = null;
     var count: u32 = 0;
-    for (pg.pages, 0..) |p, i| {
+    for (pg.pages[p0..p1], p0..) |p, i| {
         if (box_bottom <= p.top or box_top >= p.top + p.height) continue;
         count += 1;
         if (p.top == e.window.top) cur = i;
@@ -1101,7 +1106,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const here = cur orelse return .{ .shows = true };
     if (count <= 1) return .{ .shows = true };
     var out: TextRegions = .{ .shows = true };
-    for (pg.pages, 0..) |p, i| {
+    for (pg.pages[p0..p1], p0..) |p, i| {
         if (i == here or box_bottom <= p.top or box_top >= p.top + p.height) continue;
         var lo = @max(box_top, p.top);
         var hi = @min(box_bottom, p.top + p.height);
@@ -1117,7 +1122,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
                 hi = @max(hi, y + r.baseline + @as(f32, @floatFromInt(lm.descent)) * sc);
             }
         }
-        if (e.window.excludes(@floor(lo + ext[0]), @ceil(hi + ext[1]))) continue;
+        if (e.window.excludes(@floor(lo + ext[0]), @ceil(hi + ext[1])) or e.clipExcludes(@floor(lo + ext[0]), @ceil(hi + ext[1]))) continue;
         if (i < here) out.before += 1 else out.after += 1;
     }
     return out;

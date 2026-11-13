@@ -26,7 +26,11 @@ export type PageMarginSide = number | "auto";
 export type PageMargin = PageMarginSide | { top?: PageMarginSide; right?: PageMarginSide; bottom?: PageMarginSide; left?: PageMarginSide };
 
 /** A band on a page: a node tree, an HTML string, or `false` for none. */
-export type Band = Node | string | false;
+/**
+ * A header / footer: a node tree, HTML, or `false` (none). As takumi-pdf, anything else goes through `fromJsx`: a
+ * JSX element tree, and `true` / numbers / other objects written as their text.
+ */
+export type Band = Node | string | false | { $typeof: symbol; type: unknown; props: Record<string, unknown> };
 
 /** What some pages draw instead of the document's own bands. A field left out falls through. */
 export type PageOverride = { header?: Band; footer?: Band };
@@ -183,7 +187,10 @@ export type PdfRenderOptions = (PagedOptions | ViewportOptions) &
 export type PdfMeasureOptions = (
   | { size?: PageSize; landscape?: boolean; viewport?: never }
   | { viewport: ViewportInput; size?: never; landscape?: never }
-) & Pick<PdfRenderOptions, "fonts" | "images" | "css" | "cssVariables" | "fontFamilies" | "lang" | "signal">;
+) & Pick<PdfRenderOptions, "fonts" | "images" | "css" | "cssVariables" | "fontFamilies" | "lang"> & {
+    /** `Renderer.measurePdf` stops on an aborted one; `PdfRenderer.measure` does not read it (as takumi-pdf's `measure`). */
+    signal?: AbortSignal;
+  };
 
 /** A node tree's laid-out size in CSS px. */
 export type MeasuredSize = { width: number; height: number };
