@@ -35,11 +35,11 @@ ra cùng nội dung trang. Trang này liệt kê những gì khác, rồi cách 
   của CSS, như takumi. Không biết khác biệt nào ở các fixture so với takumi-pdf, nhưng thứ tự này chưa được chứng minh
   là giống hệt trong mọi tài liệu.
 - **`@page`.** `size`, `margin`, `:first`, `:left` và `:right` hoạt động, trang có tên cũng vậy (thuộc tính
-  `page`, `@page tên`, `tên:first`): mỗi trang có tên có khổ giấy, lề và chiều cao vùng trang riêng. Nội dung chỉ
-  được dàn một lần, ở chiều rộng vùng trang của các trang không tên. Trang có tên với chiều rộng khác nhận khổ riêng,
-  nhưng nội dung giữ chiều rộng cũ và bắt đầu từ lề trái của trang; các quy tắc `:first`, `:left` và `:right` làm
-  đổi chiều rộng bị bỏ. `@page` bên trong `@media`, `@layer` hoặc `@supports` và đơn vị viewport trong mô tả trang
-  không được hỗ trợ. Xem [Phân trang](pagination.md#quy-tắc-trang).
+  `page`, `@page tên`, `tên:first`), cùng với `@page` bên trong `@media`, `@layer` và `@supports`, `!important`,
+  và độ dài theo mọi đơn vị có `calc()` và `var()`. Mỗi trang dàn nội dung ở chiều rộng của chính nó, giống
+  takumi. Một trang bắt đầu giữa một hàng bảng hoặc một dòng flex giữ chiều rộng của trang trước nó khi chiều rộng
+  của nó khác. Custom property mà tùy chọn `cssVariables` đặt cho một tài liệu HTML đầy đủ có tác dụng lên quy tắc
+  trang ở bm-engine, còn ở takumi thì không. Xem [Phân trang](pagination.md#quy-tắc-trang).
 - **Ngắt trang.** `break-before` / `break-after` với `left`, `right`, `recto` hoặc `verso` có ngắt trang nhưng
   không chèn trang trắng để rơi vào phía trái hay phải. `column` không phải ngắt trang. Dòng chữ không chảy lại
   quanh float đã chuyển sang trang khác, ô bảng trải nhiều hàng không bị chia qua các trang, và các phần của bảng
@@ -69,14 +69,14 @@ cho trang này:
 | Kết quả | Số fixture |
 |:--|--:|
 | nội dung trang giống hệt | 73 |
-| gần giống: cùng toán tử, số lệch trong khoảng 0.01 | 3 |
-| khác | 13 |
+| gần giống: cùng toán tử, số lệch trong khoảng 0.01 | 4 |
+| khác | 12 |
 | lỗi render | 0 |
 | bố cục object giống hệt | 89 |
 | chương trình font nhúng giống hệt | 42 |
 | cây cấu trúc giống hệt | 88 |
 
-13 khác biệt, theo fixture:
+12 khác biệt, theo fixture:
 
 | Fixture | Khác ở đâu |
 |:--|:--|
@@ -85,9 +85,10 @@ cho trang này:
 | `bitmap-glyph-text-shadow` | soft mask của bóng một glyph bitmap |
 | `report-links-outline`, `report-tagged-ua1`, `report-tagged-a2a` | các điều chỉnh kerning rất nhỏ và hình chữ nhật của liên kết (annotation) |
 | `stream-content-counters` | độ rộng chỗ giữ chỗ của bộ đếm trang |
-| `named-pages`, `at-page-first-left-right` | các trang có chiều rộng khác nhau: bm-engine dàn nội dung một lần ở một chiều rộng ([Trang có tên](pagination.md#trang-có-tên)) |
+| `named-pages` | trang thân bài ngay trước bảng rộng còn vẽ thêm, ngoài vùng cắt của trang, mấy đoạn viền đầu tiên của bảng: trang của takumi với tới fragment của trang sau, còn bm-engine dàn trang sau ở chiều rộng của nó trong một lần dàn khác ([Trang có tên](pagination.md#trang-có-tên)) |
 
-Ba fixture gần giống là `text-shadow-page-cut`, `content-page-counters` và `at-page-root-element`. Các fixture
+Bốn fixture gần giống là `text-shadow-page-cut`, `content-page-counters`, `at-page-root-element` và
+`at-page-first-left-right`. Các fixture
 hoá đơn, header và footer bảng lặp lại, và các fixture danh sách đều giống hệt. Chương trình font khác nhau ở các
 fixture còn lại vì bộ subset không ghi ra font con trùng từng byte, dù chúng vẽ cùng các glyph. Các con số này là
 của một lần chạy tại thời điểm viết và thay đổi theo build; script cần mã nguồn takumi trong `ref/takumi`.

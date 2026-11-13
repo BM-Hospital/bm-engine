@@ -22,7 +22,7 @@ nhận và bỏ qua trên mọi build, kể cả `bm-engine/pdf` và addon nativ
 | `break-before`, `break-after`, `break-inside`, `page-break-before` / `-after` / `-inside` | `auto`, `avoid`, `avoid-page`, `avoid-column`, `page`, `always`, `column`, `left`, `right`, `recto`, `verso` đều được đọc; `left`, `right`, `recto`, `verso` ngắt trang nhưng không chèn trang trắng; `column` không phải ngắt trang | [Phân trang](pagination.md#ép-ngắt-trang) |
 | `orphans`, `widows` | số nguyên từ 1 trở lên, kế thừa, mặc định 2 | [Phân trang](pagination.md#orphans-và-widows) |
 | Tailwind `break-before-*`, `break-inside-*`, `break-after-*` | trong trường / thuộc tính `tw` | [Phân trang](pagination.md#ép-ngắt-trang) |
-| `@page` với `size`, `margin*`, `:first`, `:left`, `:right`, trang có tên (`page`, `@page tên`) | đọc từ tùy chọn `css` và `<style>` của HTML; nội dung chỉ được dàn một lần ở một chiều rộng, nên trang có tên với chiều rộng khác không được dàn lại | [Phân trang](pagination.md#quy-tắc-trang) |
+| `@page` với `size`, `margin*`, `:first`, `:left`, `:right`, trang có tên (`page`, `@page tên`) | đọc từ tùy chọn `css` và `<style>` của HTML, cả bên trong `@media`, `@supports` và `@layer`; mỗi trang dàn nội dung ở chiều rộng của chính nó | [Phân trang](pagination.md#quy-tắc-trang) |
 | Nhóm header và footer của bảng (`thead`, `tfoot`) | lặp lại ở đầu / cuối mọi trang mà bảng đi qua | [Phân trang](pagination.md#bảng) |
 | `position: fixed` | lặp lại trên mọi trang | [Header và footer](headers-footers.md) |
 | `box-decoration-break: clone` | mỗi mảnh của hộp bị trang cắt giữ viền, padding và bo góc | [Phân trang](pagination.md) |

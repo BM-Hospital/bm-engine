@@ -59,11 +59,11 @@ const poster = await pdf.render(card, { viewport: { width: 600 } }); // one page
 
 Tài liệu có thể tự đặt hình dạng trang bằng quy tắc `@page` trong phần tử `<style>` của HTML hoặc trong tùy chọn
 `css` (dùng được cho cả cây node). `@page { size; margin }` của tài liệu thắng các tùy chọn `size` và `margin`,
-giống `preferCSSPageSize` của Chromium. Trang `:first`, `:left`, `:right` và trang có tên (thuộc tính `page`
-cùng `@page tên`) được hỗ trợ; `@page` bên trong `@media`, `@layer` hoặc `@supports`, đơn vị viewport trong mô
-tả trang và các hộp lề trang (`@top-center`, ...) thì không.
+giống `preferCSSPageSize` của Chromium. Trang `:first`, `:left`, `:right`, trang có tên (thuộc tính `page`
+cùng `@page tên`) và `@page` bên trong `@media`, `@layer` hoặc `@supports` đều được hỗ trợ; các hộp lề trang
+(`@top-center`, ...) bị bỏ qua, giống takumi. Các trang khác chiều rộng dàn nội dung ở chiều rộng của chính chúng.
 [Phân trang → Quy tắc trang](pagination.md#quy-tắc-trang) có ví dụ và mọi descriptor được hỗ trợ, còn
-[Trang có tên](pagination.md#trang-có-tên) nói về giới hạn của các trang khác chiều rộng.
+[Trang có tên](pagination.md#trang-có-tên) nói về cách các trang khác chiều rộng hoạt động.
 
 | Bạn muốn | Dùng |
 |:--|:--|

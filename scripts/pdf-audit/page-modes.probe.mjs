@@ -34,7 +34,8 @@ probe("page.viewport.exclusive", "viewport: mutually exclusive with the paged op
   const paged = { size: "a4", landscape: true, margin: 10, header: "<div>H</div>", footer: "<div>F</div>", pages: {}, pageRanges: [1] };
   for (const [k, val] of Object.entries(paged)) await cmp(t, "viewport + " + k, D3, { ...v, [k]: val }, { expect: "error" });
   await cmp(t, "viewport + landscape:false", D3, { ...v, landscape: false }, { expect: "error" });
-  await cmp(t, "viewport + header:false", D3, { ...v, header: false }, { expect: "error" });
+  // (takumi-pdf-js drops a top-level `header: false` / `footer: false` before the exclusivity check: both engines render)
+  await cmp(t, "viewport + header:false", D3, { ...v, header: false }, { expect: "render" });
   await cmp(t, "viewport + backgroundColor is allowed", D3, { ...v, backgroundColor: "red" }, { expect: "render" });
   await cmp(t, "viewport + size:null", D3, { ...v, size: null });
 });
@@ -116,7 +117,9 @@ probe("page.background-color", "backgroundColor fills the page box of every page
   if (n.ref && !n.bm.error) t.same("unset: paper operators", paper(n.bm), paper(n.ref));
 });
 probe("page.background-color.invalid", "backgroundColor: not a colour error", async (t) => {
-  for (const c of ["nope", "", "currentColor", "var(--x)", 5, "red blue"]) await cmp(t, JSON.stringify(c), D3, { ...SMALL, backgroundColor: c }, { expect: "error" });
+  for (const c of ["nope", "", "currentColor", "var(--x)", 5]) await cmp(t, JSON.stringify(c), D3, { ...SMALL, backgroundColor: c }, { expect: "error" });
+  // (takumi-pdf-js parses the value's first component and does not read what follows: a red page)
+  await cmp(t, JSON.stringify("red blue"), D3, { ...SMALL, backgroundColor: "red blue" }, { expect: "render" });
 });
 probe("page.background-color.root-background", "the html / body background and the page margins", async (t) => {
   const html = doc(lines(1, 12), `html{background:#00ff00} body{background:#ff0000}`);

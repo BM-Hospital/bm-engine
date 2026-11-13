@@ -65,8 +65,10 @@ pub const Link = struct {
     repeated: bool = false,
 };
 
-pub const Anchor = struct { top: f32, node: u32, el: u32 };
-pub const Heading = struct { level: u8, text: []const u8, top: f32, el: u32, node: u32 = none };
+/// `top`: in the coordinates of `frame` (null: the document's), the `run`-th frame of the document
+/// (pages laid out at different widths: paged.zig)
+pub const Anchor = struct { top: f32, node: u32, el: u32, frame: ?*const Frame = null, run: u32 = 0 };
+pub const Heading = struct { level: u8, text: []const u8, top: f32, el: u32, node: u32 = none, frame: ?*const Frame = null, run: u32 = 0 };
 
 const PageLinks = struct {
     content: std.ArrayList(Link) = .empty,
@@ -96,6 +98,15 @@ pub const Collector = struct {
     /// header / footer group paints its paragraphs again, somewhere else)
     text_seen: std.AutoHashMapUnmanaged(TextKey, void) = .empty,
     failed: bool = false,
+    /// the run of pages showing one frame being drawn (`beginRun`): its frame, its index, the span
+    /// of the frame its pages show, and whether this is the run's first page
+    run_frame: ?*const Frame = null,
+    run: u32 = 0,
+    runs: u32 = 0,
+    run_lo: f32 = -std.math.inf(f32),
+    run_hi: f32 = std.math.inf(f32),
+    run_first: bool = false,
+    run_begun: bool = false,
 
     pub fn init(a: Allocator, f: *Frame, page_count: usize) Error!Collector {
         const pages = try a.alloc(PageLinks, page_count);
@@ -105,10 +116,24 @@ pub const Collector = struct {
 
     /// Starts output page `i` (painted with `page` / `win`).
     pub fn beginPage(c: *Collector, i: usize, page: emit.PageBox, win: emit.Window) void {
+        c.run_first = c.run_begun;
+        c.run_begun = false;
         c.cur = i;
         c.page = page;
         c.win = win;
         c.text_seen.clearRetainingCapacity();
+    }
+
+    /// Starts a run of output pages that show `f` (one frame per page width: paged.zig), its
+    /// pages showing the frame's block range [`lo`, `hi`): its first page's walk collects the
+    /// anchors and headings in that range.
+    pub fn beginRun(c: *Collector, f: *const Frame, lo: f32, hi: f32) void {
+        c.run_frame = f;
+        c.run = c.runs;
+        c.runs += 1;
+        c.run_lo = lo;
+        c.run_hi = hi;
+        c.run_begun = true;
     }
 
     /// The anchor `id` names (first box wins), from the first page's walk.
@@ -132,7 +157,7 @@ pub const Collector = struct {
         const fixed = c.inFixed(e);
         const l = f.tree.layout(n.lid);
         const r = aabb(e.tf, x, y, l.w, l.h) orelse return;
-        if (!fixed and f == c.f and c.cur == 0) try c.summarize(n.el, id, r[1]);
+        if (!fixed and f == c.run_frame and c.run_first and r[1] >= c.run_lo and r[1] < c.run_hi) try c.summarize(n.el, id, r[1]);
         const href = f.dom.attr(n.el, "href") orelse return;
         if (!allowedUri(href)) return;
         try c.add(e, r, href, id, n.el);
@@ -215,7 +240,7 @@ pub const Collector = struct {
         const id = f.dom.at(el).id;
         if (id.len > 0) {
             const gop = try c.anchors.getOrPut(c.a, id);
-            if (!gop.found_existing) gop.value_ptr.* = .{ .top = top, .node = node, .el = el };
+            if (!gop.found_existing) gop.value_ptr.* = .{ .top = top, .node = node, .el = el, .frame = c.run_frame, .run = c.run };
         }
         // the nearest heading at or above the element
         var cur = el;
@@ -223,7 +248,7 @@ pub const Collector = struct {
             const lvl = headingLevel(f.dom.at(cur).tag) orelse continue;
             if ((try c.heading_els.getOrPut(c.a, cur)).found_existing) return;
             const t = try textContent(c.a, f, cur);
-            if (t.len > 0) try c.headings.append(c.a, .{ .level = lvl, .text = t, .top = top, .el = cur, .node = if (cur == el) node else nodeOf(f, cur) });
+            if (t.len > 0) try c.headings.append(c.a, .{ .level = lvl, .text = t, .top = top, .el = cur, .node = if (cur == el) node else nodeOf(f, cur), .frame = c.run_frame, .run = c.run });
             return;
         }
     }
@@ -408,16 +433,17 @@ const Place = struct {
 
     /// takumi `Destinations::destination` / `SinglePage::destination`: null when the page holding
     /// `top` is dropped by `pageRanges`.
-    fn destination(p: Place, top: f32) ?Dest {
+    fn destination(p: Place, frame: ?*const Frame, top: f32) ?Dest {
+        const f = frame orelse p.f;
         if (p.pages.len == 0) return null;
         var k: usize = 0;
         var y: f32 = undefined;
         var x: f32 = 0;
-        const paged = p.f.paginated();
+        const paged = f.paginated();
         if (paged != null and p.windows.len > 0 and p.windows[0].paged() and paged.?.pages.len > 0) {
             const pg = paged.?.pages[paged.?.pageAt(top)];
             k = for (p.windows, 0..) |win, i| {
-                if (win.top == pg.top) break i;
+                if (win.top == pg.top and (p.pages[i].frame orelse p.f) == f) break i;
             } else return null;
             const pb = p.pages[k];
             x = pb.content.x;
@@ -441,7 +467,7 @@ fn take(a: Allocator, hs: []const Heading, idx: *usize, level: u8, place: Place)
         if (h.level < level) break;
         idx.* += 1;
         const children = try take(a, hs, idx, h.level + 1, place);
-        if (place.destination(h.top)) |d0| {
+        if (place.destination(h.frame, h.top)) |d0| {
             var d = d0;
             if (place.structural) d.node = h.node;
             try nodes.append(a, .{ .text = h.text, .dest = d, .children = children });
@@ -499,7 +525,7 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
         const hs = try a.dupe(Heading, c.headings.items);
         std.mem.sort(Heading, hs, {}, struct {
             fn lt(_: void, x: Heading, y: Heading) bool {
-                return x.top < y.top;
+                return if (x.run != y.run) x.run < y.run else x.top < y.top;
             }
         }.lt);
         var idx: usize = 0;
@@ -530,7 +556,7 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
                 if (lk.uri[0] == '#') {
                     const id = try counters.percentDecode(a, lk.uri[1..]);
                     const an = c.anchor(id) orelse continue;
-                    var d = place.destination(an.top) orelse continue;
+                    var d = place.destination(an.frame, an.top) orelse continue;
                     if (place.structural) d.node = an.node;
                     dref = try dests.register(a, doc, d);
                 }

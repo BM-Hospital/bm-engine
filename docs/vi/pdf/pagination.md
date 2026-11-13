@@ -2,7 +2,7 @@
 
 [English](../../en/pdf/pagination.md) · [Tiếng Việt](pagination.md)
 
-PDF nhiều trang dàn tài liệu một lần ở chiều rộng của vùng trang rồi cắt thành các trang theo quy tắc ngắt của
+PDF nhiều trang dàn tài liệu ở chiều rộng của vùng trang rồi cắt thành các trang theo quy tắc ngắt của
 Chromium (takumi-core port cách phân mảnh khối của Blink, và bm-engine port takumi-core). Trang này trình bày
 nội dung chảy từ trang này sang trang khác ra sao, cách ép và cấm ngắt trang bằng CSS, Tailwind hoặc cây node,
 cách bảng lặp lại phần đầu và phần cuối, `@page` đặt được những gì, và cách chỉ giữ một số trang. Nó cần [profile
@@ -187,22 +187,27 @@ const viaOption = await pdf.render(`<div style="font-family: Inter">${lines}</di
 
 Được hỗ trợ:
 
-- `@page`, `@page :first`, `@page :left` và `@page :right`, ở cấp cao nhất của stylesheet. Trang đầu tính là trang
-  phải (trang trái khi phần tử gốc có `direction: rtl`). Các quy tắc xếp tầng theo loại trang như ở Blink: tên trang
-  hơn `:first` hơn `:left` / `:right` hơn không có, rồi đến thứ tự trong nguồn.
+- `@page`, `@page :first`, `@page :left` và `@page :right`, ở cấp cao nhất của stylesheet hoặc bên trong `@media`
+  (môi trường in, cỡ bằng trang của tùy chọn), `@supports` và `@layer`. Trang đầu tính là trang phải (trang trái
+  khi phần tử gốc có `direction: rtl`). Các quy tắc xếp tầng theo loại trang như ở Blink: `!important` trước, rồi
+  đến cascade layer, rồi tên trang hơn `:first` hơn `:left` / `:right` hơn không có, rồi đến thứ tự trong nguồn.
 - **Trang có tên**: thuộc tính `page` (`auto` hoặc một định danh tùy ý; không được kế thừa), `@page tên { ... }`
   và `@page tên:first` (cả `:left` / `:right`). Khi tên trang đang dùng đổi giữa các phần tử block anh em, trang
   bị ngắt, và mỗi trang lấy `size`, lề và chiều cao vùng trang của tên đó (xem [Trang có tên](#trang-có-tên)).
 - `size`: `auto`, một tên trong danh sách ở [Đầu ra PDF](page-size-and-viewport.md#khổ-giấy-hướng-trang-và-lề) có thể kèm `portrait`
   hoặc `landscape`, chỉ hướng trang, hoặc một hay hai độ dài.
-- `margin` (một đến bốn giá trị) và `margin-top`, `margin-right`, `margin-bottom`, `margin-left`. Độ dài theo
-  `px`, `mm`, `cm`, `in`, `pt`, `pc`, `q`, và `em` / `rem` (theo cỡ chữ của phần tử gốc); `var()` của custom
-  property của phần tử gốc; phần trăm của kích thước trang theo trục của phía đó; `auto` là 0.
+- `margin` (một đến bốn giá trị) và `margin-top`, `margin-right`, `margin-bottom`, `margin-left`. Độ dài theo mọi
+  đơn vị CSS: `px`, `mm`, `cm`, `in`, `pt`, `pc`, `q`, đơn vị viewport (theo trang của tùy chọn), `em` / `ex` /
+  `ch` (theo font của phần tử gốc) và `rem`; `calc()`, `min()`, `max()` và `clamp()`; `var()` của custom
+  property của phần tử gốc (một `var()` không phân giải được sẽ đặt lại descriptor: `size: auto`, lề bằng 0);
+  phần trăm của kích thước trang theo trục của phía đó; `auto` là 0. Một khai báo không hợp lệ chỉ bị bỏ riêng nó.
 
-Trang có lề không để lại vùng trang nào thì giữ hình học của các tùy chọn.
+Phần tử gốc, dùng cho `em`, `var()` và `direction`, là `<body>` của một tài liệu HTML đầy đủ (`rem` đọc phần tử
+`<html>`); custom property của một đoạn HTML có nhiều phần tử ở cấp cao nhất thì không được đọc. Trang có lề
+không để lại vùng trang nào thì giữ hình học của các tùy chọn.
 
-Không được hỗ trợ: `@page` bên trong `@media`, `@layer` hoặc `@supports`, đơn vị viewport trong mô tả trang,
-đối tượng quy tắc trong `css`, và các hộp lề trang như `@top-center` (takumi cũng không vẽ chúng).
+Không được hỗ trợ: đối tượng quy tắc trong `css`. Các hộp lề trang như `@top-center` bị bỏ qua (takumi cũng không
+vẽ chúng); các descriptor quanh chúng vẫn có hiệu lực.
 
 ### Trang có tên
 
@@ -226,18 +231,15 @@ const named = await pdf.render(
 // the used page name changes twice, so there is a break before and after the annex
 ```
 
-Nội dung chỉ được dàn một lần, ở chiều rộng vùng trang của các trang không tên. Điều đó quyết định việc đổi
-chiều rộng làm gì:
+Mỗi trang dàn nội dung của nó ở chiều rộng vùng trang của chính nó, giống takumi. Trang có tên với chiều rộng
+khác sẽ dàn lại phần nội dung nó chứa, và trang có quy tắc `:first`, `:left` hoặc `:right` làm đổi chiều rộng cũng
+vậy: khi một đoạn văn bị ngắt ngay chỗ đổi chiều rộng, các dòng sau chỗ ngắt xuống dòng theo chiều rộng mới. Bảng,
+flex và grid tiếp tục sang một trang khác chiều rộng cũng được dàn lại ở chiều rộng đó.
 
-- **Trang có tên với chiều rộng khác** nhận khổ trang riêng, nhưng nội dung không được dàn lại: nó giữ chiều rộng
-  lúc dàn và bắt đầu từ lề trái của trang có tên. Chiều cao và lề khác nhau theo tên thì hoạt động đầy đủ (mỗi
-  tên có chiều cao vùng trang riêng).
-- **Quy tắc `:first`, `:left` và `:right` làm đổi chiều rộng vùng trang** bị bỏ. Khi quy tắc `:left` và `:right`
-  cho trang trái và phải các chiều rộng khác nhau, chúng bị bỏ qua toàn bộ; khi trang đầu vẫn khác thì các quy tắc
-  `:first` của nó bị bỏ qua. Việc này được quyết định trên các trang không tên và áp dụng cả cho các quy tắc
-  `:first` / `:left` / `:right` riêng của trang có tên.
-
-Nội dung cần dàn lại cho chiều rộng trang khác thì phải render riêng.
+Khi mọi trang cùng chiều rộng, tài liệu chỉ được dàn một lần. Nếu không, mỗi loạt trang cùng chiều rộng được dàn
+tiếp từ chỗ loạt trước dừng lại, nên một tài liệu đổi chiều rộng thường xuyên (trang `:left` và `:right` khác
+chiều rộng) tốn khoảng một lần dàn phần còn lại của tài liệu cho mỗi lần đổi. Một trang bắt đầu giữa chừng nội
+dung xếp cạnh nhau (một hàng bảng hoặc một dòng flex bị ngắt ngay chỗ đổi) giữ chiều rộng của trang trước nó.
 
 ## Giữ lại một số trang
 
@@ -276,8 +278,8 @@ kéo theo:
 - Hộp có `height` xác định giữ nguyên nó kể cả khi nội dung bị đẩy qua trang; các hộp khác lớn thêm đúng phần mà
   một chỗ ngắt đã đẩy xuống.
 - Dòng chữ không chảy lại quanh float đã chuyển sang trang khác.
-- Nội dung được dàn ở một chiều rộng, chiều rộng vùng trang của các trang không tên. Trang có tên có thể có khổ khác,
-  nhưng nội dung không được dàn lại (xem [Trang có tên](#trang-có-tên)).
+- Một trang bắt đầu giữa một hàng bảng hoặc một dòng flex giữ chiều rộng của trang trước nó khi chiều rộng của
+  chính nó khác (xem [Trang có tên](#trang-có-tên)).
 - Nền hoặc viền của hộp trải qua mép trang bị trang cắt. Với `box-decoration-break: slice` (mặc định) các cạnh bị cắt
   mất viền, padding và bo góc; với `clone` mỗi mảnh giữ viền, padding và bo góc. Các phần của bảng (hàng, ô, nhóm)
   không được cắt lát đặc biệt ở mép trang.

@@ -1951,3 +1951,70 @@ test "fragment: a box flagged monolithic moves whole; a cell spanning rows does 
         try d.expect(rows[3], &.{placed(1, 70, 70)});
     }
 }
+
+/// Paginates `root` (laid out 300 wide) continuing from `start` (`Options.start` / `start_top`),
+/// recording where each page starts.
+fn runFrom(d: *Doc, root: Id, page_h: f32, start: F.Start, start_top: ?f32) !void {
+    try d.t.compute(root, .{ .{ .definite = 300 }, .{ .definite = page_h } }, d, Doc.measure, .{});
+    d.pages = try F.paginate(&d.t, d.arena.allocator(), root, .{ .page_height = page_h, .lines_fn = Doc.linesFn, .ctx = d, .start = start, .start_top = start_top, .record_starts = true });
+}
+
+test "fragment: each page records where its content starts" {
+    if (!F.enabled) return error.SkipZigTest;
+    var d: Doc = undefined;
+    d.init();
+    defer d.deinit();
+    const root = d.add(null, .{});
+    const a = d.add(root, .{ .h = 100 });
+    const p = d.text(root, 10, .{});
+    const b = d.add(root, .{ .h = 100, .before = .page });
+    _ = a;
+    d.t.compute(root, .{ .{ .definite = 300 }, .{ .definite = 250 } }, &d, Doc.measure, .{}) catch unreachable;
+    d.pages = try F.paginate(&d.t, d.arena.allocator(), root, .{ .page_height = 250, .lines_fn = Doc.linesFn, .ctx = &d, .record_starts = true });
+    try d.expectPages(3);
+    // page 1 continues the paragraph at its line 7 (100 + 7 * 20 = 240 <= 250), page 2 starts with
+    // `b` after a forced break
+    try testing.expectEqual(L.tree.no_node, d.pages.starts[0].node);
+    try testing.expectEqual(p, d.pages.starts[1].node);
+    try testing.expectEqual(@as(u32, 7), d.pages.starts[1].line);
+    try testing.expectEqual(b, d.pages.starts[2].node);
+    try testing.expect(d.pages.starts[2].forced);
+}
+
+test "fragment: a pagination that continues from a box or a line starts its page 1 there" {
+    if (!F.enabled) return error.SkipZigTest;
+    // before a box: page 0 holds what comes before it (a forced break later in it does not break
+    // it), page 1 starts with the box, at `start_top`
+    {
+        var d: Doc = undefined;
+        d.init();
+        defer d.deinit();
+        const root = d.add(null, .{});
+        const a = d.add(root, .{ .h = 100 });
+        const b = d.add(root, .{ .h = 100, .before = .page });
+        const c = d.add(root, .{ .h = 100, .mt = 10 });
+        try runFrom(&d, root, 150, .{ .node = c }, 500);
+        try testing.expectEqual(@as(u32, 1), d.pages.start_page);
+        try testing.expectEqual(@as(f32, 500), d.pages.pages[1].top);
+        try d.expect(a, &.{placed(0, 0, 100)});
+        try d.expect(b, &.{placed(0, 100, 100)});
+        // (the margin of an unforced start is truncated)
+        try d.expect(c, &.{placed(1, 0, 100)});
+        try testing.expectEqual(c, d.pages.starts[1].node);
+    }
+    // before a line: the lines before it stay on page 0
+    {
+        var d: Doc = undefined;
+        d.init();
+        defer d.deinit();
+        const root = d.add(null, .{});
+        const p = d.text(root, 10, .{});
+        try runFrom(&d, root, 100, .{ .node = p, .line = 3 }, null);
+        try testing.expectEqual(@as(u32, 1), d.pages.start_page);
+        try testing.expectEqual(@as(f32, 60), d.pages.pages[1].top);
+        try testing.expectEqual(p, d.pages.starts[1].node);
+        try testing.expectEqual(@as(u32, 3), d.pages.starts[1].line);
+        // lines 3..7 on page 1 (5 lines of 20 in 100), the rest on page 2
+        try testing.expectEqual(@as(u32, 8), d.pages.starts[2].line);
+    }
+}

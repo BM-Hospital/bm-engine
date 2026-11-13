@@ -2,7 +2,7 @@
 
 [English](pagination.md) · [Tiếng Việt](../../vi/pdf/pagination.md)
 
-A paged PDF lays the document out once at the width of the page area and then cuts it into pages with
+A paged PDF lays the document out at the width of the page area and then cuts it into pages with
 the break rules of Chromium (takumi-core ports Blink's block fragmentation, and bm-engine ports
 takumi-core's). This page shows how content flows from page to page, how to force and forbid breaks
 with CSS, Tailwind or a node tree, how tables repeat their header and footer, what `@page` can set, and
@@ -193,10 +193,11 @@ const viaOption = await pdf.render(`<div style="font-family: Inter">${lines}</di
 
 Supported:
 
-- `@page`, `@page :first`, `@page :left` and `@page :right`, at the top level of the stylesheet. The
-  first page counts as a right page (a left one when the root element has `direction: rtl`). The rules
-  cascade per page kind as in Blink: a page name over `:first` over `:left` / `:right` over none, then source
-  order.
+- `@page`, `@page :first`, `@page :left` and `@page :right`, at the top level of the stylesheet or inside
+  `@media` (print media the size of the options' page), `@supports` and `@layer`. The first page counts as a
+  right page (a left one when the root element has `direction: rtl`). The rules cascade per page kind as in
+  Blink: `!important` first, then the cascade layer, then a page name over `:first` over `:left` / `:right`
+  over none, then source order.
 - **Named pages**: the `page` property (`auto` or a custom identifier; it is not inherited), `@page name { ... }`
   and `@page name:first` (also `:left` / `:right`). When the used page name changes between block siblings the
   page breaks, and each page takes the `size`, margins and page-area height of its name (see
@@ -204,14 +205,18 @@ Supported:
 - `size`: `auto`, a name from the list in [PDF output](page-size-and-viewport.md#page-size-orientation-and-margins)
   optionally with `portrait` or `landscape`, an orientation alone, or one or two lengths.
 - `margin` (one to four values) and `margin-top`, `margin-right`, `margin-bottom`, `margin-left`. Lengths
-  in `px`, `mm`, `cm`, `in`, `pt`, `pc`, `q`, and `em` / `rem` (of the root element's font size);
-  `var()` of the root element's custom properties; percentages of the page size on that side's axis;
-  `auto` is 0.
+  in any CSS unit: `px`, `mm`, `cm`, `in`, `pt`, `pc`, `q`, viewport units (of the options' page), `em` /
+  `ex` / `ch` (of the root element's font) and `rem`; `calc()`, `min()`, `max()` and `clamp()`; `var()` of
+  the root element's custom properties (a `var()` that does not resolve resets the descriptor: `size: auto`,
+  a margin of 0); percentages of the page size on that side's axis; `auto` is 0. An invalid declaration is
+  dropped on its own.
 
+The root element, for `em`, `var()` and `direction`, is the `<body>` of a whole HTML document (`rem` reads
+the `<html>` element); the custom properties of a fragment with several top-level elements are not read.
 A page whose margins leave no page area keeps the geometry of the options.
 
-Not supported: `@page` inside `@media`, `@layer` or `@supports`, viewport units in page descriptors, rule
-objects in `css`, and the page-margin boxes such as `@top-center` (takumi does not draw them either).
+Not supported: rule objects in `css`. Page-margin boxes such as `@top-center` are skipped (takumi does not
+draw them either); the descriptors around them still apply.
 
 ### Named pages
 
@@ -235,18 +240,16 @@ const named = await pdf.render(
 // the used page name changes twice, so there is a break before and after the annex
 ```
 
-The content is laid out once, at the page-area width of the unnamed pages. That decides what a width
-change does:
+Each page lays its content out at its own page-area width, as takumi does. A named page of another width
+re-flows the content it holds, and so does a page whose `:first`, `:left` or `:right` rule changes the
+width: when a paragraph breaks across the change, its lines after the break wrap at the new width. Tables,
+flex and grid containers that continue on a page of another width are laid out again at that width.
 
-- **A named page of a different width** gets its own page size, but the content is not re-flowed: it keeps
-  the width it was laid out at and starts at the named page's left margin. Heights and margins that differ per
-  name work fully (each name has its own page-area height).
-- **`:first`, `:left` and `:right` rules that change the page-area width** are dropped. When the `:left` and
-  `:right` rules give left and right pages different widths, they are ignored as a whole; when the first page
-  then still differs, its `:first` rules are ignored. This is decided on the unnamed pages and applies to the
-  named pages' own `:first` / `:left` / `:right` rules too.
-
-Content that has to re-flow for another page width needs a separate render.
+When every page has the same width, the document is laid out once. Otherwise each run of pages of one width
+is laid out from where the run before it stopped, so a document whose width changes often (`:left` and
+`:right` pages of different widths) costs about one layout of the rest of the document per change. A page
+that starts in the middle of side-by-side content (a table row or a flex line broken across the change)
+keeps the width of the page before it.
 
 ## Keeping some pages
 
@@ -286,8 +289,8 @@ That has consequences:
 - A box with a definite `height` keeps it even when its content is pushed across a page; other boxes grow by
   what a break pushed down.
 - Lines do not re-flow around a float that moved to another page.
-- Content is laid out at one width, the unnamed pages' page-area width. A named page can have another size,
-  but its content is not re-flowed (see [Named pages](#named-pages)).
+- A page that starts in the middle of a table row or a flex line keeps the width of the page before it when
+  its own width differs (see [Named pages](#named-pages)).
 - A background or border of a box that spans a page edge is cut by the page. With `box-decoration-break: slice`
   (the default) the cut edges lose their border, padding and corner radii; with `clone` every fragment keeps its
   border, padding and radii. Table parts (rows, cells, groups) are not sliced specially at page edges.

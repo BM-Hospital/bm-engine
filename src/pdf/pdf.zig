@@ -90,7 +90,7 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
     const blobs = try a.alloc(opt.Blob, r.images.items.len);
     for (r.images.items, 0..) |e, i| blobs[i] = .{ .id = e.src, .data = e.data };
     var diag: opt.Diag = .{};
-    const o = opt.parse(a, opts_json, blobs, &diag) catch |e| switch (e) {
+    var o = opt.parse(a, opts_json, blobs, &diag) catch |e| switch (e) {
         error.OutOfMemory => return error.OutOfMemory,
         error.Invalid => {
             r.setErr(diag.message(), "");
@@ -98,14 +98,30 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
         },
     };
     if (o.background_color) |c| {
-        // (takumi-pdf-js `page_background`: only `ColorInput::Value` is a colour, `currentColor` is not)
-        const parsed = style.color.parse(c) catch null;
+        // (takumi-pdf-js `page_background`: only `ColorInput::Value` is a colour, `currentColor` is
+        // not; the colour is the value's first component, what follows it is not read)
+        const first = firstComponent(c);
+        const parsed = style.color.parse(first) catch null;
+        o.background_color = first;
         if (parsed == null or parsed.? == .current) {
             r.setErr("backgroundColor is not a color: ", c);
             return error.Invalid;
         }
     }
     return o;
+}
+
+/// The first component value of `s` (a token, or a function with its arguments), trimmed.
+fn firstComponent(s_in: []const u8) []const u8 {
+    const s = std.mem.trim(u8, s_in, " \t\r\n\x0c");
+    var depth: usize = 0;
+    for (s, 0..) |c, i| switch (c) {
+        '(' => depth += 1,
+        ')' => depth -|= 1,
+        ' ', '\t', '\r', '\n', '\x0c' => if (depth == 0) return s[0..i],
+        else => {},
+    };
+    return s;
 }
 
 const Mode = enum {

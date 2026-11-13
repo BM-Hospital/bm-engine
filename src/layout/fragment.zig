@@ -34,7 +34,11 @@
 //!  * lines do not re-flow beside a float that moved to another page; percentages and stretching never saw
 //!    a page size; a box with a definite `height` keeps it (its content overflows, as in Blink), any other
 //!    box grows by what a break pushed down;
-//!  * the page inline size cannot change from page to page (block sizes can: `Options.page_height_fn`);
+//!  * the page inline size cannot change within one pagination (block sizes can: `Options.page_height_fn`);
+//!    pages of another width are a new layout at that width, paginated from where the content continues
+//!    (`Options.start`: page 0 then holds what earlier pages showed and ends exactly at the start, page 1
+//!    starts with it at `Options.start_top`; `Pages.starts` says where each page's content starts; the
+//!    caller, src/pdf/paged.zig, chains the layouts);
 //!  * `box-decoration-break: clone` is only carried in `Breaks` (the boxes are sliced, not grown by the
 //!    cloned decorations); a cell that spans rows is not fragmented; anonymous table rows / cells keep
 //!    their `TableGeom`; `position: relative` offsets take part in the break positions.
@@ -64,14 +68,29 @@ pub const PageHeightFn = *const fn (ctx: *anyopaque, page: u32, name: u32) f32;
 pub const Options = struct {
     /// block size of the page area (inside the page margins) of every page
     page_height: f32,
-    /// per-page block sizes (named pages / `@page`); overrides `page_height`. The inline size cannot vary:
-    /// the tree is laid out once.
+    /// per-page block sizes (named pages / `@page`); overrides `page_height`. The inline size cannot vary
+    /// within one pagination (see `start`).
     page_height_fn: ?PageHeightFn = null,
     lines_fn: ?LinesFn = null,
     ctx: *anyopaque = undefined,
     /// `error.TooManyPages` beyond this (takumi-pdf's MAX_PAGES)
     max_pages: u32 = 20_000,
+    /// Content continued from a page of another width (src/pdf/paged.zig): page 0 holds everything
+    /// before `start` and ends exactly there (it is not asked of `page_height_fn`), page 1 starts
+    /// with it. Null: page 0 starts the content.
+    start: ?Start = null,
+    /// With `start`: the block offset page 1 starts at (the break before the start moves it there;
+    /// the content moves up when it would reach past it). Null: where the start is.
+    start_top: ?f32 = null,
+    /// Fill `Pages.starts`.
+    record_starts: bool = false,
 };
+
+/// Where a page's content starts in the main flow: before the in-flow box `node` (a forced break
+/// keeps its block-start margin), or before line `line` of the text node `node`. `node == no_node`:
+/// not one point (parallel flows broken inside, a box broken in its block-end space, the first
+/// page, the pages below the end of the flow).
+pub const Start = struct { node: u32 = no_node, line: u32 = no_node, forced: bool = false };
 
 pub const Page = struct { top: f32, height: f32 };
 /// Lines `first_line..` of `node` (up to the next entry of the same node) are painted `dy` lower.
@@ -89,10 +108,15 @@ pub const Pages = struct {
     line_shifts: []LineShift = &.{},
     /// sorted by page
     repeats: []Repeat = &.{},
+    /// where each page's content starts (`Options.record_starts`; else empty)
+    starts: []Start = &.{},
+    /// 1 when page 0 holds the content before `Options.start` (it was found), else 0
+    start_page: u32 = 0,
 
     pub fn deinit(p: *Pages, a: Allocator) void {
         a.free(p.pages);
         a.free(p.names);
+        a.free(p.starts);
         a.free(p.line_shifts);
         a.free(p.repeats);
         p.* = .{};
@@ -177,6 +201,11 @@ pub const PagedState = struct {
     /// empty when no element names a page) and the names (id `k` is `page_names[k - 1]`).
     page_of: []const u32 = &.{},
     page_names: []const []const u8 = &.{},
+    /// A paragraph continued on a page of another width (src/pdf/paged.zig): render node
+    /// `cut_node`'s paragraph ends a line right before its shaped glyph `cut_glyph`
+    /// (`font.Paragraph.cut`); `no_node`: none.
+    cut_node: u32 = no_node,
+    cut_glyph: u32 = 0,
 };
 
 /// Paginates the subtree of `root` (laid out by `t.compute`, normally with a definite available width =
@@ -241,6 +270,8 @@ const Slot = struct {
     forced: bool = false,
     /// the node itself ends on the page: its break continues in a parallel flow
     par: bool = false,
+    /// the break `Options.start` asks for after an unforced one: the margin after it is truncated
+    trunc: bool = false,
 };
 const State = struct {
     /// item index of the band to resume at (containers) / line index (text)
@@ -262,6 +293,8 @@ const State = struct {
     /// block start a forced break moves this float / static-position box to (while `pushed`)
     push_y: f32 = 0,
     pushed: bool = false,
+    /// broke in its block-end space (`Kind.span`): the next page resumes inside no content of it
+    spanned: bool = false,
 };
 const Item = struct {
     node: u32,
@@ -347,8 +380,16 @@ fn Engine(comptime T: type) type {
         stamp: u32 = 0,
         page: u32 = 0,
         page_h: f32 = 0,
+        /// `Options.start`: its block offset (the height of page 0), null: none
+        start_h: ?f32 = null,
+        /// how far `Options.start_top` moved the content (up)
+        shift: f32 = 0,
+        /// `Pages.starts`, one per page of `tops`; the main flow has been laid out
+        starts: std.ArrayList(Start) = .empty,
+        main_done: bool = false,
 
         fn deinit(e: *Self) void {
+            e.starts.deinit(e.a);
             for (e.seqs.items) |s| e.a.free(s.items);
             e.seqs.deinit(e.a);
             e.dirty.deinit(e.a);
@@ -375,6 +416,8 @@ fn Engine(comptime T: type) type {
         fn pageHeight(e: *Self, page: u32) Error!f32 {
             const name = if (!e.any_names) 0 else if (page == 0) e.startName(e.t.root, 0) else e.resumeName();
             try e.names.append(e.a, name);
+            if (e.opts.record_starts) try e.starts.append(e.a, if (page == 0 or e.main_done) .{} else e.startToken());
+            if (page == 0) if (e.start_h) |h0| return h0;
             const h = if (e.opts.page_height_fn) |f| f(e.opts.ctx, page, name) else e.opts.page_height;
             if (!(h >= 1) or !(h < 16_777_216)) return error.InvalidPageSize;
             return h;
@@ -396,7 +439,8 @@ fn Engine(comptime T: type) type {
             // takumi `BlockFragmentation::fragmentainer_block_size`: the content breaks at the page
             // area truncated to the LayoutUnit grid (`LayoutUnit::from_float`, 1/64 px), the pages
             // stack at their exact size (`PageSizes::top`)
-            const h = @floor((en - s) * 64) / 64;
+            // (page 0 of `Options.start` ends exactly at the start)
+            const h = if (page == 0 and e.start_h != null) en - s else @floor((en - s) * 64) / 64;
             e.page_h = h;
             return .{ .start = s, .end = s + h, .next = en };
         }
@@ -534,6 +578,45 @@ fn Engine(comptime T: type) type {
                 cur = c;
             }
             return name;
+        }
+
+        /// Where the page that opens now starts (`Start`), down the chain of boxes broken inside, as
+        /// `resumeName` walks it.
+        fn startToken(e: *Self) Start {
+            var cur = e.t.root;
+            var guard: u32 = 0;
+            while (guard < tr.max_depth + 8) : (guard += 1) {
+                const st = &e.st[cur];
+                if (!st.started or st.spanned) return .{};
+                const k = e.kindOf(cur);
+                if (k == .text) return .{ .node = cur, .line = st.@"resume" };
+                if (st.seq == no_node) return .{};
+                const sq = &e.seqs.items[st.seq];
+                if (st.@"resume" >= sq.items.len) return .{};
+                const c = sq.items[st.@"resume"].node;
+                if (!sq.items[st.@"resume"].flow) return .{};
+                if (!st.child_inside) return .{ .node = c, .forced = st.forced_resume };
+                // (parallel flows broken inside resume at more than one point)
+                if ((k == .row or k == .bands) and bandEnd(sq, st.@"resume") != st.@"resume" + 1) return .{};
+                cur = c;
+            }
+            return .{};
+        }
+        /// Whether `Options.start` asks for a break before the box `c` here (page 0).
+        inline fn startsAt(e: *const Self, c: u32) bool {
+            const s = e.opts.start orelse return false;
+            return e.start_h != null and e.page == 0 and s.line == no_node and s.node == c;
+        }
+        /// The block offset `Options.start` names (null: no point to break at).
+        fn startY(e: *Self, s: Start) ?f32 {
+            if (s.node >= e.t.nodes.items.len) return null;
+            const top = e.absTopOf(s.node);
+            if (s.line != no_node) {
+                const lines = e.linesOf(s.node);
+                if (s.line == 0 or s.line >= lines.len) return null;
+                return top + lines[s.line].top;
+            }
+            return top - (if (s.forced) @max(e.lay(s.node).margin.top, 0) else 0);
         }
 
         fn seqOf(e: *Self, n: u32, k: K) Error!u32 {
@@ -772,7 +855,7 @@ fn Engine(comptime T: type) type {
             var prev_after: BB = .auto;
             var first_bb: ?BB = null;
             // (named pages: the used page name here, and the end page value of the sibling before)
-            const names_here = e.any_names and k == .block;
+            const names_here = e.any_names and (k == .block or k == .bands or k == .group or k == .table);
             const used_here: u32 = if (names_here) e.usedNameUp(n) else 0;
             var prev_name: ?u32 = null;
             var flow_end: f32 = top + l.border.top + l.padding.top;
@@ -786,12 +869,18 @@ fn Engine(comptime T: type) type {
                 if (!it0.flow) {
                     // a float / out-of-flow box after a forced break value goes to the next page on its
                     // own (a parallel flow: this box goes on, and the value still applies to what follows)
-                    if (prev_after == .page) try e.push(it0.node, pg_in.next);
+                    if (prev_after == .page and !(e.start_h != null and e.page == 0)) try e.push(it0.node, pg_in.next);
                     i = j;
                     continue;
                 }
                 const resumed = stt.started and i == stt.@"resume";
                 const resumed_band = resumed and stt.child_inside;
+                if (!resumed and e.startsAt(it0.node)) {
+                    // (`Options.start`: page 0 ends right before this box)
+                    const r = try e.setBreak(n, .before, i, true, .perfect, known_fit, bottom0, pg.end);
+                    e.slot[n].trunc = !e.opts.start.?.forced;
+                    return r;
+                }
                 const band_top = e.bandTop(sq, i, j, top);
                 // pushed below monolithic content of an earlier page: as if after a perfect breakpoint
                 if (resumed and !stt.child_inside and !stt.forced_resume and band_top > pg.start + eps) opp = true;
@@ -818,6 +907,9 @@ fn Engine(comptime T: type) type {
                             between = .page;
                         };
                     }
+                    // (page 0 of `Options.start` holds what pages laid out before showed: it breaks
+                    // nowhere but at the start)
+                    if (e.start_h != null and e.page == 0 and between == .page) between = .auto;
                     if (first_bb == null) {
                         first_bb = child_first;
                         first_out.* = child_first;
@@ -986,8 +1078,11 @@ fn Engine(comptime T: type) type {
             var brk_line: u32 = no_node;
             var brk_appeal: Appeal = .perfect;
             var last_bottom: f32 = top + l.border.top + l.padding.top;
+            // (`Options.start`: page 0 ends right before one of these lines)
+            const cut_line: u32 = if (e.opts.start) |s| (if (e.start_h != null and e.page == 0 and s.node == n and s.line != no_node) s.line else no_node) else no_node;
             var i = start;
             while (i < lines.len) : (i += 1) {
+                if (i == cut_line and i > start) return try e.setBreak(n, .line, i, true, .perfect, false, bottom, pg.end);
                 const lt = top + lines[i].top + shift;
                 const lb = top + lines[i].bottom + shift;
                 const empty = !(lb - lt > 0);
@@ -1106,6 +1201,7 @@ fn Engine(comptime T: type) type {
                 .none, .push => return 0,
                 .span => {
                     stt.started = true;
+                    stt.spanned = true;
                     if (stt.seq != no_node) _ = e.prevReach(&e.seqs.items[stt.seq], @intCast(e.seqs.items[stt.seq].items.len), top, true);
                     if (sl.arg == 0) return 0;
                     // the block-end padding and border start the next page
@@ -1165,7 +1261,7 @@ fn Engine(comptime T: type) type {
                 const ns = e.style(n);
                 if (k == .bands and ns.display == .flex and (ns.flex_direction == .column or ns.flex_direction == .column_reverse)) gap = 0;
                 var target = @max(@max(next, reach), band_top - gap);
-                if (sl.forced and sq.items[i].flow) {
+                if (sl.forced and !sl.trunc and sq.items[i].flow) {
                     // (a flex container keeps the row gap before an item resumed after a forced break:
                     // takumi / Blink's flex fragmentation offsets it from the break by its unfragmented offset)
                     var fgap: f32 = 0;
@@ -1175,7 +1271,7 @@ fn Engine(comptime T: type) type {
                 d = target - band_top;
                 try e.lazyShift(sq_i, i, d);
                 stt.child_inside = false;
-                stt.forced_resume = sl.forced;
+                stt.forced_resume = sl.forced and !sl.trunc;
             } else {
                 if (j == i + 1) {
                     const sq = &e.seqs.items[sq_i];
@@ -1372,11 +1468,22 @@ fn Engine(comptime T: type) type {
             for (ns) |*nd| {
                 if (nd.style.breaks.page != 0) e.any_names = true;
             }
+            if (e.opts.start) |s| if (e.startY(s)) |y| {
+                const h = e.opts.start_top orelse y;
+                if (h >= 1 and h < 16_777_216) {
+                    e.start_h = h;
+                    // (the content before the start stays where it is unless it reaches past
+                    // page 0, the break moves the start to page 1)
+                    e.shift = @min(h - y, 0);
+                    e.lay(root).y += e.shift;
+                }
+            };
             try e.tops.append(e.a, 0);
             try e.need(0);
 
             // 1. the main flow, 2. the flows it left behind, 3. floats and out-of-flow boxes (document order)
             try e.runFlow(root);
+            e.main_done = true;
             var qi: [2]usize = .{ 0, 0 };
             try e.drain(&qi);
             if (ns[root].first_child != no_node and !ns[root].measured and ns[root].style.display != .none) {
@@ -1392,6 +1499,8 @@ fn Engine(comptime T: type) type {
                     if (s.display != .none) {
                         if (s.position == .fixed) {
                             try e.fixed.append(e.a, cur);
+                            // (laid out against the first page: not moved by `Options.start_top`)
+                            e.lay(cur).y -= e.shift;
                             descend = false;
                         } else if (is_abs or is_float) {
                             if (is_float) try e.pushFloat(cur);
@@ -1431,6 +1540,8 @@ fn Engine(comptime T: type) type {
             for (out.pages, 0..) |*p, i| p.* = .{ .top = e.tops.items[i], .height = e.tops.items[i + 1] - e.tops.items[i] };
             out.names = try e.a.alloc(u32, count);
             for (out.names, 0..) |*nm, i| nm.* = e.names.items[i];
+            if (e.opts.record_starts) out.starts = try e.a.dupe(Start, e.starts.items[0..count]);
+            out.start_page = @intFromBool(e.start_h != null);
             std.sort.heap(LineShift, e.shifts.items, {}, shiftLess);
             out.line_shifts = try e.a.dupe(LineShift, e.shifts.items);
             var n_rep: usize = 0;

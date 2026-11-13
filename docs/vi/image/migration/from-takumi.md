@@ -109,8 +109,7 @@ cùng định dạng, nên cây dựng bằng chúng hẳn sẽ render được 
 - `prepare` và `render` không tải gì và không có `needs`: hãy truyền byte ảnh qua `images` và font qua `registerFont`
   hoặc `fonts`. bm-engine không kèm font.
 - Font đã đăng ký phải phủ mọi ký tự, nếu không render lỗi (`uncoveredText: "error"`, như ở takumi-pdf).
-- Khác biệt đã biết: PDF/A được kiểm tra nhưng chưa chứng nhận, `list-style-image` không được hỗ trợ, và nội dung chỉ
-  được dàn một lần ở một chiều rộng nên trang có tên hoặc quy tắc `@page` làm đổi chiều rộng trang không dàn lại nó
+- Khác biệt đã biết: PDF/A được kiểm tra nhưng chưa chứng nhận, và `list-style-image` không được hỗ trợ
   ([Hạn chế đã biết](../../pdf/differences-from-takumi.md#hạn-chế-đã-biết)).
 
 `takumi-paint` không có đối ứng ([So sánh Image, PDF và Paint](../../outputs-compared.md)).

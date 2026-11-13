@@ -438,16 +438,77 @@ pub fn percentDecode(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
     return out.items;
 }
 
+/// A run of pages laid out at one width (paged.zig: one frame per run of page widths, every
+/// frame of the same document with the same render nodes): document pages `first ..< first +
+/// count` are pages `local0 ..` of `frame`'s pagination.
+pub const Seg = struct { frame: *Frame, first: u32, local0: u32, count: u32 };
+
+/// The document page block offset `top` of segment `s`'s frame is on, null when that is not a page
+/// the segment shows (an earlier or a later segment shows it).
+fn segPage(segs: []const Seg, s: usize, top: f32) ?u32 {
+    const sg = segs[s];
+    const pages = sg.frame.paginated() orelse return null;
+    const k = pages.pageAt(top);
+    if (k < sg.local0) return if (s == 0) sg.first else null;
+    if (k >= sg.local0 + sg.count and s + 1 < segs.len) return null;
+    return sg.first + @min(k - sg.local0, sg.count -| 1);
+}
+
+/// `elementBoxes` over the segments: a box starts on the page of the segment that shows its top,
+/// the flow goes on after it on the page of the segment that shows its bottom.
+fn segBoxes(a: Allocator, segs: []const Seg, mask: ?[]const bool) Allocator.Error![]?BoxPages {
+    const f0 = segs[0].frame;
+    if (segs.len == 1) return elementBoxes(a, f0, f0.paginated().?, mask);
+    const out = try a.alloc(?BoxPages, f0.dom.els.items.len);
+    @memset(out, null);
+    for (segs, 0..) |sg, s| {
+        const f = sg.frame;
+        for (f.nodes.items, 0..) |n, id| {
+            if (n.el == none or n.lid == none or n.el >= out.len) continue;
+            if (mask) |m| if (id < m.len and m[id]) continue;
+            if (n.cs.display == .none) continue;
+            const top = boxTop(f, n.lid);
+            const out_of_flow = n.cs.position == .absolute or n.cs.position == .fixed;
+            const next: ?u32 = if (out_of_flow) null else segPage(segs, s, top + f.tree.layout(n.lid).h);
+            if (out[n.el]) |*b| {
+                if (next) |x| b.next = if (b.next) |y| @max(x, y) else x;
+            } else if (segPage(segs, s, top)) |p| {
+                out[n.el] = .{ .start = p, .next = next };
+            }
+        }
+    }
+    return out;
+}
+
+/// The document page the element with `id` starts on over the segments (see `anchor`).
+fn segAnchorPage(segs: []const Seg, id: []const u8, mask: ?[]const bool) ?u32 {
+    if (segs.len == 1) return if (anchor(segs[0].frame, id, mask)) |t| t.page else null;
+    for (segs, 0..) |sg, s| {
+        const f = sg.frame;
+        for (f.nodes.items, 0..) |n, k| {
+            if (n.el == none or n.lid == none or n.cs.display == .none) continue;
+            if (mask) |m| if (k < m.len and m[k]) continue;
+            if (!std.mem.eql(u8, f.dom.at(n.el).id, id)) continue;
+            if (segPage(segs, s, boxTop(f, n.lid))) |p| return p;
+            break;
+        }
+    }
+    return null;
+}
+
 /// The texts one laid-out, paginated pass gives the content's hooks (`hooks`, as that pass's
 /// `Subst` met them), by hook: page counters from where their boxes landed (takumi `FlowCounters`),
 /// target counters from the page their target starts on ("" when none), null for a page hook
 /// without a page or one in `fixed` (left to the per-page layout of its repeating fixed box).
-pub fn flowTexts(a: Allocator, f: *const Frame, hooks: []const Hook, fixed: []const bool, mask: []const bool) Allocator.Error![]?[]const u8 {
+pub fn flowTexts(a: Allocator, segs: []const Seg, hooks: []const Hook, fixed: []const bool, mask: []const bool) Allocator.Error![]?[]const u8 {
     const texts = try a.alloc(?[]const u8, hooks.len);
     @memset(texts, null);
-    const pages = f.paginated() orelse return texts;
-    const count = pages.pages.len;
-    const boxes = try elementBoxes(a, f, pages, mask);
+    if (segs.len == 0) return texts;
+    const f = segs[0].frame;
+    if (f.paginated() == null) return texts;
+    var count: usize = 0;
+    for (segs) |s| count += s.count;
+    const boxes = try segBoxes(a, segs, mask);
     const page_of = try a.alloc(?u32, f.dom.els.items.len);
     @memset(page_of, null);
     var w: FlowWalk = .{ .d = &f.dom, .boxes = boxes, .page = page_of };
@@ -462,7 +523,7 @@ pub fn flowTexts(a: Allocator, f: *const Frame, hooks: []const Hook, fixed: []co
             var text: []const u8 = "";
             if (h.href) |href| if (href.len > 1 and href[0] == '#') {
                 const id = try percentDecode(a, href[1..]);
-                if (anchor(f, id, mask)) |t| text = try h.style.format(a, t.page + 1);
+                if (segAnchorPage(segs, id, mask)) |p| text = try h.style.format(a, p + 1);
             };
             texts[k] = text;
         },

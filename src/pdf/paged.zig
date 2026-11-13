@@ -14,10 +14,19 @@
 //! Page geometry: the `size` / `margin` options with the document's `@page`, `:first`, `:left` and
 //! `:right` rules over them, and those of the named pages (page_rules.zig), per page: its kind and
 //! the name the pagination gave it (the `page` property: page_names.zig; a change of page name
-//! breaks the page, fragment.zig). The content lays out once, at the width of the first unnamed
-//! page's area; a named page whose area is wider or narrower keeps its own size and margins and
-//! shows the content from its area's left edge (takumi lays each page out at its own width).
-//! Links / outline belong to the interactive wave.
+//! breaks the page, fragment.zig).
+//!
+//! Page widths (takumi `PageStream` / `PageSizer`: each page laid out at its own page area): when
+//! every page area has the same width the content lays out once. Otherwise `laySegments` lays it
+//! out in runs of pages of one width: a frame at the first page's width shows the pages up to the
+//! first page of another width, and the content from where that page starts (`Pages.starts`: a
+//! box, or the line a paragraph broke at) is laid out again in a new frame at that width
+//! (`layout.fragment.Options.start` / `start_top`, `font.Paragraph.cut`), in the same block
+//! coordinates, and so on. The frames are one document (same element model and render nodes):
+//! counters (`counters.Seg`), links and anchors (`interactive.Collector.beginRun`), the structure
+//! tree and the emitter's neighbouring page passes (`emit.PageBox.frame` / `prev_win` / `next_win`)
+//! work across them. A page whose start is not one point (parallel flows broken inside) keeps the
+//! width of the run before it.
 const std = @import("std");
 const rt = @import("../render.zig");
 const json = @import("../json.zig");
@@ -31,6 +40,7 @@ const page_rules = @import("page_rules.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = rt.Frame;
+const Seg = counters.Seg;
 const Error = rt.Error;
 
 const counter_passes = 3;
@@ -45,10 +55,11 @@ pub const Document = struct {
     count: usize,
 };
 
-/// One layout of the content, paginated.
+/// One layout of the content, paginated: one frame, or one per run of pages of one width.
 pub const Pass = struct {
+    /// the first run's frame (every frame has the same element model and render nodes)
     frame: *Frame,
-    pages: *const layout.fragment.Pages,
+    segs: []const Seg,
     /// the counter hooks met, in document order, and the texts they were laid out with
     hooks: []const counters.Hook,
     texts: []const ?[]const u8,
@@ -59,7 +70,9 @@ pub const Pass = struct {
     fixed_hooks: []const bool,
 
     fn pageCount(p: *const Pass) usize {
-        return p.pages.pages.len;
+        var n: usize = 0;
+        for (p.segs) |s| n += s.count;
+        return n;
     }
 };
 
@@ -116,6 +129,12 @@ const Geo = struct {
         for (g.margin, o.margin) |x, y| if (!std.meta.eql(x, y)) return false;
         return true;
     }
+    /// every page area as wide as the first page's
+    fn uniformWidth(g: *const Geo) bool {
+        const w = g.areas[0][0][0];
+        for (g.areas) |e| for (e) |ar| if (ar[0] != w) return false;
+        return true;
+    }
     /// every page area as tall as the first page's
     fn uniformHeight(g: *const Geo) bool {
         const h = g.areas[0][0][1];
@@ -132,24 +151,152 @@ const Geo = struct {
 fn layPass(cx: *const Ctx, geo: *const Geo, texts: []const ?[]const u8, fixed_hooks: []const bool) Error!Pass {
     const a = cx.doc.a;
     var subst: counters.Subst = .{ .a = a, .mode = .{ .flow = .{ .texts = texts, .fixed = fixed_hooks } } };
-    const f = try bands.buildFrame(cx.doc.r, a, cx.doc.o, cx.doc.css, cx.kind, cx.source, null, geo.area(0, null), &subst);
     const g = try a.create(Geo);
     g.* = geo.*;
-    g.names = f.tree.paged.page_names;
-    const varies = !geo.uniformHeight();
-    const pages = try f.paginate(.{ .page_height = geo.area(0, null)[1], .page_height_fn = if (varies) Geo.heightOf else null, .ctx = @ptrCast(g) });
+    var segs: std.ArrayList(Seg) = .empty;
+    if (geo.uniformWidth()) {
+        // (every page as wide: one layout, paginated)
+        const f = try bands.buildFrame(cx.doc.r, a, cx.doc.o, cx.doc.css, cx.kind, cx.source, null, geo.area(0, null), &subst);
+        g.names = f.tree.paged.page_names;
+        const varies = !geo.uniformHeight();
+        const pages = try f.paginate(.{ .page_height = geo.area(0, null)[1], .page_height_fn = if (varies) Geo.heightOf else null, .ctx = @ptrCast(g) });
+        try segs.append(a, .{ .frame = f, .first = 0, .local0 = 0, .count = @intCast(pages.pages.len) });
+    } else try laySegments(cx, g, &subst, &segs);
+    const f = segs.items[0].frame;
     const fixed = try emit.repeatingFixed(a, f);
     const mask = try counters.fixedMask(a, f, fixed);
-    const hooks = subst.hooks.items;
+    const hooks = try a.dupe(counters.Hook, subst.hooks.items);
     return .{
         .frame = f,
-        .pages = pages,
+        .segs = segs.items,
         .hooks = hooks,
         .texts = texts,
         .fixed = fixed,
         .mask = mask,
         .fixed_hooks = try counters.fixedHooks(a, f, hooks, mask),
     };
+}
+
+/// The page area heights of a run of pages laid out at one width: page `i` of its frame is page
+/// `base + i - fake` of the document (`fake`: page 0 holds what earlier runs show).
+const SegCtx = struct {
+    g: *const Geo,
+    base: u32,
+    fake: u32,
+
+    fn height(ctx: *anyopaque, i: u32, name: u32) f32 {
+        const c: *const SegCtx = @ptrCast(@alignCast(ctx));
+        return c.g.area(c.base + (i -| c.fake), c.g.nameOf(name))[1];
+    }
+};
+
+/// The pages of the content when page areas differ in width (takumi lays each page out at its own
+/// width, `PageStream` / `PageSizer`): a frame laid out at the first page's width shows the pages
+/// up to the first page of another width; the content from that page's start (`Pages.starts`: a
+/// box, or the line a paragraph broke at) is laid out again at that width, from that point
+/// (`layout.fragment.Options.start`; a paragraph broken between lines is broken there again and
+/// the rest wraps at the new width: `font.Paragraph.cut`), and so on. The frames are of one
+/// document (same element model, same render nodes), so counters, links, anchors and the
+/// structure tree work across them. A page whose start is not one point (parallel flows broken
+/// inside) keeps the width of the run before it.
+fn laySegments(cx: *const Ctx, g: *Geo, subst: *counters.Subst, segs: *std.ArrayList(Seg)) Error!void {
+    const a = cx.doc.a;
+    const no_node = layout.fragment.Start{};
+    var width = g.area(0, null)[0];
+    var base: u32 = 0;
+    var start: ?layout.fragment.Start = null;
+    var cut: ?bands.Cut = null;
+    var start_top: f32 = 0;
+    var retried = false;
+    while (true) {
+        const f = try bands.buildFrameCut(cx.doc.r, a, cx.doc.o, cx.doc.css, cx.kind, cx.source, null, .{ width, g.area(base, null)[1] }, subst, cut);
+        g.names = f.tree.paged.page_names;
+        if (segs.items.len > 0 and !sameNodes(segs.items[0].frame, f)) return extendLast(segs);
+        if (start) |*s| if (cut) |c| {
+            s.line = lineStarting(f, c.node, c.glyph) orelse return extendLast(segs);
+        };
+        const sc = try a.create(SegCtx);
+        sc.* = .{ .g = g, .base = base, .fake = @intFromBool(start != null) };
+        const pages = try f.paginate(.{ .page_height = g.area(base, null)[1], .page_height_fn = SegCtx.height, .ctx = @ptrCast(sc), .start = start, .start_top = if (start != null) start_top else null, .record_starts = true, .max_pages = max_pages + 1 });
+        // (page 1 must start where the run before stopped, else the run before goes on)
+        if (start) |s| if (pages.start_page == 0 or pages.pages.len < 2 or pages.starts[1].node != s.node or pages.starts[1].line != s.line) return extendLast(segs);
+        const fake = pages.start_page;
+        // (the first run is as wide as the first page, which may be a named page)
+        if (base == 0 and !retried) {
+            retried = true;
+            const w0 = g.area(0, g.nameOf(pages.names[0]))[0];
+            if (w0 != width) {
+                width = w0;
+                continue;
+            }
+        }
+        var stop: ?u32 = null;
+        var i: u32 = fake + 1;
+        while (i < pages.pages.len) : (i += 1) {
+            if (g.area(base + i - fake, g.nameOf(pages.names[i]))[0] == width) continue;
+            const tok = pages.starts[i];
+            if (tok.node == no_node.node) continue;
+            if (tok.line != no_node.line and lineGlyph(f, tok.node, tok.line) == null) continue;
+            stop = i;
+            break;
+        }
+        const end: u32 = stop orelse @intCast(pages.pages.len);
+        try segs.append(a, .{ .frame = f, .first = base, .local0 = fake, .count = end - fake });
+        if (base + end - fake > max_pages) {
+            cx.doc.r.setErr(too_many_pages, "");
+            return error.Invalid;
+        }
+        const s_i = stop orelse return;
+        const tok = pages.starts[s_i];
+        width = g.area(base + s_i - fake, g.nameOf(pages.names[s_i]))[0];
+        base += s_i - fake;
+        // (the run goes on where this one's pages end, in the same block coordinates: takumi's
+        // pages stack in one space)
+        start_top = pages.pages[s_i].top;
+        start = tok;
+        cut = null;
+        if (tok.line != no_node.line) cut = .{ .node = f.lid_node.items[tok.node], .glyph = lineGlyph(f, tok.node, tok.line).? };
+    }
+}
+
+const max_pages = 20_000;
+/// takumi-pdf `PdfError::TooManyPages`
+const too_many_pages = "The content spans more than 20000 pages. Give it a height that resolves.";
+
+/// The frame of the last run shows the rest of the document (a run that could not be laid out
+/// again at its width).
+fn extendLast(segs: *std.ArrayList(Seg)) void {
+    const last = &segs.items[segs.items.len - 1];
+    const pages = last.frame.paginated().?;
+    last.count = @intCast(pages.pages.len - last.local0);
+}
+
+/// Two frames of the same document with the same render and layout nodes.
+fn sameNodes(x: *const Frame, y: *const Frame) bool {
+    return x.nodes.items.len == y.nodes.items.len and x.tree.nodes.items.len == y.tree.nodes.items.len and x.dom.els.items.len == y.dom.els.items.len;
+}
+
+/// The paragraph glyph line `line` of layout node `lid` starts at (null: the first line or none).
+fn lineGlyph(f: *const Frame, lid: u32, line: u32) ?u32 {
+    if (line == 0 or lid >= f.lid_node.items.len) return null;
+    const id = f.lid_node.items[lid];
+    if (id >= f.nodes.items.len) return null;
+    const tl = f.nodes.items[id].tl orelse return null;
+    if (line >= tl.lines.len) return null;
+    const gl = tl.lines[line].start;
+    return if (gl == 0) null else gl;
+}
+
+/// The line of render node `id`'s paragraph that starts at glyph `glyph`.
+fn lineStarting(f: *Frame, id: u32, glyph: u32) ?u32 {
+    if (id >= f.nodes.items.len) return null;
+    const n = &f.nodes.items[id];
+    if (n.para == null or n.lid == rt.none) return null;
+    const l = f.tree.layout(n.lid);
+    const cw = l.w - l.border.left - l.border.right - l.padding.left - l.padding.right;
+    const tl = (f.textLayout(id, cw) catch return null) orelse return null;
+    for (tl.lines, 0..) |ln, k| if (ln.start == glyph) return @intCast(k);
+    return null;
 }
 
 /// takumi `Counted::settle`: lays the content out until the numbers its hooks receive stop moving.
@@ -164,7 +311,7 @@ fn settle(cx: *const Ctx, geo: *const Geo) Error!Pass {
     var k: usize = 0;
     while (k < counter_passes) : (k += 1) {
         if (k > 0) pass = try layPass(cx, geo, used, pass.fixed_hooks);
-        const texts = try counters.flowTexts(a, pass.frame, pass.hooks, pass.fixed_hooks, pass.mask);
+        const texts = try counters.flowTexts(a, pass.segs, pass.hooks, pass.fixed_hooks, pass.mask);
         // the pass was laid out with the numbers it gives
         if (counters.sameTexts(texts, used)) return pass;
         used = texts;
@@ -191,19 +338,37 @@ fn heights(s: ?bands.Slot) ?f32 {
 /// The options' page with the document's `@page` rules applied (page_rules.zig), `cx` the root
 /// element's context.
 pub fn pageRules(a: Allocator, o: opt.PdfOptions, kind: rt.SourceKind, source: []const u8, p: opt.Page, cx: page_rules.Context) Error!page_rules.Pages {
-    return page_rules.resolve(a, p, o.css, if (kind == .html) source else null, cx);
+    var c = cx;
+    c.supports = rt.Frame.cssSupports;
+    return page_rules.resolve(a, p, o.css, if (kind == .html) source else null, c);
 }
 
 /// takumi `PageContext`: what the page rules take from the root element of a laid-out frame.
 pub fn rootContext(f: *const Frame) page_rules.Context {
-    const cs = f.nodes.items[f.root].cs;
+    // (takumi's tree root of a whole HTML document is its body; several top-level nodes of a
+    // fragment sit in a wrapper whose custom properties takumi does not read)
+    var id = f.root;
+    var props = true;
+    const el = f.nodes.items[id].el;
+    if (el != rt.none) {
+        const tag = f.dom.at(el).tag;
+        if (std.ascii.eqlIgnoreCase(tag, "html")) {
+            for (f.nodes.items, 0..) |n, k| {
+                if (n.parent == f.root and n.el != rt.none and std.ascii.eqlIgnoreCase(f.dom.at(n.el).tag, "body")) {
+                    id = @intCast(k);
+                    break;
+                }
+            }
+        } else if (tag.len == 0) props = false;
+    }
+    const cs = f.nodes.items[id].cs;
     const Get = struct {
         fn custom(ctx: *const anyopaque, name: []const u8) ?[]const u8 {
             const c: *const style.ComputedStyle = @ptrCast(@alignCast(ctx));
             return c.customProperty(name);
         }
     };
-    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .ctx = @ptrCast(cs), .custom = Get.custom };
+    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = f.nodes.items[f.root].cs.font_size, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
 }
 
 /// Lays the paged document `o_in` (geometry `p_in`) out: `@page` rules, bands, margins, the content
@@ -254,7 +419,6 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
     }
 
     const n = content.pageCount();
-    const paged = content.pages;
     geo.names = content.frame.tree.paged.page_names;
     // fixed boxes holding a page counter lay out again per page (takumi `FixedTemplate`)
     var fixed_counters = false;
@@ -265,11 +429,17 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
     var pages: std.ArrayList(emit.PageBox) = .empty;
     var windows: std.ArrayList(emit.Window) = .empty;
     var i: usize = 0;
+    var seg_i: usize = 0;
     while (i < n) : (i += 1) {
         const kept = try sel.pushPage(a);
         if (kept == null) continue;
-        const pg = paged.pages[i];
-        const name = geo.nameOf(if (i < paged.names.len) paged.names[i] else 0);
+        // (the run of pages laid out at this page's width, and this page in its frame)
+        while (seg_i + 1 < content.segs.len and i >= content.segs[seg_i + 1].first) seg_i += 1;
+        const sg = content.segs[seg_i];
+        const paged = sg.frame.paginated().?;
+        const local: usize = sg.local0 + (i - sg.first);
+        const pg = paged.pages[local];
+        const name = geo.nameOf(if (local < paged.names.len) paged.names[local] else 0);
         const pp = geo.page(i, name);
         const m = geo.margins(i, name);
         const area = geo.area(i, name);
@@ -279,14 +449,25 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
             .content = .{ .x = m.left, .y = m.top, .w = area[0], .h = area[1] },
             .background = background,
             .clip = true,
-            .repeats = paged.repeatsOf(@intCast(i)),
+            .repeats = paged.repeatsOf(@intCast(local)),
             .fixed = content.fixed,
+            .frame = if (seg_i > 0) sg.frame else null,
         };
+        if (content.segs.len > 1) {
+            // (the frame's own neighbouring pages, where the document's show another frame)
+            const own = struct {
+                fn win(p: layout.fragment.Page) emit.Window {
+                    return .{ .top = p.top, .bottom = p.top + p.height, .lines_top = p.top, .lines_bottom = p.top + p.height };
+                }
+            };
+            if (i == sg.first and local > 0) box.prev_win = own.win(paged.pages[local - 1]);
+            if (i + 1 == sg.first + sg.count and seg_i + 1 < content.segs.len and local + 1 < paged.pages.len) box.next_win = own.win(paged.pages[local + 1]);
+        }
         if (header) |*s| box.header = try bands.forPage(&cx.doc, s, i, n, pp.width, pp.height);
         if (footer) |*s| box.footer = try bands.forPage(&cx.doc, s, i, n, pp.width, pp.height);
         if (fixed_counters) {
             var subst: counters.Subst = .{ .a = a, .mode = .{ .flow = .{ .texts = content.texts, .fixed = content.fixed_hooks, .page = i + 1, .pages = n } } };
-            const ff = try bands.buildFrame(r, a, o, css, kind, source, null, geo.area(0, null), &subst);
+            const ff = try bands.buildFrame(r, a, o, css, kind, source, null, .{ area[0], geo.area(0, null)[1] }, &subst);
             box.fixed = try emit.repeatingFixed(a, ff);
             box.fixed_frame = ff;
         }

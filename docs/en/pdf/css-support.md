@@ -22,7 +22,7 @@ every build, including `bm-engine/pdf` and the native addon:
 | `break-before`, `break-after`, `break-inside`, `page-break-before` / `-after` / `-inside` | `auto`, `avoid`, `avoid-page`, `avoid-column`, `page`, `always`, `column`, `left`, `right`, `recto`, `verso` parse; `left`, `right`, `recto`, `verso` break the page without inserting a blank page; `column` is not a page break | [Pagination](pagination.md#forcing-a-break) |
 | `orphans`, `widows` | integers of at least 1, inherited, default 2 | [Pagination](pagination.md#orphans-and-widows) |
 | Tailwind `break-before-*`, `break-inside-*`, `break-after-*` | in the `tw` field / attribute | [Pagination](pagination.md#forcing-a-break) |
-| `@page` with `size`, `margin*`, `:first`, `:left`, `:right`, named pages (`page`, `@page name`) | from the `css` option and HTML `<style>`; content is laid out once at one width, so a named page of another width is not re-flowed | [Pagination](pagination.md#page-rules) |
+| `@page` with `size`, `margin*`, `:first`, `:left`, `:right`, named pages (`page`, `@page name`) | from the `css` option and HTML `<style>`, also inside `@media`, `@supports` and `@layer`; each page lays its content out at its own width | [Pagination](pagination.md#page-rules) |
 | Table header and footer groups (`thead`, `tfoot`) | repeated at the top / bottom of every page the table crosses | [Pagination](pagination.md#tables) |
 | `position: fixed` | repeated on every page | [Headers and footers](headers-footers.md#counters-in-a-repeated-fixed-box) |
 | `box-decoration-break: clone` | each fragment of a box cut by a page keeps its border, padding and radii | [Pagination](pagination.md#limits-and-what-is-approximate) |

@@ -507,7 +507,8 @@ fn num(x: json.Value, name: []const u8, d: *Diag) Error!f32 {
 
 fn dimU32(n: f32) u32 {
     if (!(n >= 1)) return 0;
-    return @intFromFloat(@min(n, 16384));
+    // (takumi-pdf takes any viewport; a PDF page has no pixel canvas to bound it)
+    return @intFromFloat(@min(n, 1.0e7));
 }
 
 fn bandSet(v: json.Value, key: []const u8) bool {
