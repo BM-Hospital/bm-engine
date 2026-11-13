@@ -216,6 +216,10 @@ pub const Device = struct {
     tmp2: Path = .empty,
     /// each draw opens its own artifact section (takumi `SurfaceDevice::artifact`)
     artifact: bool = true,
+    /// `background-clip: text` mask (takumi `TextDevice::through`): fills and strokes paint each of
+    /// these backgrounds, within its clip, instead of their colour (`fill_shape_with`,
+    /// `stroke_shape_with`)
+    through: ?[]const @import("text.zig").GlyphBackground = null,
 
     pub fn isHidden(d: *const Device) bool {
         for (d.stack.items) |x| if (x == .empty_clip) return true;
@@ -258,7 +262,23 @@ pub const Device = struct {
     /// Fills `path` (offset by `dx`, `dy`) with `c` (takumi `fill_shape`).
     pub fn fillPath(d: *Device, path: *const Path, dx: f32, dy: f32, rule: sf.FillRule, c: Color) void {
         const p = d.offset(path, dx, dy) orelse return;
+        if (d.through) |fills| {
+            for (fills) |bg| {
+                var f = bg.fill;
+                f.rule = rule;
+                d.within(bg.clip, p, f, null);
+            }
+            return;
+        }
         d.drawWith(p, fillOf(filtered(d.filter, c), 1, rule), null);
+    }
+
+    /// `drawWith` inside `clip` (takumi `SurfaceDevice::within`).
+    fn within(d: *Device, clip: ?*const Path, p: *const Path, fill: ?sf.Fill, stroke: ?sf.Stroke) void {
+        if (d.isHidden()) return;
+        if (clip) |c| d.s.pushClip(c, .nonzero);
+        d.drawWith(p, fill, stroke);
+        if (clip != null) d.s.pop();
     }
 
     pub fn fillRRect(d: *Device, r: Rect, radii: ?Radii, c: Color) void {
@@ -280,7 +300,17 @@ pub const Device = struct {
             buf[1] = ds[1];
             arr = .{ .array = buf };
         }
-        d.drawWith(p, null, .{ .paint = .{ .color = .{ fc.r, fc.g, fc.b } }, .width = width, .cap = if (round_cap) .round else .butt, .dash = arr });
+        const st: sf.Stroke = .{ .paint = .{ .color = .{ fc.r, fc.g, fc.b } }, .width = width, .cap = if (round_cap) .round else .butt, .dash = arr };
+        if (d.through) |fills| {
+            for (fills) |bg| {
+                var s2 = st;
+                s2.paint = bg.fill.paint;
+                s2.opacity = bg.fill.opacity;
+                d.within(bg.clip, p, null, s2);
+            }
+            return;
+        }
+        d.drawWith(p, null, st);
     }
 
     fn offset(d: *Device, path: *const Path, dx: f32, dy: f32) ?*const Path {

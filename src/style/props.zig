@@ -517,11 +517,11 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .translate => &.{fr("translate")},
         .tabSize => &.{fr("tab_size")},
         .textAlign => &.{fr("text_align")},
-        .textDecoration => &.{ fr("text_decoration_line"), fr("text_decoration_style"), fr("text_decoration_color"), fr("text_decoration_thickness") },
+        .textDecoration => &.{ fr("text_decoration_line"), fr("text_decoration_style"), fr("text_decoration_color"), fr("text_decoration_thickness"), fr("text_decoration_from_font") },
         .textDecorationColor => &.{fr("text_decoration_color")},
         .textDecorationLine => &.{fr("text_decoration_line")},
         .textDecorationStyle => &.{fr("text_decoration_style")},
-        .textDecorationThickness => &.{fr("text_decoration_thickness")},
+        .textDecorationThickness => &.{ fr("text_decoration_thickness"), fr("text_decoration_from_font") },
         .textIndent => &.{ fr("text_indent"), fr("text_indent_flags") },
         .textOverflow => &.{ fr("text_overflow"), fr("text_overflow_string") },
         .textShadow => &.{fr("text_shadow")},
@@ -1995,6 +1995,7 @@ fn parseTextDecoration(cx: *Cx, l: *Lexer) Error!void {
     var style: ?c.DecorationStyle = null;
     var col: ?ColorValue = null;
     var thick: ??f32 = null;
+    var from_font = false;
     var n: usize = 0;
     while (!l.atEnd()) {
         n += 1;
@@ -2020,6 +2021,7 @@ fn parseTextDecoration(cx: *Cx, l: *Lexer) Error!void {
         if (thick == null) {
             if (try decoThickness(cx, t)) |v| {
                 thick = v;
+                from_font = t.isIdent("from-font");
                 continue;
             }
         }
@@ -2031,6 +2033,7 @@ fn parseTextDecoration(cx: *Cx, l: *Lexer) Error!void {
     s.text_decoration_style = style orelse .solid;
     s.text_decoration_color = col orelse .current;
     s.text_decoration_thickness = thick orelse null;
+    s.text_decoration_from_font = from_font;
 }
 
 fn parseWhiteSpace(cx: *Cx, l: *Lexer) Error!void {
@@ -3569,7 +3572,11 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
         .textDecoration => try parseTextDecoration(cx, l),
         .textDecorationLine => s.text_decoration_line = try need(c.DecorationLine, try decoLine(l)),
         .textDecorationColor => s.text_decoration_color = try colorOf(l.next()),
-        .textDecorationThickness => s.text_decoration_thickness = try need(?f32, try decoThickness(cx, l.next())),
+        .textDecorationThickness => {
+            const t = l.next();
+            s.text_decoration_thickness = try need(?f32, try decoThickness(cx, t));
+            s.text_decoration_from_font = t.isIdent("from-font");
+        },
         .whiteSpace => try parseWhiteSpace(cx, l),
         .textWrap => try parseTextWrap(cx, l),
         .WebkitLineClamp => {

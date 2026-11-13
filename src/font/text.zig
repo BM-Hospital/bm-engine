@@ -185,6 +185,9 @@ pub const ParagraphOptions = struct {
     /// (null here as well = no wrapping; only forced breaks).
     max_width: ?f32 = null,
     text_align: TextAlign = .left,
+    /// `text-align-last`: the alignment of the last line and of lines that end in a forced break;
+    /// null (`auto`) = `text_align`, start for `justify`
+    text_align_last: ?TextAlign = null,
     line_height: LineHeight = .normal,
     white_space: WhiteSpace = .normal,
     word_break: WordBreak = .normal,
@@ -386,6 +389,10 @@ pub const PositionedGlyph = struct {
     cluster: u32,
     /// Bidi embedding level of the glyph (odd = part of a right-to-left run).
     bidi_level: u8 = 0,
+    /// (PDF builds, `ParagraphOptions.item_origin`) the pen position after the glyph's advance and
+    /// word spacing, exact within its item: a run ends at its last glyph's, as takumi's runs end at
+    /// their origin plus their advance; NaN when not placed so.
+    x_end: if (item_origin_build) f32 else void = if (item_origin_build) std.math.nan(f32) else {},
 };
 
 pub const Line = struct {
@@ -2474,14 +2481,17 @@ pub const Paragraph = struct {
             const free_raw = floor64(container) - ceil64(li.content_w);
             const free = @max(free_raw, 0);
             var extra: f32 = 0;
-            if (self.opts.text_align == .justify and !li.last and !li.ellipsis and free > 0) {
+            // (the last line and a line before a forced break: `text-align-last`)
+            const al: TextAlign = if (!li.last) self.opts.text_align else self.opts.text_align_last orelse
+                (if (self.opts.text_align == .justify) TextAlign.start else self.opts.text_align);
+            if (al == .justify and !li.ellipsis and free > 0) {
                 var spaces: u32 = 0;
                 for (self.glyphs[li.start..li.end]) |g| {
                     if (g.flags & ShapedGlyph.WORD_SPACE != 0) spaces += 1;
                 }
                 if (spaces > 0) extra = free / @as(f32, @floatFromInt(spaces));
             }
-            var x: f32 = switch (self.opts.text_align) {
+            var x: f32 = switch (al) {
                 .left => 0,
                 .right => free,
                 .center => floor64(free * 0.5),
@@ -2686,6 +2696,7 @@ pub const Paragraph = struct {
                 if (item_origin) {
                     _ = ip.add(self.advanceOf(g, x - line_x, null));
                     x = ip.add(if (g.flags & ShapedGlyph.WORD_SPACE != 0) extra else 0);
+                    if (comptime item_origin_build) out.items[out.items.len - 1].x_end = x;
                 } else {
                     x += self.advanceOf(g, x - line_x, null);
                     if (g.flags & ShapedGlyph.WORD_SPACE != 0) x += extra;
@@ -2998,7 +3009,13 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char, info: *C
                     cp = ' ';
                 } else prev_space = false;
             }
-            if (cp != '\t' and (cp < 0x20 or (cp >= 0x7f and cp < 0xa0))) continue;
+            if (cp != '\t' and (cp < 0x20 or (cp >= 0x7f and cp < 0xa0))) {
+                // (PDF frames, `item_origin`: takumi ignores only carriage return and form feed and
+                // shapes the other control characters, which no font draws: `uncoveredText`
+                // decides, as for any character no font covers; a raster render drops them)
+                const keep = if (comptime item_origin_build) opts.item_origin and cp != 0x0d and cp != 0x0c else false;
+                if (!keep) continue;
+            }
             out[n] = .{ .cp = cp, .run = @intCast(ri), .cluster = cluster, .nw = nw };
             n += 1;
         }
@@ -3009,6 +3026,16 @@ fn collectChars(runs: []const Run, opts: ParagraphOptions, out: []Char, info: *C
             out[n] = .{ .cp = hard_break_cp, .run = @intCast(ri), .cluster = base, .nw = nw };
             n += 1;
             prev_cr = false;
+        }
+    }
+    // (PDF frames, `item_origin`: a collapsible space that ends the paragraph is removed before
+    // shaping, as Blink / takumi remove it, so the glyph before it keeps no kerning with it; a
+    // raster render shapes it and hangs it)
+    if (comptime item_origin_build) {
+        if (opts.item_origin and n > 0 and out[n - 1].cp == ' ' and !out[n - 1].obj) {
+            const last = runs[out[n - 1].run];
+            const ws = last.white_space orelse opts.white_space;
+            if (ws == .normal or ws == .nowrap or ws == .pre_line) n -= 1;
         }
     }
 }

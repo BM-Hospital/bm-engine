@@ -2141,6 +2141,12 @@ pub const Frame = struct {
             if (c) |x| {
                 if (inline_ctx) {
                     joins = f.isInlineLevel(x, 0, lines) or (lines and f.objectKind(x) != null);
+                    // (PDF frames: a `display: none` child generates no box and does not split the
+                    // inline formatting context around it, as takumi; a raster frame keeps its
+                    // former paragraphs)
+                    if (comptime config.enable_pdf) {
+                        if (!joins and f.tree.paged.pdf and f.itemStyle(x).display == .none) joins = true;
+                    }
                     if (joins and !run_content) run_content = f.hasLineContent(x, 0);
                     if (joins and lines and x == .el) {
                         const xe = f.dom.at(x.el);
@@ -2638,6 +2644,15 @@ pub const Frame = struct {
         f.no_indent = false;
         var opts: font.ParagraphOptions = .{
             .text_align = switch (cs.text_align) {
+                .start => .start,
+                .end => .end,
+                .left => .left,
+                .right => .right,
+                .center => .center,
+                .justify => .justify,
+            },
+            .text_align_last = switch (cs.text_align_last) {
+                .auto, .match_parent => null,
                 .start => .start,
                 .end => .end,
                 .left => .left,
