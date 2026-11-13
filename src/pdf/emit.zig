@@ -269,6 +269,12 @@ pub const Emitter = struct {
         return .{ .dst = @constCast(&e.dummy), .tf = e.tf };
     }
 
+    /// The painter context box geometry snaps in: always (takumi `SnappedBox` in the current
+    /// paint space, transformed or not).
+    pub fn snapCtx(e: *const Emitter) pm.Ctx {
+        return .{ .dst = @constCast(&e.dummy), .tf = Affine.identity };
+    }
+
     pub fn plain(e: *const Emitter) bool {
         return e.tf.isIdentity();
     }
@@ -1110,7 +1116,9 @@ pub const Emitter = struct {
             }
             return;
         }
-        const c = e.ctx();
+        // (takumi snaps a box in its paint space, a transformed one's included: Blink's paint
+        // offset translation, `SnappedBox::new`)
+        const c = e.snapCtx();
         const g = pm.Painter.geomOf(cs, l, x, y, &c);
         var as_part = false;
         const own = e.home();
