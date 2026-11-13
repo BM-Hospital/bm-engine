@@ -94,7 +94,7 @@ from the image inside it.
 
 <!-- @example pdf-accessibility#alt -->
 ```js
-const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"));
 const withImage = (img) => `<div style="font-family: Inter"><h1>Logo</h1>${img}</div>`;
 const options = { tagged: "ua1", lang: "en", metadata: { title: "Logo" }, images: [{ src: "logo", data: logo }] };
 
@@ -107,7 +107,7 @@ const decorative = await outcome(pdf.render(withImage(`<img src="logo" alt="" wi
 ## PDF/A
 
 `pdfa` takes `"2a"`, `"2b"`, `"2u"`, `"3a"`, `"3b"`, `"3u"`, `"4"` or `"4f"`; an unknown value throws
-`unknown pdfa level: <value> (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)`. In every PDF/A file the colours
+`` unknown variant `<value>`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f` ``. In every PDF/A file the colours
 are tagged with an embedded sRGB profile and an output intent (instead of `DeviceRGB`), the XMP carries the
 `pdfaid` part and conformance, and fonts are embedded. The sRGB profile is the CC0 "Compact ICC Profiles"
 sRGB v4 ([Third-party notices](../../../THIRD-PARTY-NOTICES.md)).
@@ -155,7 +155,7 @@ time the engine checks them too, but the messages are the ones below, not type m
 | `pdfa: "2b"` with `tagged: "ua2"`, or `pdfa: "4"` with `tagged: "ua1"` | throws `The requested archival standard is not available` (no common PDF version) |
 | attachments with `pdfa: "2a" \| "2b" \| "2u" \| "4"` | throws `Writing the PDF failed: validation failed with 1 error` |
 | `pdfa: "3b"` attachment without `description` or `mimeType` | throws `Writing the PDF failed: validation failed with N errors` |
-| `pdfa: "1b"` or another unknown level | throws `unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)` |
+| `pdfa: "1b"` or another unknown level | throws `` unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f` `` |
 | `uncoveredText: "placeholder"` with a character no font covers, under `pdfa` or PDF/UA | throws `No font the text can use draws <char> (U+XXXX), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".` ([Fonts in PDF](fonts.md#characters-no-font-covers)) |
 | `tagged: false` with `pdfa: "2a"` or `"3a"` | not an error at run time: the tree is written anyway (the types reject it) |
 
@@ -173,7 +173,7 @@ const results = {
 // "4 + ua1":   bm-engine: The requested archival standard is not available
 // "2b + attachments": bm-engine: Writing the PDF failed: validation failed with 1 error
 // "3b + attachment without description": bm-engine: Writing the PDF failed: validation failed with 1 error
-// "unknown level": bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)
+// "unknown level": bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 ```
 
 ## Attachments and PDF/A

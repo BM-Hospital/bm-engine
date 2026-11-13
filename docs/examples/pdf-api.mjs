@@ -227,7 +227,7 @@ await messageOf({ viewport: { width: 300 }, size: "a4" });
 await messageOf({ pageRanges: [{ from: 5, to: 2 }] });
 // bm-engine: Page range is invalid: 5-2. Pages are numbered from 1.
 await messageOf({ pdfa: "1b" });
-// bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)
+// bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 await messageOf({ backgroundColor: "paper" });
 // bm-engine: backgroundColor is not a color: paper
 await messageOf({ sise: "a4" });
@@ -242,15 +242,15 @@ const ERRORS = [
   [{ viewport: { width: 300 }, size: "a4" }, "bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)"],
   [{ viewport: { height: 300 } }, "bm-engine: invalid viewport: width is required"],
   [{ viewport: { width: 0 } }, "bm-engine: Page size must be finite and larger than zero"],
-  [{ header: 5 }, "bm-engine: invalid header: a band is a node, HTML, or false"],
+  [{ header: 5 }, "ok"], // (a number band is written as text, as takumi-pdf-js does)
   [{ pages: { middle: {} } }, "bm-engine: unknown page rule: middle"],
   [{ pages: { first: { body: "x" } } }, "bm-engine: unknown field of pages.first: body"],
   [{ pageRanges: 3 }, "bm-engine: invalid pageRanges: expected an array of page numbers or { from, to } spans"],
   [{ pageRanges: [0] }, "bm-engine: Page range is invalid: 0. Pages are numbered from 1."],
   [{ pageRanges: [{ from: 5, to: 2 }] }, "bm-engine: Page range is invalid: 5-2. Pages are numbered from 1."],
   [{ pageRanges: [{ from: 5 }] }, "bm-engine: The page ranges select none of the document's 1 pages"],
-  [{ pdfa: "1b" }, "bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)"],
-  [{ tagged: "ua3" }, 'bm-engine: invalid tagged: expected true, false, "ua1" or "ua2"'],
+  [{ pdfa: "1b" }, "bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`"],
+  [{ tagged: "ua3" }, "bm-engine: data did not match any variant of untagged enum TaggedInput"],
   [{ uncoveredText: "skip" }, "bm-engine: unknown uncoveredText: skip"],
   [{ outline: "yes" }, "bm-engine: invalid outline: expected a boolean"],
   [{ lang: 5 }, "bm-engine: invalid lang: expected a string"],
@@ -261,9 +261,9 @@ const ERRORS = [
   [{ metadata: "x" }, "bm-engine: invalid metadata: expected an object"],
   [{ metadata: { creationDate: "2026/01/01" } }, "bm-engine: invalid creationDate: expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"],
   [{ attachments: {} }, "bm-engine: attachments takes an array"],
-  [{ attachments: [{ data: "x" }] }, "bm-engine: invalid attachments: an attachment needs a name"],
+  [{ attachments: [{ data: "x" }] }, "bm-engine: missing field `name`"],
   [{ attachments: [{ name: "a.txt", data: 5 }] }, "bm-engine: attachment data must be bytes or a string: a.txt"],
-  [{ attachments: [{ name: "a.txt", data: "x", relationship: "parent" }] }, "bm-engine: unknown attachment relationship: parent"],
+  [{ attachments: [{ name: "a.txt", data: "x", relationship: "parent" }] }, "bm-engine: unknown variant `parent`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified`"],
   [{ attachments: [{ name: "a.txt", data: "x", mimeType: "plain" }] }, "bm-engine: Attachment mime type is not a type/subtype pair: plain"],
   [{ sise: "a4" }, "ok"],
 ];

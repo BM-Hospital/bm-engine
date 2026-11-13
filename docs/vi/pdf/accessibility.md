@@ -89,7 +89,7 @@ như artifact và không cần mô tả. `figure` lấy văn bản thay thế t�
 
 <!-- @example pdf-accessibility#alt -->
 ```js
-const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"));
 const withImage = (img) => `<div style="font-family: Inter"><h1>Logo</h1>${img}</div>`;
 const options = { tagged: "ua1", lang: "en", metadata: { title: "Logo" }, images: [{ src: "logo", data: logo }] };
 
@@ -148,7 +148,7 @@ nhưng thông báo là những thông báo dưới đây, không phải thông b
 | `pdfa: "2b"` với `tagged: "ua2"`, hoặc `pdfa: "4"` với `tagged: "ua1"` | ném `The requested archival standard is not available` (không có phiên bản PDF chung) |
 | tệp đính kèm với `pdfa: "2a" \| "2b" \| "2u" \| "4"` | ném `Writing the PDF failed: validation failed with 1 error` |
 | tệp đính kèm `pdfa: "3b"` thiếu `description` hoặc `mimeType` | ném `Writing the PDF failed: validation failed with N errors` |
-| `pdfa: "1b"` hoặc mức không biết khác | ném `unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)` |
+| `pdfa: "1b"` hoặc mức không biết khác | ném `` unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f` `` |
 | `uncoveredText: "placeholder"` với ký tự không font nào có, dưới `pdfa` hoặc PDF/UA | ném `No font the text can use draws <ký tự> (U+XXXX), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".` ([Font trong PDF](fonts.md#ký-tự-không-font-nào-có)) |
 | `tagged: false` với `pdfa: "2a"` hoặc `"3a"` | không phải lỗi khi chạy: cây vẫn được ghi (kiểu từ chối nó) |
 
@@ -166,7 +166,7 @@ const results = {
 // "4 + ua1":   bm-engine: The requested archival standard is not available
 // "2b + attachments": bm-engine: Writing the PDF failed: validation failed with 1 error
 // "3b + attachment without description": bm-engine: Writing the PDF failed: validation failed with 1 error
-// "unknown level": bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)
+// "unknown level": bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 ```
 
 ## Tệp đính kèm và PDF/A

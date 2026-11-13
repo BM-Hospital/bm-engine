@@ -368,7 +368,7 @@ await messageOf({ viewport: { width: 300 }, size: "a4" });
 await messageOf({ pageRanges: [{ from: 5, to: 2 }] });
 // bm-engine: Page range is invalid: 5-2. Pages are numbered from 1.
 await messageOf({ pdfa: "1b" });
-// bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)
+// bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 await messageOf({ backgroundColor: "paper" });
 // bm-engine: backgroundColor is not a color: paper
 await messageOf({ sise: "a4" });
@@ -388,14 +388,14 @@ The example script checks each of these messages (the text after `bm-engine: `):
 | `viewport: { height: 300 }` | `invalid viewport: width is required` |
 | `viewport: { width: 0 }` | `invalid viewport: width/height must be > 0` |
 | `viewport` without `height` and content of zero height | `invalid viewport: content has zero size and no width/height was given` |
-| `header: 5` | `invalid header: a band is a node, HTML, or false` |
+| `header: 5` | no error: a number band is written as text, as takumi-pdf-js does |
 | `pages: { middle: {} }` | `unknown page rule: middle` |
 | `pages: { first: { body: "x" } }` | `unknown field of pages.first: body` |
 | `pageRanges: 3` | `invalid pageRanges: expected an array of page numbers or { from, to } spans` |
 | `pageRanges: [0]` | `Page range is invalid: 0. Pages are numbered from 1.` |
 | `pageRanges: [{ from: 5 }]` on a 1-page document | `The page ranges select none of the document's 1 pages` |
-| `pdfa: "1b"` | `unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)` |
-| `tagged: "ua3"` | `invalid tagged: expected true, false, "ua1" or "ua2"` |
+| `pdfa: "1b"` | `` unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f` `` |
+| `tagged: "ua3"` | `data did not match any variant of untagged enum TaggedInput` |
 | `uncoveredText: "skip"` | `unknown uncoveredText: skip` |
 | `outline: "yes"` | `invalid outline: expected a boolean` |
 | `lang: 5` | `invalid lang: expected a string` |
@@ -404,9 +404,9 @@ The example script checks each of these messages (the text after `bm-engine: `):
 | `metadata: "x"` | `invalid metadata: expected an object` |
 | `metadata: { creationDate: "2026/01/01" }` | `invalid creationDate: expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS` |
 | `attachments: {}` | `attachments takes an array` (a `TypeError`) |
-| an attachment without `name` | `invalid attachments: an attachment needs a name` |
+| an attachment without `name` | ``missing field `name` `` |
 | `data: 5` | `attachment data must be bytes or a string: <name>` |
-| `relationship: "parent"` | `unknown attachment relationship: parent` |
+| `relationship: "parent"` | ``unknown variant `parent`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified` `` |
 | `mimeType: "plain"` | `Attachment mime type is not a type/subtype pair: plain` |
 | a character no registered font draws (`uncoveredText: "error"`) | `No font the text can use draws 日 (U+65E5). Check each font's unicodeRange and the font-family stack, or register a font that draws them.` |
 | `filter: blur(2px)` in the document | `A PDF cannot draw filter: blur(2px)` |

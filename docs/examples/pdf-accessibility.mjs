@@ -61,7 +61,7 @@ assert.match(noTitle, /^bm-engine: Writing the PDF failed: validation failed wit
 assert.match(noHeading, /validation failed with 1 error/);
 
 // #region alt
-const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"));
 const withImage = (img) => `<div style="font-family: Inter"><h1>Logo</h1>${img}</div>`;
 const options = { tagged: "ua1", lang: "en", metadata: { title: "Logo" }, images: [{ src: "logo", data: logo }] };
 
@@ -121,11 +121,11 @@ const results = {
 // "4 + ua1":   bm-engine: The requested archival standard is not available
 // "2b + attachments": bm-engine: Writing the PDF failed: validation failed with 1 error
 // "3b + attachment without description": bm-engine: Writing the PDF failed: validation failed with 1 error
-// "unknown level": bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)
+// "unknown level": bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 // #endregion
 assert.equal(results["2b + ua2"], "bm-engine: The requested archival standard is not available");
 assert.equal(results["4 + ua1"], "bm-engine: The requested archival standard is not available");
 assert.equal(results["2b + attachments"], "bm-engine: Writing the PDF failed: validation failed with 1 error");
 assert.equal(results["3b + attachment without description"], "bm-engine: Writing the PDF failed: validation failed with 1 error");
-assert.equal(results["unknown level"], "bm-engine: unknown pdfa level: 1b (expected 2a, 2b, 2u, 3a, 3b, 3u, 4 or 4f)");
+assert.equal(results["unknown level"], "bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`");
 console.log("pdf-accessibility: ok");
