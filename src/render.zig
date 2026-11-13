@@ -2386,6 +2386,17 @@ pub const Frame = struct {
                     n.img_ratio = sz.ratio;
                 } else |e| if (e == error.OutOfMemory) return error.OutOfMemory;
             };
+            // (PDF: a bitmap bm-engine does not decode, a CMYK JPEG or a damaged PNG, keeps the size
+            // its header gives, as takumi-core's `EncodedBitmap`; src/pdf/emit_image.zig embeds or
+            // rejects its bytes)
+            if (comptime config.enable_pdf) if (f.tree.paged.pdf and img == null and n.svg == null) if (el.src) |src| {
+                const eimg = @import("pdf/emit_image.zig");
+                if (eimg.sourceBytes(f.r, f.a, src)) |bytes| if (eimg.headerSize(bytes)) |hs| {
+                    n.img_w = @as(f32, @floatFromInt(hs[0])) * f.opts.dpr;
+                    n.img_h = @as(f32, @floatFromInt(hs[1])) * f.opts.dpr;
+                    n.img_ratio = n.img_w / n.img_h;
+                };
+            };
             return f.addNode(n);
         }
     }

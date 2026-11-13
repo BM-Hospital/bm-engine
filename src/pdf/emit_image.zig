@@ -1,22 +1,35 @@
-//! Image XObjects (krilla `graphics/image/mod.rs`, takumi-pdf `raster.rs` / `paint.rs`):
+//! Image XObjects (krilla `graphics/image/mod.rs`, takumi-pdf `raster.rs` / `paint.rs`
+//! `rasterized_image`). An image source's encoded bytes go in as krilla takes them when no colour
+//! filter recolours it:
 //!
-//! * a JPEG source that needs no recolouring embeds its original bytes (`/DCTDecode`, the
-//!   colour space from its frame header, `/Decode[1 0 ...]` for Adobe CMYK);
-//! * so does a PNG source that is grayscale, RGB or indexed without transparency and not
-//!   interlaced (krilla `png.rs`): its IDAT stream with `/DecodeParms` PNG predictors (15), an
-//!   `/Indexed` colour space over DeviceRGB for a palette;
-//! * anything else embeds its decoded pixels: straight-alpha RGB, Flate-compressed, plus a
-//!   DeviceGray `/SMask` image when any pixel is not opaque (written first, same category);
-//! * one object per distinct source (by source bytes, else by pixels) and colour filter.
+//! * a JPEG embeds its original bytes (`/DCTDecode`, the colour space zune-jpeg reads from its
+//!   headers: an Adobe APP14 transform 0 means CMYK, CMYK / YCCK get `/Decode[1 0 ...]`, an
+//!   embedded ICC profile becomes `[/ICCBased ..]`);
+//! * a PNG that is grayscale, RGB or indexed without transparency and not interlaced embeds its
+//!   IDAT stream with `/DecodeParms` PNG predictors (15), an `/Indexed` colour space for a palette;
+//! * any other PNG is decoded the way krilla decodes it (png_krilla.zig): grayscale stays
+//!   DeviceGray, 16-bit samples stay 16-bit, straight (not premultiplied) colours, a soft mask for
+//!   the alpha channel; a PNG that fails to decode fails the document with the `png` crate's
+//!   message;
+//! * a WebP embeds its decoded first frame, straight RGB plus an alpha soft mask;
+//! * a PNG's or JPEG's ICC profile (iCCP / APP2) becomes an `[/ICCBased ..]` colour space when
+//!   the PDF version supports its version and its colour space matches the image's.
 //!
-//! Not ported: embedded ICC profiles, and krilla's own decoding of other PNGs (bm-engine embeds
-//! its decoded pixmap demultiplied, as RGB even for a grayscale PNG with alpha).
+//! Without the bytes (a raw bitmap) or under a colour filter, takumi-pdf decodes the image itself,
+//! with takumi-core's PNG decoder only: the decoded pixmap is embedded demultiplied, filtered,
+//! as RGB plus a DeviceGray `/SMask` when any pixel is not opaque; a JPEG or WebP then cannot be
+//! drawn (an error) and a GIF draws nothing. One object per distinct source and colour filter.
+//!
+//! Not ported: PDF/A's ICC-based sGrey for gray images (they stay DeviceGray).
 const std = @import("std");
 const w = @import("writer.zig");
 const sf = @import("emit_surface.zig");
 const raster = @import("../raster/raster.zig");
 const render = @import("../render.zig");
 const checksum = @import("../codec/checksum.zig");
+const codec = @import("../codec/codec.zig");
+const webp = @import("../codec/webp_dec.zig");
+const pk = @import("png_krilla.zig");
 
 const Ref = w.Ref;
 const Ctx = sf.Ctx;
@@ -28,13 +41,22 @@ pub const PixelFilter = struct {
     key: u64,
 };
 
-const Jpeg = struct { w: u16, h: u16, comps: u8, adobe: bool };
+/// zune-jpeg's `input_colorspace`.
+const JpegSpace = enum { luma, ycbcr, rgb, cmyk, ycck };
 
-/// Frame header of a baseline / progressive JPEG (SOF0..SOF15 except DHT / JPG / DAC).
-fn jpegInfo(b: []const u8) ?Jpeg {
+const Jpeg = struct { w: u16, h: u16, comps: u8, space: JpegSpace, icc: ?[]const u8 = null };
+
+/// What zune-jpeg's `decode_headers` reads (krilla `jpeg_metadata`): the markers up to the first
+/// SOS, which must be reached; the frame header (8-bit samples); the colour space, in file order:
+/// YCbCr by default, an Adobe APP14 transform 0 / 1 / 2 sets CMYK / YCbCr / YCCK, a frame of one
+/// component Luma, of four CMYK (unless YCCK); the ICC profile from the APP2 `ICC_PROFILE`
+/// segments, concatenated (in `a`).
+fn jpegInfo(a: ?std.mem.Allocator, b: []const u8) ?Jpeg {
     if (b.len < 4 or b[0] != 0xFF or b[1] != 0xD8) return null;
     var i: usize = 2;
-    var adobe = false;
+    var out: ?Jpeg = null;
+    var space: JpegSpace = .ycbcr;
+    var icc: std.ArrayList(u8) = .empty;
     while (i + 4 <= b.len) {
         if (b[i] != 0xFF) return null;
         const m = b[i + 1];
@@ -49,16 +71,85 @@ fn jpegInfo(b: []const u8) ?Jpeg {
         const len = (@as(usize, b[i + 2]) << 8) | b[i + 3];
         if (len < 2 or i + 2 + len > b.len) return null;
         const seg = b[i + 4 .. i + 2 + len];
-        if (m == 0xEE and seg.len >= 5 and std.mem.eql(u8, seg[0..5], "Adobe")) adobe = true;
+        if (m == 0xEE and seg.len >= 12 and std.mem.eql(u8, seg[0..5], "Adobe")) {
+            space = switch (seg[11]) {
+                0 => .cmyk,
+                1 => .ycbcr,
+                2 => .ycck,
+                else => return null,
+            };
+        }
+        if (m == 0xE2 and seg.len >= 14 and std.mem.eql(u8, seg[0..12], "ICC_PROFILE\x00")) {
+            if (a) |al| icc.appendSlice(al, seg[14..]) catch return null;
+        }
         if (m >= 0xC0 and m <= 0xCF and m != 0xC4 and m != 0xC8 and m != 0xCC) {
             if (seg.len < 6) return null;
             if (seg[0] != 8) return null; // 12-bit JPEGs are not DCT-passed
-            return .{ .h = (@as(u16, seg[1]) << 8) | seg[2], .w = (@as(u16, seg[3]) << 8) | seg[4], .comps = seg[5], .adobe = adobe };
+            const comps = seg[5];
+            if (comps == 1) space = .luma;
+            if (comps == 4 and space != .ycck) space = .cmyk;
+            out = .{ .h = (@as(u16, seg[1]) << 8) | seg[2], .w = (@as(u16, seg[3]) << 8) | seg[4], .comps = comps, .space = space };
         }
-        if (m == 0xDA) return null;
+        if (m == 0xDA) {
+            var o = out orelse return null;
+            o.space = space;
+            if (icc.items.len > 0) o.icc = icc.items;
+            return o;
+        }
         i += 2 + len;
     }
     return null;
+}
+
+/// Whether `v` (the PDF version) embeds an ICC profile of `p`'s version (krilla
+/// `PdfVersion::supports_icc`), and the number of components of its colour space (0: unknown).
+fn iccComponents(v: w.Version, p: []const u8) u8 {
+    if (p.len < 20) return 0;
+    const major = p[8];
+    const minor = p[9] >> 4;
+    const ok = switch (v) {
+        .v1_4 => major <= 2 and minor <= 2,
+        .v1_5 => major <= 4,
+        .v1_6 => major <= 4 and minor <= 1,
+        .v1_7, .v2_0 => major <= 4 and minor <= 2,
+    };
+    if (!ok) return 0;
+    const cs = p[16..20];
+    const three = [_][]const u8{ "XYZ ", "Lab ", "Luv ", "YCbr", "Yxy ", "LMS ", "RGB ", "HSV ", "HLS ", "CMY ", "3CLR" };
+    for (three) |t| if (std.mem.eql(u8, cs, t)) return 3;
+    if (std.mem.eql(u8, cs, "GRAY") or std.mem.eql(u8, cs, "1CLR")) return 1;
+    if (std.mem.eql(u8, cs, "CMYK") or std.mem.eql(u8, cs, "4CLR")) return 4;
+    return 0;
+}
+
+/// krilla `ICCBasedColorSpace`: `[/ICCBased stream]` (category `color_spaces`) over the profile
+/// stream (`/N /Range`, Flate, category `icc_profiles`), once per profile; null when the profile
+/// does not fit an image of `comps` components or the PDF version.
+fn iccSpace(cx: *Ctx, profile: ?[]const u8, comps: u8) ?Ref {
+    const p = profile orelse return null;
+    if (iccComponents(cx.version, p) != comps) return null;
+    var h = sf.Hasher.init('C');
+    h.bytes(p);
+    const key = h.final();
+    if (cx.doc.cacheGet(key)) |r| return r;
+    const d = cx.doc;
+    const pr = d.alloc();
+    const e = d.encode(p, .flate);
+    const sb = d.beginStream(pr, .icc_profiles, e);
+    sb.pairInt("N", comps);
+    sb.key("Range");
+    sb.reals(([_]f32{ 0, 1, 0, 1, 0, 1, 0, 1 })[0 .. 2 * @as(usize, comps)]);
+    sb.filter(e);
+    d.endDict();
+    const r = d.alloc();
+    const b = d.begin(r, .color_spaces);
+    b.arr();
+    b.name("ICCBased");
+    b.ref(pr);
+    b.arrEnd();
+    d.end();
+    d.cachePut(key, r);
+    return r;
 }
 
 /// The encoded bytes of image source `src` (a `data:` URL or a registered resource), if known.
@@ -73,12 +164,18 @@ pub fn sourceBytes(r: *render.Renderer, a: std.mem.Allocator, src: []const u8) ?
 /// A JPEG source embedded as is (krilla `Image::from_jpeg`); null when `bytes` is no 8-bit
 /// JPEG with 1, 3 or 4 components.
 pub fn regJpeg(cx: *Ctx, bytes: []const u8) ?Ref {
-    const info = jpegInfo(bytes) orelse return null;
-    if (info.comps != 1 and info.comps != 3 and info.comps != 4) return null;
     var h = sf.Hasher.init('J');
     h.bytes(bytes);
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return r;
+    const info = jpegInfo(cx.a, bytes) orelse return null;
+    // krilla's image colour space (`ImageColorspace` from zune's input colour space)
+    const comps: u8 = switch (info.space) {
+        .luma => 1,
+        .ycbcr, .rgb => 3,
+        .cmyk, .ycck => 4,
+    };
+    const icc = iccSpace(cx, info.icc, comps);
     const r = cx.doc.alloc();
     const b = cx.doc.beginStream(r, .images, .{ .data = bytes });
     b.pairName("Type", "XObject");
@@ -86,12 +183,10 @@ pub fn regJpeg(cx: *Ctx, bytes: []const u8) ?Ref {
     b.pairName("Filter", "DCTDecode");
     b.pairInt("Width", info.w);
     b.pairInt("Height", info.h);
-    b.pairName("ColorSpace", switch (info.comps) {
-        1 => "DeviceGray",
-        3 => "DeviceRGB",
-        else => "DeviceCMYK",
-    });
-    if (info.comps == 4) {
+    if (icc) |cs| b.pairRef("ColorSpace", cs) else if (comps == 3) {
+        if (@import("conform.zig").rgbSpace(cx)) |cs| b.pairRef("ColorSpace", cs) else b.pairName("ColorSpace", "DeviceRGB");
+    } else b.pairName("ColorSpace", if (comps == 1) "DeviceGray" else "DeviceCMYK");
+    if (comps == 4) {
         // krilla inverts every CMYK / YCCK JPEG (Photoshop convention)
         b.key("Decode");
         b.reals(&.{ 1, 0, 1, 0, 1, 0, 1, 0 });
@@ -182,6 +277,10 @@ pub fn regPng(cx: *Ctx, bytes: []const u8) ?Ref {
         2 => 3,
         else => 1,
     };
+    // the profile `read_info` found, for the expanded colour type (a palette expands to RGB)
+    const md = pk.meta(cx.a, bytes) orelse return null;
+    const icc = iccSpace(cx, md.icc, if (info.color == 0) 1 else 3);
+    const base: ?Ref = icc orelse if (info.color != 0) @import("conform.zig").rgbSpace(cx) else null;
     const r = cx.doc.alloc();
     const b = cx.doc.beginStream(r, .images, .{ .data = info.idat, .flate = true });
     b.pairName("Type", "XObject");
@@ -200,15 +299,152 @@ pub fn regPng(cx: *Ctx, bytes: []const u8) ?Ref {
     if (info.palette) |pal| {
         b.arr();
         b.name("Indexed");
-        b.name("DeviceRGB");
+        if (base) |cs| b.ref(cs) else b.name("DeviceRGB");
         b.int(@intCast(pal.len / 3 - 1));
         b.str(pal);
         b.arrEnd();
-    } else b.name(if (info.color == 2) "DeviceRGB" else "DeviceGray");
+    } else if (base) |cs| b.ref(cs) else b.name(if (info.color == 2) "DeviceRGB" else "DeviceGray");
     b.pairInt("BitsPerComponent", info.depth);
     cx.doc.endDict();
     cx.doc.cachePut(key, r);
     return r;
+}
+
+/// What drawing an image source comes to (takumi-pdf `rasterized_image` + `drawable`).
+pub const Drawn = union(enum) {
+    ref: Ref,
+    /// nothing to draw (no source, a GIF, an undecodable bitmap takumi-core skips)
+    none,
+    /// the document fails: `msg` ++ `arg`
+    fail: struct { msg: []const u8, arg: []const u8 = "" },
+};
+
+/// The colour and alpha samples of a decoded image as an XObject plus soft mask (krilla `Repr::Sampled`).
+fn regSampled(cx: *Ctx, key: u64, wd: u32, ht: u32, luma: bool, bits: u8, color: []const u8, alpha: ?[]const u8, icc_profile: ?[]const u8) Ref {
+    var smask: ?Ref = null;
+    if (alpha) |al| {
+        const sr = cx.doc.alloc();
+        const e = cx.doc.encode(al, .flate);
+        const b = cx.doc.beginStream(sr, .images, e);
+        b.pairName("Type", "XObject");
+        b.pairName("Subtype", "Image");
+        b.filter(e);
+        b.pairInt("Width", wd);
+        b.pairInt("Height", ht);
+        b.pairName("ColorSpace", "DeviceGray");
+        b.pairInt("BitsPerComponent", bits);
+        cx.doc.endDict();
+        smask = sr;
+    }
+    const icc = iccSpace(cx, icc_profile, if (luma) 1 else 3) orelse if (!luma) @import("conform.zig").rgbSpace(cx) else null;
+    const r = cx.doc.alloc();
+    const e = cx.doc.encode(color, .flate);
+    const b = cx.doc.beginStream(r, .images, e);
+    b.pairName("Type", "XObject");
+    b.pairName("Subtype", "Image");
+    b.filter(e);
+    b.pairInt("Width", wd);
+    b.pairInt("Height", ht);
+    if (icc) |cs| b.pairRef("ColorSpace", cs) else b.pairName("ColorSpace", if (luma) "DeviceGray" else "DeviceRGB");
+    b.pairInt("BitsPerComponent", bits);
+    if (smask) |sr| b.pairRef("SMask", sr);
+    cx.doc.endDict();
+    cx.doc.cachePut(key, r);
+    return r;
+}
+
+const fail_prefix = "Writing the PDF failed: failed to process image: ";
+
+/// krilla `Image::from_png` + `decode_png` for a PNG it does not pass through.
+fn regPngDecoded(cx: *Ctx, bytes: []const u8) ?Drawn {
+    var h = sf.Hasher.init('Q');
+    h.bytes(bytes);
+    const key = h.final();
+    if (cx.doc.cacheGet(key)) |r| return .{ .ref = r };
+    const md = pk.meta(cx.a, bytes) orelse return null;
+    if (md.depth == 16 and !cx.version.atLeast(.v1_5)) return .{ .fail = .{ .msg = "Writing the PDF failed: sixteen bit images require PDF 1.5 or newer, but the selected PDF version does not support them" } };
+    switch (pk.decode(cx.a, bytes, render.Renderer.max_image_pixels)) {
+        .no_meta => return null,
+        .fail => |m| return .{ .fail = .{ .msg = fail_prefix, .arg = m } },
+        .ok => |d| return .{ .ref = regSampled(cx, key, d.w, d.h, d.space == .luma, d.bits, d.color, d.alpha, md.icc) },
+    }
+}
+
+/// krilla `Image::from_webp`: the first frame, decoded, straight RGB plus the alpha channel when
+/// the file declares one (VP8X flag, VP8L header bit) and a pixel is not opaque.
+fn regWebp(cx: *Ctx, bytes: []const u8) ?Drawn {
+    var h = sf.Hasher.init('W');
+    h.bytes(bytes);
+    const key = h.final();
+    if (cx.doc.cacheGet(key)) |r| return .{ .ref = r };
+    const body = webp.riffBody(bytes) orelse return null;
+    var it = webp.Chunks{ .data = body };
+    const first = it.next() orelse return null;
+    var has_alpha = false;
+    if (std.mem.eql(u8, &first.tag, "VP8X")) {
+        if (first.body.len < 10) return null;
+        has_alpha = first.body[0] & 0x10 != 0;
+    } else if (std.mem.eql(u8, &first.tag, "VP8L")) {
+        if (first.body.len < 5) return null;
+        has_alpha = (std.mem.readInt(u32, first.body[1..5], .little) >> 28) & 1 != 0;
+    } else if (!std.mem.eql(u8, &first.tag, "VP8 ")) return null;
+    const img = webp.decode(cx.a, bytes, .{ .max_pixels = render.Renderer.max_image_pixels }) catch |e| return .{ .fail = .{ .msg = fail_prefix, .arg = switch (e) {
+        error.OutOfMemory => "out of memory",
+        else => "invalid data",
+    } } };
+    const n: usize = @as(usize, img.width) * img.height;
+    const rgb = cx.a.alloc(u8, n * 3) catch return null;
+    const al = cx.a.alloc(u8, n) catch return null;
+    var translucent = false;
+    for (0..n) |i| {
+        rgb[i * 3 ..][0..3].* = img.data[i * 4 ..][0..3].*;
+        al[i] = img.data[i * 4 + 3];
+        if (al[i] != 255) translucent = true;
+    }
+    return .{ .ref = regSampled(cx, key, img.width, img.height, false, 8, rgb, if (has_alpha and translucent) al else null, null) };
+}
+
+/// takumi-pdf `rasterized_image` for an image source `src` (bytes from `sourceBytes`, decoded
+/// pixmap `pmx`) under colour filter `filter`; `label` names the image in an error.
+pub fn draw(cx: *Ctx, bytes: ?[]const u8, pmx: ?*const raster.Pixmap, filter: ?PixelFilter, label: []const u8) Drawn {
+    var key: u64 = 0;
+    if (bytes) |b| {
+        if (filter == null) {
+            // takumi-pdf `embedded_image`: the bytes as krilla takes them
+            // (an APNG is takumi-core's `AnimatedSource`, decoded by takumi: the pixmap path)
+            if (std.mem.startsWith(u8, b, "\x89PNG\r\n\x1a\n") and @import("../codec/png.zig").apngFrameCount(b) == 0) {
+                if (regPng(cx, b)) |r| return .{ .ref = r };
+                if (regPngDecoded(cx, b)) |d| return d;
+            } else if (b.len >= 3 and b[0] == 0xFF and b[1] == 0xD8 and b[2] == 0xFF) {
+                if (regJpeg(cx, b)) |r| return .{ .ref = r };
+            } else if (b.len >= 12 and std.mem.eql(u8, b[0..4], "RIFF") and std.mem.eql(u8, b[8..12], "WEBP")) {
+                if (regWebp(cx, b)) |d| return d;
+            }
+        }
+        // takumi-core decodes PNG only in takumi-pdf: a JPEG or WebP cannot be drawn, a GIF is skipped
+        switch (codec.sniff(b)) {
+            .jpeg, .webp => return .{ .fail = .{
+                .msg = "Image could not be decoded: ",
+                .arg = std.fmt.allocPrint(cx.a, "{s}: {s}An error occurred while decoding the image data: the image format is not supported", .{ label, if (filter != null) "a filter needs the image's pixels: " else "" }) catch "",
+            } },
+            .gif => return .none,
+            else => {},
+        }
+        key = std.hash.Wyhash.hash(7, b);
+    }
+    const pm = pmx orelse return .none;
+    return .{ .ref = regPixmap(cx, pm, key, filter) };
+}
+
+/// The intrinsic size takumi reads from an image's header when bm-engine cannot decode it (a CMYK
+/// JPEG, a PNG that fails to decode): PNG IHDR, JPEG frame header, WebP header; null otherwise.
+pub fn headerSize(bytes: []const u8) ?[2]u32 {
+    const d = switch (codec.sniff(bytes)) {
+        .png, .jpeg, .webp => codec.dimensions(bytes) orelse return null,
+        else => return null,
+    };
+    if (d.w == 0 or d.h == 0) return null;
+    return .{ d.w, d.h };
 }
 
 /// A premultiplied pixmap as an image XObject (krilla `Image::from_rgba8` after takumi's
@@ -275,11 +511,28 @@ fn oom(cx: *Ctx) Ref {
 
 test "jpeg frame header" {
     // SOI, APP0 (len 4), SOF0: 8-bit, 2x3, 3 components
-    const b = [_]u8{ 0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC0, 0, 17, 8, 0, 3, 0, 2, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1 };
-    const info = jpegInfo(&b).?;
+    const b = [_]u8{ 0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC0, 0, 17, 8, 0, 3, 0, 2, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1, 0xFF, 0xDA, 0, 2 };
+    const info = jpegInfo(null, &b).?;
     try std.testing.expectEqual(@as(u16, 2), info.w);
     try std.testing.expectEqual(@as(u16, 3), info.h);
     try std.testing.expectEqual(@as(u8, 3), info.comps);
+    try std.testing.expectEqual(JpegSpace.ycbcr, info.space);
+    // an Adobe APP14 with transform 0 before the frame: zune reads CMYK, whatever the components
+    const adobe = [_]u8{ 0xFF, 0xD8, 0xFF, 0xEE, 0, 14, 'A', 'd', 'o', 'b', 'e', 0, 100, 0, 0, 0, 0, 0 } ++ b[8..].*;
+    try std.testing.expectEqual(JpegSpace.cmyk, jpegInfo(null, &adobe).?.space);
+    // cut before the scan: not readable
+    try std.testing.expect(jpegInfo(null, b[0 .. b.len - 4]) == null);
+}
+
+test "icc profile version and colour space" {
+    var p: [20]u8 = @splat(0);
+    p[8] = 4;
+    p[9] = 0x20;
+    @memcpy(p[16..20], "RGB ");
+    try std.testing.expectEqual(@as(u8, 3), iccComponents(.v1_7, &p));
+    try std.testing.expectEqual(@as(u8, 0), iccComponents(.v1_4, &p));
+    @memcpy(p[16..20], "GRAY");
+    try std.testing.expectEqual(@as(u8, 1), iccComponents(.v1_7, &p));
 }
 
 test "png passthrough eligibility" {

@@ -423,6 +423,12 @@ function png(rgba, w, h) {
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
   return new Uint8Array(Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]));
 }
+/**
+ * 16 pixels of alpha `a` and colour `c`. A takumi fixture's `ImageBuffer::from_rgba_bytes` premultiplies straight
+ * pixels, which the PDF writer demultiplies again: (192, 192) comes out as colour 193. bm-engine gets the fixture's
+ * bitmap as a PNG, which krilla embeds as it is, so the PNG holds the colour takumi's bitmap stands for.
+ */
+const rgbaOver = (a, c) => Uint8Array.from({ length: 64 }, (_, i) => (i % 4 === 3 ? a : c));
 const timg = (f) => new Uint8Array(readFileSync(path.join(ref, "takumi-pdf", "tests", "images", f)));
 const cells = (f, list) => list.map(f).join("\n");
 
@@ -528,7 +534,7 @@ const FIXTURES = [
   { name: "inline-span-border", vp: [320, 140], html: `<div style="width: 100%; height: 100%; padding: 12px; background-color: #ffffff; font-size: 18px; line-height: 2; color: #141414">
       Due <span style="border: 2px solid #16a34a">August 31</span> at noon, <span style="border: 2px dashed #e11d48; padding: 0 4px; background-color: #fee2e2">a dashed border long enough to wrap</span> done.
     </div>` },
-  { name: "inline-images", page: { size: "a4" }, images: () => [{ src: "wrapped", data: png(new Uint8Array(64).fill(64), 4, 4) }, { src: "inline", data: png(new Uint8Array(64).fill(192), 4, 4) }], html: `<main style="display:flex;flex-direction:column;font-size:14px;color:#141414;">
+  { name: "inline-images", page: { size: "a4" }, images: () => [{ src: "wrapped", data: png(new Uint8Array(64).fill(64), 4, 4) }, { src: "inline", data: png(rgbaOver(192, 193), 4, 4) }], html: `<main style="display:flex;flex-direction:column;font-size:14px;color:#141414;">
     <div><img src="wrapped" alt="wrapped in a div" style="width:40px;height:40px;" /></div>
     <div style="display:block">Text before <img src="inline" alt="between words" style="width:20px;height:20px;opacity:0.5;" /> and after.</div>
   </main>` },
