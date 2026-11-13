@@ -168,7 +168,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
   isPdf(await r.render(prepared, { viewport: { width: 400, height: 100 } }), "prepared handle, options merged over it", [300, 75]);
 }
 {
-  const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+  const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"));
   isPdf(await r.render({ type: "container", children: [{ type: "image", src: "https://x/logo.png", width: 10, height: 10 }] },
     { images: [{ src: "https://x/logo.png", data: logo }], header: { type: "container", children: [{ type: "image", src: logo, width: 5, height: 5 }] } }), "images by key and a binary band image");
 }
@@ -266,7 +266,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
     }
     // a band image (bytes) is drawn
     {
-      const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
+      const logo = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"));
       const imaged = await r.render(lines, { ...geo, footer: { type: "container", children: [{ type: "image", src: logo, width: 16, height: 16 }] } });
       check(/\/Subtype\/Image/.test(latin1(imaged)) && pageCount(imaged) === 3, "band image: an image XObject, one per document (deduplicated across 3 pages)");
       check((latin1(imaged).match(/\/Subtype\/Image/g) || []).length === 1, "band image: one image object for every page");

@@ -1393,7 +1393,7 @@ pub const Emitter = struct {
 
     const Img = union(enum) {
         none,
-        bitmap: struct { pm: *const raster.Pixmap, src: []const u8 },
+        bitmap: struct { pm: ?*const raster.Pixmap, src: []const u8 },
         svg: []const u8,
     };
 
@@ -1431,6 +1431,13 @@ pub const Emitter = struct {
                 const sz = psvg.intrinsic(&e.p, src, o.w, o.h);
                 iw = sz[0];
                 ih = sz[1];
+            } else if (eimg.sourceBytes(e.f.r, e.a, layer.image.url)) |bytes| {
+                // a bitmap bm-engine does not decode (a CMYK JPEG): its header size (takumi-core
+                // `EncodedBitmap`), the bytes embedded as krilla takes them
+                const hs = eimg.headerSize(bytes) orelse return null;
+                im = .{ .bitmap = .{ .pm = null, .src = layer.image.url } };
+                iw = @as(f32, @floatFromInt(hs[0])) * e.f.opts.dpr;
+                ih = @as(f32, @floatFromInt(hs[1])) * e.f.opts.dpr;
             } else return null;
             if (!(iw > 0) or !(ih > 0)) return null;
         }
@@ -1563,7 +1570,7 @@ pub const Emitter = struct {
     fn tileContent(e: *Emitter, s: *sf.Surface, cs: *const CS, layer: *const style.BgLayer, im: Img, x: f32, y: f32, tw: f32, th: f32, pattern_space: Tf) Error!void {
         switch (im) {
             .bitmap => |b| {
-                const ref = try e.imageRef(b.pm, b.src);
+                const ref = (try e.imageRef(b.pm, b.src)) orelse return;
                 s.pushTransform(Tf.translate(x, y));
                 s.drawImage(ref, tw, th);
                 s.pop();
@@ -1829,19 +1836,18 @@ pub const Emitter = struct {
         }.ap, .key = fl.key() };
     }
 
-    /// The image XObject for a decoded image from `src` (JPEG passthrough when possible).
-    fn imageRef(e: *Emitter, pmx: *const raster.Pixmap, src: []const u8) Error!w.Ref {
-        var key: u64 = 0;
-        if (src.len > 0) {
-            if (eimg.sourceBytes(e.f.r, e.a, src)) |bytes| {
-                if (e.filter == null) {
-                    if (eimg.regPng(e.cx, bytes)) |r| return r;
-                    if (eimg.regJpeg(e.cx, bytes)) |r| return r;
-                }
-                key = std.hash.Wyhash.hash(7, bytes);
-            }
-        }
-        return eimg.regPixmap(e.cx, pmx, key, e.pixelFilter());
+    /// The image XObject for the image source `src` (decoded to `pmx` when bm-engine decodes it):
+    /// emit_image.zig `draw`; null when nothing is drawn (a failure is kept: `fail`).
+    fn imageRef(e: *Emitter, pmx: ?*const raster.Pixmap, src: []const u8) Error!?w.Ref {
+        const bytes = if (src.len > 0) eimg.sourceBytes(e.f.r, e.a, src) else null;
+        return switch (eimg.draw(e.cx, bytes, pmx, e.pixelFilter(), src)) {
+            .ref => |r| r,
+            .none => null,
+            .fail => |f| blk: {
+                e.fail(f.msg, f.arg);
+                break :blk null;
+            },
+        };
     }
 
     /// An SVG image rasterised by the painter at twice the CSS px density (approximation:
@@ -1871,7 +1877,7 @@ pub const Emitter = struct {
         const cr = g.contentRect();
         if (!(cr.w > 0) or !(cr.h > 0)) return;
         const svg_src = psvg.nodeSvgSource(n);
-        if (n.img == null and svg_src == null) return;
+        if (n.img == null and svg_src == null and !(n.img_w > 0 and n.img_h > 0)) return;
         const iw = n.img_w;
         const ih = n.img_h;
         var dw = cr.w;
@@ -1903,10 +1909,20 @@ pub const Emitter = struct {
             }
         }
         if (!(dw > 0) or !(dh > 0)) return;
-        const dx = cr.x + cs.object_position[0].resolve(cr.w - dw);
-        const dy = cr.y + cs.object_position[1].resolve(cr.h - dh);
+        var dx = cr.x + cs.object_position[0].resolve(cr.w - dw);
+        var dy = cr.y + cs.object_position[1].resolve(cr.h - dh);
         const crad = g.contentRadii();
         const overflow = dx < cr.x or dy < cr.y or dx + dw > cr.x + cr.w or dy + dh > cr.y + cr.h;
+        // takumi `replaced_content`: the placement is pixel-snapped (Blink `PixelSnappedIntRect`),
+        // like the box itself (`geomOf`)
+        if (e.plain()) {
+            const sn = pm.snapRect(dx, dy, dw, dh);
+            dx = sn.x;
+            dy = sn.y;
+            dw = sn.w;
+            dh = sn.h;
+            if (!(dw > 0) or !(dh > 0)) return;
+        }
         const depth0 = e.s.depth();
         defer e.s.popTo(depth0);
         // (an SVG image clips itself to its canvas: emit_svg.zig, takumi `draw_svg`)
@@ -1916,8 +1932,7 @@ pub const Emitter = struct {
             e.s.pushClip(&e.path, .nonzero);
         }
         if (svg_src) |src| return e.drawSvgRaster(e.s, src, dx, dy, dw, dh, cs.color);
-        const pmx = n.img.?;
-        const ref = try e.imageRef(pmx, n.src orelse "");
+        const ref = (try e.imageRef(n.img, n.src orelse "")) orelse return;
         e.s.pushTransform(Tf.translate(dx, dy));
         e.s.drawImage(ref, dw, dh);
         e.s.pop();
@@ -2561,6 +2576,11 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
         try paintPage(&e, page, win);
         if (e.fail_msg) |msg| {
             f.r.setErr(msg, e.fail_arg);
+            // a message longer than the renderer's buffer (an image's data: URI) is kept whole in
+            // the arena, which lives until the next call
+            if (msg.len + e.fail_arg.len > f.r.err.len) {
+                if (std.mem.concat(f.r.arena.allocator(), u8, &.{ msg, e.fail_arg })) |m| f.r.err = m else |_| {}
+            }
             return error.Invalid;
         }
         outs[i] = s.finish();
