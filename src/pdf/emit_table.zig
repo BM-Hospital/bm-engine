@@ -617,7 +617,14 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
                 const e = b.joint(b.at(index, pr - 1), b.at(index, pr + 1), index, b.at(index, pr), false);
                 const start_wins = s.ivb != 1 and s.bc != 1;
                 const end_wins = e.ivb != 1 and e.bc != -1;
-                const row_end: i32 = if (frow + 1 < sec.n_rows) luRel(tg.rows[sec.start + frow + 1].y) else luRel(sec.h);
+                var row_end: i32 = if (frow + 1 < sec.n_rows) luRel(tg.rows[sec.start + frow + 1].y) else luRel(sec.h);
+                // (a row a page break left above the next one ends at its own end: takumi paints
+                // the collapsed borders of each table fragment)
+                if (frow + 1 < sec.n_rows) {
+                    const r = &tg.rows[sec.start + frow];
+                    const own_end = luRel(r.y + r.h);
+                    if (own_end < row_end - 64) row_end = own_end;
+                }
                 bs = row_start;
                 bsz = row_end - row_start;
                 is = col_start - @divTrunc(w, 2);
@@ -634,16 +641,34 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
                 if (end_wins) bsz += ej else bsz -= ej;
             }
             if (tg.rtl) is = luRel(tg.sec_w) - is - isz;
-            const fx = x + tg.sec_x + @as(f32, @floatFromInt(is)) / 64;
-            const fy = y + sec.y + @as(f32, @floatFromInt(bs)) / 64;
-            const x1 = roundPx(fx);
-            const y1 = roundPx(fy);
-            const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);
-            const y2 = @max(roundPx(fy + @as(f32, @floatFromInt(bsz)) / 64), y1);
+            // (a row line between rows a page break separated is drawn at the end of the one above
+            // too: each table fragment paints its own block-end border, takumi)
+            var starts: [2]i32 = .{ bs, bs };
+            var n_starts: usize = 1;
+            // (the end of the fragment above, which its piece stops at for the pages it shows on)
+            var frag_end: ?f32 = null;
+            if (inline_axis and frow > 0 and frow < sec.n_rows) {
+                const pr_row = &tg.rows[sec.start + frow - 1];
+                const prev_end = luRel(pr_row.y + pr_row.h);
+                if (prev_end < row_start - 64) {
+                    starts = .{ prev_end - @divTrunc(w, 2), bs };
+                    n_starts = 2;
+                    frag_end = y + sec.y + @as(f32, @floatFromInt(prev_end)) / 64;
+                }
+            }
             _ = ctx;
-            // (a page of a paginated document draws the borders on it, once)
-            if (!p.pieceShows(@min(y1, y2), @max(y1, y2))) continue;
-            try border.paintSideRect(&p.d, if (inline_axis) 0 else 3, x1, y1, x2, y2, b.styleAt(index), b.color(index));
+            for (starts[0..n_starts], 0..) |bs_k, k_start| {
+                const fx = x + tg.sec_x + @as(f32, @floatFromInt(is)) / 64;
+                const fy = y + sec.y + @as(f32, @floatFromInt(bs_k)) / 64;
+                const x1 = roundPx(fx);
+                const y1 = roundPx(fy);
+                const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);
+                const y2 = @max(roundPx(fy + @as(f32, @floatFromInt(bsz)) / 64), y1);
+                // (a page of a paginated document draws the borders on it, once)
+                const hi = if (k_start == 0 and n_starts == 2) @min(@max(y1, y2), frag_end.?) else @max(y1, y2);
+                if (!p.pieceShows(@min(y1, y2), hi)) continue;
+                try border.paintSideRect(&p.d, if (inline_axis) 0 else 3, x1, y1, x2, y2, b.styleAt(index), b.color(index));
+            }
         }
         prev_row = @as(usize, sec.start) + sec.n_rows;
     }

@@ -149,6 +149,7 @@ const Queued = struct {
     /// [interactive] the place of its links in the page's link order (`interactive.Collector.reserve`)
     lgroup: u32 = none,
     clip_y: [2]f32,
+    plain_dy: f32 = 0,
 };
 /// A positioned / stacking box lifted to the end of its stacking context (`liftOf`), with what
 /// the walk was in where it met it.
@@ -167,6 +168,7 @@ const Lift = struct {
     tpage: bool,
     in_repeat: bool,
     clip_y: [2]f32,
+    plain_dy: f32 = 0,
 };
 
 pub const Emitter = struct {
@@ -234,6 +236,9 @@ pub const Emitter = struct {
     walk_all: bool = true,
     pass: ?u32 = null,
     tpage: bool = true,
+    /// the block offset translate-only transforms of the boxes being painted add to their layout
+    /// position (a box's fragments are where its layout box is, not where it paints: `windowSlice`)
+    plain_dy: f32 = 0,
     /// the painter (glyph masks, SVG rasteriser) over a canvas-sized dummy pixmap
     p: pm.Painter,
     dummy: raster.Pixmap,
@@ -467,6 +472,7 @@ pub const Emitter = struct {
             // [interactive] takumi collects links in tree order: content painted later keeps its place
             .lgroup = if (e.links) |lk| (if (list == &e.content_q) lk.reserve() else none) else none,
             .clip_y = e.clip_y,
+            .plain_dy = e.plain_dy,
         });
     }
 
@@ -505,11 +511,13 @@ pub const Emitter = struct {
         const saved_defer = e.defer_on;
         const saved_group = if (e.links) |lk| lk.enter(it.lgroup) else none;
         const saved_cy = e.clip_y;
+        const saved_dy = e.plain_dy;
         defer {
             if (e.links) |lk| lk.leave(saved_group);
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
             e.clip_y = saved_cy;
+            e.plain_dy = saved_dy;
             e.tf = saved_tf;
             e.pass = saved_pass;
             e.tpage = saved_tpage;
@@ -531,6 +539,7 @@ pub const Emitter = struct {
         if (!it.ctm.eql(cur)) e.s.pushTransform(inv.pre(it.ctm));
         e.tf = it.tf;
         e.clip_y = it.clip_y;
+        e.plain_dy = it.plain_dy;
         e.pass = it.pass;
         e.tpage = it.tpage;
         e.in_repeat = it.in_repeat;
@@ -563,10 +572,13 @@ pub const Emitter = struct {
         if (e.ext) |ex| if (ex.misses(e, id, y)) return;
         if (n.kind == .anon_text) return e.paintBox(id, x, y, depth);
         var m_open: ?Affine = null;
+        const saved_dy = e.plain_dy;
+        defer e.plain_dy = saved_dy;
         if (localTransform(cs, x, y, l.w, l.h)) |m| {
             if (m.isTranslateOnly() and e.plain()) {
                 x += m.e;
                 y += m.f;
+                e.plain_dy += m.f;
             } else {
                 if (e.tf.mul(m).invert() == null) return;
                 m_open = m;
@@ -728,6 +740,7 @@ pub const Emitter = struct {
             .tpage = e.tpage,
             .in_repeat = e.in_repeat,
             .clip_y = e.clip_y,
+            .plain_dy = e.plain_dy,
         });
         return true;
     }
@@ -870,10 +883,12 @@ pub const Emitter = struct {
         const saved_rep = e.in_repeat;
         const saved_phase = e.tphase;
         const saved_cy = e.clip_y;
+        const saved_dy = e.plain_dy;
         defer {
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
             e.clip_y = saved_cy;
+            e.plain_dy = saved_dy;
             e.tf = saved_tf;
             e.lift_now = saved_now;
             e.pass = saved_pass;
@@ -894,6 +909,7 @@ pub const Emitter = struct {
         e.tf = it.tf;
         e.lift_now = it.id;
         e.clip_y = it.clip_y;
+        e.plain_dy = it.plain_dy;
         e.pass = it.pass;
         e.tpage = it.tpage;
         e.in_repeat = it.in_repeat;
@@ -919,7 +935,8 @@ pub const Emitter = struct {
         return y0 >= top and y0 < bottom;
     }
 
-    const PassFragment = struct { win: Window, s0: f32, s1: f32 };
+    /// `layout_win`: `win` is the page window of the layout box's fragment (not this page's).
+    const PassFragment = struct { win: Window, s0: f32, s1: f32, layout_win: bool = false };
 
     /// The fragment of a box (frame y range `y0`..`y1`) the current pass paints: its part on the
     /// pass's page, or, on this page's own pass, a box on none of the pages the passes visit;
@@ -934,14 +951,20 @@ pub const Emitter = struct {
         return !e.window.excludes(@floor(fr.s0), @ceil(fr.s1));
     }
 
-    noinline fn passFragment(e: *const Emitter, y0: f32, y1: f32) ?PassFragment {
-        const r = e.pass orelse return .{ .win = e.window, .s0 = y0, .s1 = y1 };
+    noinline fn passFragment(e: *const Emitter, y0_in: f32, y1_in: f32) ?PassFragment {
+        const r = e.pass orelse return .{ .win = e.window, .s0 = y0_in, .s1 = y1_in };
+        // (the fragments are those of the layout box: a translated box's are where its layout box
+        // is, painted moved by the translation)
+        const dy = e.plain_dy;
+        const y0 = y0_in - dy;
+        const y1 = y1_in - dy;
         if (e.onPage(r, y0, y1)) {
             const pw = e.windows[r];
             return .{
                 .win = pw,
-                .s0 = if (r == 0 and e.win_open_top) y0 else @max(y0, pw.top),
-                .s1 = if (r + 1 == e.windows.len and e.win_open_bottom) y1 else @min(y1, pw.bottom),
+                .s0 = (if (r == 0 and e.win_open_top) y0 else @max(y0, pw.top)) + dy,
+                .s1 = (if (r + 1 == e.windows.len and e.win_open_bottom) y1 else @min(y1, pw.bottom)) + dy,
+                .layout_win = true,
             };
         }
         if (r != e.win_page) return null;
@@ -949,7 +972,7 @@ pub const Emitter = struct {
         while (q <= r + 1 and q < e.windows.len) : (q += 1) {
             if (e.onPage(q, y0, y1)) return null;
         }
-        return .{ .win = e.window, .s0 = y0, .s1 = y1 };
+        return .{ .win = e.window, .s0 = y0_in, .s1 = y1_in };
     }
 
     /// Whether a box of the current transformed space (`x`, `y`, `wd`, `h`, ink reaching `reach`
@@ -1186,14 +1209,14 @@ pub const Emitter = struct {
         var gd = g;
         const excluded = if (e.pass == null) blk: {
             const ex = e.plain() and (e.window.excludes(g.bx.y - paintReach(cs), g.bx.y + g.bx.h + paintReach(cs)) or e.clipExcludes(g.bx.y - paintReach(cs), g.bx.y + g.bx.h + paintReach(cs)));
-            if (!ex and e.plain() and e.window.paged()) gd = e.windowSlice(cs, l, x, y, g, e.window);
+            if (!ex and e.plain() and e.window.paged()) gd = e.windowSlice(id, cs, l, x, y, g, e.window, false);
             break :blk ex;
         } else blk: {
             const reach = @ceil(paintReach(cs));
             if (!own and pm.enable_tables and (e.partKind(id) != .none or f.tree.tableGeom(n.lid) != null)) break :blk true;
             if (!e.plain()) break :blk !e.tpage or e.tfExcludes(x, y, l.w, l.h, reach);
             const fr = e.passFragment(y, y + l.h) orelse break :blk true;
-            gd = e.windowSlice(cs, l, x, y, g, fr.win);
+            gd = e.windowSlice(id, cs, l, x, y, g, fr.win, fr.layout_win);
             break :blk e.window.excludes(@floor(fr.s0) - reach, @ceil(fr.s1) + reach);
         };
         if (pm.enable_tables and mode != .content) {
@@ -1232,12 +1255,47 @@ pub const Emitter = struct {
     /// shows, when a page boundary cuts the box: its border box cut to the window; with
     /// `box-decoration-break: slice` (the initial value) the cut edges lose their border, padding
     /// and corner radii, with `clone` every fragment keeps all of them. `g` when nothing cuts it.
-    noinline fn windowSlice(e: *const Emitter, cs: *const CS, l: anytype, x: f32, y: f32, g: Geom, win: Window) Geom {
+    noinline fn windowSlice(e: *const Emitter, id: u32, cs: *const CS, l: anytype, x: f32, y_in: f32, g: Geom, win_in: Window, layout_win: bool) Geom {
+        // (in layout space: a translated box is cut where its layout box crosses a page boundary,
+        // and its fragment paints where the translation puts it; `layout_win`: `win_in` is already
+        // the page window of the layout fragment)
+        const dy = e.plain_dy;
+        const y = y_in - dy;
+        var win = win_in;
+        if (!layout_win) {
+            win.top -= dy;
+            win.bottom -= dy;
+        }
+        if (dy != 0 and !layout_win) {
+            // (a layout box inside one page is one fragment, wherever it paints)
+            for (e.windows) |pw| {
+                if (y >= pw.top and y < pw.bottom) {
+                    if (y + l.h <= pw.bottom) return g;
+                    break;
+                }
+            }
+        }
         const from_prev = y < win.top;
         const to_next = y + l.h > win.bottom;
         if (!from_prev and !to_next) return g;
-        const s0 = @max(y, win.top);
-        const s1 = @min(y + l.h, win.bottom);
+        // inside boxes with `box-decoration-break: clone` that the boundary cuts too, the fragment
+        // starts below and ends above their cloned border and padding (takumi: the content of a
+        // cloned fragment is laid out inside its decorations)
+        var t_in: f32 = 0;
+        var b_in: f32 = 0;
+        var p = e.f.nodes.items[id].parent;
+        var guard: u32 = 0;
+        while (p != none and guard < 512) : (guard += 1) {
+            const pn = &e.f.nodes.items[p];
+            if (pn.cs.box_decoration_break == .clone and pn.lid != none) {
+                const pl = e.f.tree.layout(pn.lid);
+                t_in += pl.border.top + pl.padding.top;
+                b_in += pl.border.bottom + pl.padding.bottom;
+            }
+            p = pn.parent;
+        }
+        const s0 = @max(y, win.top + (if (from_prev) t_in else 0));
+        const s1 = @min(y + l.h, win.bottom - (if (to_next) b_in else 0));
         if (!(s1 > s0)) return g;
         const clone = cs.box_decoration_break == .clone;
         const Frag = struct { w: f32, h: f32, border: @TypeOf(l.border), padding: @TypeOf(l.padding) };
@@ -1253,7 +1311,7 @@ pub const Emitter = struct {
             }
         }
         const c = e.ctx();
-        var out = pm.Painter.geomOf(cs, &fr, x, s0, &c);
+        var out = pm.Painter.geomOf(cs, &fr, x, s0 + dy, &c);
         if (!clone and out.rounded) {
             if (from_prev) {
                 out.radii[0] = .{ 0, 0 };
@@ -2557,12 +2615,55 @@ fn stacks(cs: *const CS) bool {
     return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
 }
 
+/// `layout.fragment.Options.extent_fn` of a paginated frame: how far down its boxes reach once
+/// transformed (takumi `scrollable_block_end` over every page, `transformed_rect_extents` of the
+/// border boxes; the boxes inside one clipping its overflow and the fixed boxes left out), null
+/// when no box is transformed or relatively offset (takumi `moves_boxes`).
+pub fn movedExtent(f: *Frame) ?f32 {
+    var moves = false;
+    for (f.nodes.items) |*n| {
+        if (n.kind == .anon_text) continue;
+        if (n.cs.position == .relative or hasTransform(n.cs)) {
+            moves = true;
+            break;
+        }
+    }
+    if (!moves or f.root == none) return null;
+    const Item = struct { id: u32, ox: f32, oy: f32, m: Affine };
+    var stack: std.ArrayList(Item) = .empty;
+    defer stack.deinit(f.a);
+    var end: f32 = 0;
+    stack.append(f.a, .{ .id = f.root, .ox = 0, .oy = 0, .m = Affine.identity }) catch return end;
+    while (stack.pop()) |it| {
+        const n = &f.nodes.items[it.id];
+        if (n.kind == .anon_text or n.lid == none) continue;
+        const cs = n.cs;
+        if (cs.display == .none or (cs.position == .fixed and it.id != f.root)) continue;
+        const l = f.tree.layout(n.lid);
+        const x = it.ox + l.x;
+        const y = it.oy + l.y;
+        var m = it.m;
+        if (localTransform(cs, x, y, l.w, l.h)) |t| m = m.mul(t);
+        for ([4][2]f32{ .{ x, y }, .{ x + l.w, y }, .{ x, y + l.h }, .{ x + l.w, y + l.h } }) |p| {
+            const yy = m.b * p[0] + m.d * p[1] + m.f;
+            if (yy == yy) end = @max(end, yy);
+        }
+        // (what a box clipping its block overflow clips adds nothing)
+        if (it.id != f.root and (cs.overflow_y != .visible or (cs.overflow_x != .visible and cs.overflow_x != .clip))) continue;
+        var c = n.first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            stack.append(f.a, .{ .id = c, .ox = x, .oy = y, .m = m }) catch return end;
+        }
+    }
+    return end;
+}
+
 /// `transform`, `rotate`, `scale` or `translate` (takumi `has_transform_related_property`).
-fn hasTransform(cs: *const CS) bool {
+pub fn hasTransform(cs: *const CS) bool {
     return cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1 or cs.translate[0].px != 0 or cs.translate[0].pct != 0 or cs.translate[1].px != 0 or cs.translate[1].pct != 0 or cs.translate[0].calc != null or cs.translate[1].calc != null;
 }
 
-noinline fn localTransform(cs: *const CS, x: f32, y: f32, wd: f32, h: f32) ?Affine {
+pub noinline fn localTransform(cs: *const CS, x: f32, y: f32, wd: f32, h: f32) ?Affine {
     if (!hasTransform(cs)) return null;
     const d2r: f32 = std.math.pi / 180.0;
     const ox = x + cs.transform_origin[0].resolve(wd);

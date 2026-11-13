@@ -2825,6 +2825,7 @@ pub const Frame = struct {
             if (n.kind == .image) st.breaks.monolithic = true;
             if (comptime config.enable_pdf) if (n.el != none and n.kind != .anon_text and n.kind != .anon_box) {
                 st.breaks.page = @import("pdf/page_names.zig").idOf(f, n.el);
+                contentsBreaks(f, n.el, &st);
             };
         }
         if (n.el != none) {
@@ -3160,6 +3161,7 @@ pub const Frame = struct {
                 .start = o.start,
                 .start_top = o.start_top,
                 .record_starts = o.record_starts,
+                .extent_fn = if (comptime config.enable_pdf) movedExtentCb else null,
             }) catch |e| return switch (e) {
                 error.OutOfMemory => error.OutOfMemory,
                 error.TooManyPages => f.fail("The content spans more than 20000 pages. Give it a height that resolves.", ""),
@@ -3170,6 +3172,12 @@ pub const Frame = struct {
             try f.applyLineShifts(&f.tree.paged.pages.?);
             return &f.tree.paged.pages.?;
         } else return f.fail("paged layout is not supported by this build", "");
+    }
+
+    fn movedExtentCb(ctx: *anyopaque) ?f32 {
+        if (comptime !config.enable_pdf) return null;
+        const f: *Frame = @ptrCast(@alignCast(ctx));
+        return @import("pdf/emit.zig").movedExtent(f);
     }
 
     fn pageHeightCb(ctx: *anyopaque, page: u32, name: u32) f32 {
@@ -4009,6 +4017,48 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
         .orphans = @max(cs.orphans, 1),
     };
     return s;
+}
+
+/// PDF: the `break-before` / `break-after` of the `display: contents` ancestors that `el` is the
+/// first / last box of (they generate no box; takumi-pdf breaks before / after their content).
+fn contentsBreaks(f: *const Frame, el: u32, st: *layout.Style) void {
+    if (comptime !layout.fragment.enabled) return;
+    const Edge = struct {
+        fn boxes(fr: *const Frame, c: u32) bool {
+            const ce = fr.dom.at(c);
+            if (ce.run) return std.mem.trim(u8, ce.text, " \t\r\n\x0c").len > 0;
+            return ce.cs.display != .none;
+        }
+        fn first(fr: *const Frame, p: u32) u32 {
+            var c = fr.dom.at(p).first;
+            while (c != none and !boxes(fr, c)) c = fr.dom.at(c).next;
+            return c;
+        }
+        fn last(fr: *const Frame, p: u32) u32 {
+            var c = fr.dom.at(p).last;
+            while (c != none and !boxes(fr, c)) c = fr.dom.at(c).prev;
+            return c;
+        }
+        fn join(a: layout.BreakBetween, b: layout.BreakBetween) layout.BreakBetween {
+            return if (@intFromEnum(b) >= @intFromEnum(a)) b else a;
+        }
+    };
+    var cur = el;
+    var is_first = true;
+    var is_last = true;
+    var guard: u32 = 0;
+    while (guard < 256) : (guard += 1) {
+        const p = f.dom.at(cur).parent;
+        if (p == none) return;
+        const pe = f.dom.at(p);
+        if (pe.kind != .container or pe.run or pe.cs.display != .contents) return;
+        is_first = is_first and Edge.first(f, p) == cur;
+        is_last = is_last and Edge.last(f, p) == cur;
+        if (is_first) st.breaks.before = Edge.join(breakBetween(pe.cs.break_before), st.breaks.before);
+        if (is_last) st.breaks.after = Edge.join(st.breaks.after, breakBetween(pe.cs.break_after));
+        if (!is_first and !is_last) return;
+        cur = p;
+    }
 }
 
 /// `break-before` / `break-after` for the fragmentation pass (avoid-column -> auto).

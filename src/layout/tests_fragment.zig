@@ -42,6 +42,8 @@ const O = struct {
     hp: ?f32 = null,
     /// `Breaks.page`: a page name id (0 = auto)
     page: u32 = 0,
+    /// `box-decoration-break: clone`
+    clone: bool = false,
 };
 
 const Doc = struct {
@@ -83,7 +85,7 @@ const Doc = struct {
         if (o.column) s.flex_direction = .column;
         s.overflow_x = o.overflow;
         s.overflow_y = o.overflow;
-        s.breaks = .{ .before = o.before, .after = o.after, .avoid_inside = o.avoid, .widows = o.widows, .orphans = o.orphans, .page = o.page };
+        s.breaks = .{ .before = o.before, .after = o.after, .avoid_inside = o.avoid, .widows = o.widows, .orphans = o.orphans, .page = o.page, .clone = o.clone };
         return s;
     }
     fn add(d: *Doc, parent: ?Id, o: O) Id {
@@ -520,6 +522,70 @@ test "fragment: a sliced box spans the break with its borders at its two ends" {
     try testing.expect(f0.y == 100 and f0.h == 100 and !f0.from_prev and f0.to_next);
     try testing.expect(f1.y == 0 and f1.h == 100 and f1.from_prev and !f1.to_next);
     try testing.expect(d.pages.boxOnPage(1, 0, 100) == null and d.pages.boxOnPage(2, 0, 100) == null);
+}
+
+// takumi-pdf 0.20.0 (probe pagination.box-decoration-break.block): with `clone` the content breaks
+// above the block-end border and padding every fragment repeats, and resumes below the block-start
+// ones on the next page; with `slice` it runs to the page end
+test "fragment: box-decoration-break clone repeats the decorations around each fragment's content" {
+    if (!F.enabled) return error.SkipZigTest;
+    for ([_]bool{ true, false }) |clone| {
+        var d: Doc = undefined;
+        d.init();
+        defer d.deinit();
+        const root = d.add(null, .{});
+        _ = d.add(root, .{ .h = 100 });
+        const box = d.add(root, .{ .bt = 10, .bb = 10, .clone = clone });
+        const txt = d.text(box, 10, .{});
+        try d.run(root, 200);
+        if (clone) {
+            // lines 0-3 end at 190 (the page end less the 10px border), line 4 resumes at 200 + 10
+            try testing.expectEqual(@as(f32, 0), d.pages.lineDy(txt, 3));
+            try testing.expectEqual(@as(f32, 20), d.pages.lineDy(txt, 4));
+            try testing.expectEqual(@as(f32, 240), d.t.layout(box).h);
+        } else {
+            try testing.expectEqual(@as(f32, 10), d.pages.lineDy(txt, 4));
+            try testing.expectEqual(@as(f32, 230), d.t.layout(box).h);
+        }
+    }
+}
+
+// takumi-pdf 0.20.0 (probe tagging.paged.forced-breaks): after a forced break before an empty box
+// the margins collapsed through it no longer collapse with those above: the next box keeps its
+// block-start margin below it
+test "fragment: a forced break before an empty box keeps the margin of the box after it" {
+    if (!F.enabled) return error.SkipZigTest;
+    var d: Doc = undefined;
+    d.init();
+    defer d.deinit();
+    const root = d.add(null, .{});
+    _ = d.add(root, .{ .h = 50, .mb = 16 });
+    const empty = d.add(root, .{ .before = .page });
+    const after = d.add(root, .{ .h = 20, .mt = 16 });
+    try d.run(root, 200);
+    try d.expect(empty, &.{placed(1, 0, 0)});
+    try d.expect(after, &.{placed(1, 16, 20)});
+}
+
+// takumi-pdf 0.20.0 (probe pagination.table.tfoot-repeat): a table whose repeated footer ends exactly
+// at the page end fits the page
+test "fragment: a table that fits with its repeated footer stays on the page" {
+    if (!F.enabled) return error.SkipZigTest;
+    var d: Doc = undefined;
+    d.init();
+    defer d.deinit();
+    const root = d.add(null, .{});
+    const table = d.add(root, .{ .display = .table });
+    const body = d.add(table, .{ .display = .table_row_group });
+    for (0..8) |_| {
+        const r = d.add(body, .{ .display = .table_row });
+        _ = d.add(d.add(r, .{ .display = .table_cell }), .{ .h = 20 });
+    }
+    const foot = d.add(table, .{ .display = .table_footer_group, .avoid = true });
+    _ = d.add(d.add(d.add(foot, .{ .display = .table_row }), .{ .display = .table_cell }), .{ .h = 40 });
+    try d.run(root, 200);
+    try d.expectPages(1);
+    try d.expect(foot, &.{placed(0, 160, 40)});
 }
 
 fn tableOf(d: *Doc, root: Id, rows: []Id, cells: []Id, h: f32, row_avoid: bool) Id {
@@ -1038,7 +1104,9 @@ test "fragment: pages of different heights" {
 }
 
 // docs (pagination.mdx): "A text line or an image never splits. It moves to the next page, and when it
-// is taller than a page it runs on over the pages after it."
+// is taller than a page it runs on over the pages after it." What follows it in the same container
+// starts the next page, over it (takumi-pdf 0.20.0: the monolithic overflow of the root's or a
+// container's own child does not carry over; probe pagination.monolithic.taller-than-page).
 test "fragment: monolithic content moves to the next page, and runs on when taller than a page" {
     if (!F.enabled) return error.SkipZigTest;
     var d: Doc = undefined;
@@ -1051,11 +1119,39 @@ test "fragment: monolithic content moves to the next page, and runs on when tall
     const after = d.add(root, .{ .h = 30 });
     try d.run(root, 200);
     try d.expect(img, &.{placed(1, 0, 100)});
-    // it does not fit the rest of page 2 either: it starts page 3 and is sliced over the pages after
-    try d.expect(tall, &.{ placed(2, 0, 200), placed(3, 0, 200), placed(4, 0, 50) });
-    // what follows steers clear of it
-    try d.expect(after, &.{placed(4, 50, 30)});
-    try d.expectPages(5);
+    // it does not fit the rest of page 2 either: it starts page 3 and runs on over the page after
+    try d.expect(tall, &.{ placed(2, 0, 200), placed(3, 0, 200) });
+    // what follows starts the next page, and the overflow adds no page
+    try d.expect(after, &.{placed(3, 0, 30)});
+    try d.expectPages(4);
+}
+
+// takumi-pdf 0.20.0 (probe pagination.monolithic.taller-than-page and its variants): a box that ends
+// with monolithic content overflowing the page carries the overflow to the content after it; one
+// level deeper, or with block-end padding, it does not.
+test "fragment: the overflow of monolithic content carries over through the box that ends with it" {
+    if (!F.enabled) return error.SkipZigTest;
+    var d: Doc = undefined;
+    d.init();
+    defer d.deinit();
+    const root = d.add(null, .{});
+    const wrap = d.add(root, .{});
+    _ = d.image(wrap, 360);
+    const after = d.add(root, .{ .h = 20 });
+    try d.run(root, 180);
+    try d.expect(after, &.{placed(2, 0, 20)});
+
+    var d2: Doc = undefined;
+    d2.init();
+    defer d2.deinit();
+    const root2 = d2.add(null, .{});
+    const outer = d2.add(root2, .{});
+    const mid = d2.add(outer, .{});
+    const inner = d2.add(mid, .{});
+    _ = d2.image(inner, 360);
+    const after2 = d2.add(outer, .{ .h = 20 });
+    try d2.run(root2, 180);
+    try d2.expect(after2, &.{placed(1, 0, 20)});
 }
 
 // Blink's AdjustedMarginAfterFinalChildFragment: a trailing margin does not reach into the next page
@@ -1720,15 +1816,23 @@ fn checkTree(d: *Doc, n: Id, top: f32, page_h: f32) !void {
     // the in-flow children of a block container / column stay in order without overlapping, inside it
     const stacked = s.display == .block or s.flex_direction == .column;
     var prev_end: f32 = top;
+    var prev_top: f32 = top;
     var ch = ns[n].first_child;
     while (ch != L.tree.no_node) : (ch = ns[ch].next_sibling) {
         const cl = d.t.layout(ch);
         const ct = top + cl.y;
         if (stacked) {
-            try testing.expect(ct >= prev_end - 0.02);
+            // (or it starts a page below content left overflowing the page before: takumi's
+            // monolithic overflow that does not carry over)
+            const after_overflow = P.of(prev_top, page_h) < P.of(ct, page_h);
+            try testing.expect(ct >= prev_end - 0.02 or after_overflow);
             prev_end = ct + cl.h;
+            prev_top = ct;
         }
-        try testing.expect(ct + cl.h <= top + l.h + 0.02);
+        // (or it starts on an earlier page than the box ends and overflows that page: content after
+        // it moved up to the next page's start, its overflow was left behind)
+        const left_behind = P.of(ct, page_h) < P.of(top + l.h - 0.02, page_h) or P.of(ct + cl.h - 0.02, page_h) > P.of(top + l.h - 0.02, page_h);
+        try testing.expect(ct + cl.h <= top + l.h + 0.02 or left_behind);
         try checkTree(d, ch, ct, page_h);
     }
 }
