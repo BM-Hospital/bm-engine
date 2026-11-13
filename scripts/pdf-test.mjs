@@ -816,6 +816,20 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
   }
 }
 
+// ---- takumi-pdf wrapper inputs: JSX trees, fromJsx values as bands, pooled <style> sheets
+{
+  const el = (type, props) => ({ $$typeof: Symbol.for("react.transitional.element"), type, props, key: null });
+  const Comp = ({ label }) => el("b", { children: label });
+  const jsx = el("div", { style: { fontSize: 20, padding: 4 }, children: ["JSX ", el(Comp, { label: "comp" })] });
+  const bytes = await r.render(jsx, { size: { width: 300, height: 200 }, footer: el("div", { children: ["F", el("span", { className: "pageNumber" })] }) });
+  isPdf(bytes, "JSX document and footer", [225, 150]);
+  const t = pdftotext(bytes, "jsx_text");
+  if (!t.skipped) check(/JSX comp/.test(t.text) && /F1/.test(t.text), `JSX document and footer text: ${JSON.stringify(t.text.trim())}`);
+  const pooled = await r.render(`<div class="x">DOCX</div><p>doc</p>`, { size: { width: 300, height: 200 }, header: `<style>.x{display:none}</style><p>head</p>` });
+  const t2 = pdftotext(pooled, "pooled_styles");
+  if (!t2.skipped) check(!/DOCX/.test(t2.text) && /head/.test(t2.text), "a band's <style> styles the document too (takumi-pdf pools the <style> sheets)");
+}
+
 const rendererAfterErrors = await r.render(node, { viewport: { width: 40, height: 40 } });
 isPdf(rendererAfterErrors, "renderer still works after errors", [30, 30]);
 

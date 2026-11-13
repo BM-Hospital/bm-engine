@@ -2146,6 +2146,12 @@ pub const Frame = struct {
             if (c) |x| {
                 if (inline_ctx) {
                     joins = f.isInlineLevel(x, 0, lines) or (lines and f.objectKind(x) != null);
+                    // (PDF frames: a `display: none` child inside a run generates nothing and does not
+                    // end the run, as in takumi; image frames keep the split until the image suite is
+                    // re-baselined)
+                    if (comptime layout.fragment.enabled) if (!joins and run_len > 0 and f.tree.paged.pdf and f.itemStyle(x).display == .none) {
+                        joins = true;
+                    };
                     if (joins and !run_content) run_content = f.hasLineContent(x, 0);
                     if (joins and lines and x == .el) {
                         const xe = f.dom.at(x.el);
