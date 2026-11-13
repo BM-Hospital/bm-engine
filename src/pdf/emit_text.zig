@@ -295,8 +295,10 @@ fn disowns(e: *const Emitter, it: LineItem) bool {
 }
 
 /// takumi `Window::shows_line_item`: this page draws the item (on the page owning its line, and
-/// on every other page its line box reaches).
+/// on every other page its line box reaches), unless the overflow clips around it cut it away
+/// (`Emitter.clip_y`, takumi's narrowed window).
 fn showsItem(e: *const Emitter, it: LineItem) bool {
+    if (e.clipExcludes(it.top, it.bottom)) return false;
     return !e.window.excludes(it.top, it.bottom) and (!disowns(e, it) or !e.window.excludes(it.l0, it.l1));
 }
 
@@ -910,7 +912,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const ext = shadowReach(n.cs);
     top = @floor(top + ext[0]);
     bottom = @ceil(bottom + ext[1]);
-    const shows = run_shows or !e.window.excludes(top, bottom);
+    const shows = run_shows or !(e.window.excludes(top, bottom) or e.clipExcludes(top, bottom));
     if (!shows) return .{ .shows = false };
     // the box's fragments (one per page it reaches), each with its part of the box and the
     // glyphs of its lines; those this page's window meets each open a region
@@ -943,7 +945,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
                 hi = @max(hi, y + r.baseline + @as(f32, @floatFromInt(lm.descent)) * sc);
             }
         }
-        if (e.window.excludes(@floor(lo + ext[0]), @ceil(hi + ext[1]))) continue;
+        if (e.window.excludes(@floor(lo + ext[0]), @ceil(hi + ext[1])) or e.clipExcludes(@floor(lo + ext[0]), @ceil(hi + ext[1]))) continue;
         if (i < here) out.before += 1 else out.after += 1;
     }
     return out;

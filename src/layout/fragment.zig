@@ -196,6 +196,12 @@ pub fn paginate(t: anytype, a: Allocator, root: tr.NodeId, opts: Options) Error!
     return e.run(root);
 }
 
+/// The box clips its block-axis overflow: `overflow-y` other than `visible`, or `visible` computing to
+/// `auto` because `overflow-x` is neither `visible` nor `clip` (CSS Overflow 3 §3.1).
+fn clipsY(s: anytype) bool {
+    return s.overflow_y != .visible or (s.overflow_x != .visible and s.overflow_x != .clip);
+}
+
 /// Blink's BreakAppeal, worst first.
 const Appeal = enum(u8) { last_resort, violating_avoid, violating_orphans_widows, perfect };
 inline fn rank(x: Appeal) u8 {
@@ -751,7 +757,7 @@ fn Engine(comptime T: type) type {
             // Blink's is_known_to_fit_in_fragmentainer: a box of bounded block size that ends on this page
             const known_fit = e.bounded(n) and bottom <= pg.end + eps;
             // (a clipping box that fits is not fragmented for its content: Blink's DisableFragmentation)
-            if (known_fit and e.style(n).overflow_y != .visible and n != e.t.root) return .{ .end = bottom };
+            if (known_fit and clipsY(e.style(n)) and n != e.t.root) return .{ .end = bottom };
             var first: BB = .auto;
             var r = try e.probeSeq(n, top, pg, k, known_fit, requires, &first);
             // (the break value before the first child reaches the container even where the box breaks)
@@ -1392,7 +1398,7 @@ fn Engine(comptime T: type) type {
                     const pk = e.kindOf(ns[cur].parent);
                     const is_abs = s.position == .absolute;
                     const is_float = floats_on and !is_abs and s.float != .none and (pk == .block or pk == .text);
-                    var descend = s.display != .none and !ns[cur].measured and e.kindOf(cur) != .mono and (s.overflow_y == .visible or e.st[cur].started);
+                    var descend = s.display != .none and !ns[cur].measured and e.kindOf(cur) != .mono and (!clipsY(s) or e.st[cur].started);
                     // (an atomic inline box is monolithic)
                     if (pk == .text and !is_abs and !is_float) descend = false;
                     if (s.display != .none) {
@@ -1476,7 +1482,7 @@ fn Engine(comptime T: type) type {
                 if (s.display != .none and (s.position != .fixed or cur == root)) {
                     const y = base + l.y;
                     extent.* = @max(extent.*, y + l.h);
-                    descend = !ns[cur].measured and (s.overflow_y == .visible or cur == root) and ns[cur].first_child != no_node and sp < stack.len;
+                    descend = !ns[cur].measured and (!clipsY(s) or cur == root) and ns[cur].first_child != no_node and sp < stack.len;
                     if (descend) {
                         stack[sp] = base;
                         sp += 1;
