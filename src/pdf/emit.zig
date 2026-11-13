@@ -1858,6 +1858,7 @@ pub const Emitter = struct {
             .current = .{ .r = current.r, .g = current.g, .b = current.b, .a = current.a },
             .filter = e.filter,
             .image_host = image_host,
+            .fonts = &e.f.r.fonts,
         });
     }
 

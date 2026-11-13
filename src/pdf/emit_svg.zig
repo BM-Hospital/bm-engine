@@ -32,6 +32,8 @@ const render_svg = @import("../svg/render.zig");
 const cssc = @import("../style/color.zig");
 const codec = @import("../codec/codec.zig");
 const render = @import("../render.zig");
+const font = @import("../font/font.zig");
+const type3 = @import("type3.zig");
 
 const Allocator = std.mem.Allocator;
 const Tf = geom.Tf;
@@ -51,6 +53,8 @@ pub const Options = struct {
     /// an `<img>` / `url()` (takumi `SvgHost::Image`: a root without a `viewBox` synthesizes one),
     /// not an inline `<svg>`
     image_host: bool = true,
+    /// the fonts `text` draws with (none: text draws nothing)
+    fonts: ?*const font.FontCollection = null,
 };
 
 /// Draws SVG markup `src` laid out at its displayed size `w` x `h` with its top-left corner at
@@ -63,7 +67,7 @@ pub fn draw(a: Allocator, s: *sf.Surface, src: []const u8, x: f32, y: f32, w: f3
         else => return false,
     };
     if (doc.nodes.len == 0 or doc.nodes[0].tag != .svg) return false;
-    var l: Layout = .{ .a = a, .doc = &doc, .current = o.current, .image_host = o.image_host };
+    var l: Layout = .{ .a = a, .doc = &doc, .current = o.current, .image_host = o.image_host, .fonts = o.fonts };
     const root = try l.layoutRoot(w, h);
     const depth0 = s.depth();
     s.pushTransform(Tf.translate(x, y));
@@ -227,6 +231,7 @@ const Layout = struct {
     depth: u32 = 0,
     instances: u32 = 0,
     image_depth: u32 = 0,
+    fonts: ?*const font.FontCollection = null,
 
     fn node(l: *const Layout, i: u32) *const Node {
         return &l.doc.nodes[i];
@@ -462,7 +467,7 @@ const Layout = struct {
         switch (n.tag) {
             .svg, .g, .a => try l.children(idx, st, sc, out),
             .image => try l.image(idx, st, sc, out),
-            .text => {}, // (not ported: takumi draws the glyph outlines)
+            .text => try l.text(idx, st, sc, out),
             else => if (n.tag.isShape()) try l.shape(idx, st, sc, out),
         }
     }
@@ -1424,6 +1429,164 @@ const Layout = struct {
         }
     }
 
+    // ---- text (text/*.rs, simplified) -----------------------------------------------------------
+
+    const Seg = struct {
+        text: std.ArrayList(u8) = .empty,
+        st: sstyle.Style,
+        /// the element whose x / y / dx / dy apply to the segment's first character
+        starts: u32 = NONE,
+    };
+
+    fn collectText(l: *Layout, idx: u32, st: *const sstyle.Style, segs: *std.ArrayList(Seg), prev_space: *bool, start_el: *u32, depth: u32) Error!void {
+        if (depth > 16) return;
+        var ch = l.node(idx).first_child;
+        while (ch != NONE) : (ch = l.node(ch).next_sibling) {
+            const c = l.node(ch);
+            if (c.tag == .textnode) {
+                var seg: Seg = .{ .st = st.*, .starts = start_el.* };
+                for (c.text) |b| {
+                    if (b == '\n' or b == '\r') continue;
+                    const ch2: u8 = if (b == '\t') ' ' else b;
+                    if (ch2 == ' ') {
+                        if (prev_space.*) continue;
+                        prev_space.* = true;
+                    } else prev_space.* = false;
+                    try seg.text.append(l.a, ch2);
+                }
+                if (seg.text.items.len > 0) {
+                    start_el.* = NONE;
+                    try segs.append(l.a, seg);
+                }
+            } else if (c.tag == .tspan) {
+                if (!display(c)) continue;
+                const cst = l.styleOf(c, st);
+                if (c.attr("x") != null or c.attr("y") != null or c.attr("dx") != null or c.attr("dy") != null) start_el.* = ch;
+                try l.collectText(ch, &cst, segs, prev_space, start_el, depth + 1);
+            }
+        }
+    }
+
+    fn firstNumber(n: *const Node, name: []const u8) ?f32 {
+        var rd: num.Reader = .{ .s = n.attr(name) orelse return null };
+        return rd.next();
+    }
+
+    /// A `text` element's glyph outlines, one shape per span of characters, in chunks that start
+    /// at an absolute position and are aligned by `text-anchor` (takumi `convert_text`, with
+    /// position lists reduced to their first value and no `textPath` / `rotate` / decorations).
+    fn text(l: *Layout, idx: u32, st: *const sstyle.Style, sc: *const Scope, out: *Group) Error!void {
+        const fonts = l.fonts orelse return;
+        const n = l.node(idx);
+        var segs: std.ArrayList(Seg) = .empty;
+        var prev_space = true;
+        var start_el: u32 = idx;
+        try l.collectText(idx, st, &segs, &prev_space, &start_el, 0);
+        // strip the trailing space
+        while (segs.items.len > 0) {
+            const last = &segs.items[segs.items.len - 1];
+            if (last.text.items.len > 0 and last.text.items[last.text.items.len - 1] == ' ') last.text.items.len -= 1;
+            if (last.text.items.len > 0) break;
+            _ = segs.pop();
+        }
+        if (segs.items.len == 0) return;
+        var pen_x = firstNumber(n, "x") orelse 0;
+        var pen_y = firstNumber(n, "y") orelse 0;
+        var i: usize = 0;
+        while (i < segs.items.len) {
+            // a chunk: from a segment with an absolute position to the next one
+            var j = i + 1;
+            while (j < segs.items.len) : (j += 1) {
+                const se = segs.items[j].starts;
+                if (se != NONE and (l.node(se).attr("x") != null or l.node(se).attr("y") != null)) break;
+            }
+            const chunk = segs.items[i..j];
+            if (chunk[0].starts != NONE) {
+                const sn = l.node(chunk[0].starts);
+                if (firstNumber(sn, "x")) |v| pen_x = v;
+                if (firstNumber(sn, "y")) |v| pen_y = v;
+            }
+            const runs = try l.a.alloc(font.Run, chunk.len);
+            const fams = try l.a.alloc([8][]const u8, chunk.len);
+            for (chunk, 0..) |*sg, k| {
+                var nf: usize = 0;
+                var it = std.mem.splitScalar(u8, sg.st.font_family, ',');
+                while (it.next()) |raw| {
+                    const t = std.mem.trim(u8, raw, " \t\r\n'\"");
+                    if (t.len == 0 or nf == 8) continue;
+                    fams[k][nf] = t;
+                    nf += 1;
+                }
+                runs[k] = .{ .text = sg.text.items, .style = .{ .families = fams[k][0..nf], .weight = weightOf(sg.st.font_weight), .size = sg.st.font_size, .user = @intCast(k) } };
+            }
+            const tl = font.layoutText(l.a, fonts, runs, .{ .white_space = .pre }) catch return;
+            if (tl.lines.len == 0) {
+                i = j;
+                continue;
+            }
+            const line = tl.lines[0];
+            // dx / dy of each segment's first character, accumulated
+            const off = try l.a.alloc([2]f32, chunk.len);
+            var acc: [2]f32 = .{ 0, 0 };
+            for (chunk, 0..) |sg, k| {
+                if (sg.starts != NONE) {
+                    const sn = l.node(sg.starts);
+                    acc[0] += firstNumber(sn, "dx") orelse 0;
+                    acc[1] += firstNumber(sn, "dy") orelse 0;
+                }
+                off[k] = acc;
+            }
+            var shift: f32 = 0;
+            const anchor = num.trim(chunk[0].st.text_anchor);
+            const width = line.width + acc[0];
+            if (std.mem.eql(u8, anchor, "middle")) shift = -width / 2 else if (std.mem.eql(u8, anchor, "end")) shift = -width;
+            const paths = try l.a.alloc(Path, chunk.len);
+            for (paths) |*p| p.* = .{};
+            for (tl.glyphs[line.glyph_start..line.glyph_end]) |g| {
+                const k: usize = @min(g.user, chunk.len - 1);
+                const face = fonts.face(g.face);
+                const s = g.size / @as(f32, @floatFromInt(face.font.units_per_em));
+                const gx = pen_x + shift + g.x + off[k][0];
+                const gy = pen_y + (g.y - line.baseline) + off[k][1];
+                var gp: Path = .{};
+                _ = type3.glyphPath(l.a, &face.font, g.gid, Tf.row(s, 0, 0, -s, gx, gy), &gp) catch return error.OutOfMemory;
+                try paths[k].addPath(l.a, &gp, .identity);
+            }
+            var bounds: ?Rect = null;
+            for (paths) |*p| if (pathdata.tightBounds(p)) |b| {
+                bounds = if (bounds) |x| unite(x, b) else b;
+            };
+            for (chunk, paths) |*sg, *p| {
+                if (p.isEmpty() or !sg.st.visible) continue;
+                const b = bounds orelse continue;
+                const has_bbox = b.w > 0 and b.h > 0;
+                var fill = try l.resolveFill(&sg.st, sc, has_bbox);
+                var stroke = try l.resolveStroke(n, &sg.st, sc, has_bbox);
+                if (fill) |*f| if (f.paint.bboxUnits()) {
+                    if (try l.inUserUnits(f.paint, b)) |pp| f.paint = pp else fill = null;
+                };
+                if (stroke) |*s2| if (s2.paint.bboxUnits()) {
+                    if (try l.inUserUnits(s2.paint, b)) |pp| s2.paint = pp else stroke = null;
+                };
+                if (fill == null and stroke == null) continue;
+                const sh = try l.a.create(Shape);
+                sh.* = .{ .path = p.*, .bounds = b, .visible = true, .fill = fill, .stroke = stroke, .stroke_first = (sg.st.paint_order & 3) == 1 };
+                try out.kids.append(l.a, .{ .shape = sh });
+            }
+            pen_x += shift + width;
+            pen_y += acc[1];
+            i = j;
+        }
+    }
+
+    fn weightOf(v: []const u8) u16 {
+        const t = num.trim(v);
+        if (std.mem.eql(u8, t, "bold") or std.mem.eql(u8, t, "bolder")) return 700;
+        if (std.mem.eql(u8, t, "lighter")) return 300;
+        const w = std.fmt.parseInt(u16, t, 10) catch return 400;
+        return if (w >= 1 and w <= 1000) w else 400;
+    }
+
     // ---- images (image.rs) ---------------------------------------------------------------------
 
     fn image(l: *Layout, idx: u32, st: *const sstyle.Style, sc: *const Scope, out: *Group) Error!void {
@@ -1490,7 +1653,7 @@ const Layout = struct {
         if (sub) |*doc| {
             // `picture_content`: the nested document laid out at its container size
             const container: [2]f32 = if (par.x == .none) natural else .{ w, h };
-            var nl: Layout = .{ .a = l.a, .doc = doc, .current = st.color, .image_host = true, .image_depth = l.image_depth + 1 };
+            var nl: Layout = .{ .a = l.a, .doc = doc, .current = st.color, .image_host = true, .image_depth = l.image_depth + 1, .fonts = l.fonts };
             const root = try nl.layoutRoot(container[0], container[1]);
             pic.* = .{ .content = .{ .svg = .{ .root = root, .w = container[0], .h = container[1] } }, .w = container[0], .h = container[1], .visible = st.visible };
             size = container;

@@ -516,6 +516,23 @@ test "jpeg frame header" {
     try std.testing.expectEqual(@as(u16, 2), info.w);
     try std.testing.expectEqual(@as(u16, 3), info.h);
     try std.testing.expectEqual(@as(u8, 3), info.comps);
+    try std.testing.expectEqual(JpegSpace.ycbcr, info.space);
+    // an Adobe APP14 with transform 0 before the frame: zune reads CMYK, whatever the components
+    const adobe = [_]u8{ 0xFF, 0xD8, 0xFF, 0xEE, 0, 14, 'A', 'd', 'o', 'b', 'e', 0, 100, 0, 0, 0, 0, 0 } ++ b[8..].*;
+    try std.testing.expectEqual(JpegSpace.cmyk, jpegInfo(null, &adobe).?.space);
+    // cut before the scan: not readable
+    try std.testing.expect(jpegInfo(null, b[0 .. b.len - 4]) == null);
+}
+
+test "icc profile version and colour space" {
+    var p: [20]u8 = @splat(0);
+    p[8] = 4;
+    p[9] = 0x20;
+    @memcpy(p[16..20], "RGB ");
+    try std.testing.expectEqual(@as(u8, 3), iccComponents(.v1_7, &p));
+    try std.testing.expectEqual(@as(u8, 0), iccComponents(.v1_4, &p));
+    @memcpy(p[16..20], "GRAY");
+    try std.testing.expectEqual(@as(u8, 1), iccComponents(.v1_7, &p));
 }
 
 test "png passthrough eligibility" {

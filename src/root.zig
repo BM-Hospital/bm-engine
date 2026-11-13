@@ -30,6 +30,7 @@ test {
     _ = @import("pdf/emit_shading.zig");
     _ = @import("pdf/emit_device.zig");
     _ = @import("pdf/emit_image.zig");
+    _ = @import("pdf/png_krilla.zig");
     _ = @import("pdf/emit.zig");
     _ = @import("pdf/text.zig");
     _ = @import("pdf/interactive.zig");
