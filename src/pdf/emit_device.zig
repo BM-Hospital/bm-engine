@@ -349,6 +349,12 @@ pub const Device = struct {
         d.close();
     }
 
+    /// takumi `with_border_mask`: later draws go through the soft mask `m` (`endLayer` ends it).
+    pub fn beginMask(d: *Device, m: sf.Mask) void {
+        d.open(.layer);
+        d.s.pushMask(m);
+    }
+
     /// takumi `begin_layer`: an opacity group.
     pub fn beginLayer(d: *Device, opacity: f32) void {
         d.open(.layer);
