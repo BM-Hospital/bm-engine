@@ -801,7 +801,10 @@ fn blockDecoOf(e: *const Emitter, n: *const Node) ?*const CS {
     return null;
 }
 
-fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32, baseline: f32, first: bool, last: bool, x: f32, y: f32, mask: ?*const FragmentMask) Error!void {
+/// A fragment's border box (relative to the paragraph), its border widths and padding.
+const FragBox = struct { r: Rect, bw: [4]f32, pad: [4]f32 };
+
+fn fragmentBox(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32, baseline: f32, first: bool, last: bool) FragBox {
     const m = metricsOf(e, face, cs.font_size);
     var bw = cs.usedBorderWidths();
     const fs = cs.font_size;
@@ -814,10 +817,26 @@ fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32
         bw[1] = 0;
         pad[1] = 0;
     }
-    const fx = x + x0 - pad[3] - bw[3];
-    const fy = y + baseline - m.ascent - pad[0] - bw[0];
-    const fw = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1];
-    const fh = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2];
+    return .{
+        .r = .{
+            .x = x0 - pad[3] - bw[3],
+            .y = baseline - m.ascent - pad[0] - bw[0],
+            .w = (x1 - x0) + pad[3] + bw[3] + pad[1] + bw[1],
+            .h = m.ascent + m.descent + pad[0] + bw[0] + pad[2] + bw[2],
+        },
+        .bw = bw,
+        .pad = pad,
+    };
+}
+
+fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32, baseline: f32, first: bool, last: bool, x: f32, y: f32, mask: ?*const FragmentMask) Error!void {
+    const fb = fragmentBox(e, cs, face, x0, x1, baseline, first, last);
+    const bw = fb.bw;
+    const pad = fb.pad;
+    const fx = x + fb.r.x;
+    const fy = y + fb.r.y;
+    const fw = fb.r.w;
+    const fh = fb.r.h;
     const plain = e.plain();
     var g: pm.Geom = .{
         .bx = if (plain) pm.snapRect(fx, fy, fw, fh) else .{ .x = fx, .y = fy, .w = fw, .h = fh },
@@ -841,6 +860,34 @@ fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32
     try e.paintBackground(cs, &g, g.bx.x, g.bx.y);
     if (mask) |fm| if (emit.textClipped(cs)) try e.paintTextClip(0, cs, &g, g.bx.x, g.bx.y, fm);
     try border.paintBorder(&e.d, cs, &g);
+}
+
+/// The outlines of the paragraph's inline elements, after its text (takumi `InlineLines::paint`:
+/// `OutlineIsland::of(outline_rects)`), each element's line fragments in line order; only the
+/// fragments of the lines this page shows.
+fn paintInlineOutlines(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32) Error!void {
+    const f = e.f;
+    var rects: std.ArrayList(border.InlineOutlineRect) = .empty;
+    for (tl.boxes) |*fr| {
+        const fi = f.boxFragment(n, fr) orelse continue;
+        if (!border.hasInlineOutline(fi.cs)) continue;
+        const fb = fragmentBox(e, fi.cs, fr.face, fi.x0, fi.x1, fr.baseline, fi.left, fi.right);
+        if (e.window.paged()) {
+            // (takumi keeps a rect whose middle is on a line the page shows)
+            const top = y + fb.r.y;
+            const it = mapItem(e, .{ .baseline = top + fb.r.h / 2, .top = top, .bottom = top + fb.r.h, .l0 = top, .l1 = top + fb.r.h }, x + fb.r.x, x + fb.r.x + fb.r.w);
+            if (!showsItem(e, it)) continue;
+        }
+        try rects.append(e.a, .{ .owner = @as(u64, n.box_base) + fr.box, .line = fr.line, .x = fb.r.x, .y = fb.r.y, .w = fb.r.w, .h = fb.r.h, .cs = fi.cs });
+    }
+    if (rects.items.len == 0) return;
+    const order = struct {
+        fn lt(_: void, a: border.InlineOutlineRect, b: border.InlineOutlineRect) bool {
+            return if (a.owner != b.owner) a.owner < b.owner else a.line < b.line;
+        }
+    }.lt;
+    std.sort.insertion(border.InlineOutlineRect, rects.items, {}, order);
+    try border.paintInlineOutlines(&e.d, rects.items, x, y);
 }
 
 /// A text node's paragraph at content origin (`x`, `y`) laid out at width `cw`: inline boxes,
@@ -896,6 +943,7 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
         if (nd > 0) try paintRunDecos(e, null, tl, x, y, &run, decos[0..nd], true);
         if (op < 1) e.s.pop();
     }
+    if (tl.boxes.len > 0) try paintInlineOutlines(e, n, tl, x, y);
 }
 
 fn paintShadows(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, block_deco: ?*const CS) Error!void {

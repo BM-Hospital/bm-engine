@@ -29,6 +29,7 @@ test {
     _ = @import("pdf/emit_surface.zig");
     _ = @import("pdf/emit_shading.zig");
     _ = @import("pdf/emit_device.zig");
+    _ = @import("pdf/emit_border.zig");
     _ = @import("pdf/emit_image.zig");
     _ = @import("pdf/png_krilla.zig");
     _ = @import("pdf/emit.zig");

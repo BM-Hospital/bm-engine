@@ -80,6 +80,10 @@ const TextKey = struct { f: usize, id: u32, x: u32, y: u32 };
 
 const HrefMap = struct { f: *const Frame, map: std.AutoHashMapUnmanaged(usize, u32) = .empty };
 
+/// A page's links in tree order: a link, or the place of a box (content) the emitter queued for
+/// its context's content phase, whose links land there when it is painted (`Collector.reserve`).
+const Entry = union(enum) { link: Link, group: u32 };
+
 /// Collects links, anchors and headings during the paint walk (see the file comment).
 pub const Collector = struct {
     a: Allocator,
@@ -97,6 +101,13 @@ pub const Collector = struct {
     /// paragraphs already collected on this page, by frame, node and place (a repeated table
     /// header / footer group paints its paragraphs again, somewhere else)
     text_seen: std.AutoHashMapUnmanaged(TextKey, void) = .empty,
+    /// this page's links before they are flattened into `pages[cur].content`: takumi collects
+    /// links in its scene's bucket order (`SceneView::for_each_paint`), where the content of an
+    /// in-flow box and an atomic box sit at their place in the tree, while the emitter paints
+    /// them later, in the content phase of their context; `groups[0]` is the page, `group` the
+    /// list the links go to
+    groups: std.ArrayList(std.ArrayList(Entry)) = .empty,
+    group: u32 = 0,
     failed: bool = false,
     /// the run of pages showing one frame being drawn (`beginRun`): its frame, its index, the span
     /// of the frame its pages show, and whether this is the run's first page
@@ -116,6 +127,7 @@ pub const Collector = struct {
 
     /// Starts output page `i` (painted with `page` / `win`).
     pub fn beginPage(c: *Collector, i: usize, page: emit.PageBox, win: emit.Window) void {
+        c.endPage();
         c.run_first = c.run_begun;
         c.run_begun = false;
         c.cur = i;
@@ -134,6 +146,51 @@ pub const Collector = struct {
         c.run_lo = lo;
         c.run_hi = hi;
         c.run_begun = true;
+    }
+
+    /// Flattens the page's link groups into `pages[cur].content`, in tree order.
+    pub fn endPage(c: *Collector) void {
+        if (c.groups.items.len > 0) c.flatten(0) catch {
+            c.failed = true;
+        };
+        c.groups.clearRetainingCapacity();
+        c.group = 0;
+    }
+
+    fn flatten(c: *Collector, g: u32) Error!void {
+        for (c.groups.items[g].items) |en| switch (en) {
+            .link => |lk| try c.pages[c.cur].content.append(c.a, lk),
+            .group => |sub| try c.flatten(sub),
+        };
+    }
+
+    fn current(c: *Collector) Error!*std.ArrayList(Entry) {
+        if (c.groups.items.len == 0) try c.groups.append(c.a, .empty);
+        return &c.groups.items[c.group];
+    }
+
+    /// The place of a box queued now and painted later: its group, to `enter` while painting it
+    /// (`none` when out of memory: its links then go where the walk is).
+    pub fn reserve(c: *Collector) u32 {
+        const list = c.current() catch return none;
+        const g: u32 = @intCast(c.groups.items.len);
+        list.append(c.a, .{ .group = g }) catch return none;
+        c.groups.append(c.a, .empty) catch {
+            c.groups.items[c.group].items.len -= 1;
+            return none;
+        };
+        return g;
+    }
+
+    /// Sends the links that follow to group `g` (from `reserve`); returns the group to `leave` to.
+    pub fn enter(c: *Collector, g: u32) u32 {
+        const prev = c.group;
+        if (g != none) c.group = g;
+        return prev;
+    }
+
+    pub fn leave(c: *Collector, prev: u32) void {
+        c.group = prev;
     }
 
     /// The anchor `id` names (first box wins), from the first page's walk.
@@ -231,8 +288,8 @@ pub const Collector = struct {
         if (!(rr >= l) or !std.math.isFinite(l + t + rr + b)) return;
         const h = page.height * pt_per_px;
         const link: Link = .{ .rect = .{ l, h - b, rr, h - t }, .uri = uri, .node = node, .el = el, .frame = e.f, .repeated = e.in_repeat };
-        const pl = &c.pages[c.cur];
-        try (if (fixed) &pl.fixed else &pl.content).append(c.a, link);
+        if (fixed) return c.pages[c.cur].fixed.append(c.a, link);
+        try (try c.current()).append(c.a, .{ .link = link });
     }
 
     fn summarize(c: *Collector, el: u32, node: u32, top: f32) Error!void {
@@ -513,6 +570,7 @@ pub const Finished = struct {
 /// Writes the outline, the annotations, their destinations and the attachments, and assembles the
 /// catalog / Info / XMP parts. `page_refs`: the page objects, in output order.
 pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const emit.PageBox, windows: []const emit.Window, page_refs: []const w.Ref, o: *const opt.PdfOptions, producer: []const u8, hook: ?DocHook) Error!Finished {
+    c.endPage();
     if (c.failed) return error.OutOfMemory;
     const place: Place = .{ .f = c.f, .pages = pages, .windows = windows, .structural = o.tagged == .ua2 };
     var dests: Dests = .{};

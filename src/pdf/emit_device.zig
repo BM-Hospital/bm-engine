@@ -190,10 +190,39 @@ pub fn unsupported(a: Allocator, filters: []const style.Filter) ?[]const u8 {
             s.appendSlice(a, "px)") catch return "blur()";
             return s.items;
         },
-        .drop_shadow => return "drop-shadow()",
+        .drop_shadow => |sh| return dropShadowCss(a, sh) catch "drop-shadow()",
         else => {},
     };
     return null;
+}
+
+/// `drop-shadow(...)` as takumi's `ToCss` writes it (`TextShadow::to_css`: `x y [blur] [color]`,
+/// the blur left out when zero, the colour as `rgb(r, g, b)` / `rgba(r, g, b, a)` with six decimals).
+fn dropShadowCss(a: Allocator, sh: style.Shadow) ![]const u8 {
+    var s: std.ArrayList(u8) = .empty;
+    try s.appendSlice(a, "drop-shadow(");
+    try render.writeNum(a, &s, sh.x);
+    try s.appendSlice(a, "px ");
+    try render.writeNum(a, &s, sh.y);
+    try s.appendSlice(a, "px");
+    if (sh.blur != 0) {
+        try s.append(a, ' ');
+        try render.writeNum(a, &s, sh.blur);
+        try s.appendSlice(a, "px");
+    }
+    switch (sh.color) {
+        .current => {},
+        .rgba => |c| {
+            var buf: [64]u8 = undefined;
+            const txt = if (c.a == 255)
+                std.fmt.bufPrint(&buf, " rgb({d}, {d}, {d})", .{ c.r, c.g, c.b }) catch unreachable
+            else
+                std.fmt.bufPrint(&buf, " rgba({d}, {d}, {d}, {d:.6})", .{ c.r, c.g, c.b, @as(f32, @floatFromInt(c.a)) / 255.0 }) catch unreachable;
+            try s.appendSlice(a, txt);
+        },
+    }
+    try s.append(a, ')');
+    return s.items;
 }
 
 /// krilla `fill_from_rgba(rgba, opacity)`.
@@ -350,6 +379,12 @@ pub const Device = struct {
         d.close();
     }
 
+    /// takumi `with_border_mask`: later draws go through the soft mask `m` (`endLayer` ends it).
+    pub fn beginMask(d: *Device, m: sf.Mask) void {
+        d.open(.layer);
+        d.s.pushMask(m);
+    }
+
     /// takumi `begin_layer`: an opacity group.
     pub fn beginLayer(d: *Device, opacity: f32) void {
         d.open(.layer);
@@ -403,4 +438,14 @@ test "colour filters match takumi-pdf" {
     // color-filters.pdf: grayscale(1) of #e11d48 is 74, 74, 74
     const g = ColorFilter.compose(null, &.{.{ .grayscale = 1 }}).?;
     try std.testing.expectEqual([4]u8{ 74, 74, 74, 255 }, g.apply(.{ 225, 29, 72, 255 }));
+}
+
+test "unsupported drop-shadow() named as takumi's ToCss writes it" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const black: style.computed.ColorValue = .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 255 } };
+    try std.testing.expectEqualStrings("drop-shadow(2px 2px 2px rgb(0, 0, 0))", unsupported(a, &.{.{ .drop_shadow = .{ .x = 2, .y = 2, .blur = 2, .color = black } }}).?);
+    try std.testing.expectEqualStrings("drop-shadow(2px 2px rgb(0, 0, 0))", unsupported(a, &.{.{ .drop_shadow = .{ .x = 2, .y = 2, .color = black } }}).?);
+    try std.testing.expectEqualStrings("drop-shadow(1px -3px)", unsupported(a, &.{.{ .drop_shadow = .{ .x = 1, .y = -3 } }}).?);
 }

@@ -2607,7 +2607,9 @@ pub const Frame = struct {
                 .pct = if (has_pct) parts else null,
                 .margin_end = mar[@intFromBool(!rtl)],
                 .clone = cs.box_decoration_break == .clone,
-                .decorated = cs.resolveColor(cs.background_color).a != 0 or cs.background_image.len > 0 or bw[0] > 0 or bw[1] > 0 or bw[2] > 0 or bw[3] > 0,
+                .decorated = cs.resolveColor(cs.background_color).a != 0 or cs.background_image.len > 0 or bw[0] > 0 or bw[1] > 0 or bw[2] > 0 or bw[3] > 0 or
+                    // (PDF: an inline outline is drawn from the fragments, emit_text.zig `paintInlineOutlines`)
+                    (comptime config.enable_pdf and layout.fragment.enabled) and f.tree.paged.pdf and cs.outline_style != .none and cs.outline_style != .hidden and cs.outline_width > 0,
             };
         }
         return out;

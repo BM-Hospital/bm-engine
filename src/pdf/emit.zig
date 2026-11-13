@@ -125,7 +125,9 @@ pub const PageBox = struct {
 };
 
 const Deferred = struct { cs: *const CS, g: Geom, ctm: Tf, clip0: u32, clip1: u32 };
-const ClipRec = struct { path: Path, rule: sf.FillRule, ctm: Tf };
+/// A clip the walk opened; `overflow_of`: the box whose `overflow` clip it is (an absolutely
+/// positioned descendant escapes it when the box is not in its containing block chain).
+const ClipRec = struct { path: Path, rule: sf.FillRule, ctm: Tf, overflow_of: u32 = none };
 /// A box (`whole`: a float or an atomic in-flow box, at its parent's origin) or the content of a
 /// box (its text / replaced content, at its own origin) waiting for the paint phase of its context
 /// (CSS 2.1 appendix E as takumi's `StackingContextNode::paint_phases`), with what the walk was in
@@ -144,6 +146,8 @@ const Queued = struct {
     in_repeat: bool,
     tphase: Emitter.Phase,
     whole: bool,
+    /// [interactive] the place of its links in the page's link order (`interactive.Collector.reserve`)
+    lgroup: u32 = none,
 };
 /// A positioned / stacking box lifted to the end of its stacking context (`liftOf`), with what
 /// the walk was in where it met it.
@@ -200,6 +204,10 @@ pub const Emitter = struct {
     lift_on: bool = false,
     lift_now: u32 = none,
     lift_clips: std.ArrayList(ClipRec) = .empty,
+    /// boxes with a negative `z-index` their stacking context painted before its in-flow content
+    /// on this page (`paintNegatives`: the walk then skips them), and the one being painted
+    neg_done: std.AutoHashMapUnmanaged(u32, void) = .empty,
+    neg_now: u32 = none,
     pre: []u32 = &.{},
     /// the document's subtree extents (`Extents`): a page's walk skips the subtrees that miss its
     /// window (null: bands, fixed boxes, tests)
@@ -276,6 +284,12 @@ pub const Emitter = struct {
         return .{ .dst = @constCast(&e.dummy), .tf = e.tf };
     }
 
+    /// The painter context box geometry snaps in: always (takumi `SnappedBox` in the current
+    /// paint space, transformed or not).
+    pub fn snapCtx(e: *const Emitter) pm.Ctx {
+        return .{ .dst = @constCast(&e.dummy), .tf = Affine.identity };
+    }
+
     pub fn plain(e: *const Emitter) bool {
         return e.tf.isIdentity();
     }
@@ -329,7 +343,33 @@ pub const Emitter = struct {
         if (cs.overflow_x == .visible and cs.overflow_y == .visible) return true;
         const c = e.ctx();
         const g = pm.Painter.geomOf(cs, e.f.tree.layout(n.lid), x, y, &c);
-        return e.pushOverflow(cs, &g);
+        if (!try e.pushOverflow(cs, &g)) return false;
+        e.clips.items[e.clips.items.len - 1].overflow_of = e.f.nodeId(n);
+        return true;
+    }
+
+    /// Whether the overflow clip of box `owner` leaves out the absolutely positioned / fixed box
+    /// `id`: `owner` sits between it and its containing block (the nearest positioned or
+    /// transformed ancestor; for a fixed box, the nearest transformed one), as CSS 2.1 §11.1.1
+    /// clips only the descendants whose containing block chain passes through the box (takumi
+    /// takes a positioned box's clips from its containing block).
+    noinline fn escapesClip(e: *const Emitter, id: u32, owner: u32) bool {
+        const f = e.f;
+        const fixed = f.nodes.items[id].cs.position == .fixed;
+        var a = f.nodes.items[id].parent;
+        var guard: u32 = 0;
+        while (a != none and guard < 4096) : (guard += 1) {
+            const an = &f.nodes.items[a];
+            if (an.kind != .anon_text) {
+                if (hasTransform(an.cs)) return false;
+                if (!fixed and an.cs.position != .static) return false;
+            }
+            // (the root's own overflow clip is outside the initial containing block too)
+            if (a == owner) return true;
+            if (a == f.root) return false;
+            a = an.parent;
+        }
+        return false;
     }
 
     /// The transform of a box pushed onto the surface: the box then paints at its own origin.
@@ -374,6 +414,7 @@ pub const Emitter = struct {
             const g = pm.Painter.geomOf(n.cs, e.f.tree.layout(n.lid), x, y, &c);
             if (!try e.overflowPath(n.cs, &g)) return;
             try e.recordClip(&e.path, .nonzero);
+            e.clips.items[e.clips.items.len - 1].overflow_of = id;
         }
         try e.enqueue(&e.content_q, id, x, y, 0, false);
     }
@@ -395,6 +436,8 @@ pub const Emitter = struct {
             .in_repeat = e.in_repeat,
             .tphase = e.tphase,
             .whole = whole,
+            // [interactive] takumi collects links in tree order: content painted later keeps its place
+            .lgroup = if (e.links) |lk| (if (list == &e.content_q) lk.reserve() else none) else none,
         });
     }
 
@@ -431,7 +474,9 @@ pub const Emitter = struct {
         const saved_float = e.float_now;
         const saved_now = e.queue_now;
         const saved_defer = e.defer_on;
+        const saved_group = if (e.links) |lk| lk.enter(it.lgroup) else none;
         defer {
+            if (e.links) |lk| lk.leave(saved_group);
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
             e.tf = saved_tf;
@@ -469,6 +514,7 @@ pub const Emitter = struct {
     pub fn paintNode(e: *Emitter, id: u32, ox: f32, oy: f32, depth: u32) Error!void {
         if (e.fail_msg != null or depth > 600) return;
         if (e.skip_fixed and depth > 0 and e.f.nodes.items[id].kind != .anon_text and e.f.nodes.items[id].cs.position == .fixed and repeats(e.f, id)) return;
+        if (id != e.neg_now and e.neg_done.count() > 0 and e.neg_done.contains(id)) return;
         if (try e.liftOf(id, ox, oy, depth)) return;
         if (pm.enable_floats and try e.queueFloat(id, ox, oy, depth)) return;
         if (try e.queueAtomic(id, ox, oy, depth)) return;
@@ -629,7 +675,12 @@ pub const Emitter = struct {
         if (e.tphase == .decorations) return true;
         if (e.pre.len == 0) try e.preorder();
         const c0: u32 = @intCast(e.lift_clips.items.len);
-        try e.lift_clips.appendSlice(e.a, e.clips.items);
+        if (cs.position == .absolute or cs.position == .fixed) {
+            for (e.clips.items) |ce| {
+                if (ce.overflow_of != none and e.escapesClip(id, ce.overflow_of)) continue;
+                try e.lift_clips.append(e.a, ce);
+            }
+        } else try e.lift_clips.appendSlice(e.a, e.clips.items);
         try e.lift_q.append(e.a, .{
             .id = id,
             .ox = ox,
@@ -646,6 +697,98 @@ pub const Emitter = struct {
             .in_repeat = e.in_repeat,
         });
         return true;
+    }
+
+    /// A box with a negative `z-index` (painted by its stacking context, `paintNegatives`).
+    fn negativeZ(e: *const Emitter, n: *const Node) bool {
+        if (n.kind == .anon_text) return false;
+        const z = n.cs.z_index orelse return false;
+        return z < 0 and (n.cs.position != .static or e.flexItem(n));
+    }
+
+    const Neg = struct { id: u32, ox: f32, oy: f32, z: i64, pre: u32, c0: u32, c1: u32 };
+
+    /// CSS 2.1 appendix E step 3 (takumi's `PaintBucket::Negative`): the descendants of stacking
+    /// context `ctx_id` (at `x`, `y`, its own decorations painted) with a negative `z-index` whose
+    /// stacking context it is, by `z-index` then tree order, under the overflow clips of the boxes
+    /// between (those their containing block chain passes through), before its in-flow content.
+    noinline fn paintNegatives(e: *Emitter, ctx_id: u32, x: f32, y: f32, depth: u32) Error!void {
+        var found: std.ArrayList(Neg) = .empty;
+        var stack: std.ArrayList(ClipRec) = .empty;
+        var kept: std.ArrayList(ClipRec) = .empty;
+        const rcs = e.f.nodes.items[ctx_id].cs;
+        if (ctx_id == e.f.root and (rcs.overflow_x != .visible or rcs.overflow_y != .visible)) {
+            const ctx_ = e.ctx();
+            const g = pm.Painter.geomOf(rcs, e.f.tree.layout(e.f.nodes.items[ctx_id].lid), x, y, &ctx_);
+            if (try e.overflowPath(rcs, &g)) {
+                var copy: Path = .empty;
+                try copy.verbs.appendSlice(e.a, e.path.verbs.items);
+                try copy.points.appendSlice(e.a, e.path.points.items);
+                try stack.append(e.a, .{ .path = copy, .rule = .nonzero, .ctm = e.s.bd().ctm(), .overflow_of = ctx_id });
+            }
+        }
+        try e.collectNegatives(ctx_id, x, y, &found, &stack, &kept, 0);
+        if (found.items.len == 0) return;
+        if (e.pre.len == 0) try e.preorder();
+        for (found.items) |*it| it.pre = if (it.id < e.pre.len) e.pre[it.id] else 0;
+        std.sort.insertion(Neg, found.items, {}, struct {
+            fn lt(_: void, a: Neg, b: Neg) bool {
+                return a.z < b.z or (a.z == b.z and a.pre < b.pre);
+            }
+        }.lt);
+        for (found.items) |it| {
+            if (e.fail_msg != null) return;
+            const depth0 = e.s.depth();
+            const saved_clips = e.clips.items.len;
+            const saved_now = e.neg_now;
+            defer {
+                e.s.popTo(depth0);
+                e.clips.items.len = saved_clips;
+                e.neg_now = saved_now;
+            }
+            for (kept.items[it.c0..it.c1]) |ce| {
+                e.s.pushClip(&ce.path, ce.rule);
+                try e.clips.append(e.a, ce);
+            }
+            try e.neg_done.put(e.a, it.id, {});
+            e.neg_now = it.id;
+            try e.paintNode(it.id, it.ox, it.oy, depth + 1);
+        }
+    }
+
+    noinline fn collectNegatives(e: *Emitter, v: u32, vx: f32, vy: f32, found: *std.ArrayList(Neg), stack: *std.ArrayList(ClipRec), kept: *std.ArrayList(ClipRec), level: u32) Error!void {
+        if (level > 600) return;
+        const f = e.f;
+        var c = f.nodes.items[v].first_child;
+        while (c != none) : (c = f.nodes.items[c].next) {
+            const cn = &f.nodes.items[c];
+            if (cn.kind == .anon_text or cn.cs.display == .none) continue;
+            if (e.negativeZ(cn)) {
+                const c0: u32 = @intCast(kept.items.len);
+                for (stack.items) |ce| {
+                    if (ce.overflow_of != none and e.escapesClip(c, ce.overflow_of)) continue;
+                    try kept.append(e.a, ce);
+                }
+                try found.append(e.a, .{ .id = c, .ox = vx, .oy = vy, .z = cn.cs.z_index.?, .pre = 0, .c0 = c0, .c1 = @intCast(kept.items.len) });
+                continue;
+            }
+            if (e.stackingContext(c)) continue;
+            const l = f.tree.layout(cn.lid);
+            const cx = vx + l.x;
+            const cy = vy + l.y;
+            const pushed = cn.cs.overflow_x != .visible or cn.cs.overflow_y != .visible;
+            if (pushed) {
+                const ctx_ = e.ctx();
+                const g = pm.Painter.geomOf(cn.cs, l, cx, cy, &ctx_);
+                if (!try e.overflowPath(cn.cs, &g)) continue;
+                var copy: Path = .empty;
+                try copy.verbs.appendSlice(e.a, e.path.verbs.items);
+                try copy.points.appendSlice(e.a, e.path.points.items);
+                try stack.append(e.a, .{ .path = copy, .rule = .nonzero, .ctm = e.s.bd().ctm(), .overflow_of = c });
+            }
+            try e.collectNegatives(c, cx, cy, found, stack, kept, level + 1);
+            if (pushed) stack.items.len -= 1;
+        }
     }
 
     /// Tree order of the frame's nodes (the order takumi numbers its paint items in).
@@ -813,6 +956,9 @@ pub const Emitter = struct {
                 },
             }
         };
+        // (a frame's root that is no stacking context of its own is an in-flow box of takumi's root
+        // context: the negative layer paints under its decorations, through its overflow clip)
+        if (id == f.root and e.tphase == .all and n.kind != .anon_text and !e.stackingContext(id)) try e.paintNegatives(id, x, y, depth);
         const own_mode: Own = if (e.defer_on) .decorations else .all;
         try e.paintOwn(id, x, y, own_mode);
         // (the text did not paint on this page: neither does the marker inside it)
@@ -832,6 +978,7 @@ pub const Emitter = struct {
             e.clips.items.len = saved_clips;
         }
         if (!try e.pushOverflowOf(n, x, y)) return;
+        if (e.stackingContext(id)) try e.paintNegatives(id, x, y, depth);
         var special = false;
         var c = n.first_child;
         while (c != none) : (c = f.nodes.items[c].next) {
@@ -984,7 +1131,9 @@ pub const Emitter = struct {
             }
             return;
         }
-        const c = e.ctx();
+        // (takumi snaps a box in its paint space, a transformed one's included: Blink's paint
+        // offset translation, `SnappedBox::new`)
+        const c = e.snapCtx();
         const g = pm.Painter.geomOf(cs, l, x, y, &c);
         var as_part = false;
         const own = e.home();
@@ -1320,11 +1469,18 @@ pub const Emitter = struct {
         if (text_clip) return;
         const ar = area(g, clip_box);
         // background-clip: border-area (PDF build): the border ring, outer and padding edges filled
-        // even-odd (takumi `FillShape::border_ring`; a dashed / dotted / double border's gaps, which
-        // takumi masks, are not left out)
+        // even-odd (takumi `FillShape::border_ring`); a dashed / dotted / double border, which leaves
+        // gaps, masks the background with the painted border instead (takumi `border_mask`)
         const ring = comptime @hasField(style.computed.BgBox, "border_area");
         const is_ring = ring and clip_box == .border_area;
-        if (is_ring) {
+        const masked = is_ring and border.borderAreaGaps(cs, g);
+        if (masked) {
+            if (col.a != 0 and g.bx.w > 0 and g.bx.h > 0) {
+                e.d.beginMask(.{ .stream = try e.borderMaskStream(cs, g), .kind = .alpha });
+                e.d.fillRRect(g.bx, null, col);
+                e.d.endLayer();
+            }
+        } else if (is_ring) {
             e.path.reset();
             try dev.addRRectAt(e.a, &e.path, g.bx, g.outerRadii(), g.bx.x, g.bx.y);
             try dev.addRRectAt(e.a, &e.path, g.padRect(), g.padRadii(), g.bx.x, g.bx.y);
@@ -1339,7 +1495,9 @@ pub const Emitter = struct {
         defer e.s.endArtifact(); // [tagging] after the clip is popped (takumi `in_artifact`)
         const base = e.s.depth();
         defer e.s.popTo(base);
-        if (is_ring) {
+        if (masked) {
+            e.s.pushMask(.{ .stream = try e.borderMaskStream(cs, g), .kind = .alpha });
+        } else if (is_ring) {
             e.s.pushClip(&e.path, .even_odd);
         } else {
             e.path.reset();
@@ -1358,6 +1516,26 @@ pub const Emitter = struct {
             try e.paintLayer(e.s, cs, g, &layer, .background);
             if (blended) e.s.pop();
         }
+    }
+
+    /// takumi `border_mask_stream`: the box's border painted in black into a stream of its own.
+    noinline fn borderMaskStream(e: *Emitter, cs: *const CS, g: *const Geom) Error!sf.Stream {
+        var ms = sf.Surface.initStream(e.cx);
+        const old = e.swapSurface(&ms);
+        const saved_art = e.d.artifact;
+        const saved_filter = e.d.filter;
+        const saved_stack = e.d.stack;
+        e.d.artifact = false;
+        e.d.filter = null;
+        e.d.stack = .empty;
+        defer {
+            _ = e.swapSurface(old);
+            e.d.artifact = saved_art;
+            e.d.filter = saved_filter;
+            e.d.stack = saved_stack;
+        }
+        try border.paintBorderMask(&e.d, cs, g);
+        return ms.finish();
     }
 
     /// takumi `fill_text_clip` + `background_fills`: inside the border box, the background's
