@@ -518,6 +518,23 @@ pub const Builder = struct {
             if (b.bbox_important or s.paint != .color) {
                 const hw = s.width / 2;
                 sbox = LRect.ltrb(pb.l - hw, pb.t - hw, pb.r + hw, pb.b + hw) orelse pb;
+                // a single segment with butt caps reaches the half width across it only (a
+                // dashed outline edge: takumi strokes each one on its own)
+                if (is_line and s.cap == .butt) {
+                    const p0 = path.points.items[0];
+                    const p1 = path.points.items[1];
+                    const len = @sqrt((p1.x - p0.x) * (p1.x - p0.x) + (p1.y - p0.y) * (p1.y - p0.y));
+                    if (len > 0) {
+                        const nx = -(p1.y - p0.y) / len * hw;
+                        const ny = (p1.x - p0.x) / len * hw;
+                        sbox = LRect.ltrb(
+                            @min(@min(p0.x - nx, p0.x + nx), @min(p1.x - nx, p1.x + nx)),
+                            @min(@min(p0.y - ny, p0.y + ny), @min(p1.y - ny, p1.y + ny)),
+                            @max(@max(p0.x - nx, p0.x + nx), @max(p1.x - nx, p1.x + nx)),
+                            @max(@max(p0.y - ny, p0.y + ny), @max(p1.y - ny, p1.y + ny)),
+                        ) orelse sbox;
+                    }
+                }
             }
         }
         b.isoBegin();

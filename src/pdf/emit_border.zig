@@ -783,6 +783,23 @@ pub fn paintBorder(d: *Device, cs: *const CS, g: *const Geom) Error!void {
     try paintSpec(d, &spec);
 }
 
+/// Whether a `background-clip: border-area` border leaves gaps (a dotted, dashed or double side),
+/// so the background goes through a mask of the painted border (takumi `border_mask`, after
+/// Blink's `AllBordersFillBorderArea`).
+pub fn borderAreaGaps(cs: *const CS, g: *const Geom) bool {
+    for (0..4) |i| {
+        if (g.bw[i] > 0 and (cs.border_style[i] == .dotted or cs.border_style[i] == .dashed or cs.border_style[i] == .double)) return true;
+    }
+    return false;
+}
+
+/// The element's border at `g` in opaque black on every side (the `border-area` mask).
+pub fn paintBorderMask(d: *Device, cs: *const CS, g: *const Geom) Error!void {
+    var spec: Spec = .{ .x = g.bx.x, .y = g.bx.y, .w = g.bx.w, .h = g.bx.h, .bw = g.bw, .st = cs.border_style, .col = undefined, .radii = if (g.rounded) g.radii else pm.zero_radii };
+    for (0..4) |i| spec.col[i] = .{ .r = 0, .g = 0, .b = 0, .a = 255 };
+    try paintSpec(d, &spec);
+}
+
 /// One side painted as a straight box side (collapsed table borders, painter `paintSideRect`).
 pub fn paintSideRect(d: *Device, side: usize, x1: f32, y1: f32, x2: f32, y2: f32, st: BStyle, col: Color) Error!void {
     if (st == .none or st == .hidden or col.a == 0) return;
@@ -826,4 +843,242 @@ pub fn paintOutline(d: *Device, cs: *const CS, g: *const Geom) Error!void {
     }
     pm.scaleRadii(&spec.radii, spec.w, spec.h);
     try paintSpec(d, &spec);
+}
+
+// ---------------------------------------------------------------------------------------------
+// inline outlines (takumi `layout/inline/outline.rs`, `painter/outline.rs`, after Blink's
+// `OutlinePainter`)
+// ---------------------------------------------------------------------------------------------
+
+/// One line fragment of an outlined inline element: its border box (unsnapped, relative to the
+/// paragraph), the element (`owner`, unique within the paragraph) and the line it sits on.
+pub const InlineOutlineRect = struct {
+    owner: u64,
+    line: u32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    cs: *const CS,
+
+    /// Blink's `ToPixelSnappedRect`: left, top, right, bottom.
+    pub fn snapped(r: InlineOutlineRect) [4]f32 {
+        const s = pm.snapRect(r.x, r.y, r.w, r.h);
+        return .{ s.x, s.y, s.x + s.w, s.y + s.h };
+    }
+
+    /// The snapped rect grown by `offset` (no further in than half its size), then by `outset`.
+    pub fn grown(r: InlineOutlineRect, offset: f32, outset: f32) [4]f32 {
+        const s = r.snapped();
+        const hz = @max(offset, -@trunc((s[2] - s[0]) / 2)) + outset;
+        const vt = @max(offset, -@trunc((s[3] - s[1]) / 2)) + outset;
+        return .{ s[0] - hz, s[1] - vt, s[2] + hz, s[3] + vt };
+    }
+
+    /// Whether the two rects meet once each grows as its outline paints.
+    fn meets(a: InlineOutlineRect, b: InlineOutlineRect) bool {
+        const p = outlinePainted(a.cs);
+        const ga = a.grown(p[1], p[0]);
+        const gb = b.grown(p[1], p[0]);
+        return ga[0] <= gb[2] and gb[0] <= ga[2] and ga[1] <= gb[3] and gb[1] <= ga[3];
+    }
+};
+
+/// Whether an element paints an inline outline (takumi `InlineOutline::of`).
+pub fn hasInlineOutline(cs: *const CS) bool {
+    if (cs.outline_style == .none or cs.outline_style == .hidden) return false;
+    if (!(cs.outline_width > 0)) return false;
+    return cs.resolveColor(cs.outline_color).a != 0;
+}
+
+/// `InlineOutline::painted`: the width and offset in whole pixels.
+fn outlinePainted(cs: *const CS) [2]f32 {
+    return .{ @trunc(@max(cs.outline_width, 0)), @trunc(cs.outline_offset) };
+}
+
+/// takumi `OutlineIsland::of` + `paint`: groups the rects (each element's fragments in line
+/// order) into islands of fragments on consecutive lines that meet, and paints each at
+/// (`ox`, `oy`): a lone fragment of its element as a box outline, an island as one right-angle
+/// contour (`ComplexOutline`).
+pub fn paintInlineOutlines(d: *Device, rects: []const InlineOutlineRect, ox: f32, oy: f32) Error!void {
+    var i: usize = 0;
+    while (i < rects.len) {
+        var j = i + 1;
+        while (j < rects.len and rects[j].owner == rects[j - 1].owner and rects[j - 1].line + 1 == rects[j].line and rects[j - 1].meets(rects[j])) j += 1;
+        var count: usize = 0;
+        for (rects) |r| count += @intFromBool(r.owner == rects[i].owner);
+        try paintIsland(d, rects[i..j], count == 1, ox, oy);
+        i = j;
+    }
+}
+
+fn paintIsland(d: *Device, island: []const InlineOutlineRect, lone: bool, ox: f32, oy: f32) Error!void {
+    const cs = island[0].cs;
+    const p = outlinePainted(cs);
+    const width = p[0];
+    const offset = p[1];
+    const opacity = std.math.clamp(cs.opacity, 0, 1);
+    if (!(opacity > 0) or !(width > 0)) return;
+    if (opacity < 1) d.beginLayer(opacity);
+    defer if (opacity < 1) d.endLayer();
+    if (lone) {
+        const s = island[0].snapped();
+        var g: Geom = undefined;
+        g.bx = .{ .x = ox + s[0], .y = oy + s[1], .w = s[2] - s[0], .h = s[3] - s[1] };
+        return paintOutline(d, cs, &g);
+    }
+    const a = d.a;
+    var grown: std.ArrayList([4]f32) = .empty;
+    for (island) |r| {
+        const gr = r.grown(offset, width);
+        if (gr[0] < gr[2] and gr[1] < gr[3]) try grown.append(a, gr);
+    }
+    const outer = (try RightAngleContour.ofRects(a, grown.items)) orelse return;
+    const inner = try outer.shrunk(a, width);
+    const col = cs.resolveColor(cs.outline_color);
+    // the outer contour clips, the inner one clips out within the outline's bounds, and the
+    // bounds are filled (Blink's solid `ComplexOutlinePainter`; the other styles are drawn solid)
+    var path: Path = .empty;
+    try outer.addTo(a, &path, ox, oy);
+    d.pushClip(&path, 0, 0, .nonzero);
+    defer d.popClip();
+    const b = outer.bounds();
+    var out: Path = .empty;
+    try inner.addTo(a, &out, ox, oy);
+    try out.moveTo(a, ox + b[0], oy + b[1]);
+    try out.lineTo(a, ox + b[0], oy + b[3]);
+    try out.lineTo(a, ox + b[2], oy + b[3]);
+    try out.lineTo(a, ox + b[2], oy + b[1]);
+    try out.close(a);
+    d.pushClip(&out, 0, 0, .nonzero);
+    defer d.popClip();
+    d.fillRRect(.{ .x = ox + b[0], .y = oy + b[1], .w = b[2] - b[0], .h = b[3] - b[1] }, null, col);
+}
+
+/// A clockwise contour turning a right angle at every corner (takumi `RightAngleContour`).
+pub const RightAngleContour = struct {
+    corners: []const Pt,
+
+    /// The contour around the union of `rects` (left, top, right, bottom), band by band down the
+    /// page (takumi `union_outline` + `RightAngleContour::of`); null when it encloses nothing.
+    pub fn ofRects(a: std.mem.Allocator, rects: []const [4]f32) Error!?RightAngleContour {
+        var edges: std.ArrayList(f32) = .empty;
+        for (rects) |r| try edges.appendSlice(a, &.{ r[1], r[3] });
+        std.mem.sort(f32, edges.items, {}, std.sort.asc(f32));
+        var bands: std.ArrayList([4]f32) = .empty;
+        var k: usize = 0;
+        while (k + 1 < edges.items.len) : (k += 1) {
+            const top = edges.items[k];
+            const bottom = edges.items[k + 1];
+            if (top == bottom) continue;
+            var left: f32 = std.math.inf(f32);
+            var right: f32 = -std.math.inf(f32);
+            var any = false;
+            for (rects) |r| if (r[1] < bottom and r[3] > top) {
+                left = @min(left, r[0]);
+                right = @max(right, r[2]);
+                any = true;
+            };
+            if (any) try bands.append(a, .{ left, top, right, bottom });
+        }
+        if (bands.items.len == 0) return null;
+        var corners: std.ArrayList(Pt) = .empty;
+        try corners.append(a, .{ bands.items[0][0], bands.items[0][1] });
+        for (bands.items) |bd| try corners.appendSlice(a, &.{ .{ bd[2], bd[1] }, .{ bd[2], bd[3] } });
+        var bi = bands.items.len;
+        while (bi > 0) {
+            bi -= 1;
+            const bd = bands.items[bi];
+            try corners.appendSlice(a, &.{ .{ bd[0], bd[3] }, .{ bd[0], bd[1] } });
+        }
+        const kept = try rightAngleCorners(a, corners.items);
+        if (kept.len < 4) return null;
+        return .{ .corners = kept };
+    }
+
+    fn at(c: RightAngleContour, i: usize) Pt {
+        return c.corners[i % c.corners.len];
+    }
+
+    /// Blink's `ShrinkRightAnglePath`.
+    pub fn shrunk(c: RightAngleContour, a: std.mem.Allocator, inset: f32) Error!RightAngleContour {
+        const n = c.corners.len;
+        const out = try a.alloc(Pt, n);
+        for (0..n) |i| {
+            const prev = c.at(i + n - 1);
+            const cur = c.at(i);
+            const next = c.at(i + 1);
+            var dx: f32 = undefined;
+            var dy: f32 = undefined;
+            if (prev[0] == cur[0]) {
+                dx = if (prev[1] < cur[1]) -inset else inset;
+                dy = if (cur[0] < next[0]) inset else -inset;
+            } else {
+                dx = if (cur[1] < next[1]) -inset else inset;
+                dy = if (prev[0] < cur[0]) inset else -inset;
+            }
+            out[i] = .{ cur[0] + dx, cur[1] + dy };
+        }
+        return .{ .corners = out };
+    }
+
+    /// The rect around the contour: left, top, right, bottom.
+    pub fn bounds(c: RightAngleContour) [4]f32 {
+        var r = [4]f32{ c.corners[0][0], c.corners[0][1], c.corners[0][0], c.corners[0][1] };
+        for (c.corners) |q| {
+            r[0] = @min(r[0], q[0]);
+            r[1] = @min(r[1], q[1]);
+            r[2] = @max(r[2], q[0]);
+            r[3] = @max(r[3], q[1]);
+        }
+        return r;
+    }
+
+    /// The contour as a closed path, offset by (`ox`, `oy`).
+    pub fn addTo(c: RightAngleContour, a: std.mem.Allocator, p: *Path, ox: f32, oy: f32) Error!void {
+        try p.moveTo(a, ox + c.corners[0][0], oy + c.corners[0][1]);
+        for (c.corners[1..]) |q| try p.lineTo(a, ox + q[0], oy + q[1]);
+        try p.close(a);
+    }
+};
+
+/// takumi `right_angle_corners`: `corners` without repeated points or points in the middle of a
+/// straight run.
+fn rightAngleCorners(a: std.mem.Allocator, corners: []const Pt) Error![]const Pt {
+    const straight = struct {
+        fn f(p: Pt, q: Pt, r: Pt) bool {
+            return (q[0] == p[0] and q[1] == p[1]) or (p[0] == q[0] and q[0] == r[0]) or (p[1] == q[1] and q[1] == r[1]);
+        }
+    }.f;
+    var kept: std.ArrayList(Pt) = .empty;
+    for (corners) |q| {
+        while (kept.items.len >= 2 and straight(kept.items[kept.items.len - 2], kept.items[kept.items.len - 1], q)) kept.items.len -= 1;
+        const n = kept.items.len;
+        if (n == 0 or kept.items[n - 1][0] != q[0] or kept.items[n - 1][1] != q[1]) try kept.append(a, q);
+    }
+    while (kept.items.len > 4) {
+        const n = kept.items.len;
+        if (straight(kept.items[n - 2], kept.items[n - 1], kept.items[0])) {
+            kept.items.len -= 1;
+        } else if (straight(kept.items[n - 1], kept.items[0], kept.items[1])) {
+            _ = kept.orderedRemove(0);
+        } else break;
+    }
+    return kept.items;
+}
+
+test "inline outline contour: two wrapped fragments" {
+    const t = std.testing;
+    var arena = std.heap.ArenaAllocator.init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // a fragment ending line 1 at the right, one starting line 2 at the left, overlapping in x
+    const c = (try RightAngleContour.ofRects(a, &.{ .{ 40, 0, 100, 20 }, .{ 0, 20, 60, 40 } })).?;
+    try t.expectEqualSlices(Pt, &.{ .{ 40, 0 }, .{ 100, 0 }, .{ 100, 20 }, .{ 60, 20 }, .{ 60, 40 }, .{ 0, 40 }, .{ 0, 20 }, .{ 40, 20 } }, c.corners);
+    const s = try c.shrunk(a, 2);
+    try t.expectEqualSlices(Pt, &.{ .{ 42, 2 }, .{ 98, 2 }, .{ 98, 18 }, .{ 58, 18 }, .{ 58, 38 }, .{ 2, 38 }, .{ 2, 22 }, .{ 42, 22 } }, s.corners);
+    try t.expectEqual([4]f32{ 0, 0, 100, 40 }, c.bounds());
+    // a single rect: its four corners
+    const r = (try RightAngleContour.ofRects(a, &.{.{ 1, 2, 3, 4 }})).?;
+    try t.expectEqual(@as(usize, 4), r.corners.len);
 }
