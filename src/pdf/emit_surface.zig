@@ -513,11 +513,14 @@ pub const Builder = struct {
         }
         var sbox = pb;
         if (stroke) |s| {
-            // krilla strokes the path to measure it (`calculate_stroke_bbox`); the half width
-            // around the path bounds is the same for the boxes this emitter strokes
+            // krilla strokes the path to measure it (`calculate_stroke_bbox`: the tight bounds
+            // of the stroke outline): the half width around the path's tight bounds (curve
+            // extrema, not control points), exact for round joins and for the boxes this
+            // emitter strokes
             if (b.bbox_important or s.paint != .color) {
                 const hw = s.width / 2;
-                sbox = LRect.ltrb(pb.l - hw, pb.t - hw, pb.r + hw, pb.b + hw) orelse pb;
+                const tb = tightBounds(path) orelse pb;
+                sbox = LRect.ltrb(tb.l - hw, tb.t - hw, tb.r + hw, tb.b + hw) orelse pb;
             }
         }
         b.isoBegin();
@@ -794,6 +797,111 @@ pub const Surface = struct {
         s.cx.doc.b.failed = true;
     }
 };
+
+/// Tight bounds of a path: its end points and the extrema of its curves (tiny-skia
+/// `Path::compute_tight_bounds`); null when the path would not finish (`geom.bounds`).
+pub fn tightBounds(p: *const Path) ?LRect {
+    if (p.verbs.items.len <= 1 or p.points.items.len == 0) return null;
+    const pts = p.points.items;
+    var l = std.math.inf(f32);
+    var t = std.math.inf(f32);
+    var r = -std.math.inf(f32);
+    var b = -std.math.inf(f32);
+    var i: usize = 0;
+    var cur: [2]f32 = .{ pts[0].x, pts[0].y };
+    for (p.verbs.items) |v| {
+        // the segment's control polygon, per axis (2 to 4 values)
+        var xs: [4]f32 = undefined;
+        var ys: [4]f32 = undefined;
+        var n: usize = 0;
+        switch (v) {
+            .close => continue,
+            .move => {
+                cur = .{ pts[i].x, pts[i].y };
+                i += 1;
+                n = 1;
+                xs[0] = cur[0];
+                ys[0] = cur[1];
+            },
+            .line, .quad, .cubic => {
+                const k: usize = switch (v) {
+                    .line => 1,
+                    .quad => 2,
+                    else => 3,
+                };
+                xs[0] = cur[0];
+                ys[0] = cur[1];
+                for (0..k) |j| {
+                    xs[j + 1] = pts[i + j].x;
+                    ys[j + 1] = pts[i + j].y;
+                }
+                i += k;
+                n = k + 1;
+                cur = .{ xs[k], ys[k] };
+            },
+        }
+        // end points
+        l = @min(l, xs[n - 1]);
+        r = @max(r, xs[n - 1]);
+        t = @min(t, ys[n - 1]);
+        b = @max(b, ys[n - 1]);
+        if (n < 3) continue;
+        // curve extrema: the roots of the derivative, per axis
+        var roots: [4]f32 = undefined;
+        var nr: usize = 0;
+        for ([2]*const [4]f32{ &xs, &ys }) |c| {
+            if (n == 3) {
+                const den = c[0] - 2 * c[1] + c[2];
+                if (den != 0) {
+                    roots[nr] = (c[0] - c[1]) / den;
+                    nr += 1;
+                }
+            } else {
+                // B'(t) / 3 = qa t^2 + qb t + qc
+                const qa = -c[0] + 3 * c[1] - 3 * c[2] + c[3];
+                const qb = 2 * (c[0] - 2 * c[1] + c[2]);
+                const qc = c[1] - c[0];
+                if (qa == 0) {
+                    if (qb != 0) {
+                        roots[nr] = -qc / qb;
+                        nr += 1;
+                    }
+                } else {
+                    const disc = qb * qb - 4 * qa * qc;
+                    if (disc >= 0) {
+                        const sq = @sqrt(disc);
+                        roots[nr] = (-qb + sq) / (2 * qa);
+                        roots[nr + 1] = (-qb - sq) / (2 * qa);
+                        nr += 2;
+                    }
+                }
+            }
+        }
+        for (roots[0..nr]) |u| {
+            if (!(u > 0 and u < 1)) continue;
+            const mu = 1 - u;
+            var px: f32 = undefined;
+            var py: f32 = undefined;
+            if (n == 3) {
+                px = mu * mu * xs[0] + 2 * mu * u * xs[1] + u * u * xs[2];
+                py = mu * mu * ys[0] + 2 * mu * u * ys[1] + u * u * ys[2];
+            } else {
+                const k0 = mu * mu * mu;
+                const k1 = 3 * mu * mu * u;
+                const k2 = 3 * mu * u * u;
+                const k3 = u * u * u;
+                px = k0 * xs[0] + k1 * xs[1] + k2 * xs[2] + k3 * xs[3];
+                py = k0 * ys[0] + k1 * ys[1] + k2 * ys[2] + k3 * ys[3];
+            }
+            l = @min(l, px);
+            r = @max(r, px);
+            t = @min(t, py);
+            b = @max(b, py);
+        }
+    }
+    if (!std.math.isFinite(l) or !std.math.isFinite(t) or !std.math.isFinite(r) or !std.math.isFinite(b)) return null;
+    return LRect.ltrb(l, t, r, b);
+}
 
 const testing = std.testing;
 

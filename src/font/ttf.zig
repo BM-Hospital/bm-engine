@@ -836,14 +836,15 @@ pub const Font = struct {
             const sh = @as(i32, rdi16(g, 2)) - f.leftSideBearing(gid);
             if (sh != 0) xf = .{ .e = @floatFromInt(-sh), .ident = false };
         }
-        return f.outlineRec(gid, xf, 0, &budget, sink);
+        return f.outlineRec(gid, xf, 0, &budget, sink, comptime enable_pdf and round_points);
     }
 
-    fn outlineRec(f: *const Font, gid: u16, xf: Xf, depth: u32, budget: *u32, sink: anytype) bool {
+    /// `ft_start` (PDF builds): contours start where FreeType / skrifa start them (`simpleOutlineFt`).
+    fn outlineRec(f: *const Font, gid: u16, xf: Xf, depth: u32, budget: *u32, sink: anytype, comptime ft_start: bool) bool {
         const g = f.glyphData(gid);
         if (g.len < 10) return false;
         const nc = rdi16(g, 0);
-        if (nc >= 0) return simpleOutline(g, @intCast(nc), xf, sink);
+        if (nc >= 0) return if (ft_start) simpleOutlineFt(g, @intCast(nc), xf, sink) else simpleOutline(g, @intCast(nc), xf, sink);
         if (depth >= 8) return false;
         var any = false;
         var off: u32 = 10;
@@ -894,7 +895,7 @@ pub const Font = struct {
                 .f = xf.b * dx + xf.d * dy + xf.f,
                 .ident = false,
             };
-            if (f.outlineRec(child, m, depth + 1, budget, sink)) any = true;
+            if (f.outlineRec(child, m, depth + 1, budget, sink, ft_start)) any = true;
             if (flags & 0x20 == 0) break;
         }
         return any;
@@ -1018,6 +1019,140 @@ pub fn simpleOutline(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
             }
             pending = p;
         }
+        if (pending) |c| sink.quadTo(c.x, c.y, start.x, start.y);
+        sink.close();
+        any = true;
+    }
+    return any;
+}
+
+/// The glyf point decoder of `simpleOutlineFt` (a copy reads ahead).
+const GlyfPoints = struct {
+    g: []const u8,
+    fo: u32,
+    xo: u32,
+    yo: u32,
+    fl: u8 = 0,
+    rep: u32 = 0,
+    x: i32 = 0,
+    y: i32 = 0,
+
+    const Point = struct { p: Pt, on: bool };
+
+    fn next(d: *GlyfPoints, xf: Xf) Point {
+        const g = d.g;
+        if (d.rep == 0) {
+            d.fl = rd8(g, d.fo);
+            d.fo += 1;
+            if (d.fl & 8 != 0) {
+                d.rep = rd8(g, d.fo);
+                d.fo += 1;
+            }
+        } else d.rep -= 1;
+        const fl = d.fl;
+        if (fl & 2 != 0) {
+            const v: i32 = rd8(g, d.xo);
+            d.xo += 1;
+            d.x +%= if (fl & 0x10 != 0) v else -v;
+        } else if (fl & 0x10 == 0) {
+            d.x +%= rdi16(g, d.xo);
+            d.xo += 2;
+        }
+        if (fl & 4 != 0) {
+            const v: i32 = rd8(g, d.yo);
+            d.yo += 1;
+            d.y +%= if (fl & 0x20 != 0) v else -v;
+        } else if (fl & 0x20 == 0) {
+            d.y +%= rdi16(g, d.yo);
+            d.yo += 2;
+        }
+        var p: Pt = .{ .x = @floatFromInt(d.x), .y = @floatFromInt(d.y) };
+        if (!xf.ident) p = .{ .x = xf.a * p.x + xf.c * p.y + xf.e, .y = xf.b * p.x + xf.d * p.y + xf.f };
+        return .{ .p = p, .on = fl & 1 != 0 };
+    }
+};
+
+/// `simpleOutline` with each contour started where FreeType's `FT_Outline_Decompose` (and skrifa,
+/// which krilla / takumi-pdf draw glyphs with) starts it: at the first point when it is on the
+/// curve; else at the last point when that one is; else midway between the first and the last.
+/// The same shape as `simpleOutline` (which starts at the first on-curve point, or midway between
+/// the first two), with the path operators in the order takumi-pdf writes them. PDF builds only
+/// (`Font.outlineWith(.., true)`).
+pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
+    if (nc == 0) return false;
+    const end_pts: u32 = 10;
+    const npts: u32 = @as(u32, rd16(g, end_pts + (nc - 1) * 2)) + 1;
+    const ins_len: u32 = rd16(g, end_pts + nc * 2);
+    const flags_off = end_pts + nc * 2 + 2 + ins_len;
+    if (flags_off >= g.len) return false;
+
+    // the sizes of the flag and x-coordinate arrays (as `simpleOutline`)
+    var fo = flags_off;
+    var x_bytes: u32 = 0;
+    var y_bytes: u32 = 0;
+    var n: u32 = 0;
+    while (n < npts) {
+        if (fo >= g.len) return false;
+        const fl = g[fo];
+        fo += 1;
+        var rep: u32 = 1;
+        if (fl & 8 != 0) {
+            rep += rd8(g, fo);
+            fo += 1;
+        }
+        const xs: u32 = if (fl & 2 != 0) 1 else if (fl & 0x10 != 0) 0 else 2;
+        const ys: u32 = if (fl & 4 != 0) 1 else if (fl & 0x20 != 0) 0 else 2;
+        x_bytes += xs * rep;
+        y_bytes += ys * rep;
+        n += rep;
+    }
+    if (fo + x_bytes + y_bytes > g.len) return false;
+
+    var d: GlyfPoints = .{ .g = g, .fo = flags_off, .xo = fo, .yo = fo + x_bytes };
+    var pi: u32 = 0;
+    var ci: u32 = 0;
+    var any = false;
+    while (ci < nc) : (ci += 1) {
+        const end: u32 = rd16(g, end_pts + ci * 2);
+        if (end < pi or end >= npts) return any;
+        // the points after the first
+        const rest = end - pi;
+        pi = end + 1;
+        const first = d.next(xf);
+        var start = first.p;
+        var pending: ?Pt = null;
+        // the points walked after the first (all of them, but the last when it is the start)
+        var walk = rest;
+        if (!first.on) {
+            pending = first.p;
+            if (rest > 0) {
+                var ahead = d;
+                var last = first;
+                var k: u32 = 0;
+                while (k < rest) : (k += 1) last = ahead.next(xf);
+                if (last.on) {
+                    start = last.p;
+                    walk -= 1;
+                } else start = midPt(first.p, last.p);
+            }
+        }
+        sink.moveTo(start.x, start.y);
+        var k: u32 = 0;
+        while (k < walk) : (k += 1) {
+            const q = d.next(xf);
+            if (q.on) {
+                if (pending) |c| sink.quadTo(c.x, c.y, q.p.x, q.p.y) else sink.lineTo(q.p.x, q.p.y);
+                pending = null;
+            } else {
+                if (pending) |c| {
+                    const m = midPt(c, q.p);
+                    sink.quadTo(c.x, c.y, m.x, m.y);
+                }
+                pending = q.p;
+            }
+        }
+        // the last point, when it is the start
+        if (walk < rest) _ = d.next(xf);
         if (pending) |c| sink.quadTo(c.x, c.y, start.x, start.y);
         sink.close();
         any = true;

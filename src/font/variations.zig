@@ -822,6 +822,7 @@ inline fn mid(a: Pt, b: Pt) Pt {
 
 /// The TrueType contour state machine over decoded points (`s.ax/ay/fl`).
 fn emitContours(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *const PathOut) bool {
+    if (comptime ttf.enable_pdf) if (out.round_points) return emitContoursFt(g, nc, npts, s, out);
     var any = false;
     var pi: u32 = 0;
     var ci: u32 = 0;
@@ -869,6 +870,53 @@ fn emitContours(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *cons
                 out.quadTo(c.x, c.y, m.x, m.y);
             }
             pending = p;
+        }
+        if (pending) |c| out.quadTo(c.x, c.y, start.x, start.y);
+        out.close();
+        any = true;
+    }
+    return any;
+}
+
+/// `emitContours` with each contour started where FreeType / skrifa start it (`ttf.simpleOutlineFt`):
+/// the PDF output (`PathOut.round_points`), as krilla draws the glyphs of takumi-pdf.
+fn emitContoursFt(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *const PathOut) bool {
+    var any = false;
+    var pi: u32 = 0;
+    var ci: u32 = 0;
+    while (ci < nc) : (ci += 1) {
+        const end: u32 = rd16(g, 10 + ci * 2);
+        if (end < pi or end >= npts) return any;
+        const first = pi;
+        pi = end + 1;
+        const p0: Pt = .{ .x = s.ax[first], .y = s.ay[first] };
+        var start = p0;
+        var pending: ?Pt = null;
+        var stop = end; // the last point walked
+        if (s.fl[first] & 1 == 0) {
+            pending = p0;
+            if (end > first) {
+                const pl: Pt = .{ .x = s.ax[end], .y = s.ay[end] };
+                if (s.fl[end] & 1 != 0) {
+                    start = pl;
+                    stop = end - 1;
+                } else start = mid(p0, pl);
+            }
+        }
+        out.moveTo(start.x, start.y);
+        var i = first + 1;
+        while (i <= stop) : (i += 1) {
+            const p: Pt = .{ .x = s.ax[i], .y = s.ay[i] };
+            if (s.fl[i] & 1 != 0) {
+                if (pending) |c| out.quadTo(c.x, c.y, p.x, p.y) else out.lineTo(p.x, p.y);
+                pending = null;
+            } else {
+                if (pending) |c| {
+                    const m = mid(c, p);
+                    out.quadTo(c.x, c.y, m.x, m.y);
+                }
+                pending = p;
+            }
         }
         if (pending) |c| out.quadTo(c.x, c.y, start.x, start.y);
         out.close();
