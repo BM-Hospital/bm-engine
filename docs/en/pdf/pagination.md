@@ -79,7 +79,7 @@ In HTML, Tailwind v4 break utilities are accepted in the `tw` attribute (not in 
 profile: `break-before-auto`, `break-before-avoid`, `break-before-page` (also `break-before-all`),
 `break-before-avoid-page`, `break-before-left`, `break-before-right`, `break-before-column`, the same
 for `break-after-*`, and `break-inside-auto`, `break-inside-avoid`, `break-inside-avoid-page`,
-`break-inside-avoid-column`.
+`break-inside-avoid-column`. takumi-pdf has no such utilities; they are a bm-engine extension and mean what Tailwind defines.
 
 <!-- @example pdf-pagination#tailwind -->
 ```js
@@ -164,7 +164,7 @@ const table = await pdf.render(
 // the header group is drawn again at the top of every page, the footer group at the bottom of every page
 ```
 
-A cell that spans several rows (`rowspan`) is not fragmented.
+Rows are split across pages when they do not fit, and a cell that spans several rows (`rowspan`) is cut with its rows. Collapsed borders end each fragment with its own bottom border; with 4 px borders and repeated headers small offsets from takumi-pdf remain.
 
 ## Page rules
 
@@ -288,9 +288,11 @@ That has consequences:
 - Percentages and stretching never see the page size.
 - A box with a definite `height` keeps it even when its content is pushed across a page; other boxes grow by
   what a break pushed down.
-- Lines do not re-flow around a float that moved to another page.
+- Lines do not re-flow around a float that moved to another page: the layout is paginated once, not laid out again per fragment.
+- A rotated or skewed box cut by a page boundary is painted whole in the page where it starts; takumi-pdf slices it per fragment.
+- The marker of a list item split across pages stays on the first line of the item, as in Chrome (takumi-pdf puts it on the last fragment).
 - A page that starts in the middle of a table row or a flex line keeps the width of the page before it when
   its own width differs (see [Named pages](#named-pages)).
 - A background or border of a box that spans a page edge is cut by the page. With `box-decoration-break: slice`
   (the default) the cut edges lose their border, padding and corner radii; with `clone` every fragment keeps its
-  border, padding and radii. Table parts (rows, cells, groups) are not sliced specially at page edges.
+  border, padding and radii.

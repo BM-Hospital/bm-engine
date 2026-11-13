@@ -27,7 +27,7 @@ nhận và bỏ qua trên mọi build, kể cả `bm-engine/pdf` và addon nativ
 | `position: fixed` | lặp lại trên mọi trang | [Header và footer](headers-footers.md) |
 | `box-decoration-break: clone` | mỗi mảnh của hộp bị trang cắt giữ viền, padding và bo góc | [Phân trang](pagination.md) |
 | `background-clip: border-area` | chỉ đầu ra PDF | |
-| Bộ đếm trang | phần tử `PageNumber`, `TotalPages`, `TargetPageNumber`; `counter(page)` trong `content` **không** hoạt động | [Header và footer](headers-footers.md) |
+| Bộ đếm trang | phần tử `PageNumber`, `TotalPages`, `TargetPageNumber`; bộ đếm CSS trong `content` cũng hoạt động: `counter()`, `counters()`, `counter(page)`, `target-counter()` | [Header và footer](headers-footers.md) |
 | Hộp lề trang (`@top-center`, ...) | không hỗ trợ (dùng tùy chọn `header` / `footer`) | [Header và footer](headers-footers.md) |
 
 <!-- @example pdf-css-support#ignored-in-images -->
@@ -47,8 +47,8 @@ const png = image.renderSync(html, { width: 400, height: 120 }); // one image: b
 
 Bộ ghi PDF vẽ những gì painter ảnh vẽ, dưới dạng toán tử vector: nền, viền và outline, gradient (linear, radial
 và conic), đổ bóng của hộp và chữ, nhóm opacity và isolation, blend mode, `clip-path`, mask, các hàm `filter`
-về màu, transform, chữ cùng gạch trang trí và nét viền, bảng, float, ảnh (JPEG và PNG được nhúng nguyên trạng khi
-có thể) và ảnh SVG dùng tập con được hỗ trợ, ở dạng đường vector ([Font trong PDF](fonts.md) nói về chữ).
+về màu, transform, chữ cùng gạch trang trí và nét viền, bảng, float, ảnh (JPEG và PNG được nhúng bằng chính byte gốc khi
+có thể) và ảnh SVG được vẽ dạng đường vector ([Font trong PDF](fonts.md) nói về chữ).
 Cấu trúc cho khả năng truy cập và các chuẩn PDF/A, PDF/UA được mô tả ở [Khả năng truy cập và lưu
 trữ](accessibility.md).
 

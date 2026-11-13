@@ -43,7 +43,8 @@ and `features.pdf` is `true` (every other feature is on as well: the profile is 
 
 `PdfRenderer` holds the registered fonts, so create one and reuse it. bm-engine ships no font, and a
 render fails when the text needs a character no registered font draws (see [Fonts in PDF](fonts.md)).
-With no font registered at all there is no error: the text is silently left out of the page. So register
+With no font registered at all, a render of any text fails with `No font is registered to draw ...` (unless
+`uncoveredText: "blank"`). So register
 fonts first:
 
 <!-- @example pdf#setup -->
@@ -94,7 +95,7 @@ const card = {
 const letter = await pdf.render(card, { size: "letter", landscape: true, margin: 24 });
 ```
 
-A source can be an HTML string, a node tree, `{ json: "<node tree as JSON text>" }`, or a handle from
+A source can be an HTML string, a node tree, `{ json: "<node tree as JSON text>" }`, a JSX / React element (converted to HTML), or a handle from
 `prepare()`. Tailwind classes go in a node's `tw` field or an HTML `tw` attribute ([HTML and Tailwind](../image/html-and-tailwind.md)).
 
 ## `measure`, `prepare` and the synchronous methods
@@ -113,9 +114,10 @@ const { width, height } = await pdf.measure(card, { size: "a4" });
 `renderSync` and `measureSync` do the same without awaiting; the async forms exist for `fonts` and lazily
 loaded `images`. `prepare(source, options)` resolves fonts and images once and returns a handle that
 `render` and `measure` accept; options passed to `render` merge over the ones given to `prepare`. It
-fetches nothing: bm-engine has no equivalent of takumi-pdf's `needs` pass, so image bytes go in the
-`images` option (`[{ src, data }]`) and font files in `fonts` or `registerFont`. A `@font-face` rule's
-files are not downloaded.
+fetches the remote images that the document and its bands name and that `images` does not provide (with
+`images.fetch` or the global `fetch`); other image bytes go in the `images` option (`[{ src, data }]`).
+Fonts are not downloaded: font files go in `fonts` or `registerFont`, and a `@font-face` rule's files are
+not fetched.
 
 <!-- @example pdf#sync -->
 ```js

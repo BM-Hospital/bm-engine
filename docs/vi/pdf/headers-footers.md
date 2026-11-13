@@ -183,6 +183,8 @@ const stamped = await pdf.render(
   màn hình bỏ qua ([Khả năng truy cập và lưu trữ](accessibility.md)).
 - `pageRanges` giữ số của tài liệu đầy đủ: với `pageRanges: [1, 3]` của tài liệu ba trang, trang thứ hai của file
   ghi "Page 3 of 3".
-- Nội dung sinh ra bởi CSS `counter(page)`, `counter(pages)` và `target-counter()` **không** hoạt động, như ở
-  takumi: `content: counter(page)` đọc một counter CSS tên là `page`. Hãy dùng các class hook.
+- Bộ đếm CSS trong nội dung sinh ra hoạt động ở đầu ra PDF: `counter()`, `counters()`, `counter-reset`,
+  `counter-increment`, `counter-set`, `counter(page)` và `target-counter()`, trong tài liệu lẫn trong band. Các
+  class hook ở trên vẫn là cách đưa số trang vào một cây node.
+- Đơn vị viewport (`vw`, `vh`, ...) trong band được đo theo cả trang, không phải theo band.
 - Ở dạng viewport (`viewport`) không có band.

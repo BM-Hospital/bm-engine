@@ -187,6 +187,8 @@ const stamped = await pdf.render(
   skip them ([Accessibility and archival](accessibility.md)).
 - `pageRanges` keeps the numbers of the full document: with `pageRanges: [1, 3]` of a three-page document
   the second page of the file says "Page 3 of 3".
-- CSS generated content `counter(page)`, `counter(pages)` and `target-counter()` do **not** work, as in
-  takumi: `content: counter(page)` reads a CSS counter named `page`. Use the class hooks.
+- CSS counters in generated content work in PDF output: `counter()`, `counters()`, `counter-reset`,
+  `counter-increment`, `counter-set`, `counter(page)` and `target-counter()`, in the document and in bands.
+  The class hooks above remain the way to put page numbers in a node tree.
+- Viewport units (`vw`, `vh`, ...) in a band measure the whole page, not the band.
 - In the viewport form (`viewport`) there are no bands.

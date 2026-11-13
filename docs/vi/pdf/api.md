@@ -151,8 +151,10 @@ Dùng nó để đo một band trước khi đặt lề ([Lề và band](headers
 
 `prepare(source, options)` xử lý `fonts` và `images` nạp lười một lần rồi trả về một handle `Prepared` mà
 `render` và `measure` đều nhận. Tùy chọn truyền cho `render` được gộp đè lên tùy chọn đã truyền cho
-`prepare`. Không có gì được tải về: bm-engine không có bước `needs` của takumi-pdf, nên bytes ảnh đi vào
-`images` và file font đi vào `fonts` hoặc `registerFont`.
+`prepare`. Nó cũng tải về các ảnh từ xa mà tài liệu và các band nhắc tới còn `images` chưa cung cấp, bằng
+`images.fetch` hoặc `fetch` toàn cục (tìm bằng cách quét nguồn, không phải bằng bước `needs` native của
+takumi-pdf). Một lần tải lỗi sẽ làm promise bị từ chối, trừ khi `images.throwOnError` là `false`. Font không được
+tải: file font đi vào `fonts` hoặc `registerFont`.
 
 <!-- @example pdf-api#prepare -->
 ```js
@@ -176,7 +178,9 @@ done.free();
 ## Nguồn đầu vào {#sources}
 
 `PdfSource` là một `Source` hoặc một handle `Prepared`. `Source` là một chuỗi HTML, một cây node, hoặc
-`{ json: "<cây node dạng văn bản JSON>" }`, y như với ảnh ([Định dạng node](../image/api.md#định-dạng-node)):
+`{ json: "<cây node dạng văn bản JSON>" }`, y như với ảnh ([Định dạng node](../image/api.md#định-dạng-node)).
+Phần tử JSX / React cũng được chấp nhận, làm tài liệu lẫn làm band header hoặc footer: nó được chuyển thành HTML.
+Component chạy một lần mà không có React dispatcher, nên các hook ngoài việc đọc đơn thuần không hoạt động.
 
 <!-- @example pdf-api#sources -->
 ```js
@@ -256,7 +260,7 @@ nhóm này loại trừ nhau. Mọi tùy chọn đều không bắt buộc.
 | `cssVariables` | `Record<string, string>` | không có | Custom property của `:root`; tên thiếu `--` sẽ được thêm vào. | [HTML và Tailwind](../image/html-and-tailwind.md) |
 | `fontFamilies` | `string[]` | không có | Font stack gốc, chuỗi fallback cho phần tử không có `font-family`. | [Font dự phòng](fonts.md#font-dự-phòng) |
 | `fonts` | `FontLoader[] \| Promise<FontLoader[]>` | không có | Font được đăng ký trước khi render (chỉ các method async). | [Font trong PDF](fonts.md) |
-| `images` | `ImagesInput` | không có | Bytes ảnh cho các khóa `src` của tài liệu và các band. Không có gì được tải về. | [Hình ảnh](../image/images.md) |
+| `images` | `ImagesInput` | không có | Bytes ảnh cho các khóa `src` của tài liệu và các band. Chỉ `prepare` mới tải ảnh từ xa. | [Hình ảnh](../image/images.md) |
 | `uncoveredText` | `"error" \| "placeholder" \| "blank"` | `"error"` | Ký tự không font nào vẽ được sẽ thành gì. | [Ký tự không font nào có](fonts.md#ký-tự-không-font-nào-có) |
 | `lang` | `string` (BCP 47) | không có | Ngôn ngữ của phần tử gốc và của metadata. | [Metadata](links-metadata.md#metadata) |
 | `metadata` | `PdfMetadata` | không có | `title`, `description`, `authors`, `keywords`, `creator`, `creationDate`, các schema `xmp` tùy biến. | [Metadata](links-metadata.md#metadata), [XMP tùy biến](links-metadata.md#xmp-tùy-biến) |
@@ -325,8 +329,8 @@ CSS, nên `"Page "` sẽ in ra `Page1`: hãy dùng `columnGap` (như ở đây) 
 `lower-roman`, `upper-roman`, `lower-alpha`, `lower-latin`, `upper-alpha`, `upper-latin`, `lower-greek`,
 `hiragana`, `katakana`, `trad-chinese-informal`, `cjk-ideographic`, `cjk-decimal`, `arabic-indic`,
 `bengali`, `cambodian`, `khmer`, `devanagari`, `gujarati`, `gurmukhi`, `kannada`, `lao`, `malayalam`,
-`mongolian`, `myanmar`, `oriya`, `persian`, `urdu`, `tamil`, `telugu`, `thai`, `tibetan`. Bộ đếm trong nội
-dung sinh bởi CSS (`content: counter(page)`) không hoạt động; xem
+`mongolian`, `myanmar`, `oriya`, `persian`, `urdu`, `tamil`, `telugu`, `thai`, `tibetan`. Bộ đếm CSS trong nội
+dung sinh ra (`content: counter(page)`, `target-counter()`) cũng hoạt động; xem
 [Header, footer và bộ đếm trang](headers-footers.md).
 
 ## Lỗi {#errors}

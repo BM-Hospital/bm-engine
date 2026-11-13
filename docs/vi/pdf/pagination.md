@@ -77,7 +77,8 @@ Trong HTML, các utility ngắt trang của Tailwind v4 được chấp nhận t
 profile `pdf`: `break-before-auto`, `break-before-avoid`, `break-before-page` (cũng là `break-before-all`),
 `break-before-avoid-page`, `break-before-left`, `break-before-right`, `break-before-column`, tương tự cho
 `break-after-*`, và `break-inside-auto`, `break-inside-avoid`, `break-inside-avoid-page`,
-`break-inside-avoid-column`.
+`break-inside-avoid-column`. takumi-pdf không có các utility này; đây là phần mở rộng của bm-engine và chúng có
+nghĩa đúng như Tailwind định nghĩa.
 
 <!-- @example pdf-pagination#tailwind -->
 ```js
@@ -159,7 +160,9 @@ const table = await pdf.render(
 // the header group is drawn again at the top of every page, the footer group at the bottom of every page
 ```
 
-Ô trải nhiều hàng (`rowspan`) không bị chia.
+Hàng được chia qua các trang khi không vừa, và ô trải nhiều hàng (`rowspan`) được cắt cùng các hàng của nó. Viền
+gộp (collapsed) kết thúc mỗi mảnh bằng viền dưới riêng của nó; với viền 4 px và header lặp lại vẫn còn lệch nhỏ so
+với takumi-pdf.
 
 ## Quy tắc trang
 
@@ -277,9 +280,13 @@ kéo theo:
 - Phần trăm và việc giãn không bao giờ thấy kích thước trang.
 - Hộp có `height` xác định giữ nguyên nó kể cả khi nội dung bị đẩy qua trang; các hộp khác lớn thêm đúng phần mà
   một chỗ ngắt đã đẩy xuống.
-- Dòng chữ không chảy lại quanh float đã chuyển sang trang khác.
+- Dòng chữ không chảy lại quanh float đã chuyển sang trang khác: bố cục chỉ được phân trang một lần, không được
+  dàn lại cho từng mảnh.
+- Hộp bị xoay hoặc nghiêng bị ranh giới trang cắt được vẽ nguyên vẹn ở trang nơi nó bắt đầu; takumi-pdf cắt lát nó
+  theo từng mảnh.
+- Ký hiệu của mục danh sách bị chia qua các trang nằm ở dòng đầu của mục, như Chrome (takumi-pdf đặt nó ở mảnh
+  cuối).
 - Một trang bắt đầu giữa một hàng bảng hoặc một dòng flex giữ chiều rộng của trang trước nó khi chiều rộng của
   chính nó khác (xem [Trang có tên](#trang-có-tên)).
 - Nền hoặc viền của hộp trải qua mép trang bị trang cắt. Với `box-decoration-break: slice` (mặc định) các cạnh bị cắt
-  mất viền, padding và bo góc; với `clone` mỗi mảnh giữ viền, padding và bo góc. Các phần của bảng (hàng, ô, nhóm)
-  không được cắt lát đặc biệt ở mép trang.
+  mất viền, padding và bo góc; với `clone` mỗi mảnh giữ viền, padding và bo góc.

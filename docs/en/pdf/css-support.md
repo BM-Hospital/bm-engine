@@ -27,7 +27,7 @@ every build, including `bm-engine/pdf` and the native addon:
 | `position: fixed` | repeated on every page | [Headers and footers](headers-footers.md#counters-in-a-repeated-fixed-box) |
 | `box-decoration-break: clone` | each fragment of a box cut by a page keeps its border, padding and radii | [Pagination](pagination.md#limits-and-what-is-approximate) |
 | `background-clip: border-area` | PDF output only | |
-| Page counters | `PageNumber`, `TotalPages`, `TargetPageNumber` elements; `counter(page)` in `content` does **not** work | [Headers and footers](headers-footers.md) |
+| Page counters | `PageNumber`, `TotalPages`, `TargetPageNumber` elements; CSS counters in `content` also work: `counter()`, `counters()`, `counter(page)`, `target-counter()` | [Headers and footers](headers-footers.md) |
 | Page-margin boxes (`@top-center`, ...) | not supported (use the `header` / `footer` options) | [Headers and footers](headers-footers.md) |
 
 <!-- @example pdf-css-support#ignored-in-images -->
@@ -48,8 +48,8 @@ const png = image.renderSync(html, { width: 400, height: 120 }); // one image: b
 The PDF writer draws what the image painter draws, as vector operators: backgrounds, borders and
 outlines, gradients (linear, radial and conic), box and text shadows, opacity and isolation groups,
 blend modes, `clip-path`, masks, colour `filter` functions, transforms, text with decorations and
-strokes, tables, floats, images (JPEG and PNG are embedded as they are when possible) and SVG images
-that use the supported subset as vector paths ([Fonts in PDF](fonts.md) covers text).
+strokes, tables, floats, images (JPEG and PNG are embedded as their original bytes when possible) and SVG images
+drawn as vector paths ([Fonts in PDF](fonts.md) covers text).
 Structure for accessibility and the PDF/A and PDF/UA standards are described in
 [Accessibility and archival](accessibility.md).
 

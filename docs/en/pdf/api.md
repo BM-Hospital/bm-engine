@@ -152,8 +152,10 @@ Use it to size a band before you set a margin ([Margins and bands](headers-foote
 
 `prepare(source, options)` resolves `fonts` and lazy `images` once and returns a `Prepared` handle that
 `render` and `measure` accept. The options given to `render` are merged over the ones given to
-`prepare`. Nothing is fetched: bm-engine has no takumi-pdf `needs` pass, so image bytes go in `images`
-and font files in `fonts` or `registerFont`.
+`prepare`. It also fetches the remote images that the document and its bands name and that `images` does not
+provide, with `images.fetch` or the global `fetch` (found by scanning the source, not by takumi-pdf's native
+`needs` pass). A failed fetch rejects unless `images.throwOnError` is `false`. Fonts are not downloaded: font
+files go in `fonts` or `registerFont`.
 
 <!-- @example pdf-api#prepare -->
 ```js
@@ -177,7 +179,9 @@ done.free();
 ## Sources
 
 `PdfSource` is a `Source` or a `Prepared` handle. A `Source` is an HTML string, a node tree, or
-`{ json: "<node tree as JSON text>" }`, exactly as for images ([Node format](../image/api.md#node-format)):
+`{ json: "<node tree as JSON text>" }`, exactly as for images ([Node format](../image/api.md#node-format)).
+A JSX / React element is accepted too, as a document and as a header or footer band: it is converted to HTML.
+Components run once without a React dispatcher, so hooks other than plain reads do not work.
 
 <!-- @example pdf-api#sources -->
 ```js
@@ -257,7 +261,7 @@ mutually exclusive. Every option is optional.
 | `cssVariables` | `Record<string, string>` | none | `:root` custom properties; a name without `--` gains it. | [HTML and Tailwind](../image/html-and-tailwind.md) |
 | `fontFamilies` | `string[]` | none | Root font stack, the fallback chain for elements without `font-family`. | [Fallback fonts](fonts.md#fallback-fonts) |
 | `fonts` | `FontLoader[] \| Promise<FontLoader[]>` | none | Fonts registered before the render (async methods only). | [Fonts in PDF](fonts.md) |
-| `images` | `ImagesInput` | none | Image bytes for the `src` keys of the document and its bands. Nothing is fetched. | [Images](../image/images.md) |
+| `images` | `ImagesInput` | none | Image bytes for the `src` keys of the document and its bands. Only `prepare` fetches remote images. | [Images](../image/images.md) |
 | `uncoveredText` | `"error" \| "placeholder" \| "blank"` | `"error"` | What a character no registered font draws becomes. | [Characters no font covers](fonts.md#characters-no-font-covers) |
 | `lang` | `string` (BCP 47) | none | Language of the root element and of the metadata. | [Metadata](links-metadata.md#metadata) |
 | `metadata` | `PdfMetadata` | none | `title`, `description`, `authors`, `keywords`, `creator`, `creationDate`, custom `xmp` schemas. | [Metadata](links-metadata.md#metadata), [Custom XMP](links-metadata.md#custom-xmp) |
@@ -327,8 +331,8 @@ CSS, so `"Page "` would print `Page1`: use `columnGap` (as here) or a block with
 `lower-roman`, `upper-roman`, `lower-alpha`, `lower-latin`, `upper-alpha`, `upper-latin`, `lower-greek`,
 `hiragana`, `katakana`, `trad-chinese-informal`, `cjk-ideographic`, `cjk-decimal`, `arabic-indic`,
 `bengali`, `cambodian`, `khmer`, `devanagari`, `gujarati`, `gurmukhi`, `kannada`, `lao`, `malayalam`,
-`mongolian`, `myanmar`, `oriya`, `persian`, `urdu`, `tamil`, `telugu`, `thai`, `tibetan`. Counters in CSS
-generated content (`content: counter(page)`) do not work; see
+`mongolian`, `myanmar`, `oriya`, `persian`, `urdu`, `tamil`, `telugu`, `thai`, `tibetan`. CSS counters in
+generated content (`content: counter(page)`, `target-counter()`) work too; see
 [Headers, footers and page counters](headers-footers.md).
 
 ## Errors

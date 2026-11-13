@@ -43,7 +43,8 @@ nên có thể nạp cạnh `bm-engine/full` trong cùng một process. `profile
 
 `PdfRenderer` giữ các font đã đăng ký, nên hãy tạo một cái và dùng lại. bm-engine không kèm font nào, và một lần
 render sẽ lỗi khi chữ cần một ký tự mà không font đã đăng ký nào vẽ được (xem [Font trong PDF](fonts.md)).
-Nếu chưa đăng ký font nào thì không có lỗi: chữ bị bỏ khỏi trang mà không báo gì. Vì vậy hãy đăng ký font
+Nếu chưa đăng ký font nào, render bất kỳ đoạn chữ nào cũng báo lỗi `No font is registered to draw ...` (trừ khi đặt
+`uncoveredText: "blank"`). Vì vậy hãy đăng ký font
 trước:
 
 <!-- @example pdf#setup -->
@@ -94,7 +95,8 @@ const card = {
 const letter = await pdf.render(card, { size: "letter", landscape: true, margin: 24 });
 ```
 
-Nguồn có thể là chuỗi HTML, cây node, `{ json: "<cây node dạng văn bản JSON>" }`, hoặc handle từ `prepare()`.
+Nguồn có thể là chuỗi HTML, cây node, `{ json: "<cây node dạng văn bản JSON>" }`, phần tử JSX / React (được chuyển thành HTML), hoặc handle từ
+`prepare()`.
 Class Tailwind đặt trong trường `tw` của node hoặc thuộc tính `tw` của HTML ([HTML và Tailwind](../image/html-and-tailwind.md)).
 
 ## `measure`, `prepare` và các phương thức đồng bộ
@@ -111,9 +113,10 @@ const { width, height } = await pdf.measure(card, { size: "a4" });
 
 `renderSync` và `measureSync` làm cùng việc mà không cần await; dạng async tồn tại cho `fonts` và `images` nạp
 lười. `prepare(source, options)` giải quyết font và ảnh một lần và trả về handle mà `render` và `measure` nhận;
-các tùy chọn truyền cho `render` được gộp đè lên tùy chọn đã đưa cho `prepare`. Nó không tải gì cả: bm-engine
-không có bước tương đương `needs` của takumi-pdf, nên byte ảnh đi qua tùy chọn `images` (`[{ src, data }]`) và
-file font qua `fonts` hoặc `registerFont`. File của quy tắc `@font-face` không được tải.
+các tùy chọn truyền cho `render` được gộp đè lên tùy chọn đã đưa cho `prepare`. Nó tải về các ảnh từ xa mà
+tài liệu và các band nhắc tới còn `images` chưa cung cấp (bằng `images.fetch` hoặc `fetch` toàn cục); các byte
+ảnh khác đi qua tùy chọn `images` (`[{ src, data }]`). Font không được tải: file font đi qua `fonts` hoặc
+`registerFont`, còn file của quy tắc `@font-face` không được lấy về.
 
 <!-- @example pdf#sync -->
 ```js
