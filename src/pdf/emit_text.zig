@@ -919,9 +919,12 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const pg = e.f.paginated() orelse return .{ .shows = true };
     const box_top = y - l.border.top - l.padding.top;
     const box_bottom = box_top + l.h;
+    // (only the pages the box reaches: a scan of every page made each box cost the page count)
+    const p0: usize = pg.pageAt(box_top);
+    const p1: usize = @min(pg.pages.len, @as(usize, pg.pageAt(box_bottom)) + 1);
     var cur: ?usize = null;
     var count: u32 = 0;
-    for (pg.pages, 0..) |p, i| {
+    for (pg.pages[p0..p1], p0..) |p, i| {
         if (box_bottom <= p.top or box_top >= p.top + p.height) continue;
         count += 1;
         if (p.top == e.window.top) cur = i;
@@ -929,7 +932,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const here = cur orelse return .{ .shows = true };
     if (count <= 1) return .{ .shows = true };
     var out: TextRegions = .{ .shows = true };
-    for (pg.pages, 0..) |p, i| {
+    for (pg.pages[p0..p1], p0..) |p, i| {
         if (i == here or box_bottom <= p.top or box_top >= p.top + p.height) continue;
         var lo = @max(box_top, p.top);
         var hi = @min(box_bottom, p.top + p.height);

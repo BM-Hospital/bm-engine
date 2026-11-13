@@ -99,9 +99,16 @@ pub const Pages = struct {
     }
     /// Index of the page that holds stitched block offset `y` (the last page for anything below).
     pub fn pageAt(p: *const Pages, y: f32) u32 {
-        var i: u32 = 0;
-        while (i + 1 < p.pages.len and y >= p.pages[i + 1].top) i += 1;
-        return i;
+        // (binary search: the last page whose top is at or above `y`, the first page for anything
+        // above it; a linear walk made per-box lookups quadratic in the page count)
+        if (p.pages.len < 2) return 0;
+        var lo: usize = 0;
+        var hi: usize = p.pages.len - 1;
+        while (lo < hi) {
+            const mid = lo + (hi - lo + 1) / 2;
+            if (y >= p.pages[mid].top) lo = mid else hi = mid - 1;
+        }
+        return @intCast(lo);
     }
     /// The part of a box (stitched border-box block start `top`, block size `h`) that is on page `page`:
     /// null when the page shows none of it. `y` is relative to the page start; `from_prev` / `to_next`:
@@ -413,11 +420,24 @@ fn Engine(comptime T: type) type {
             return .{ .start = s, .end = s + h, .next = en };
         }
         fn pageAt(e: *Self, y: f32) Error!u32 {
-            var p: u32 = 0;
-            while (true) : (p += 1) {
-                try e.need(p);
-                if (y < e.tops.items[p + 1] - eps) return p;
+            // the first page whose end is below `y`: pages are added until one is, then a binary
+            // search over those known (a walk from the first page made pagination quadratic)
+            try e.need(0);
+            var n: u32 = @intCast(e.tops.items.len - 2);
+            if (!(y < e.tops.items[n + 1] - eps)) {
+                while (true) {
+                    n += 1;
+                    try e.need(n);
+                    if (y < e.tops.items[n + 1] - eps) return n;
+                }
             }
+            var lo: u32 = 0;
+            var hi: u32 = n;
+            while (lo < hi) {
+                const mid = lo + (hi - lo) / 2;
+                if (y < e.tops.items[mid + 1] - eps) hi = mid else lo = mid + 1;
+            }
+            return lo;
         }
 
         // ------------------------------------------------------------------------------------ tree access

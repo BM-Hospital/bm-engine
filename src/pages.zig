@@ -39,10 +39,29 @@ fn allocPages(n: usize) ?usize {
     const end = @wasmMemorySize(0) * page;
     for (free_spans[0..n_free], 0..) |s, i| {
         if (s.addr + s.pages * page == end) {
-            if (@wasmMemoryGrow(0, n - s.pages) == -1) return null;
+            const need = n - s.pages;
+            var ext = @max(need, @min(@wasmMemorySize(0) / 8, 1024));
+            if (@wasmMemoryGrow(0, ext) == -1) {
+                ext = need;
+                if (@wasmMemoryGrow(0, need) == -1) return null;
+            }
             n_free -= 1;
             free_spans[i] = free_spans[n_free];
+            if (s.pages + ext > n) freePages(s.addr + n * page, s.pages + ext - n);
             return s.addr;
+        }
+    }
+    // Grow by at least an eighth of the memory (capped at 64 MiB) and keep the rest free: a
+    // `memory.grow` per block made a long render quadratic, the engine moving the whole memory
+    // on many of them.
+    const have = @wasmMemorySize(0);
+    const extra = @min(have / 8, 1024);
+    if (extra > n) {
+        const at = @wasmMemoryGrow(0, extra);
+        if (at != -1) {
+            const addr = @as(usize, @intCast(at)) * page;
+            freePages(addr + n * page, extra - n);
+            return addr;
         }
     }
     const idx = @wasmMemoryGrow(0, n);
