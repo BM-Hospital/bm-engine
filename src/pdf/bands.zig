@@ -56,6 +56,15 @@ pub fn paint(e: *emit.Emitter, band: ?Draw) Error!void {
 /// the content laid out for that page area (`Frame.setPaged`; the caller paginates); null: a band
 /// (the full page width, an unbounded height). `subst` fills the page counter hooks.
 pub fn buildFrame(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, pre: ?json.Value, area: ?[2]f32, subst: ?*counters.Subst) Error!*Frame {
+    return buildFrameCut(r, a, o, css, kind, source, pre, area, subst, null);
+}
+
+/// A paragraph continued on a page of another width (paged.zig): render node `node`'s paragraph
+/// ends a line before its shaped glyph `glyph`.
+pub const Cut = struct { node: u32, glyph: u32 };
+
+/// `buildFrame`, the paragraph `cut` names broken there.
+pub fn buildFrameCut(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, pre: ?json.Value, area: ?[2]f32, subst: ?*counters.Subst, cut: ?Cut) Error!*Frame {
     var ro: rt.Options = .{ .lang = o.lang, .font_families = o.font_families };
     switch (o.geometry) {
         .viewport => |v| {
@@ -69,6 +78,10 @@ pub fn buildFrame(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.V
     f.* = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined, .pre = pre };
     f.tree.paged.pdf = true;
     if (area) |ar| f.setPaged(ar[0], ar[1]);
+    if (cut) |c| {
+        f.tree.paged.cut_node = c.node;
+        f.tree.paged.cut_glyph = c.glyph;
+    }
     if (subst) |s| s.install(f);
     try f.prepare(kind, source);
     try @import("text.zig").requireFont(f, o.uncovered_text == .blank);
@@ -98,6 +111,8 @@ pub const Slot = struct {
     /// the tallest tree, laid out with the last page's counters
     frame: *Frame = undefined,
     height: f32 = 0,
+    /// the index of that tree in `nodes`
+    tallest: ?usize = null,
     /// per node: it holds a page number / page count hook
     hooked: []bool = &.{},
     /// lays out again per page
@@ -179,6 +194,7 @@ pub fn measure(d: *const Doc, s: *Slot, count: usize) Error!void {
     var tallest: ?*Frame = null;
     var height: f32 = 0;
     var any_hooked = false;
+    s.tallest = null;
     for (s.nodes, 0..) |node, k| {
         const f = try layOutBand(d, node, count, count, &s.hooked[k]);
         any_hooked = any_hooked or s.hooked[k];
@@ -186,6 +202,7 @@ pub fn measure(d: *const Doc, s: *Slot, count: usize) Error!void {
         if (tallest == null or h > height) {
             tallest = f;
             height = h;
+            s.tallest = k;
         }
     }
     s.frame = tallest.?;
@@ -196,6 +213,16 @@ pub fn measure(d: *const Doc, s: *Slot, count: usize) Error!void {
 /// The band page `page` (0-based) of `pages` draws (takumi `Repeatable::for_page`), placed for a
 /// `page_w` x `page_h` page; null when its rule draws nothing.
 pub fn forPage(d: *const Doc, s: *Slot, page: usize, pages: usize, page_w: f32, page_h: f32) Error!?Draw {
+    if (d.o.geometry == .page and page_w != d.o.geometry.page.width) {
+        // a page of another width lays its band out at its own width (takumi lays the band out
+        // per page box)
+        var dw = d.*;
+        dw.o.geometry.page.width = page_w;
+        const k = (if (s.dynamic) s.forPage(page + 1, pages) else s.tallest) orelse return null;
+        const frame = try layOutBand(&dw, s.nodes[k], page + 1, pages, null);
+        const y = if (s.header) opt.band_edge_padding else page_h - opt.band_edge_padding - s.height;
+        return .{ .frame = frame, .x = 0, .y = y, .w = page_w, .h = s.height };
+    }
     const frame = if (!s.dynamic) s.frame else blk: {
         const k = s.forPage(page + 1, pages) orelse return null;
         if (s.hooked[k]) break :blk try layOutBand(d, s.nodes[k], page + 1, pages, null);

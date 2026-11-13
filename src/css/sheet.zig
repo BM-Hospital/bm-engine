@@ -62,6 +62,15 @@ pub const KeyframesRule = struct {
     gates: []const u32 = &.{},
 };
 
+/// An `@page` rule (PDF builds: src/pdf/page_rules.zig cascades them): its selector text, its
+/// declarations (`!important` kept; nested page-margin boxes skipped), its gates and layer.
+pub const PageRule = struct {
+    prelude: []const u8,
+    decls: []const Declaration,
+    gates: []const u32 = &.{},
+    layer: u32 = no_layer,
+};
+
 pub const FontFace = struct {
     /// `font-family` descriptor, unquoted when it is a single string.
     family: []const u8 = "",
@@ -92,6 +101,8 @@ pub const Stylesheet = struct {
     /// Keyframes from the deprecated `keyframes` render option; looked up before `keyframes`.
     extra_keyframes: Vec(KeyframesRule) = .empty,
     font_faces: Vec(FontFace) = .empty,
+    /// `@page` rules (collected in PDF builds only)
+    pages: Vec(PageRule) = .empty,
     gates: Vec(Gate) = .empty,
     /// Interned layer paths ("a.b"; an anonymous segment is "\x01").
     layer_names: Vec([]const u8) = .empty,
@@ -347,7 +358,15 @@ fn atRule(sp: *SP, t: *Tokenizer, tok: Token, ctx: Ctx, parent: ?[]const sel.Com
         }
         return;
     }
-    // @page, @property, @namespace, @container, @font-feature-values, @counter-style, ...: ignored.
+    if (eq(name, "page")) {
+        if (comptime !pages_enabled) return;
+        const b = block orelse return;
+        var decls: Vec(Declaration) = .empty;
+        try declList(sp, b[0], b[1], &decls, true);
+        try sp.sheet.pages.append(sp.arena, .{ .prelude = std.mem.trim(u8, sp.src[ps..pe], " \t\r\n\x0c"), .decls = decls.items, .gates = ctx.gates, .layer = ctx.layer });
+        return;
+    }
+    // @property, @namespace, @container, @font-feature-values, @counter-style, ...: ignored.
 }
 
 fn body(sp: *SP, b: [2]usize, ctx: Ctx, parent: ?[]const sel.Complex) error{OutOfMemory}!void {
@@ -704,6 +723,13 @@ pub const preflight_css =
     \\img{max-width:100%;height:auto}
     \\[hidden]:where(:not([hidden='until-found'])){display:none !important}}
 ;
+
+/// Build switch: `@page` rules are only collected for PDF output
+/// (`@import("root").bm_config.enable_pdf`; on in standalone tests).
+const pages_enabled = blk: {
+    const root = @import("root");
+    break :blk if (@hasDecl(root, "bm_config")) root.bm_config.enable_pdf else true;
+};
 
 /// Build switch: `@keyframes` rules are only kept when the engine has animation support
 /// (`@import("root").bm_config.enable_animation`; on in standalone tests).

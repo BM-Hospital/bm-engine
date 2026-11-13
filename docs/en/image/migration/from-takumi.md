@@ -111,8 +111,7 @@ What to change when you move code over:
 - `prepare` and `render` fetch nothing and there is no `needs`: pass image bytes in `images` and fonts through
   `registerFont` or `fonts`. bm-engine ships no font.
 - Registered fonts must cover every character, or the render fails (`uncoveredText: "error"`, as in takumi-pdf).
-- Known differences: PDF/A is checked but not certified, `list-style-image` is not supported, and content is laid
-  out once at one width, so a named page or `@page` rule that changes the page width does not re-flow it
+- Known differences: PDF/A is checked but not certified, and `list-style-image` is not supported
   ([Known limitations](../../pdf/differences-from-takumi.md#known-limitations)).
 
 `takumi-paint` has no counterpart ([Image, PDF and Paint compared](../../outputs-compared.md)).

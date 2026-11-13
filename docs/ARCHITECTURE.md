@@ -131,7 +131,9 @@ The stages, in the order a document passes through them:
    the page-area width with an unbounded height, then `fragment.paginate` picks the breaks by Blink's
    rules (forced and avoided breaks, `orphans` / `widows`, repeated table header / footer groups, fixed boxes) and
    moves content down in place. A page is then the whole tree painted under a clip and a translation. `page_rules.zig`
-   resolves `@page` geometry; `paged.zig` runs the passes below.
+   resolves `@page` geometry; `paged.zig` runs the passes below. When page areas differ in width, `paged.zig` lays the
+   content out again for each run of pages of one width, from where the run before stopped (`fragment.Options.start`),
+   in one block coordinate space; the emitter draws each page from its run's frame.
 7. **Bands and counters** (`bands.zig`, `counters.zig`): headers and footers are laid out on their own at the full page
    width and drawn in the margins; the margins resolve around their heights. Page counters are class hooks
    substituted into the DOM between the build and the cascade; `paged.zig` repeats layout until the counters settle

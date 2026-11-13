@@ -114,6 +114,14 @@ pub const PageBox = struct {
     /// the frame `fixed` indexes into when it is not the document's: this page's own layout of its
     /// repeating fixed boxes (they hold page counters)
     fixed_frame: ?*Frame = null,
+    /// the frame this page shows when it is not the document's (a page laid out at another width
+    /// than the first: paged.zig); its windows are those of the neighbouring pages that show it
+    frame: ?*Frame = null,
+    /// (`frame` set, the first / last page showing it) the window of the frame's own page before /
+    /// after this one: the neighbouring pass that paints what reaches this page (the page before /
+    /// after it in the document shows another frame)
+    prev_win: ?Window = null,
+    next_win: ?Window = null,
 };
 
 const Deferred = struct { cs: *const CS, g: Geom, ctm: Tf, clip0: u32, clip1: u32 };
@@ -202,6 +210,13 @@ pub const Emitter = struct {
     /// the transformed box around the current coordinates belongs to that pass
     windows: []const Window = &.{},
     win_page: u32 = 0,
+    /// the first of `windows` reaches up to the frame's top / the last down to its bottom (false:
+    /// they continue from or onto pages laid out at another width, from another frame: paged.zig)
+    win_open_top: bool = true,
+    win_open_bottom: bool = true,
+    /// the walk visits every box (the first page of a run of pages showing one frame: the
+    /// document-wide collections are made during its walk)
+    walk_all: bool = true,
     pass: ?u32 = null,
     tpage: bool = true,
     /// the painter (glyph masks, SVG rasteriser) over a canvas-sized dummy pixmap
@@ -719,8 +734,8 @@ pub const Emitter = struct {
     /// Whether frame y range `y0`..`y1` meets page `r` (the first page reaching up, the last down).
     noinline fn onPage(e: *const Emitter, r: u32, y0: f32, y1: f32) bool {
         const pw = e.windows[r];
-        const top = if (r == 0) -std.math.inf(f32) else pw.top;
-        const bottom = if (r + 1 == e.windows.len) std.math.inf(f32) else pw.bottom;
+        const top = if (r == 0 and e.win_open_top) -std.math.inf(f32) else pw.top;
+        const bottom = if (r + 1 == e.windows.len and e.win_open_bottom) std.math.inf(f32) else pw.bottom;
         if (y1 > y0) return y0 < bottom and y1 > top;
         return y0 >= top and y0 < bottom;
     }
@@ -746,8 +761,8 @@ pub const Emitter = struct {
             const pw = e.windows[r];
             return .{
                 .win = pw,
-                .s0 = if (r == 0) y0 else @max(y0, pw.top),
-                .s1 = if (r + 1 == e.windows.len) y1 else @min(y1, pw.bottom),
+                .s0 = if (r == 0 and e.win_open_top) y0 else @max(y0, pw.top),
+                .s1 = if (r + 1 == e.windows.len and e.win_open_bottom) y1 else @min(y1, pw.bottom),
             };
         }
         if (r != e.win_page) return null;
@@ -2267,7 +2282,7 @@ pub const Extents = struct {
     /// everything: the document-wide collections (headings, anchors, link runs: interactive.zig)
     /// are made during its walk.
     fn misses(ex: *const Extents, e: *const Emitter, id: u32, y: f32) bool {
-        if (id >= ex.y.len or e.in_repeat or e.win_page == 0) return false;
+        if (id >= ex.y.len or e.in_repeat or e.walk_all) return false;
         const want = ex.y[id];
         if (!(@abs(want - y) < 0.001)) return false;
         return e.missesWindow(ex.lo[id], ex.hi[id]);
@@ -2374,13 +2389,12 @@ pub fn paintPage(e: *Emitter, page: PageBox, win: Window) Error!void {
     const depth0 = s.depth();
     defer s.popTo(depth0);
     s.pushTransform(Tf.scale(pt_per_px, pt_per_px));
+    // (a transparent paper colour is still painted, as takumi-pdf fills the page with it)
     if (page.background) |bg| {
-        if (bg.a != 0) {
-            e.path.reset();
-            try e.path.addRect(e.a, .{ .x = 0, .y = 0, .w = page.width, .h = page.height });
-            s.setFill(dev.fillOf(bg, 1, .nonzero));
-            s.drawPath(&e.path);
-        }
+        e.path.reset();
+        try e.path.addRect(e.a, .{ .x = 0, .y = 0, .w = page.width, .h = page.height });
+        s.setFill(dev.fillOf(bg, 1, .nonzero));
+        s.drawPath(&e.path);
     }
     const top = if (std.math.isFinite(win.top)) win.top else 0;
     try pdf_bands.paint(e, page.header);
@@ -2415,7 +2429,7 @@ pub fn paintPage(e: *Emitter, page: PageBox, win: Window) Error!void {
             const cq0 = e.content_q.items.len;
             e.defer_on = true;
             defer e.defer_on = false;
-            if (e.windows.len > 1 and win.paged()) {
+            if ((e.windows.len > 1 or !e.win_open_top or !e.win_open_bottom) and win.paged()) {
                 const p = e.win_page;
                 var r: u32 = if (p > 0) p - 1 else 0;
                 while (r <= p + 1 and r < e.windows.len) : (r += 1) {
@@ -2536,12 +2550,42 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     var td = try @import("tagdoc.zig").TagDoc.init(a, &cx, cfg, popts, tagged, f, &links, pages.len);
     // (a paginated document: computed once, shared by the pages, as are the table parts and the tree
     // order; per page they would cost the whole document every page)
-    const ext: ?Extents = if (pages.len > 1) try Extents.compute(a, f) else null;
+    // (pages laid out at different widths: each run of pages showing one frame is drawn from it
+    // with the windows of that run, paged.zig)
+    var ext: ?Extents = null;
     var tparts: []etable.Part = &.{};
+    var run0: usize = 0;
+    var run1: usize = 0;
+    var run_wins: []const Window = windows;
+    var run_off: usize = 0;
     for (pages, windows, 0..) |page, win, i| {
+        const pf = page.frame orelse f;
+        if (i == run1) {
+            run0 = i;
+            run1 = i + 1;
+            while (run1 < pages.len and (pages[run1].frame orelse f) == pf) run1 += 1;
+            ext = if (run1 - run0 > 1) try Extents.compute(a, pf) else null;
+            tparts = &.{};
+            // (the frame's own pages around the run take part as neighbouring passes)
+            const pw = pages[run0].prev_win;
+            const nw = pages[run1 - 1].next_win;
+            if (pw != null or nw != null) {
+                var list: std.ArrayList(Window) = .empty;
+                if (pw) |x| try list.append(a, x);
+                try list.appendSlice(a, windows[run0..run1]);
+                if (nw) |x| try list.append(a, x);
+                run_wins = list.items;
+                run_off = @intFromBool(pw != null);
+            } else {
+                run_wins = windows[run0..run1];
+                run_off = 0;
+            }
+            // [interactive] anchors and headings of this frame: those in its run of pages
+            links.beginRun(pf, if (run0 == 0) -std.math.inf(f32) else win.top, if (run1 == pages.len) std.math.inf(f32) else windows[run1 - 1].bottom);
+        }
         var s = sf.Surface.initPage(&cx, page.height * pt_per_px);
         s.tagging = tagged;
-        var e = Emitter.init(f, &cx, &s, &fonts);
+        var e = Emitter.init(pf, &cx, &s, &fonts);
         if (ext) |*x| {
             e.ext = x;
             e.pre = x.pre;
@@ -2550,8 +2594,9 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
         defer tparts = e.tparts;
         links.beginPage(i, page, win); // [interactive]
         e.links = &links;
-        e.windows = windows;
-        e.win_page = @intCast(i);
+        e.windows = run_wins;
+        e.win_page = @intCast(i - run0 + run_off);
+        e.walk_all = i == run0;
         if (tagged) {
             e.tags = &td.collector;
             e.tagged = true;

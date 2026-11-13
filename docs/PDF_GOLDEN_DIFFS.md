@@ -58,8 +58,8 @@ Categories:
 | `content-page-counters` | close | bm bug, partly fixed | C. takumi breaks the content at the page area truncated to 1/64 px (`LayoutUnit::from_float` of `fragmentainer_block_size`), but stacks the pages at their exact height, so content after a box that a page boundary slices sits `k × (exact − truncated)` lower on page k (0.0073 px on A4). bm-engine now breaks at the truncated height. It does not yet grow a box that is sliced across the boundary by that gap, so the text after the 1100 px paragraph is still 0.0073 px higher. | close |
 | `at-page-root-element` | close | bm bug | C (inline direction). takumi lays the root out in the page area's width truncated to 1/64 px (479.359375 for 479.3701); bm-engine rounded it to 479.375, which moved right-aligned and RTL lines by 1/64 px. | identical |
 | `stream-content-counters` | differ | bm bug, not fixed | G. A flex item `'r '`: takumi lays the line out as if the collapsible trailing space was never shaped (4.65625 px wide), while bm-engine drops the hung space but keeps the r+space kern on the `r` (4.375 px). This is in the text engine that the image path shares, so a fix has to be gated to PDF output or checked against the image suite. | differ |
-| `at-page-first-left-right` | differ | missing feature | Pages of different widths: the `:first` landscape A5 page and the `:left` / `:right` width changes are dropped, because bm-engine lays the content out once, at one width. The structure tree differs as a result. 0.20.0 matches the golden. | differ |
-| `named-pages` | differ | missing feature, plus a bm bug | The same per-page-width limitation. The bug was I: a collapsed table's borders were painted in full on every page and in every page pass (outside the page clip, so nothing was visible). The page content was 19444 operators against takumi's 3356. Each page now paints only the borders it shows: 4180 operators. | differ (4180 / 3356 ops) |
+| `at-page-first-left-right` | differ | missing feature | Pages of different widths: the `:first` landscape A5 page and the `:left` / `:right` width changes were dropped, because bm-engine laid the content out once, at one width. Now each run of pages of one width is laid out again from where the run before stopped (src/pdf/paged.zig `laySegments`, `fragment.Options.start`), in takumi's block coordinates; a footer band of another page width is laid out at that width. | close |
+| `named-pages` | differ | missing feature, plus a bm bug | The same per-page-width limitation, now ported (see above). The bug was I: a collapsed table's borders were painted in full on every page and in every page pass (outside the page clip, so nothing was visible). The page content was 19444 operators against takumi's 3356. Each page now paints only the borders it shows. Left: page 2 (body width) in takumi also paints, outside its clip, the first border pieces of the wide table that starts page 3 (its page scene reaches the next page's fragment); bm-engine's page 3 is another frame, laid out at the landscape width, which page 2's passes do not visit (136 invisible operators). | differ (3220 / 3356 ops, structure tree same) |
 
 ### Summary by category
 
@@ -73,8 +73,8 @@ Categories:
 - **bm bug, not fixed:** 2.
   - `color-glyph-text-shadow` (B): the contour start of the static `glyf` reader.
   - `stream-content-counters` (G): the trailing-space kern in the shared text engine.
-- **missing feature (pdf-port):** 2, `at-page-first-left-right` and `named-pages` (pages of
-  different widths). The border bloat of `named-pages` was a bm bug and is fixed.
+- **missing feature (pdf-port):** ported: `at-page-first-left-right` is close, `named-pages` differs only by
+  invisible clipped border pieces (see the table). The border bloat of `named-pages` was a bm bug and is fixed.
 
 ## Where the fixes are
 
@@ -96,7 +96,7 @@ Categories:
   advance, so this needs the advance of each run's last glyph in the text layout of PDF builds.
 - **G:** collapse the trailing space before shaping, or drop its kern, in PDF builds; then re-run the
   image suite.
-- **Per-page widths (pdf-port):** lay the content out again for a page whose width differs.
+- **Per-page widths (pdf-port):** done (src/pdf/paged.zig `laySegments`).
 
 ## Findings of the external validation run (pdf-validate)
 

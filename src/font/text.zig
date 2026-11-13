@@ -409,6 +409,9 @@ pub const Line = struct {
     /// line-clamp), drawn in place of the hidden text; none when equal.
     marker0: if (item_origin_build) u32 else void = if (item_origin_build) 0 else {},
     marker1: if (item_origin_build) u32 else void = if (item_origin_build) 0 else {},
+    /// (PDF builds) the paragraph's shaped glyph the line starts at (`Paragraph.cut` of another
+    /// layout of the same paragraph: src/pdf/paged.zig)
+    start: if (item_origin_build) u32 else void = if (item_origin_build) 0 else {},
 };
 
 /// Position of an atomic inline (margin-box top-left) or the static position of an out-of-flow
@@ -707,6 +710,10 @@ pub const Paragraph = struct {
     pct_base: f32 = 0,
     /// Some inline box is relatively positioned (`InlineBox.rel`).
     has_rel: bool = false,
+    /// (PDF builds) a line ends right before this shaped glyph, everything before it on one line
+    /// (`no_stop`: none): a paragraph continued on a page of another width starts its lines there
+    /// (src/pdf/paged.zig).
+    cut: if (item_origin_build) u32 else void = if (item_origin_build) no_stop else {},
 
     /// Compile-time selection of the optional text machinery (see `initWith`).
     pub const Features = struct {
@@ -1514,7 +1521,10 @@ pub const Paragraph = struct {
                 if (p.opts.max_lines) |ml| if (it.index >= ml) return null;
             }
             var stop: u32 = no_stop;
-            if ((comptime wrap_balance) and it.mode.strategy != .wrap) {
+            if (comptime item_origin_build) if (it.pos < p.cut and p.cut < n) {
+                stop = p.cut;
+            };
+            if ((comptime wrap_balance) and it.mode.strategy != .wrap and stop == no_stop) {
                 if (it.forced_i >= it.n_forced and !it.suspended and (it.mode.strategy == .pretty or it.pos == 0)) {
                     it.prepare(.{ .def = floor64(@max(it.mode.avail.?, 0)) }, true);
                     if (it.bal_w == it.bal_w) it.mode.avail = it.bal_w;
@@ -1570,7 +1580,11 @@ pub const Paragraph = struct {
             var beside: u32 = no_stop;
             var stop: u32 = no_stop;
             // text-wrap: balance / pretty: the break point chosen for this line
-            const scored = (comptime wrap_balance) and it.mode.strategy != .wrap and full != null;
+            const cut_here = if (comptime item_origin_build) it.pos < p.cut and p.cut < n else false;
+            if (comptime item_origin_build) if (cut_here) {
+                stop = p.cut;
+            };
+            const scored = (comptime wrap_balance) and it.mode.strategy != .wrap and full != null and !cut_here;
             var prepared = !scored;
             if (scored and it.forced_i < it.n_forced) {
                 stop = it.forced[it.forced_i];
@@ -2748,6 +2762,7 @@ pub const Paragraph = struct {
                 .rtl = self.rtl,
                 .marker0 = if (item_origin_build) mk0 else {},
                 .marker1 = if (item_origin_build) mk1 else {},
+                .start = if (item_origin_build) li.start else {},
             });
             top += li.ascent + li.descent;
         }

@@ -1408,6 +1408,10 @@ pub const Frame = struct {
         if (comptime config.enable_pdf) if (f.tree.paged.pdf) try @import("pdf/page_names.zig").collect(f);
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
+        // (PDF: a paragraph continued on a page of another width, src/pdf/paged.zig)
+        if (comptime config.enable_pdf and layout.fragment.enabled) if (f.tree.paged.cut_node < f.nodes.items.len) {
+            if (f.nodes.items[f.tree.paged.cut_node].para) |p| p.cut = f.tree.paged.cut_glyph;
+        };
 
         // The layout root is the root element itself; the available size is the initial containing
         // block (the engine resolves the root's percentages, margins and fixed boxes against it). Like
@@ -1457,6 +1461,12 @@ pub const Frame = struct {
             };
             return f.fail("invalid viewport: content has zero size and no width/height was given", "");
         }
+        // (PDF: a page has no pixel canvas, takumi-pdf takes any finite viewport)
+        if (comptime layout.fragment.enabled) if (f.tree.paged.pdf) {
+            f.canvas_w = @intFromFloat(@min(cw, 16384));
+            f.canvas_h = @intFromFloat(@min(ch, 16384));
+            return;
+        };
         if (cw > 16384 or ch > 16384 or cw * ch > 40.0e6) return f.fail("canvas too large", "");
         f.canvas_w = @intFromFloat(cw);
         f.canvas_h = @intFromFloat(ch);
@@ -1546,7 +1556,7 @@ pub const Frame = struct {
         f.css_on = st.m.rules.len > 0;
     }
 
-    fn cssSupports(name: []const u8, value: []const u8) bool {
+    pub fn cssSupports(name: []const u8, value: []const u8) bool {
         _ = value;
         if (name.len > 2 and name[0] == '-' and name[1] == '-') return true;
         return style.propertyId(name) != null;
@@ -3037,6 +3047,10 @@ pub const Frame = struct {
         page_height_fn: ?layout.fragment.PageHeightFn = null,
         ctx: *anyopaque = undefined,
         max_pages: u32 = 20_000,
+        /// content continued from a page of another width (`layout.fragment.Options.start`)
+        start: ?layout.fragment.Start = null,
+        start_top: ?f32 = null,
+        record_starts: bool = false,
     };
 
     /// Before `prepare`: lay the frame out for pages whose page area (content box) is
@@ -3066,9 +3080,12 @@ pub const Frame = struct {
                 .ctx = @ptrCast(f),
                 .lines_fn = linesCb,
                 .max_pages = o.max_pages,
+                .start = o.start,
+                .start_top = o.start_top,
+                .record_starts = o.record_starts,
             }) catch |e| return switch (e) {
                 error.OutOfMemory => error.OutOfMemory,
-                error.TooManyPages => f.fail("too many pages", ""),
+                error.TooManyPages => f.fail("The content spans more than 20000 pages. Give it a height that resolves.", ""),
                 error.InvalidPageSize => f.fail("invalid page size", ""),
             };
             if (f.layout_oom) return error.OutOfMemory;

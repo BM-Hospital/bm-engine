@@ -1,31 +1,33 @@
-//! `@page` rules (the part of takumi-pdf `page_kinds.rs` / `PageOptions::with_page_rules` and
-//! takumi-core `style/page_rule.rs` bm-engine supports): the page a document's stylesheets give the
-//! `size` / `margin` options, CSS winning as Chromium's `preferCSSPageSize` lets it.
+//! `@page` rules (takumi-pdf `page_kinds.rs` / `PageOptions::with_page_rules` and takumi-core
+//! `style/page_rule.rs`, `layout/page_sizes.rs` `PageRules::page_box`): the page a document's
+//! stylesheets give the `size` / `margin` options, CSS winning as Chromium's `preferCSSPageSize`
+//! lets it.
 //!
-//! Supported: `@page`, `@page :first`, `@page :left`, `@page :right` and named pages (`@page name`,
-//! `@page name:first` ..., the pages the `page` property names: page_names.zig) at the top level of
-//! the `css` option's string entries and of an HTML source's `<style>` elements, cascaded per page
-//! name and kind of page as Blink's `PageRuleCollector` (specificity: a name 4, `:first` 2,
-//! `:left` / `:right` 1, then source order; a rule without a name selects every page, a named one
-//! the pages of its name); the first page is a right page, a left one under a root `direction: rtl`
-//! (takumi `PageKind::of`). Descriptors `size` (`auto`, a keyword `A3`..`letter` with `portrait` /
-//! `landscape`, an orientation alone, one or two lengths) and `margin` (1-4 values), `margin-top` /
-//! `-right` / `-bottom` / `-left` (lengths in px, mm, cm, in, pt, pc, q, and `em` / `rem` of the
-//! root element's font size; `var()` of the root element's custom properties; percentages of the
-//! page's size on the side's axis; `auto` = 0 as Blink's `ResolveAutoMargins`). A page whose
-//! margins leave no page area keeps the options' geometry (Blink's `LayoutPageContainer`).
+//! The `@page` rules of the `css` option's string entries and of an HTML source's `<style>` elements
+//! (parsed by src/css/sheet.zig, so also inside `@media` (a print medium the size of the options'
+//! page), `@supports` and `@layer`): `@page`, `@page :first` / `:left` / `:right` and named pages
+//! (`@page name`, `@page name:first` ..., the pages the `page` property names: page_names.zig),
+//! cascaded per page name and kind of page as takumi's `PageRule::cascade` (importance, layer,
+//! specificity: a name 4, `:first` 2, `:left` / `:right` 1, then source order); the first page is a
+//! right page, a left one under a root `direction: rtl` (takumi `PageKind::of`). Descriptors `size`
+//! (`auto`, a keyword `A3`..`letter` with `portrait` / `landscape`, an orientation alone, one or two
+//! lengths) and `margin` (1-4 values), `margin-top` / `-right` / `-bottom` / `-left`: lengths in
+//! any unit (viewport units of the options' page; `em` / `rem` / `ex` / `ch` of the root element's
+//! font), `calc()` and the other math functions, `var()` of the root element's custom properties (one
+//! that does not resolve unsets the descriptor), percentages of the page's size on the side's axis,
+//! `auto` = 0 as Blink's `ResolveAutoMargins`; an invalid declaration is dropped alone. A page whose
+//! margins leave no page area keeps the options' geometry (Blink's `LayoutPageContainer`). Pages of
+//! different widths each lay their content out at their own width (paged.zig).
 //!
-//! Not supported (takumi supports them; bm-engine lays the content out once at one width): pages
-//! of different widths. When the `:left` / `:right` rules give left and right pages different page
-//! or page-area widths they are ignored as a whole; when the first page then still differs, its
-//! `:first` rules are. A named page keeps its size and margins whatever its width: the content,
-//! laid out at the unnamed pages' width, sits in its page area from the left (paged.zig). Not
-//! supported either: `@page` inside `@media` / `@layer` / `@supports`, viewport units in page
-//! descriptors, rule objects in `css`, and the page-margin boxes (`@top-center` ...), which takumi
-//! does not draw either.
+//! Not supported: rule objects in `css`; the page-margin boxes (`@top-center` ...) are skipped, as
+//! takumi does not draw them either.
 const std = @import("std");
 const json = @import("../json.zig");
 const opt = @import("options.zig");
+const css_sheet = @import("../css/sheet.zig");
+const css_media = @import("../css/media.zig");
+const values = @import("../style/values.zig");
+const stok = @import("../style/tokenizer.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -78,22 +80,90 @@ pub const Pages = struct {
 };
 
 /// What a page's style takes from the root element (takumi `PageContext`): its direction, font
-/// size (`em` / `rem`) and custom properties (`var()`).
+/// size (`em` / `rem`), its font's x-height and `0` advance (`ex` / `ch`, in em) and custom
+/// properties (`var()`); and how `@supports` asks about a declaration.
 pub const Context = struct {
     rtl: bool = false,
     font_size: f32 = 16,
+    /// the root element's font size (`rem`; null: `font_size`)
+    rem: ?f32 = null,
+    ex: f32 = 0.5,
+    ch: f32 = 0.5,
     ctx: *const anyopaque = undefined,
     custom: ?*const fn (ctx: *const anyopaque, name: []const u8) ?[]const u8 = null,
+    /// `@supports (name: value)` (null: every declaration with a value is supported)
+    supports: ?*const fn (name: []const u8, value: []const u8) bool = null,
 };
 
 const Pseudo = enum { none, first, left, right };
-const Rule = struct { pseudo: Pseudo, body: []const u8, name: ?[]const u8 = null };
 
-const Decls = struct {
-    size: ?[]const u8 = null,
-    margin: [4]?[]const u8 = .{ null, null, null, null },
-    any: bool = false,
+/// A rule that applies (its `@media` / `@supports` hold), split by importance.
+const Rule = struct {
+    pseudo: Pseudo,
+    name: ?[]const u8 = null,
+    normal: []const css_sheet.Declaration,
+    important: []const css_sheet.Declaration,
+    /// the position of its cascade layer (null: unlayered) and its source order
+    layer: ?usize,
+    order: usize,
+
+    /// Blink's `CSSSelector::Specificity` for a page selector
+    fn specificity(r: *const Rule) u64 {
+        const pc: u64 = switch (r.pseudo) {
+            .none => 0,
+            .first => 2,
+            .left, .right => 1,
+        };
+        return @as(u64, if (r.name != null) 4 else 0) + pc;
+    }
+
+    /// takumi `PageSelector::matches`: `kind` pages named `name` (null: unnamed) under `rtl`.
+    fn matches(r: *const Rule, kind: Kind, name: ?[]const u8, rtl: bool) bool {
+        if (r.name) |rn| {
+            const nm = name orelse return false;
+            if (!std.mem.eql(u8, rn, nm)) return false;
+        }
+        const is_left = switch (kind) {
+            .first => rtl,
+            .left => true,
+            .right => false,
+        };
+        return switch (r.pseudo) {
+            .none => true,
+            .first => kind == .first,
+            .left => is_left,
+            .right => !is_left,
+        };
+    }
 };
+
+/// A margin descriptor's value.
+const MarginV = union(enum) { auto, lp: values.LP };
+/// A `size` descriptor's value: `auto`, lengths, or a sheet keyword and / or an orientation.
+const SizeV = union(enum) {
+    auto,
+    lengths: [2]f32,
+    sheet: struct { wh: ?[2]f32 = null, landscape: ?bool = null },
+};
+
+/// The descriptors a declaration sets, or those that win the cascade (takumi `PageDescriptors`).
+const Desc = struct {
+    size: ?SizeV = null,
+    margin: [4]?MarginV = .{ null, null, null, null },
+
+    fn over(d: *Desc, o: Desc) void {
+        if (o.size) |s| d.size = s;
+        for (o.margin, 0..) |m, k| if (m) |v| {
+            d.margin[k] = v;
+        };
+    }
+    fn any(d: Desc) bool {
+        return d.size != null or d.margin[0] != null or d.margin[1] != null or d.margin[2] != null or d.margin[3] != null;
+    }
+};
+
+/// The rules that apply, in source order, with the layer count.
+const Rules = struct { list: []const Rule, layers: usize };
 
 /// The `@page`-styled geometry of `base` for the CSS texts of the document (`css` option strings
 /// and, for HTML input, its `<style>` contents), with the root element's `cx`.
@@ -105,90 +175,241 @@ pub fn resolve(a: Allocator, base: opt.Page, css: ?json.Value, html: ?[]const u8
         else => {},
     };
     if (html) |h| try styleTexts(a, h, &texts);
-    var rules: std.ArrayList(Rule) = .empty;
-    for (texts.items) |t| try scan(a, t, &rules);
-    if (rules.items.len == 0) return .{ .first = base, .left = base, .right = base, .rest = base, .rtl = cx.rtl };
-    var contextual = false;
-    for (rules.items) |r| {
-        if (r.pseudo == .left or r.pseudo == .right) contextual = true;
-        if (std.mem.indexOf(u8, r.body, "em") != null or std.mem.indexOf(u8, r.body, "var(") != null) contextual = true;
-    }
-    var sides = true;
-    var first_rules = true;
-    while (true) {
-        const right = try kindPage(a, base, rules.items, .right, cx, sides, first_rules, null);
-        const left = try kindPage(a, base, rules.items, .left, cx, sides, first_rules, null);
-        // (the content lays out once, at one width)
-        if (sides and !sameWidth(left, right)) {
-            sides = false;
-            continue;
-        }
-        const first = try kindPage(a, base, rules.items, .first, cx, sides, first_rules, null);
-        if (first_rules and !sameWidth(first, right)) {
-            first_rules = false;
-            continue;
-        }
-        // the pages of each name a rule selects
-        var named: std.ArrayList(Pages.Named) = .empty;
-        for (rules.items) |r| {
-            const nm = r.name orelse continue;
-            const seen = for (named.items) |e| {
-                if (std.mem.eql(u8, e.name, nm)) break true;
-            } else false;
-            if (seen) continue;
-            try named.append(a, .{
-                .name = nm,
-                .first = try kindPage(a, base, rules.items, .first, cx, sides, first_rules, nm),
-                .left = try kindPage(a, base, rules.items, .left, cx, sides, first_rules, nm),
-                .right = try kindPage(a, base, rules.items, .right, cx, sides, first_rules, nm),
-            });
-        }
-        return .{ .first = first, .left = left, .right = right, .rest = right, .rtl = cx.rtl, .contextual = contextual, .named = named.items };
-    }
-}
-
-fn sameWidth(x: opt.Page, y: opt.Page) bool {
-    const wx = x.width - marginPx(x.margin.left) - marginPx(x.margin.right);
-    const wy = y.width - marginPx(y.margin.left) - marginPx(y.margin.right);
-    return wx == wy and x.width == y.width;
-}
-
-/// The cascade of the rules matching `kind` pages named `name` (null: unnamed) (Blink's
-/// `PageRuleCollector`: by specificity, then in source order) applied to `base`.
-fn kindPage(a: Allocator, base: opt.Page, rules: []const Rule, kind: Kind, cx: Context, sides: bool, first: bool, name: ?[]const u8) Allocator.Error!opt.Page {
-    var d: Decls = .{};
-    const is_left = switch (kind) {
-        .first => cx.rtl,
-        .left => true,
-        .right => false,
-    };
-    for ([_]u3{ 0, 1, 2, 4, 5, 6 }) |spec| for (rules) |r| {
-        if (r.name) |rn| {
-            const nm = name orelse continue;
-            if (!std.mem.eql(u8, rn, nm)) continue;
-        }
-        const s: u3 = @as(u3, if (r.name != null) 4 else 0) + @as(u3, switch (r.pseudo) {
-            .none => 0,
-            .left, .right => 1,
-            .first => 2,
+    const rules = try collect(a, texts.items, base, cx);
+    if (rules.list.len == 0) return .{ .first = base, .left = base, .right = base, .rest = base, .rtl = cx.rtl };
+    const right = try kindPage(a, base, rules, .right, cx, null);
+    const left = try kindPage(a, base, rules, .left, cx, null);
+    const first = try kindPage(a, base, rules, .first, cx, null);
+    // the pages of each name a rule selects
+    var named: std.ArrayList(Pages.Named) = .empty;
+    for (rules.list) |r| {
+        const nm = r.name orelse continue;
+        const seen = for (named.items) |e| {
+            if (std.mem.eql(u8, e.name, nm)) break true;
+        } else false;
+        if (seen) continue;
+        try named.append(a, .{
+            .name = nm,
+            .first = try kindPage(a, base, rules, .first, cx, nm),
+            .left = try kindPage(a, base, rules, .left, cx, nm),
+            .right = try kindPage(a, base, rules, .right, cx, nm),
         });
-        const ok = switch (r.pseudo) {
-            .none => true,
-            .left => sides and is_left,
-            .right => sides and !is_left,
-            .first => first and kind == .first,
-        };
-        if (s == spec and ok) try declarations(a, r.body, &d, cx);
-    };
-    if (!d.any) return base;
-    return apply(base, d, cx);
+    }
+    // (the root element's direction, font and custom properties may change what the rules give)
+    return .{ .first = first, .left = left, .right = right, .rest = right, .rtl = cx.rtl, .contextual = true, .named = named.items };
 }
 
-fn marginPx(m: opt.Margin) f32 {
-    return switch (m) {
-        .px => |v| v,
-        .auto => 0,
+/// The `@page` rules of `texts` whose `@media` (a print medium the size of the options' page,
+/// takumi's `Viewport::print_page`) and `@supports` conditions hold, with a valid selector.
+fn collect(a: Allocator, texts: []const []const u8, base: opt.Page, cx: Context) Allocator.Error!Rules {
+    var sheet: css_sheet.Stylesheet = .{};
+    for (texts) |t| try css_sheet.parse(a, t, &sheet);
+    if (sheet.pages.items.len == 0) return .{ .list = &.{}, .layers = 0 };
+    const env: css_media.Env = .{ .viewport_w = base.width, .viewport_h = base.height, .print = true, .supports = cx.supports };
+    const ok = try a.alloc(bool, sheet.gates.items.len);
+    for (sheet.gates.items, 0..) |g, i| ok[i] = switch (g) {
+        .media => |q| css_media.queryListMatches(q, env),
+        .supports => |s| css_media.supportsMatches(s, env, 0),
     };
+    // layer order: the declared layers in order, then the layers rules use, first use first
+    var names: std.ArrayList([]const u8) = .empty;
+    const Names = struct {
+        fn add(al: Allocator, list: *std.ArrayList([]const u8), n: []const u8) Allocator.Error!void {
+            for (list.items) |x| if (std.mem.eql(u8, x, n)) return;
+            try list.append(al, n);
+        }
+        fn index(list: []const []const u8, n: []const u8) ?usize {
+            for (list, 0..) |x, i| if (std.mem.eql(u8, x, n)) return i;
+            return null;
+        }
+    };
+    for (sheet.layer_decls.items) |li| try Names.add(a, &names, sheet.layer_names.items[li]);
+    for (sheet.rules.items) |r| if (r.layer != css_sheet.no_layer) try Names.add(a, &names, sheet.layer_names.items[r.layer]);
+    for (sheet.pages.items) |r| if (r.layer != css_sheet.no_layer) try Names.add(a, &names, sheet.layer_names.items[r.layer]);
+    var list: std.ArrayList(Rule) = .empty;
+    for (sheet.pages.items, 0..) |pr, order| {
+        const pass = for (pr.gates) |g| {
+            if (g >= ok.len or !ok[g]) break false;
+        } else true;
+        if (!pass) continue;
+        const s = selector(a, pr.prelude) orelse continue;
+        var normal: std.ArrayList(css_sheet.Declaration) = .empty;
+        var important: std.ArrayList(css_sheet.Declaration) = .empty;
+        for (pr.decls) |d| try (if (d.important) &important else &normal).append(a, d);
+        try list.append(a, .{
+            .pseudo = s.pseudo,
+            .name = s.name,
+            .normal = normal.items,
+            .important = important.items,
+            .layer = if (pr.layer == css_sheet.no_layer) null else Names.index(names.items, sheet.layer_names.items[pr.layer]),
+            .order = order,
+        });
+    }
+    return .{ .list = list.items, .layers = names.items.len };
+}
+
+/// takumi `PageSelector::parse`: a page name, a pseudo-class, both, or nothing (comments aside).
+fn selector(a: Allocator, prelude: []const u8) ?struct { name: ?[]const u8, pseudo: Pseudo } {
+    // (comments out)
+    var buf: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < prelude.len) {
+        if (prelude[i] == '/' and i + 1 < prelude.len and prelude[i + 1] == '*') {
+            i = if (std.mem.indexOfPos(u8, prelude, i + 2, "*/")) |e| e + 2 else prelude.len;
+            buf.append(a, ' ') catch return null;
+            continue;
+        }
+        buf.append(a, prelude[i]) catch return null;
+        i += 1;
+    }
+    var rest = std.mem.trim(u8, buf.items, " \t\r\n\x0c");
+    var name: ?[]const u8 = null;
+    var k: usize = 0;
+    while (k < rest.len and (isIdent(rest[k]) or rest[k] >= 0x80)) k += 1;
+    if (k > 0) {
+        name = rest[0..k];
+        rest = std.mem.trim(u8, rest[k..], " \t\r\n\x0c");
+    }
+    const pseudo: Pseudo = if (rest.len == 0)
+        .none
+    else if (std.ascii.eqlIgnoreCase(rest, ":first"))
+        .first
+    else if (std.ascii.eqlIgnoreCase(rest, ":left"))
+        .left
+    else if (std.ascii.eqlIgnoreCase(rest, ":right"))
+        .right
+    else
+        return null;
+    if (name) |nm| if (std.ascii.isDigit(nm[0]) or (nm[0] == '-' and (nm.len < 2 or std.ascii.isDigit(nm[1])))) return null;
+    return .{ .name = name, .pseudo = pseudo };
+}
+
+/// takumi `PageRule::cascade`: the descriptors that win among the rules matching `kind` pages
+/// named `name` (null: unnamed), by importance, layer, specificity and source order, applied to
+/// `base`.
+fn kindPage(a: Allocator, base: opt.Page, rules: Rules, kind: Kind, cx: Context, name: ?[]const u8) Allocator.Error!opt.Page {
+    const Ranked = struct { rank: u64, decls: []const css_sheet.Declaration };
+    var ranked: std.ArrayList(Ranked) = .empty;
+    const n: u64 = rules.layers;
+    for (rules.list) |*r| {
+        if (!r.matches(kind, name, cx.rtl)) continue;
+        const tail = (r.specificity() << 20) | @as(u64, r.order);
+        const layer_n: u64 = if (r.layer) |l| l else n;
+        const layer_i: u64 = if (r.layer) |l| n - l else 0;
+        try ranked.append(a, .{ .rank = (layer_n << 40) | tail, .decls = r.normal });
+        try ranked.append(a, .{ .rank = (@as(u64, 1) << 63) | (layer_i << 40) | tail, .decls = r.important });
+    }
+    std.mem.sort(Ranked, ranked.items, {}, struct {
+        fn lt(_: void, x: Ranked, y: Ranked) bool {
+            return x.rank < y.rank;
+        }
+    }.lt);
+    var d: Desc = .{};
+    for (ranked.items) |rk| for (rk.decls) |decl| {
+        if (try declaration(a, decl.name, decl.value, base, cx)) |x| d.over(x);
+    };
+    if (!d.any()) return base;
+    return apply(base, d);
+}
+
+/// takumi `PageDeclaration`: the descriptors `name: value` sets, null for a declaration Blink
+/// drops; a `var()` that does not resolve (to a valid value) unsets the descriptor (`size: auto`,
+/// a margin 0).
+fn declaration(a: Allocator, name: []const u8, value: []const u8, base: opt.Page, cx: Context) Allocator.Error!?Desc {
+    if (std.mem.indexOf(u8, value, "var(") == null) return parseDesc(a, name, value, base, cx);
+    if (parseDesc(a, name, if (std.ascii.eqlIgnoreCase(name, "size")) "auto" else "0", base, cx) == null) return null;
+    if (try substitute(a, value, cx, 0)) |v| if (parseDesc(a, name, v, base, cx)) |x| return x;
+    return parseDesc(a, name, if (std.ascii.eqlIgnoreCase(name, "size")) "auto" else "0", base, cx);
+}
+
+fn parseDesc(a: Allocator, name: []const u8, value: []const u8, base: opt.Page, cx: Context) ?Desc {
+    var lx = stok.Lexer.init(value);
+    var d: Desc = .{};
+    const env = lengthEnv(a, base, cx);
+    if (std.ascii.eqlIgnoreCase(name, "size")) {
+        d.size = sizeValue(&lx, &env) orelse return null;
+    } else if (std.ascii.eqlIgnoreCase(name, "margin")) {
+        var vals: [4]MarginV = undefined;
+        var count: usize = 0;
+        while (count < 4 and !lx.atEnd()) {
+            vals[count] = marginValue(lx.next(), &env) orelse return null;
+            count += 1;
+        }
+        if (count == 0) return null;
+        const t = vals[0];
+        const r = if (count > 1) vals[1] else t;
+        const b = if (count > 2) vals[2] else t;
+        const l = if (count > 3) vals[3] else r;
+        d.margin = .{ t, r, b, l };
+    } else {
+        const sides = [_][]const u8{ "margin-top", "margin-right", "margin-bottom", "margin-left" };
+        const k = for (sides, 0..) |s, k| {
+            if (std.ascii.eqlIgnoreCase(name, s)) break k;
+        } else return null;
+        if (lx.atEnd()) return null;
+        d.margin[k] = marginValue(lx.next(), &env) orelse return null;
+    }
+    if (!lx.atEnd()) return null;
+    return d;
+}
+
+/// Lengths in a page rule: the options' page is the viewport (takumi `Viewport::print_page`), the
+/// root element's font the `em` / `rem` / `ex` / `ch` units.
+fn lengthEnv(a: Allocator, base: opt.Page, cx: Context) values.Env {
+    return .{ .vw = base.width, .vh = base.height, .em = cx.font_size, .rem = cx.rem orelse cx.font_size, .ex = cx.ex, .ch = cx.ch, .lh = 1.2 * cx.font_size, .rlh = 1.2 * cx.font_size, .alloc = a };
+}
+
+/// takumi `Length::from_css` for a page: a length, a percentage, a math function, or a unitless
+/// number (px).
+fn lengthToken(t: stok.Token, env: *const values.Env) ?values.LP {
+    switch (t.kind) {
+        .number, .dimension, .percentage, .function => {},
+        else => return null,
+    }
+    const v = values.lengthPct(t, env) orelse return null;
+    if (!std.math.isFinite(v.px) or !std.math.isFinite(v.pct)) return null;
+    return v;
+}
+
+fn marginValue(t: stok.Token, env: *const values.Env) ?MarginV {
+    if (t.isIdent("auto")) return .auto;
+    return .{ .lp = lengthToken(t, env) orelse return null };
+}
+
+/// `auto | <length [0,∞]>{1,2} | [ <page-size> || [ portrait | landscape ] ]`
+fn sizeValue(lx: *stok.Lexer, env: *const values.Env) ?SizeV {
+    const first = lx.next();
+    if (first.isIdent("auto")) return .auto;
+    if (first.kind != .ident) {
+        const w = sheetLength(first, env) orelse return null;
+        if (lx.atEnd()) return .{ .lengths = .{ w, w } };
+        const h = sheetLength(lx.next(), env) orelse return null;
+        return .{ .lengths = .{ w, h } };
+    }
+    var s: SizeV = .{ .sheet = .{} };
+    var tok = first;
+    while (true) {
+        if (tok.kind != .ident) return null;
+        if (tok.isIdent("landscape") or tok.isIdent("portrait")) {
+            if (s.sheet.landscape != null) return null;
+            s.sheet.landscape = tok.isIdent("landscape");
+        } else {
+            if (s.sheet.wh != null) return null;
+            const p = opt.Page.named(tok.text) orelse return null;
+            s.sheet.wh = .{ p.width, p.height };
+        }
+        if (lx.atEnd()) break;
+        tok = lx.next();
+    }
+    return s;
+}
+
+/// A length for `size`: no `auto`, no percentage, nothing negative.
+fn sheetLength(t: stok.Token, env: *const values.Env) ?f32 {
+    if ((t.kind == .number or t.kind == .dimension) and t.num < 0) return null;
+    const v = lengthToken(t, env) orelse return null;
+    if (v.pct != 0 or v.calc != null) return null;
+    return v.px;
 }
 
 /// `<style>` element contents of an HTML source (a plain scan; comments and CDATA are not special).
@@ -202,56 +423,6 @@ fn styleTexts(a: Allocator, h: []const u8, out: *std.ArrayList([]const u8)) Allo
     }
 }
 
-/// Collects the top-level `@page` rules of `css` with a supported selector (none, `:first`,
-/// `:left`, `:right`; takumi's `PageSelector::parse`), in source order.
-fn scan(a: Allocator, css: []const u8, rules: *std.ArrayList(Rule)) Allocator.Error!void {
-    var i: usize = 0;
-    var depth: usize = 0;
-    while (i < css.len) {
-        const c = css[i];
-        if (c == '/' and i + 1 < css.len and css[i + 1] == '*') {
-            i = if (std.mem.indexOfPos(u8, css, i + 2, "*/")) |e| e + 2 else css.len;
-            continue;
-        }
-        if (c == '"' or c == '\'') {
-            i = (std.mem.indexOfScalarPos(u8, css, i + 1, c) orelse css.len - 1) + 1;
-            continue;
-        }
-        if (c == '{') depth += 1;
-        if (c == '}') depth -|= 1;
-        if (c == '@' and depth == 0 and i + 5 <= css.len and std.ascii.eqlIgnoreCase(css[i + 1 .. @min(css.len, i + 5)], "page") and (i + 5 == css.len or !isIdent(css[i + 5]))) {
-            const open = std.mem.indexOfScalarPos(u8, css, i, '{') orelse return;
-            const prelude = std.mem.trim(u8, css[i + 5 .. open], " \t\r\n\x0c");
-            const close = blockEnd(css, open) orelse css.len;
-            const body = css[open + 1 .. @min(close, css.len)];
-            // takumi `PageSelector::parse`: a page name, a pseudo-class, both, or nothing
-            var name: ?[]const u8 = null;
-            var rest = prelude;
-            var k: usize = 0;
-            while (k < rest.len and (isIdent(rest[k]) or rest[k] >= 0x80)) k += 1;
-            if (k > 0) {
-                name = rest[0..k];
-                rest = std.mem.trim(u8, rest[k..], " \t\r\n\x0c");
-            }
-            const pseudo: ?Pseudo = if (rest.len == 0)
-                .none
-            else if (std.ascii.eqlIgnoreCase(rest, ":first"))
-                .first
-            else if (std.ascii.eqlIgnoreCase(rest, ":left"))
-                .left
-            else if (std.ascii.eqlIgnoreCase(rest, ":right"))
-                .right
-            else
-                null;
-            const bad_name = if (name) |nm| std.ascii.isDigit(nm[0]) or (nm[0] == '-' and (nm.len < 2 or std.ascii.isDigit(nm[1]))) else false;
-            if (pseudo) |p| if (!bad_name) try rules.append(a, .{ .pseudo = p, .body = body, .name = name });
-            i = close + 1;
-            continue;
-        }
-        i += 1;
-    }
-}
-
 fn indexOfIgnoreCase(h: []const u8, from: usize, needle: []const u8) ?usize {
     var i = from;
     while (i + needle.len <= h.len) : (i += 1) if (std.ascii.eqlIgnoreCase(h[i .. i + needle.len], needle)) return i;
@@ -260,19 +431,6 @@ fn indexOfIgnoreCase(h: []const u8, from: usize, needle: []const u8) ?usize {
 
 fn isIdent(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c == '-' or c == '_';
-}
-
-fn blockEnd(css: []const u8, open: usize) ?usize {
-    var d: usize = 0;
-    var i = open;
-    while (i < css.len) : (i += 1) {
-        if (css[i] == '{') d += 1;
-        if (css[i] == '}') {
-            d -= 1;
-            if (d == 0) return i;
-        }
-    }
-    return null;
 }
 
 /// `value` with its `var(--name[, fallback])` references replaced by the root element's custom
@@ -308,116 +466,44 @@ fn substitute(a: Allocator, value: []const u8, cx: Context, depth: u32) Allocato
     return out.items;
 }
 
-fn declarations(a: Allocator, body: []const u8, d: *Decls, cx: Context) Allocator.Error!void {
-    var it = std.mem.splitScalar(u8, body, ';');
-    while (it.next()) |decl| {
-        const colon = std.mem.indexOfScalar(u8, decl, ':') orelse continue;
-        const name = std.mem.trim(u8, decl[0..colon], " \t\r\n\x0c");
-        var value = std.mem.trim(u8, decl[colon + 1 ..], " \t\r\n\x0c");
-        if (std.mem.indexOf(u8, value, "!important")) |k| value = std.mem.trim(u8, value[0..k], " \t\r\n\x0c");
-        if (std.mem.indexOfScalar(u8, name, '{') != null) continue; // a nested margin box
-        value = (try substitute(a, value, cx, 0)) orelse continue;
-        if (std.ascii.eqlIgnoreCase(name, "size")) {
-            d.size = value;
-        } else if (std.ascii.eqlIgnoreCase(name, "margin")) {
-            var vals: [4][]const u8 = undefined;
-            var n: usize = 0;
-            var vt = std.mem.tokenizeAny(u8, value, " \t\r\n\x0c");
-            while (vt.next()) |v| {
-                if (n == 4) {
-                    n = 5;
-                    break;
-                }
-                vals[n] = v;
-                n += 1;
-            }
-            if (n == 0 or n > 4) continue;
-            const t = vals[0];
-            const r = if (n > 1) vals[1] else t;
-            const b = if (n > 2) vals[2] else t;
-            const l = if (n > 3) vals[3] else r;
-            d.margin = .{ t, r, b, l };
-        } else {
-            const sides = [_][]const u8{ "margin-top", "margin-right", "margin-bottom", "margin-left" };
-            for (sides, 0..) |s, k| if (std.ascii.eqlIgnoreCase(name, s)) {
-                d.margin[k] = value;
-            };
-            if (!std.ascii.startsWithIgnoreCase(name, "margin")) continue;
-        }
-        d.any = true;
-    }
-}
-
-/// A length in px (`basis` resolves a percentage; null: none allowed), null when not one.
-fn length(v: []const u8, basis: ?f32, cx: Context) ?f32 {
-    if (std.mem.eql(u8, v, "0")) return 0;
-    const units = [_]struct { []const u8, f32 }{
-        .{ "px", 1 },                .{ "mm", opt.one_mm_in_px },        .{ "cm", opt.one_cm_in_px },
-        .{ "in", opt.one_in_px },    .{ "pt", opt.one_pt_in_px },        .{ "pc", 12 * opt.one_pt_in_px },
-        .{ "q", opt.one_mm_in_px / 4 }, .{ "rem", cx.font_size },       .{ "em", cx.font_size },
-    };
-    if (v.len > 1 and v[v.len - 1] == '%') {
-        const b = basis orelse return null;
-        const n = std.fmt.parseFloat(f32, v[0 .. v.len - 1]) catch return null;
-        return n / 100 * b;
-    }
-    for (units) |u| if (v.len > u[0].len and std.ascii.endsWithIgnoreCase(v, u[0])) {
-        const n = std.fmt.parseFloat(f32, v[0 .. v.len - u[0].len]) catch return null;
-        return n * u[1];
-    };
-    return null;
-}
-
-fn apply(base: opt.Page, d: Decls, cx: Context) opt.Page {
+/// takumi `PageRules::page_box`: the size the descriptors give `base` (`auto` keeps it), turned
+/// to the orientation asked, the margins on it (a percentage of the page's size on its own axis,
+/// `auto` 0); a page box leaving no page area is ignored (Blink's `LayoutPageContainer`).
+fn apply(base: opt.Page, d: Desc) opt.Page {
     var p = base;
-    if (d.size) |sz| sized(&p, sz, cx);
+    if (d.size) |sz| switch (sz) {
+        .auto => {},
+        .lengths => |wh| {
+            p.width = wh[0];
+            p.height = wh[1];
+        },
+        .sheet => |s| {
+            var w = p.width;
+            var h = p.height;
+            if (s.wh) |wh| {
+                w = wh[0];
+                h = wh[1];
+            }
+            if (s.landscape) |land| {
+                if ((land and w < h) or (!land and w > h)) std.mem.swap(f32, &w, &h);
+            }
+            p.width = w;
+            p.height = h;
+        },
+    };
     const axes = [4]f32{ p.height, p.width, p.height, p.width };
     var m = [4]opt.Margin{ p.margin.top, p.margin.right, p.margin.bottom, p.margin.left };
     for (d.margin, 0..) |mv, k| {
         const v = mv orelse continue;
-        if (std.ascii.eqlIgnoreCase(v, "auto")) {
-            m[k] = .{ .px = 0 };
-        } else if (length(v, axes[k], cx)) |px| m[k] = .{ .px = px };
+        m[k] = switch (v) {
+            .auto => .{ .px = 0 },
+            .lp => |lp| .{ .px = lp.resolve(axes[k]) },
+        };
     }
     p.margin = .{ .top = m[0], .right = m[1], .bottom = m[2], .left = m[3] };
-    // Blink's `LayoutPageContainer` ignores the author's page style when it leaves no page area
+    if (!(std.math.isFinite(p.width) and std.math.isFinite(p.height))) return base;
     if (p.contentSize(p.resolveMargins(null, null)) == null) return base;
     return p;
-}
-
-fn sized(p: *opt.Page, value: []const u8, cx: Context) void {
-    var it = std.mem.tokenizeAny(u8, value, " \t\r\n\x0c");
-    const first = it.next() orelse return;
-    if (std.ascii.eqlIgnoreCase(first, "auto")) return;
-    if (length(first, null, cx)) |w| {
-        const h = if (it.next()) |s| length(s, null, cx) orelse return else w;
-        if (w < 0 or h < 0) return;
-        p.width = w;
-        p.height = h;
-        return;
-    }
-    var w = p.width;
-    var h = p.height;
-    var orient: ?bool = null; // landscape
-    var tok: ?[]const u8 = first;
-    var named = false;
-    while (tok) |t| : (tok = it.next()) {
-        if (std.ascii.eqlIgnoreCase(t, "landscape") or std.ascii.eqlIgnoreCase(t, "portrait")) {
-            if (orient != null) return;
-            orient = std.ascii.eqlIgnoreCase(t, "landscape");
-        } else {
-            if (named) return;
-            const s = opt.Page.named(t) orelse return;
-            w = s.width;
-            h = s.height;
-            named = true;
-        }
-    }
-    if (orient) |land| {
-        if ((land and w < h) or (!land and w > h)) std.mem.swap(f32, &w, &h);
-    }
-    p.width = w;
-    p.height = h;
 }
 
 test "@page named pages" {
@@ -464,12 +550,12 @@ test "@page size and margins (plain, :first, :left, :right)" {
     const rr = try resolve(aa, opt.Page.a4, css, null, .{ .rtl = true });
     try std.testing.expectApproxEqAbs(15 * mm, rr.first.margin.left.px, 0.001);
     try std.testing.expectEqual(Kind.right, rr.kindOf(1));
-    // :left / :right that change the page area's width are ignored; a :first rule that changes
-    // the width is
+    // :left / :right and :first rules that change the page area's width apply (each page lays
+    // its content out at its own width)
     const sides = try resolve(aa, opt.Page.a4, .{ .string = "@page { margin: 10px } @page :left { margin-left: 30px }" }, null, .{});
-    try std.testing.expectEqual(@as(f32, 10), sides.left.margin.left.px);
+    try std.testing.expectEqual(@as(f32, 30), sides.left.margin.left.px);
     const wide = try resolve(aa, opt.Page.a4, .{ .string = "@page { size: A5 } @page :first { size: A5 landscape }" }, null, .{});
-    try std.testing.expectEqual(wide.rest.width, wide.first.width);
+    try std.testing.expect(wide.first.width > wide.rest.width);
     // the root element's font size and custom properties
     const Root = struct {
         fn custom(_: *const anyopaque, name: []const u8) ?[]const u8 {
@@ -491,4 +577,42 @@ test "@page size and margins (plain, :first, :left, :right)" {
     // no @page: the options' page as is
     const none = try resolve(aa, opt.Page.a4, .{ .string = "@media print { p { color: red } }" }, null, .{});
     try std.testing.expectEqual(opt.Page.a4.width, none.first.width);
+}
+
+test "@page in @media / @supports / @layer, !important, math functions and units" {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const base: opt.Page = .{ .width = 300, .height = 200, .margin = .{ .top = .{ .px = 10 }, .right = .{ .px = 10 }, .bottom = .{ .px = 10 }, .left = .{ .px = 10 } } };
+    const top = struct {
+        fn f(al: Allocator, b: opt.Page, css: []const u8) !f32 {
+            const r = try resolve(al, b, .{ .string = css }, null, .{});
+            return r.first.margin.top.px;
+        }
+    }.f;
+    // print media the size of the options' page
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@media print { @page { margin-top: 60px } }"));
+    try std.testing.expectEqual(@as(f32, 10), try top(aa, base, "@media screen { @page { margin-top: 60px } }"));
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@media (min-width: 290px) { @page { margin-top: 60px } }"));
+    try std.testing.expectEqual(@as(f32, 10), try top(aa, base, "@media (min-width: 310px) { @page { margin-top: 60px } }"));
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@supports (display: grid) { @page { margin-top: 60px } }"));
+    // the cascade: importance, then layers (unlayered wins normal, the first layer wins important)
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@page { margin-top: 60px !important } @page :first { margin-top: 0 }"));
+    try std.testing.expectEqual(@as(f32, 30), try top(aa, base, "@page { margin-top: 30px } @layer a { @page { margin-top: 60px } }"));
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@layer a { @page { margin-top: 60px !important } } @page { margin-top: 30px !important }"));
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@layer a, b; @layer b { @page { margin-top: 60px } } @layer a { @page { margin-top: 30px } }"));
+    // calc(), viewport units of the options' page, a percentage of the page's height
+    try std.testing.expectEqual(@as(f32, 30), try top(aa, base, "@page { margin: calc(10px + 2 * 10px) }"));
+    try std.testing.expectEqual(@as(f32, 20), try top(aa, base, "@page { margin-top: 10vh }"));
+    try std.testing.expectEqual(@as(f32, 25), try top(aa, base, "@page { margin: calc(10% + 5px) }"));
+    // an invalid declaration is dropped alone; a margin box is skipped with the descriptors around it kept
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@page { margin-top: 60px; margin-top: bogus }"));
+    try std.testing.expectEqual(@as(f32, 60), try top(aa, base, "@page { @top-left { content: \"X\" } margin-top: 60px }"));
+    // size: lengths in any unit, unitless px; an undefined var() unsets the descriptor
+    const r = try resolve(aa, base, .{ .string = "@page { size: calc(200px + 100px) 240px }" }, null, .{});
+    try std.testing.expectEqual(@as(f32, 300), r.first.width);
+    try std.testing.expectEqual(@as(f32, 240), r.first.height);
+    const u = try resolve(aa, base, .{ .string = "@page { size: 400 300 } @page { size: var(--nope) 100px }" }, null, .{});
+    try std.testing.expectEqual(@as(f32, 300), u.first.width);
 }

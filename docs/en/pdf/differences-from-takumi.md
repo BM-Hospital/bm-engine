@@ -36,11 +36,11 @@ against the sources.
   order, as takumi does. No difference is known in the fixtures compared with takumi-pdf, but the order is not
   proven identical for every document.
 - **`@page`.** `size`, `margin`, `:first`, `:left` and `:right` work, and so do named pages (the `page`
-  property, `@page name`, `name:first`): each named page has its own size, margins and page-area height. The
-  content is laid out once, at the unnamed pages' page-area width. A named page of another width gets its size, but
-  the content keeps its width and starts at the page's left margin; `:first`, `:left` and `:right` rules that
-  change the width are dropped. `@page` inside `@media`, `@layer` or `@supports` and viewport units in page
-  descriptors are not supported. See [Pagination](pagination.md#page-rules).
+  property, `@page name`, `name:first`), `@page` inside `@media`, `@layer` and `@supports`, `!important`, and
+  lengths in any unit with `calc()` and `var()`. Each page lays its content out at its own width, as in takumi.
+  A page that starts in the middle of a table row or a flex line keeps the width of the page before it when its
+  own differs. The custom properties the `cssVariables` option gives a whole HTML document reach the page rules
+  in bm-engine, not in takumi. See [Pagination](pagination.md#page-rules).
 - **Breaking.** `break-before` / `break-after` with `left`, `right`, `recto` or `verso` break the page
   but do not insert a blank page to land on a left or right side. `column` is not a page break. Lines do
   not re-flow around a float that moved to another page, a table cell that spans rows is not split
@@ -70,14 +70,14 @@ attachments are compared separately. In the run made for this page:
 | Result | Fixtures |
 |:--|--:|
 | identical page content | 73 |
-| close: same operators, numbers within 0.01 | 3 |
-| different | 13 |
+| close: same operators, numbers within 0.01 | 4 |
+| different | 12 |
 | render errors | 0 |
 | object layout identical | 89 |
 | embedded font programs identical | 42 |
 | structure tree identical | 88 |
 
-The 13 differences, by fixture:
+The 12 differences, by fixture:
 
 | Fixture | What differs |
 |:--|:--|
@@ -86,9 +86,10 @@ The 13 differences, by fixture:
 | `bitmap-glyph-text-shadow` | the soft mask of a bitmap glyph's shadow |
 | `report-links-outline`, `report-tagged-ua1`, `report-tagged-a2a` | tiny kerning adjustments and link rectangles (annotations) |
 | `stream-content-counters` | the width of a page-counter placeholder |
-| `named-pages`, `at-page-first-left-right` | pages of different widths: bm-engine lays the content out once at one width ([Named pages](pagination.md#named-pages)) |
+| `named-pages` | the body page before the wide table also paints, outside its page clip, the table's first border pieces: takumi's page reaches into the next page's fragment, which bm-engine lays out at that page's width in another layout ([Named pages](pagination.md#named-pages)) |
 
-The three close fixtures are `text-shadow-page-cut`, `content-page-counters` and `at-page-root-element`.
+The four close fixtures are `text-shadow-page-cut`, `content-page-counters`, `at-page-root-element` and
+`at-page-first-left-right`.
 The invoice fixtures, repeated table headers and footers, and the list fixtures are identical. Font
 programs differ in the other fixtures because the subsetter does not write byte-identical subsets, although
 they draw the same glyphs. These numbers are from one run at the time of writing and change with the build;
