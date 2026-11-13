@@ -220,6 +220,8 @@ pub const Emitter = struct {
     /// on this page (`paintNegatives`: the walk then skips them), and the one being painted
     neg_done: std.AutoHashMapUnmanaged(u32, void) = .empty,
     neg_now: u32 = none,
+    /// whether the frame holds any box with a negative `z-index` at all (else `paintNegatives` walks nothing)
+    neg_any: bool = true,
     pre: []u32 = &.{},
     /// the document's subtree extents (`Extents`): a page's walk skips the subtrees that miss its
     /// window (null: bands, fixed boxes, tests)
@@ -753,6 +755,7 @@ pub const Emitter = struct {
     /// stacking context it is, by `z-index` then tree order, under the overflow clips of the boxes
     /// between (those their containing block chain passes through), before its in-flow content.
     noinline fn paintNegatives(e: *Emitter, ctx_id: u32, x: f32, y: f32, depth: u32) Error!void {
+        if (!e.neg_any) return;
         var found: std.ArrayList(Neg) = .empty;
         var stack: std.ArrayList(ClipRec) = .empty;
         var kept: std.ArrayList(ClipRec) = .empty;
@@ -2811,6 +2814,7 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     // (pages laid out at different widths: each run of pages showing one frame is drawn from it
     // with the windows of that run, paged.zig)
     var ext: ?Extents = null;
+    var neg_any = true;
     var tparts: []etable.Part = &.{};
     var run0: usize = 0;
     var run1: usize = 0;
@@ -2823,6 +2827,11 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
             run1 = i + 1;
             while (run1 < pages.len and (pages[run1].frame orelse f) == pf) run1 += 1;
             ext = if (run1 - run0 > 1) try Extents.compute(a, pf) else null;
+            // (one look over the frame: a page walk of the whole tree for negative z-index boxes
+            // would cost every page the whole document)
+            neg_any = for (pf.nodes.items) |*nn| {
+                if (nn.kind != .anon_text) if (nn.cs.z_index) |z| if (z < 0) break true;
+            } else false;
             tparts = &.{};
             // (the frame's own pages around the run take part as neighbouring passes)
             const pw = pages[run0].prev_win;
@@ -2854,6 +2863,7 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
         var s = sf.Surface.initPage(&cx, page.height * pt_per_px);
         s.tagging = tagged;
         var e = Emitter.init(pf, &cx, &s, &fonts);
+        e.neg_any = neg_any;
         if (ext) |*x| {
             e.ext = x;
             e.pre = x.pre;
