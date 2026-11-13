@@ -22,6 +22,8 @@ const dom_mod = @import("dom.zig");
 const css = @import("css/css.zig");
 const twc = @import("tw/tw.zig");
 const html = @import("html/html.zig");
+const css_counters_mod = if (config.enable_pdf) @import("pdf/css_counters.zig") else struct {};
+const CssCounters = if (config.enable_pdf) css_counters_mod.Context else void;
 const animate = @import("animate.zig");
 const svgm = @import("svg/svg.zig");
 const mx = @import("measure_xform.zig");
@@ -1332,6 +1334,8 @@ pub const Frame = struct {
     tw_theme: bool = false,
     /// Computed style of the root element once styled (`--breakpoint-*` lookups).
     tw_root_cs: ?*const CS = null,
+    /// (PDF frames) the CSS counters while the tree is styled (src/pdf/css_counters.zig)
+    css_counters: if (config.enable_pdf) ?*CssCounters else void = if (config.enable_pdf) null else {},
     // (the paged-layout state, PDF feature only, is `tree.paged`: `layout.fragment.PagedState`. A field here,
     // even a zero-size one, perturbs the struct layout and grows the other builds.)
 
@@ -1655,6 +1659,37 @@ pub const Frame = struct {
         if (parent_cs == null) f.tw_root_cs = cs;
         var c = f.dom.at(i).first;
         while (c != none) : (c = f.dom.at(c).next) try f.styleTree(c, cs, depth + 1);
+        if (comptime config.enable_pdf) if (f.css_counters) |cx| try f.leaveCounters(cx, i);
+    }
+
+    /// (PDF frames) The CSS counters of the frame, created on first use (takumi-pdf numbers `counter()`
+    /// in generated content; image frames keep `counter()` contributing nothing).
+    fn cssCounters(f: *Frame) ?*CssCounters {
+        if (comptime config.enable_pdf and layout.fragment.enabled) {
+            if (!f.tree.paged.pdf) return null;
+            if (f.css_counters == null) {
+                const cx = f.a.create(CssCounters) catch return null;
+                cx.* = .{ .a = f.a };
+                f.css_counters = cx;
+            }
+            return f.css_counters;
+        }
+        return null;
+    }
+
+    /// (PDF frames) After the children of element `i`: its `::after` (entered last, its content read
+    /// now), then the element itself leaves the counters' scope.
+    noinline fn leaveCounters(f: *Frame, cx: *CssCounters, i: u32) Error!void {
+        const el = f.dom.at(i);
+        if (el.run) return;
+        if (el.after != none) {
+            const ps = &f.pseudos.items[el.after];
+            try cx.enter(ps.cs.counter_reset, ps.cs.counter_increment, ps.cs.counter_set, .none);
+            ps.text = (try dom_mod.contentText(f.a, ps.cs.content, &f.dom, i, cx.hook())) orelse "";
+            cx.leave(ps.cs.counter_reset, ps.cs.counter_increment, ps.cs.counter_set, .none);
+        }
+        const cs = el.cs;
+        cx.leave(cs.counter_reset, cs.counter_increment, cs.counter_set, css_counters_mod.listItemOf(&f.dom, i, cs.display == .list_item));
     }
 
     fn styleFail(f: *Frame, e: style.Error, diag: *const style.Diagnostics) Error {
@@ -1773,6 +1808,7 @@ pub const Frame = struct {
             }
         }
         el.cs = cs;
+        if (comptime config.enable_pdf) if (!el.run) if (f.cssCounters()) |cx| try cx.enter(cs.counter_reset, cs.counter_increment, cs.counter_set, css_counters_mod.listItemOf(&f.dom, i, cs.display == .list_item));
         if (el.run or el.kind == .image) return;
         if (comptime config.enable_css or config.enable_tw) {
             el.before = try f.pseudoBox(i, .before);
@@ -1817,7 +1853,15 @@ pub const Frame = struct {
         const pcs = try f.a.create(CS);
         pcs.* = style.computeLayers(f.a, &f.ctx, el.cs, layers[0..n], &diag) catch |e| return f.styleFail(e, &diag);
         if (pcs.display == .none) return none;
-        const text = (try dom_mod.contentText(f.a, pcs.content, &f.dom, i)) orelse return none;
+        // (PDF frames: the counters number the content, a `::before` entering their scope as a box of its
+        // own; a `::after` is read again after the element's children, `leaveCounters`)
+        const cx: ?*CssCounters = if (comptime config.enable_pdf) f.cssCounters() else null;
+        if (comptime config.enable_pdf) if (cx) |c| if (which == .before) try c.enter(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
+        const text = (try dom_mod.contentText(f.a, pcs.content, &f.dom, i, if (comptime config.enable_pdf) (if (cx) |c| c.hook() else null) else null)) orelse {
+            if (comptime config.enable_pdf) if (cx) |c| if (which == .before) c.leave(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
+            return none;
+        };
+        if (comptime config.enable_pdf) if (cx) |c| if (which == .before) c.leave(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
         try f.pseudos.append(f.a, .{ .cs = pcs, .text = text });
         return @intCast(f.pseudos.items.len - 1);
     }

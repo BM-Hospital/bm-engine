@@ -488,10 +488,20 @@ fn dimension(raw: []const u8, svg: bool) DimValue {
 // ------------------------------------------------------------------------------------------------
 // Generated content
 
+/// The CSS counters `counter()` / `counters()` read (src/pdf/css_counters.zig, PDF frames): `write`
+/// appends the text of `counter(args)` (`all` false) or `counters(args)` to `out`.
+pub const ContentCounters = struct {
+    ctx: *anyopaque,
+    write: *const fn (ctx: *anyopaque, a: Allocator, out: *std.ArrayList(u8), args: []const u8, all: bool) Allocator.Error!void,
+};
+
 /// Text of a `content` value for a `::before`/`::after` box; null = no box (`none`, `normal`, or a
 /// value without any usable item). Strings (with CSS escapes) and `attr(name)` are supported;
-/// counters, quotes and images contribute nothing. Alternative text after `/` is ignored.
-pub fn contentText(a: Allocator, value: []const u8, d: *const Dom, el: u32) Error!?[]const u8 {
+/// counters (without `counters`), quotes and images contribute nothing. Alternative text after `/` is
+/// ignored. With `counters` (PDF frames, as takumi's `ContentItem`): `counter()` / `counters()` write their
+/// values, and a function other than `attr`, `counter`, `counters` or an image makes the value invalid
+/// (null: no box).
+pub fn contentText(a: Allocator, value: []const u8, d: *const Dom, el: u32, counters: ?ContentCounters) Error!?[]const u8 {
     const v = std.mem.trim(u8, value, " \t\n\r\x0c");
     if (v.len == 0 or std.ascii.eqlIgnoreCase(v, "none") or std.ascii.eqlIgnoreCase(v, "normal")) return null;
     var out: std.ArrayList(u8) = .empty;
@@ -554,7 +564,10 @@ pub fn contentText(a: Allocator, value: []const u8, d: *const Dom, el: u32) Erro
                 if (d.attr(el, an)) |val| try out.appendSlice(a, val);
                 items += 1;
             } else if (std.ascii.eqlIgnoreCase(name, "counter") or std.ascii.eqlIgnoreCase(name, "counters")) {
-                items += 1; // counters are not implemented: contribute nothing
+                items += 1; // (without `counters`: contribute nothing)
+                if (counters) |cc| try cc.write(cc.ctx, a, &out, arg, name.len == 8);
+            } else if (counters != null and !isImageFunction(name)) {
+                return null;
             }
             continue;
         }
@@ -564,6 +577,13 @@ pub fn contentText(a: Allocator, value: []const u8, d: *const Dom, el: u32) Erro
     }
     if (items == 0) return null;
     return out.items;
+}
+
+/// The CSS functions that are an `<image>` (a `content` item takumi accepts and draws nothing for here).
+fn isImageFunction(name: []const u8) bool {
+    const names = [_][]const u8{ "url", "image", "image-set", "-webkit-image-set", "cross-fade", "element", "linear-gradient", "radial-gradient", "conic-gradient", "repeating-linear-gradient", "repeating-radial-gradient", "repeating-conic-gradient", "-webkit-linear-gradient", "-webkit-radial-gradient" };
+    for (names) |n| if (std.ascii.eqlIgnoreCase(name, n)) return true;
+    return false;
 }
 
 fn isHex(c: u8) bool {
@@ -632,10 +652,10 @@ test "content text" {
     const a = arena.allocator();
     var d: Dom = .{};
     _ = try d.add(a, .{ .kind = .container, .attrs = &.{.{ .name = "data-x", .value = "42" }} }, none);
-    try T.expect((try contentText(a, "none", &d, 0)) == null);
-    try T.expect((try contentText(a, "normal", &d, 0)) == null);
-    try T.expectEqualStrings("", (try contentText(a, "\"\"", &d, 0)).?);
-    try T.expectEqualStrings("a\"b", (try contentText(a, "'a\"b'", &d, 0)).?);
-    try T.expectEqualStrings("\u{2192} 42!", (try contentText(a, "\"\\2192  \" attr(data-x) '!' / \"alt\"", &d, 0)).?);
-    try T.expectEqualStrings("", (try contentText(a, "counter(x)", &d, 0)).?);
+    try T.expect((try contentText(a, "none", &d, 0, null)) == null);
+    try T.expect((try contentText(a, "normal", &d, 0, null)) == null);
+    try T.expectEqualStrings("", (try contentText(a, "\"\"", &d, 0, null)).?);
+    try T.expectEqualStrings("a\"b", (try contentText(a, "'a\"b'", &d, 0, null)).?);
+    try T.expectEqualStrings("\u{2192} 42!", (try contentText(a, "\"\\2192  \" attr(data-x) '!' / \"alt\"", &d, 0, null)).?);
+    try T.expectEqualStrings("", (try contentText(a, "counter(x)", &d, 0, null)).?);
 }
