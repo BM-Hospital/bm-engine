@@ -1246,6 +1246,13 @@ pub fn emitGlyph(face: *const Font, gid: u16, size_px: f32, origin_x: f32, origi
 }
 
 /// Test hook: decodes a raw simple-glyph record (as stored in `glyf`).
+/// Test hook: `testSimpleOutline` with the contours started as FreeType starts them.
+pub fn testSimpleOutlineFt(glyph: []const u8, sink: anytype) bool {
+    const nc = rdi16(glyph, 0);
+    if (nc <= 0) return false;
+    return simpleOutlineFt(glyph, @intCast(nc), .{}, sink);
+}
+
 pub fn testSimpleOutline(glyph: []const u8, sink: anytype) bool {
     const nc = rdi16(glyph, 0);
     if (nc <= 0) return false;

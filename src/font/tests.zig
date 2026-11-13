@@ -210,6 +210,55 @@ test "contour starting off-curve and implied points" {
     try t.expectApproxEqAbs(@as(f32, 100), s.max_y, 0.01);
 }
 
+test "FreeType contour start: an off-curve first point starts at the last on-curve one" {
+    // one contour: (10,0) off, (20,10) on, (0,10) on
+    var g: [64]u8 = @splat(0);
+    const hdr = [_]u8{ 0, 1, 0, 0, 0, 0, 0, 20, 0, 10, 0, 2, 0, 0 };
+    @memcpy(g[0..hdr.len], &hdr);
+    g[14] = 0x00; // off, x / y int16
+    g[15] = 0x01; // on
+    g[16] = 0x01;
+    const xs = [_]u8{ 0, 10, 0, 10, 0xff, 0xec }; // +10, +10, -20
+    const ys = [_]u8{ 0, 0, 0, 10, 0, 0 }; // 0, +10, 0
+    @memcpy(g[17..23], &xs);
+    @memcpy(g[23..29], &ys);
+    const Rec = struct {
+        ops: [8][5]f32 = undefined,
+        n: usize = 0,
+        fn put(r: *@This(), v: [5]f32) void {
+            if (r.n < r.ops.len) r.ops[r.n] = v;
+            r.n += 1;
+        }
+        pub fn moveTo(r: *@This(), x: f32, y: f32) void {
+            r.put(.{ 0, x, y, 0, 0 });
+        }
+        pub fn lineTo(r: *@This(), x: f32, y: f32) void {
+            r.put(.{ 1, x, y, 0, 0 });
+        }
+        pub fn quadTo(r: *@This(), cx: f32, cy: f32, x: f32, y: f32) void {
+            r.put(.{ 2, cx, cy, x, y });
+        }
+        pub fn cubicTo(r: *@This(), a: f32, b: f32, c: f32, d: f32, x: f32, y: f32) void {
+            _ = .{ a, b, c, d, x, y };
+            r.put(.{ 3, 0, 0, 0, 0 });
+        }
+        pub fn close(r: *@This()) void {
+            r.put(.{ 4, 0, 0, 0, 0 });
+        }
+    };
+    var r: Rec = .{};
+    try t.expect(font.ttf.testSimpleOutlineFt(g[0..29], &r));
+    // move to the last point, quad through the first to the second, line to the start, close
+    try t.expectEqual(@as(usize, 3), r.n);
+    try t.expectEqual([5]f32{ 0, 0, 10, 0, 0 }, r.ops[0]);
+    try t.expectEqual([5]f32{ 2, 10, 0, 20, 10 }, r.ops[1]);
+    try t.expectEqual([5]f32{ 4, 0, 0, 0, 0 }, r.ops[2]);
+    // the reader of the raster path starts at the first on-curve point instead
+    var q: Rec = .{};
+    try t.expect(font.ttf.testSimpleOutline(g[0..29], &q));
+    try t.expectEqual([5]f32{ 0, 20, 10, 0, 0 }, q.ops[0]);
+}
+
 test "unsupported and invalid containers, ttc" {
     try t.expectError(error.MissingTable, font.Font.init("OTTO" ++ z60, 0));
     try t.expectError(error.WoffContainer, font.Font.init("wOFF" ++ z60, 0));
