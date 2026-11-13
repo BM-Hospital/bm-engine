@@ -1575,7 +1575,7 @@ pub const Emitter = struct {
                 s.drawImage(ref, tw, th);
                 s.pop();
             },
-            .svg => |src| try e.drawSvgRaster(s, src, x, y, tw, th, cs.color),
+            .svg => |src| try e.drawSvg(s, src, x, y, tw, th, cs.color, true),
             .none => {
                 if (layer.image != .gradient) return;
                 const paint = (try e.gradientPaint(layer.image.gradient, x, y, tw, th, cs.color, pattern_space)) orelse return;
@@ -1850,24 +1850,15 @@ pub const Emitter = struct {
         };
     }
 
-    /// An SVG image rasterised by the painter at twice the CSS px density (approximation:
-    /// takumi-pdf draws SVG images as vector operators).
-    fn drawSvgRaster(e: *Emitter, s: *sf.Surface, src: []const u8, x: f32, y: f32, dw: f32, dh: f32, current: Color) Error!void {
+    /// takumi `draw_svg`: an SVG image as vector operators (emit_svg.zig), in the colours the CSS
+    /// filter leaves them; `image_host` false for an inline `<svg>`.
+    fn drawSvg(e: *Emitter, s: *sf.Surface, src: []const u8, x: f32, y: f32, dw: f32, dh: f32, current: Color, image_host: bool) Error!void {
         if (!(dw > 0) or !(dh > 0)) return;
-        // vector operators when the SVG is in the subset emit_svg.zig draws (takumi-pdf svg.rs)
-        if (comptime pm.enable_svg) if (e.filter == null and try esvg.draw(e.a, s, src, x, y, dw, dh, .{ .r = current.r, .g = current.g, .b = current.b, .a = current.a })) return;
-        const k: f32 = 2;
-        const pw: u32 = @intFromFloat(@min(@ceil(dw * k), 8192));
-        const ph: u32 = @intFromFloat(@min(@ceil(dh * k), 8192));
-        if (pw == 0 or ph == 0) return;
-        var pix = raster.Pixmap.init(e.a, pw, ph) catch return error.OutOfMemory;
-        @memset(pix.data, 0);
-        const c: pm.Ctx = .{ .dst = &pix, .tf = Affine.scale(@as(f32, @floatFromInt(pw)) / dw, @as(f32, @floatFromInt(ph)) / dh) };
-        try psvg.paintSvg(&e.p, &c, src, .{ .x = 0, .y = 0, .w = dw, .h = dh }, current);
-        const ref = eimg.regPixmap(e.cx, &pix, std.hash.Wyhash.hash(11, src) ^ (@as(u64, pw) << 32 | ph), e.pixelFilter());
-        s.pushTransform(Tf.translate(x, y));
-        s.drawImage(ref, dw, dh);
-        s.pop();
+        if (comptime pm.enable_svg) _ = try esvg.draw(e.a, s, src, x, y, dw, dh, .{
+            .current = .{ .r = current.r, .g = current.g, .b = current.b, .a = current.a },
+            .filter = e.filter,
+            .image_host = image_host,
+        });
     }
 
     /// takumi `emit_image`: the image placed by object-fit / object-position in the content box,
@@ -1878,8 +1869,17 @@ pub const Emitter = struct {
         if (!(cr.w > 0) or !(cr.h > 0)) return;
         const svg_src = psvg.nodeSvgSource(n);
         if (n.img == null and svg_src == null and !(n.img_w > 0 and n.img_h > 0)) return;
-        const iw = n.img_w;
-        const ih = n.img_h;
+        var iw = n.img_w;
+        var ih = n.img_h;
+        // an SVG with only a `viewBox` keeps its ratio under object-fit (takumi `source.size`)
+        if (comptime pm.enable_svg) if (svg_src != null and !(iw > 0 and ih > 0)) {
+            if (@import("../svg/svg.zig").parse(e.a, svg_src.?)) |doc| {
+                if (@import("../svg/svg.zig").intrinsicSize(&doc).view_box) |vb| if (vb[2] > 0 and vb[3] > 0) {
+                    iw = vb[2] * e.f.opts.dpr;
+                    ih = vb[3] * e.f.opts.dpr;
+                };
+            } else |err| if (err == error.OutOfMemory) return error.OutOfMemory;
+        };
         var dw = cr.w;
         var dh = cr.h;
         if (iw > 0 and ih > 0) {
@@ -1931,7 +1931,7 @@ pub const Emitter = struct {
             try dev.addRRectAt(e.a, &e.path, cr, crad, g.bx.x, g.bx.y);
             e.s.pushClip(&e.path, .nonzero);
         }
-        if (svg_src) |src| return e.drawSvgRaster(e.s, src, dx, dy, dw, dh, cs.color);
+        if (svg_src) |src| return e.drawSvg(e.s, src, dx, dy, dw, dh, cs.color, n.el == render.none or !std.mem.eql(u8, e.f.dom.at(n.el).tag, "svg"));
         const ref = (try e.imageRef(n.img, n.src orelse "")) orelse return;
         e.s.pushTransform(Tf.translate(dx, dy));
         e.s.drawImage(ref, dw, dh);
