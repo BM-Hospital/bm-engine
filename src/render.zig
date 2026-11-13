@@ -1427,6 +1427,10 @@ pub const Frame = struct {
         // placed by its insets inside an explicit initial containing block node (one more layout
         // level, so such a tree reaches the layout engine's depth limit one level earlier).
         const rcs = f.nodes.items[f.root].cs;
+        // (at most one layout node per render node, plus the containing block: reserved at once, see
+        // `LTree.ensureCapacity`)
+        f.tree.ensureCapacity(f.tree.nodes.items.len + f.nodes.items.len + 1) catch return error.OutOfMemory;
+        try f.lid_node.ensureTotalCapacityPrecise(f.a, f.tree.nodes.items.len + f.nodes.items.len + 1);
         const lr = try f.buildLayout(f.root);
         f.lroot = lr;
         if (rcs.position == .absolute or rcs.position == .fixed) {
@@ -2769,6 +2773,10 @@ pub const Frame = struct {
             // (a frame a PDF is drawn from places its glyphs as takumi does: text.zig `item_origin`)
             var popts = opts;
             popts.item_origin = f.tree.paged.pdf;
+            // (a PDF frame, laid out once for a whole document: the paragraph's working memory is
+            // the renderer's scratch, rewound after it, not the frame's arena)
+            if (f.tree.paged.pdf) popts.scratch = f.r.scratch.allocator();
+            defer if (f.tree.paged.pdf) f.r.scratch.reset();
             pt.p = font.Paragraph.initWith(.{ .complex = config.enable_complex_text, .color_emoji = config.enable_color_fonts or config.enable_bitmap_glyphs }, f.a, &f.r.fonts, runs, popts) catch return error.OutOfMemory;
             var total: usize = 0;
             for (runs) |r| total += if (r.object == null) r.text.len else 0;

@@ -27,6 +27,12 @@
 //! tree and the emitter's neighbouring page passes (`emit.PageBox.frame` / `prev_win` / `next_win`)
 //! work across them. A page whose start is not one point (parallel flows broken inside) keeps the
 //! width of the run before it.
+//!
+//! Memory: each layout of the content (`Pass`) has an arena of its own (`Pass.mem`), released as
+//! soon as a later pass replaces it, so the counter and band passes of a long document hold one
+//! layout at a time; the last one is the `Document`'s, released once the file is written
+//! (`Document.release`). What a pass hands on to the next (the hooks' texts, which hooks sit in a
+//! fixed box) is copied into the call's arena.
 const std = @import("std");
 const rt = @import("../render.zig");
 const json = @import("../json.zig");
@@ -37,6 +43,7 @@ const bands = @import("bands.zig");
 const counters = @import("counters.zig");
 const layout = @import("../layout/layout.zig");
 const page_rules = @import("page_rules.zig");
+const bump = @import("../bump.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = rt.Frame;
@@ -53,7 +60,32 @@ pub const Document = struct {
     windows: []const emit.Window,
     /// the document's page count before `pageRanges` (counters number over it)
     count: usize,
+    /// the memory of the content's layout (`Pass.mem`): `frame` and the pages' frames, repeats and
+    /// fixed boxes live in it until `release`
+    mem: *bump.Bump,
+    /// a first layout whose root changed the page rules this one was made with (`layOut`), kept as
+    /// long as this one
+    prev: ?*bump.Bump = null,
+
+    /// Frees the content's layout (after the file is written: nothing may use the document then).
+    pub fn release(d: *const Document, r: *rt.Renderer) void {
+        freeMem(r, d.mem);
+        if (d.prev) |m| freeMem(r, m);
+    }
 };
+
+/// A new arena for a pass (`Pass.mem`), on the renderer's allocator.
+fn newMem(r: *rt.Renderer) Error!*bump.Bump {
+    const m = r.gpa.create(bump.Bump) catch return error.OutOfMemory;
+    m.* = bump.Bump.init(r.gpa);
+    m.release_freed = true;
+    return m;
+}
+
+fn freeMem(r: *rt.Renderer, m: *bump.Bump) void {
+    m.deinit();
+    r.gpa.destroy(m);
+}
 
 /// One layout of the content, paginated: one frame, or one per run of pages of one width.
 pub const Pass = struct {
@@ -68,6 +100,13 @@ pub const Pass = struct {
     fixed: []const u32,
     mask: []const bool,
     fixed_hooks: []const bool,
+    /// the pass's arena: its frames and everything above that is not `texts`
+    mem: *bump.Bump,
+
+    /// Frees the pass (its `texts` are the caller's).
+    fn release(p: *const Pass, r: *rt.Renderer) void {
+        freeMem(r, p.mem);
+    }
 
     fn pageCount(p: *const Pass) usize {
         var n: usize = 0;
@@ -148,8 +187,13 @@ const Geo = struct {
     }
 };
 
+/// One layout of the content, paginated, in an arena of its own (`Pass.mem`). `texts` and
+/// `fixed_hooks` (the previous pass's findings) must not live in a pass's arena that is released
+/// before this pass is.
 fn layPass(cx: *const Ctx, geo: *const Geo, texts: []const ?[]const u8, fixed_hooks: []const bool) Error!Pass {
-    const a = cx.doc.a;
+    const mem = try newMem(cx.doc.r);
+    errdefer freeMem(cx.doc.r, mem);
+    const a = mem.allocator();
     var subst: counters.Subst = .{ .a = a, .mode = .{ .flow = .{ .texts = texts, .fixed = fixed_hooks } } };
     const g = try a.create(Geo);
     g.* = geo.*;
@@ -161,7 +205,9 @@ fn layPass(cx: *const Ctx, geo: *const Geo, texts: []const ?[]const u8, fixed_ho
         const varies = !geo.uniformHeight();
         const pages = try f.paginate(.{ .page_height = geo.area(0, null)[1], .page_height_fn = if (varies) Geo.heightOf else null, .ctx = @ptrCast(g) });
         try segs.append(a, .{ .frame = f, .first = 0, .local0 = 0, .count = @intCast(pages.pages.len) });
-    } else try laySegments(cx, g, &subst, &segs);
+    } else try laySegments(cx, a, g, &subst, &segs);
+    // (laid out and paginated: the layout is only read from now on)
+    for (segs.items) |s| s.frame.tree.dropCaches();
     const f = segs.items[0].frame;
     const fixed = try emit.repeatingFixed(a, f);
     const mask = try counters.fixedMask(a, f, fixed);
@@ -174,6 +220,7 @@ fn layPass(cx: *const Ctx, geo: *const Geo, texts: []const ?[]const u8, fixed_ho
         .fixed = fixed,
         .mask = mask,
         .fixed_hooks = try counters.fixedHooks(a, f, hooks, mask),
+        .mem = mem,
     };
 }
 
@@ -199,8 +246,7 @@ const SegCtx = struct {
 /// document (same element model, same render nodes), so counters, links, anchors and the
 /// structure tree work across them. A page whose start is not one point (parallel flows broken
 /// inside) keeps the width of the run before it.
-fn laySegments(cx: *const Ctx, g: *Geo, subst: *counters.Subst, segs: *std.ArrayList(Seg)) Error!void {
-    const a = cx.doc.a;
+fn laySegments(cx: *const Ctx, a: Allocator, g: *Geo, subst: *counters.Subst, segs: *std.ArrayList(Seg)) Error!void {
     const no_node = layout.fragment.Start{};
     var width = g.area(0, null)[0];
     var base: u32 = 0;
@@ -300,17 +346,28 @@ fn lineStarting(f: *Frame, id: u32, glyph: u32) ?u32 {
 }
 
 /// takumi `Counted::settle`: lays the content out until the numbers its hooks receive stop moving.
+/// A pass that is laid out again is released first (one layout in memory at a time).
 fn settle(cx: *const Ctx, geo: *const Geo) Error!Pass {
     const a = cx.doc.a;
+    const r = cx.doc.r;
     var pass = try layPass(cx, geo, &.{}, &.{});
     if (pass.hooks.len == 0) return pass;
+    // (`pass` holds an arena)
+    var live = true;
+    errdefer if (live) pass.release(r);
     // the first pass was laid out with every hook as written
     const as_written = try a.alloc(?[]const u8, pass.hooks.len);
     @memset(as_written, null);
     var used: []const ?[]const u8 = as_written;
     var k: usize = 0;
     while (k < counter_passes) : (k += 1) {
-        if (k > 0) pass = try layPass(cx, geo, used, pass.fixed_hooks);
+        if (k > 0) {
+            const fixed_hooks = try a.dupe(bool, pass.fixed_hooks);
+            pass.release(r);
+            live = false;
+            pass = try layPass(cx, geo, used, fixed_hooks);
+            live = true;
+        }
         const texts = try counters.flowTexts(a, pass.segs, pass.hooks, pass.fixed_hooks, pass.mask);
         // the pass was laid out with the numbers it gives
         if (counters.sameTexts(texts, used)) return pass;
@@ -318,7 +375,10 @@ fn settle(cx: *const Ctx, geo: *const Geo) Error!Pass {
     }
     // still moving after the last pass allowed: laid out once more, so the pages show the numbers
     // they were laid out with
-    return layPass(cx, geo, used, pass.fixed_hooks);
+    const fixed_hooks = try a.dupe(bool, pass.fixed_hooks);
+    pass.release(r);
+    live = false;
+    return layPass(cx, geo, used, fixed_hooks);
 }
 
 fn invalidPage(r: *rt.Renderer) Error {
@@ -379,9 +439,16 @@ pub fn layOut(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.Va
     const rules = try pageRules(a, o_in, kind, source, p_in, .{});
     const doc = try layOutRules(r, a, o_in, css, kind, source, rules, background);
     if (!rules.contextual) return doc;
-    const again = try pageRules(a, o_in, kind, source, p_in, rootContext(doc.frame));
+    const again = pageRules(a, o_in, kind, source, p_in, rootContext(doc.frame)) catch |e| {
+        doc.release(r);
+        return e;
+    };
     if (std.meta.eql(again.first, rules.first) and std.meta.eql(again.left, rules.left) and std.meta.eql(again.right, rules.right) and again.rtl == rules.rtl) return doc;
-    return layOutRules(r, a, o_in, css, kind, source, again, background);
+    // (the first layout lives as long as the second: the rules may refer to its root)
+    errdefer doc.release(r);
+    var second = try layOutRules(r, a, o_in, css, kind, source, again, background);
+    second.prev = doc.mem;
+    return second;
 }
 
 fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, rules: page_rules.Pages, background: ?style.Color) Error!Document {
@@ -396,6 +463,9 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
     if (footer) |*s| try bands.measure(&cx.doc, s, 1);
     var geo = try Geo.resolve(r, a, rules, heights(header), heights(footer));
     var content = try settle(&cx, &geo);
+    // (`content` holds an arena: the document's, or released when the content is laid out again)
+    var live = true;
+    errdefer if (live) content.release(r);
 
     // A counter band and the page count depend on each other, so the band is measured again until
     // its height settles; only a margin that follows a band can move the content.
@@ -414,7 +484,10 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
             if (geo.sameMargins(&geo2)) break;
             if (!follows) break;
             geo = geo2;
+            content.release(r);
+            live = false;
             content = try settle(&cx, &geo);
+            live = true;
         }
     }
 
@@ -426,6 +499,9 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
         if (fx and h.kind != .target) fixed_counters = true;
     }
     var sel = opt.PageSelection.init(o.page_ranges);
+    // (the bands of a single page are laid out when it is drawn, from this copy)
+    const band_doc = try a.create(bands.Doc);
+    band_doc.* = cx.doc;
     var pages: std.ArrayList(emit.PageBox) = .empty;
     var windows: std.ArrayList(emit.Window) = .empty;
     var i: usize = 0;
@@ -463,8 +539,8 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
             if (i == sg.first and local > 0) box.prev_win = own.win(paged.pages[local - 1]);
             if (i + 1 == sg.first + sg.count and seg_i + 1 < content.segs.len and local + 1 < paged.pages.len) box.next_win = own.win(paged.pages[local + 1]);
         }
-        if (header) |*s| box.header = try bands.forPage(&cx.doc, s, i, n, pp.width, pp.height);
-        if (footer) |*s| box.footer = try bands.forPage(&cx.doc, s, i, n, pp.width, pp.height);
+        if (header) |*s| box.header = try bands.forPage(band_doc, s, i, n, pp.width, pp.height);
+        if (footer) |*s| box.footer = try bands.forPage(band_doc, s, i, n, pp.width, pp.height);
         if (fixed_counters) {
             var subst: counters.Subst = .{ .a = a, .mode = .{ .flow = .{ .texts = content.texts, .fixed = content.fixed_hooks, .page = i + 1, .pages = n } } };
             const ff = try bands.buildFrame(r, a, o, css, kind, source, null, .{ area[0], geo.area(0, null)[1] }, &subst);
@@ -486,7 +562,7 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
         r.setErr(diag.message(), "");
         return error.Invalid;
     };
-    return .{ .frame = content.frame, .pages = pages.items, .windows = windows.items, .count = n };
+    return .{ .frame = content.frame, .pages = pages.items, .windows = windows.items, .count = n, .mem = content.mem };
 }
 
 /// takumi `measure` with page options: the tree laid out like a band (the full page width, an

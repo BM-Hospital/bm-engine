@@ -37,6 +37,7 @@ const pfx = @import("../paint_fx.zig");
 const psvg = @import("../paint_svg.zig");
 const w = @import("writer.zig");
 const sf = @import("emit_surface.zig");
+const bump = @import("../bump.zig");
 const geom = @import("emit_geom.zig");
 const dev = @import("emit_device.zig");
 const border = @import("emit_border.zig");
@@ -173,7 +174,11 @@ pub const Emitter = struct {
     f: *Frame,
     /// the document's fonts (text.zig; one registry for every page)
     fonts: *text.FontRegistry,
+    /// working memory of the page (`sf.Ctx.work`: rewound after the page)
     a: Allocator,
+    /// memory for what outlives the page (`tparts`, kept over a run of pages; image bytes the
+    /// document embeds): the frame's
+    keep: Allocator,
     cx: *sf.Ctx,
     s: *sf.Surface,
     d: dev.Device,
@@ -275,14 +280,16 @@ pub const Emitter = struct {
     }
 
     pub fn init(f: *Frame, cx: *sf.Ctx, s: *sf.Surface, fonts: *text.FontRegistry) Emitter {
+        const wa = cx.page orelse f.a;
         return .{
             .f = f,
             .fonts = fonts,
-            .a = f.a,
+            .a = wa,
+            .keep = f.a,
             .cx = cx,
             .s = s,
-            .d = .{ .s = s, .a = f.a },
-            .p = .{ .f = f, .a = f.a },
+            .d = .{ .s = s, .a = wa },
+            .p = .{ .f = f, .a = wa },
             .dummy = .{ .width = f.canvas_w, .height = f.canvas_h, .data = &.{} },
         };
     }
@@ -2074,7 +2081,8 @@ pub const Emitter = struct {
     /// The image XObject for the image source `src` (decoded to `pmx` when bm-engine decodes it):
     /// emit_image.zig `draw`; null when nothing is drawn (a failure is kept: `fail`).
     fn imageRef(e: *Emitter, pmx: ?*const raster.Pixmap, src: []const u8) Error!?w.Ref {
-        const bytes = if (src.len > 0) eimg.sourceBytes(e.f.r, e.a, src) else null;
+        // (`keep`: an embedded JPEG / PNG stream refers to these bytes until the file is written)
+        const bytes = if (src.len > 0) eimg.sourceBytes(e.f.r, e.keep, src) else null;
         return switch (eimg.draw(e.cx, bytes, pmx, e.pixelFilter(), src)) {
             .ref => |r| r,
             .none => null,
@@ -2089,7 +2097,8 @@ pub const Emitter = struct {
     /// filter leaves them; `image_host` false for an inline `<svg>`.
     fn drawSvg(e: *Emitter, s: *sf.Surface, src: []const u8, x: f32, y: f32, dw: f32, dh: f32, current: Color, image_host: bool) Error!void {
         if (!(dw > 0) or !(dh > 0)) return;
-        if (comptime pm.enable_svg) _ = try esvg.draw(e.a, s, src, x, y, dw, dh, .{
+        // (`keep`: the images an SVG holds are embedded from the bytes it decodes)
+        if (comptime pm.enable_svg) _ = try esvg.draw(e.keep, s, src, x, y, dw, dh, .{
             .current = .{ .r = current.r, .g = current.g, .b = current.b, .a = current.a },
             .filter = e.filter,
             .image_host = image_host,
@@ -2764,6 +2773,10 @@ pub const DocOptions = struct {
     hook: ?interactive.DocHook = null,
 };
 
+/// What a drawn page leaves for its page object: its content stream (`w.Doc.encode`d), its
+/// resources and whether its content nests `q` too deep.
+const PageOut = struct { content: w.Encoded, res: w.Resources, q_over: bool };
+
 /// Writes a document of the frame drawn on `pages` (each with its window) and returns the PDF.
 /// Object order as krilla's: what the pages' content refers to as it is drawn, then the fonts
 /// (`FontRegistry.flush`: after every page is drawn, before the page objects), then the pages.
@@ -2781,7 +2794,16 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     var cx: sf.Ctx = .{ .a = a, .doc = &doc, .no_device_cs = cfg.archival(), .version = cfg.version };
     var fonts = text.FontRegistry.init(a, o.uncovered);
     fonts.uncovered.forbidden_by = cfg.forbidsPlaceholder();
-    const outs = try a.alloc(sf.Stream, pages.len);
+    // Memory: a page's drawing (the walk, its surfaces) works in `page_mem`, rewound after the
+    // page; what the page leaves is its content stream, encoded into `a` at once, and its
+    // resources (`PageOut`). The compressor's tables are rewound after every stream (`zmem`).
+    var page_mem = bump.Bump.init(f.r.gpa);
+    page_mem.release_freed = true;
+    defer page_mem.deinit();
+    var zmem = bump.Bump.init(f.r.gpa);
+    defer zmem.deinit();
+    doc.scratch = &zmem;
+    const outs = try a.alloc(PageOut, pages.len);
     var links = try interactive.Collector.init(a, f, pages.len); // [interactive]
     var td = try @import("tagdoc.zig").TagDoc.init(a, &cx, cfg, popts, tagged, f, &links, pages.len);
     // (a paginated document: computed once, shared by the pages, as are the table parts and the tree
@@ -2819,6 +2841,16 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
             // [interactive] anchors and headings of this frame: those in its run of pages
             links.beginRun(pf, if (run0 == 0) -std.math.inf(f32) else win.top, if (run1 == pages.len) std.math.inf(f32) else windows[run1 - 1].bottom);
         }
+        page_mem.reset();
+        cx.page = page_mem.allocator();
+        defer cx.page = null;
+        fonts.forgetPage();
+        links.page_a = cx.page;
+        defer {
+            // [interactive] the page's links leave its memory before it is rewound
+            links.endPage();
+            links.page_a = null;
+        }
         var s = sf.Surface.initPage(&cx, page.height * pt_per_px);
         s.tagging = tagged;
         var e = Emitter.init(pf, &cx, &s, &fonts);
@@ -2849,9 +2881,12 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
             }
             return error.Invalid;
         }
-        outs[i] = s.finish();
+        const st = s.finish();
+        outs[i] = .{ .content = doc.encode(st.content, .content), .res = try st.res.dupe(a), .q_over = st.limits.q_over };
         td.mcids[i] = s.mcid;
     }
+    // (the pages are drawn: their working memory goes before the document-level objects are made)
+    page_mem.deinit();
     // takumi: `UncoveredCharacters` is reported once the document is drawn
     if (fonts.uncoveredError() catch return error.OutOfMemory) |msg| {
         f.r.setErr("", msg); // (as detail: a prefix is cut at 128 bytes)
@@ -2873,8 +2908,8 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     // pages are serialised last, in page order (krilla `serialize_pages`)
     for (pages, outs, page_refs, fin.annots, 0..) |page, *st, pref, annots, i| {
         const cref = doc.alloc();
-        doc.contentStream(cref, st.content);
-        if (st.limits.q_over) cx.q_over = true;
+        doc.contentStreamEncoded(cref, st.content);
+        if (st.q_over) cx.q_over = true;
         const rref = st.res.write(&doc);
         const pe = td.pageEntries(i);
         _ = doc.beginPage(pref, .{ .resources = rref, .media_box = .{ 0, 0, page.width * pt_per_px, page.height * pt_per_px }, .contents = cref, .annots = annots, .struct_parents = pe.struct_parents, .tabs = pe.tabs });

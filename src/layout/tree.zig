@@ -548,11 +548,19 @@ pub fn TreeWith(comptime cfg: Config) type {
             self.* = undefined;
         }
 
-        /// Pre-size the node arrays (optional).
+        /// Pre-size the node arrays for `n` nodes in all (optional). The node, layout and cache lists
+        /// grow side by side, so in a bump arena none of them can grow in place and every growth
+        /// leaves the old buffers behind (about twice the final size for a large tree).
         pub fn ensureCapacity(self: *Self, n: usize) !void {
-            try self.nodes.ensureTotalCapacity(self.alloc, n);
-            try self.layouts.ensureTotalCapacity(self.alloc, n);
-            try self.caches.ensureTotalCapacity(self.alloc, n);
+            try self.nodes.ensureTotalCapacityPrecise(self.alloc, n);
+            try self.layouts.ensureTotalCapacityPrecise(self.alloc, n);
+            try self.caches.ensureTotalCapacityPrecise(self.alloc, n);
+        }
+
+        /// Frees the per-node measure caches of the last `compute` (a laid-out tree whose layout is
+        /// only read from now on; a later `compute` makes them again).
+        pub fn dropCaches(self: *Self) void {
+            self.caches.clearAndFree(self.alloc);
         }
 
         /// Adds a node. The style is copied; slices inside it (grid track lists) stay caller-owned.
@@ -650,6 +658,8 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// dimensions and the available content-box space and returns the content-box size.
         pub fn compute(self: *Self, root: NodeId, available: [2]st.AvailableSpace, ctx: *anyopaque, measure: MeasureFn, opts: Options) !void {
             if (root >= self.nodes.items.len) return error.InvalidNode;
+            // (after `dropCaches`)
+            if (self.caches.items.len < self.nodes.items.len) try self.caches.appendNTimes(self.alloc, .{}, self.nodes.items.len - self.caches.items.len);
             for (self.caches.items) |*c| c.valid = 0;
             self.pending.clearRetainingCapacity();
             self.clearTableGeoms();

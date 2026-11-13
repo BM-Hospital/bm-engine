@@ -30,6 +30,9 @@ pub const FillRule = ct.FillRule;
 /// Document-wide emitter state shared by every surface of one PDF.
 pub const Ctx = struct {
     a: Allocator,
+    /// The working memory of the page being drawn (`work`), rewound after each page (emit.zig
+    /// `writeDocument`); null: `a`.
+    page: ?Allocator = null,
     doc: *w.Doc,
     /// PDF/A: colours in the ICC-based sRGB space instead of DeviceRGB (krilla `no_device_cs`)
     no_device_cs: bool = false,
@@ -45,6 +48,13 @@ pub const Ctx = struct {
     q_over: bool = false,
     /// scratch for transformed clip paths
     tmp: Path = .empty,
+
+    /// Memory for what lives only while a page is drawn (its surfaces' content and resources, the
+    /// walk's queues, paths and runs): nothing in it may outlive the page. A stream written to the
+    /// document is encoded into `a` (`w.Doc.encode`).
+    pub fn work(cx: *const Ctx) Allocator {
+        return cx.page orelse cx.a;
+    }
 };
 
 /// What a marked-content section is (krilla `ContentTag`: takumi uses `Artifact(Other)`, `Other`
@@ -628,7 +638,7 @@ pub const Surface = struct {
 
     fn init(cx: *Ctx, root: Tf, important: bool) Surface {
         var s: Surface = .{ .cx = cx };
-        s.builders.append(cx.a, Builder.init(cx.a, root, important)) catch {
+        s.builders.append(cx.work(), Builder.init(cx.work(), root, important)) catch {
             cx.doc.b.failed = true;
         };
         return s;
@@ -680,35 +690,35 @@ pub const Surface = struct {
     }
 
     pub fn pushTransform(s: *Surface, t: Tf) void {
-        s.pushes.append(s.cx.a, .transform) catch return s.oom();
+        s.pushes.append(s.cx.work(), .transform) catch return s.oom();
         s.bd().saveGs();
         s.bd().concat(t);
     }
 
     pub fn pushBlend(s: *Surface, bm: Blend) void {
-        s.pushes.append(s.cx.a, .blend) catch return s.oom();
+        s.pushes.append(s.cx.work(), .blend) catch return s.oom();
         s.bd().saveGs();
         if (bm != .normal) s.bd().combine(.{ .bm = bm });
     }
 
     pub fn pushClip(s: *Surface, path: *const Path, rule: FillRule) void {
-        s.pushes.append(s.cx.a, .clip) catch return s.oom();
+        s.pushes.append(s.cx.work(), .clip) catch return s.oom();
         s.bd().pushClip(s.cx, path, rule);
     }
 
     pub fn pushMask(s: *Surface, m: Mask) void {
-        s.pushes.append(s.cx.a, .{ .mask = m }) catch return s.oom();
-        s.builders.append(s.cx.a, Builder.init(s.cx.a, .identity, true)) catch return s.oom();
+        s.pushes.append(s.cx.work(), .{ .mask = m }) catch return s.oom();
+        s.builders.append(s.cx.work(), Builder.init(s.cx.work(), .identity, true)) catch return s.oom();
     }
 
     pub fn pushOpacity(s: *Surface, o: f32) void {
-        s.pushes.append(s.cx.a, .{ .opacity = o }) catch return s.oom();
-        if (o != 1) s.builders.append(s.cx.a, Builder.init(s.cx.a, .identity, true)) catch return s.oom();
+        s.pushes.append(s.cx.work(), .{ .opacity = o }) catch return s.oom();
+        if (o != 1) s.builders.append(s.cx.work(), Builder.init(s.cx.work(), .identity, true)) catch return s.oom();
     }
 
     pub fn pushIsolated(s: *Surface) void {
-        s.pushes.append(s.cx.a, .isolated) catch return s.oom();
-        s.builders.append(s.cx.a, Builder.init(s.cx.a, .identity, true)) catch return s.oom();
+        s.pushes.append(s.cx.work(), .isolated) catch return s.oom();
+        s.builders.append(s.cx.work(), Builder.init(s.cx.work(), .identity, true)) catch return s.oom();
     }
 
     pub fn depth(s: *const Surface) usize {

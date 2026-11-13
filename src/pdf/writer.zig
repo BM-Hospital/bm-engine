@@ -23,6 +23,7 @@
 //! and must stay alive until `finish`.
 const std = @import("std");
 const deflate = @import("../codec/deflate.zig");
+const Bump = @import("../bump.zig").Bump;
 
 const Allocator = std.mem.Allocator;
 
@@ -628,6 +629,9 @@ pub const Doc = struct {
     /// of a packed chunk).
     limits: Limits = .{},
     limits_struct: Limits = .{},
+    /// Working memory of the compressor (its tables, about 450 KiB a stream), rewound after each
+    /// stream; only the compressed bytes go to `a`. Null: everything from `a`.
+    scratch: ?*Bump = null,
 
     pub fn init(a: Allocator, o: Options) Doc {
         var d: Doc = .{ .a = a, .version = o.version, .compress = o.compress, .level = o.level, .b = .init(a) };
@@ -739,20 +743,33 @@ pub const Doc = struct {
     }
 
     /// Encodes stream data according to `mode` (see `Compress`). On allocation failure the data
-    /// is returned uncompressed and the error surfaces at `finish`.
+    /// is returned uncompressed and the error surfaces at `finish`. Content (`.content`) is
+    /// always in `a` afterwards, compressed or copied: it may come from a page's working memory
+    /// (emit_surface.zig `Ctx.work`).
     pub fn encode(d: *Doc, data: []const u8, mode: Compress) Encoded {
         const want = switch (mode) {
             .content => d.compress,
             .flate, .auto => true,
             .none => false,
         };
+        if (!want and mode == .content) return .{ .data = d.a.dupe(u8, data) catch blk: {
+            d.b.failed = true;
+            break :blk data;
+        } };
         if (!want or (data.len == 0 and mode == .auto)) return .{ .data = data };
-        const z = deflate.compress(d.a, data, d.level) catch {
+        const z = d.compressed(data) catch {
             d.b.failed = true;
             return .{ .data = data };
         };
         if (mode == .auto and 100 * z.len / data.len > 75) return .{ .data = data };
         return .{ .data = z, .flate = true };
+    }
+
+    /// `data` zlib-compressed into `a` (the compressor's tables in `scratch` when there is one).
+    fn compressed(d: *Doc, data: []const u8) error{OutOfMemory}![]u8 {
+        const s = d.scratch orelse return deflate.compress(d.a, data, d.level);
+        defer s.reset();
+        return d.a.dupe(u8, try deflate.compress(s.allocator(), data, d.level));
     }
 
     /// Dedup cache for higher layers (krilla `cached_mappings`): content hash -> object ref.
@@ -770,7 +787,11 @@ pub const Doc = struct {
 
     /// Page content stream (`/Length/Filter`), encoded with `.content`, category `.content_streams`.
     pub fn contentStream(d: *Doc, r: Ref, content: []const u8) void {
-        const e = d.encode(content, .content);
+        d.contentStreamEncoded(r, d.encode(content, .content));
+    }
+
+    /// `contentStream` of content already encoded with `encode(.., .content)`.
+    pub fn contentStreamEncoded(d: *Doc, r: Ref, e: Encoded) void {
         const b = d.beginStream(r, .content_streams, e);
         b.filter(e);
         d.endDict();
@@ -1256,6 +1277,13 @@ pub const Resources = struct {
         n.buf[0] = res_prefix[@backingInt(kind)];
         n.len = @intCast(1 + fmtU64(n.buf[1..], idx));
         return n;
+    }
+
+    /// A copy whose lists live in `a`.
+    pub fn dupe(r: *const Resources, a: Allocator) Allocator.Error!Resources {
+        var c: Resources = .{ .a = a, .failed = r.failed };
+        for (r.lists, &c.lists) |l, *cl| cl.* = .fromOwnedSlice(try a.dupe(Ref, l.items));
+        return c;
     }
 
     pub fn isEmpty(r: *const Resources) bool {

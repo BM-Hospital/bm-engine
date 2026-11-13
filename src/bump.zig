@@ -17,6 +17,11 @@ pub const Bump = struct {
     used_this_cycle: usize = 0,
     /// A chunk untouched for this many consecutive resets is returned to the backing allocator.
     idle_limit: u8 = 3,
+    /// A chunk larger than `min_chunk` (one made for a big allocation) that a `free` empties goes
+    /// back to the backing allocator at once instead of waiting for a reset: for an arena that is
+    /// never reset (a PDF layout pass), where the old buffers of a growing large list would
+    /// otherwise stay allocated.
+    release_freed: bool = false,
 
     const Chunk = struct {
         mem: []align(16) u8,
@@ -121,17 +126,30 @@ pub const Bump = struct {
         const self: *Bump = @ptrCast(@alignCast(ctx));
         if (new_len <= memory.len) return true;
         // grow in place only when `memory` is the last allocation of its chunk
-        for (self.chunks.items) |*c| {
-            const base = @intFromPtr(c.mem.ptr);
-            const p = @intFromPtr(memory.ptr);
-            if (p < base or p >= base + c.mem.len) continue;
-            const off = p - base;
-            if (off + memory.len != c.used) return false;
-            if (c.mem.len - off < new_len) return false;
-            c.used = off + new_len;
-            return true;
+        const c = &self.chunks.items[self.find(memory.ptr) orelse return false];
+        const off = @intFromPtr(memory.ptr) - @intFromPtr(c.mem.ptr);
+        if (off + memory.len != c.used) return false;
+        if (c.mem.len - off < new_len) return false;
+        c.used = off + new_len;
+        return true;
+    }
+
+    /// The chunk holding `ptr`: the current one, else the most recent first (what is resized or
+    /// freed was mostly allocated last; a front-to-back search made each call cost every chunk).
+    fn find(self: *const Bump, ptr: [*]u8) ?usize {
+        const p = @intFromPtr(ptr);
+        const items = self.chunks.items;
+        if (self.cur < items.len) {
+            const base = @intFromPtr(items[self.cur].mem.ptr);
+            if (p >= base and p < base + items[self.cur].mem.len) return self.cur;
         }
-        return false;
+        var i = items.len;
+        while (i > 0) {
+            i -= 1;
+            const base = @intFromPtr(items[i].mem.ptr);
+            if (p >= base and p < base + items[i].mem.len) return i;
+        }
+        return null;
     }
 
     fn remap(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
@@ -143,12 +161,14 @@ pub const Bump = struct {
         _ = ret_addr;
         const self: *Bump = @ptrCast(@alignCast(ctx));
         // pop when it is the last allocation of its chunk (cheap LIFO reuse)
-        for (self.chunks.items) |*c| {
-            const base = @intFromPtr(c.mem.ptr);
-            const p = @intFromPtr(memory.ptr);
-            if (p < base or p >= base + c.mem.len) continue;
-            if (p - base + memory.len == c.used) c.used = p - base;
-            return;
+        const i = self.find(memory.ptr) orelse return;
+        const c = &self.chunks.items[i];
+        const off = @intFromPtr(memory.ptr) - @intFromPtr(c.mem.ptr);
+        if (off + memory.len == c.used) c.used = off;
+        if (self.release_freed and c.used == 0 and c.mem.len > min_chunk) {
+            self.backing.free(c.mem);
+            _ = self.chunks.orderedRemove(i);
+            if (self.cur > i) self.cur -= 1 else if (self.cur == i) self.cur = 0;
         }
     }
 

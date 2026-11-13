@@ -374,6 +374,15 @@ pub const FontRegistry = struct {
     text_src: []const u8 = "",
     text_clean: []const u8 = "",
 
+    /// Drops the caches keyed by address (`cluster_para`, `text_src`) before a page is drawn: what
+    /// a page drew from its working memory is gone, and a new paragraph may take its place.
+    pub fn forgetPage(r: *FontRegistry) void {
+        r.cluster_para = null;
+        r.cluster_starts = &.{};
+        r.text_src = "";
+        r.text_clean = "";
+    }
+
     /// `a` must live as long as the document (the per-render arena). `policy`: the
     /// `uncoveredText` option.
     pub fn init(a: Allocator, policy: Uncovered.Policy) FontRegistry {

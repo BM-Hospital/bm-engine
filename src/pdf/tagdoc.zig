@@ -18,6 +18,7 @@ const sf = @import("emit_surface.zig");
 const tags = @import("tags.zig");
 const conform = @import("conform.zig");
 const interactive = @import("interactive.zig");
+const bump = @import("../bump.zig");
 
 const Allocator = std.mem.Allocator;
 const Error = render.Error;
@@ -95,11 +96,11 @@ pub const TagDoc = struct {
     }
 
     /// The render nodes a destination names: anchors (elements with an `id`) and headings.
-    fn targets(t: *TagDoc) Error!std.AutoHashMapUnmanaged(u32, void) {
+    fn targets(t: *TagDoc, a: Allocator) Error!std.AutoHashMapUnmanaged(u32, void) {
         var set: std.AutoHashMapUnmanaged(u32, void) = .empty;
         var it = t.links.anchors.valueIterator();
-        while (it.next()) |an| try set.put(t.a, an.node, {});
-        for (t.links.headings.items) |h| if (h.node != none) try set.put(t.a, h.node, {});
+        while (it.next()) |an| try set.put(a, an.node, {});
+        for (t.links.headings.items) |h| if (h.node != none) try set.put(a, h.node, {});
         return set;
     }
 
@@ -108,9 +109,20 @@ pub const TagDoc = struct {
         t.flushPages(@intCast(t.mcids.len));
         if (!t.tagged) return;
         if (t.collector.failed or t.report.failed) return error.OutOfMemory;
-        const tg = try t.targets();
+        // (the tree is built in memory of its own, freed once it is written: what outlives it is
+        // in the document and `node_elems`)
+        var mem = bump.Bump.init(t.collector.f.r.gpa);
+        defer mem.deinit();
+        mem.release_freed = true;
+        const ta = mem.allocator();
+        const tg = try t.targets(ta);
         const lang: ?[]const u8 = if (t.opts.lang.len > 0) t.opts.lang else null;
-        const root = try tags.build(&t.collector, lang, &tg);
+        const root = blk: {
+            const saved = t.collector.a;
+            t.collector.a = ta;
+            defer t.collector.a = saved;
+            break :blk try tags.build(&t.collector, lang, &tg);
+        };
         const wr = try tags.write(t.a, d, root, t.page_refs, t.annots.items, t.parents.items, &t.node_elems);
         t.tree_root = wr.root;
         if (wr.problems.missing_heading_title) t.report.add(.missing_heading_title, 0);
