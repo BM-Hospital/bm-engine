@@ -1,6 +1,6 @@
 // PDF/A and PDF/UA: validator matrix, versions, what each level writes, and every validation error reachable from HTML.
 import { probe, font, INTER } from "./lib.mjs";
-import { outcome, xmpNorm, catalogText, fileShape, infoNorm, deep, META, DATE, PNG1 as one } from "./filelayer.util.mjs";
+import { outcome, outcomes, xmpNorm, catalogText, fileShape, infoNorm, deep, META, DATE, PNG1 as one } from "./filelayer.util.mjs";
 
 const PDFA = [undefined, "2a", "2b", "2u", "3a", "3b", "3u", "4", "4f"];
 const TAGGED = [false, true, "ua1", "ua2"];
@@ -10,7 +10,7 @@ probe("conformance.matrix.complete-input", "pdfa x tagged matrix (36 cases) with
   for (const pdfa of PDFA) for (const tagged of TAGGED) {
     const r = await t.both(DOC, { pdfa, tagged, lang: "en", metadata: META });
     const id = `pdfa=${pdfa ?? "none"} tagged=${tagged}`;
-    t.same(id + " outcome", outcome(r.bm), outcome(r.ref));
+    t.same(id + " outcome", ...outcomes(r.bm, r.ref));
     if (r.ref && !r.bm.error && !r.ref.error) {
       t.same(id + " version", r.bm.version, r.ref.version);
       t.same(id + " xmp", xmpNorm(r.bm), xmpNorm(r.ref));
@@ -25,28 +25,28 @@ probe("conformance.matrix.complete-input", "pdfa x tagged matrix (36 cases) with
 probe("conformance.matrix.bare-input", "pdfa x tagged matrix (36 cases) with NO metadata / lang: error text and error count", async (t) => {
   for (const pdfa of PDFA) for (const tagged of TAGGED) {
     const r = await t.both(`<h1>Title</h1><p>Hello</p>`, { pdfa, tagged });
-    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, outcome(r.bm), outcome(r.ref));
+    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, ...outcomes(r.bm, r.ref));
   }
 });
 
 probe("conformance.matrix.metadata-no-date", "pdfa x tagged matrix with metadata.title but no creationDate (MissingDocumentDate)", async (t) => {
   for (const pdfa of PDFA) for (const tagged of TAGGED) {
     const r = await t.both(`<h1>Title</h1><p>Hello</p>`, { pdfa, tagged, metadata: { title: "T" } });
-    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, outcome(r.bm), outcome(r.ref));
+    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, ...outcomes(r.bm, r.ref));
   }
 });
 
 probe("conformance.matrix.lang-only", "pdfa x tagged matrix with lang but no metadata (tagged output sets metadata with lang -> date checked)", async (t) => {
   for (const pdfa of PDFA) for (const tagged of TAGGED) {
     const r = await t.both(`<h1>Title</h1><p>Hello</p>`, { pdfa, tagged, lang: "en" });
-    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, outcome(r.bm), outcome(r.ref));
+    t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} outcome`, ...outcomes(r.bm, r.ref));
   }
 });
 
 probe("conformance.invalid-level", "unknown pdfa / tagged values (1a, 1b, 4e, ua3): error text", async (t) => {
   for (const o of [{ pdfa: "1b" }, { pdfa: "1a" }, { pdfa: "4e" }, { pdfa: "A2B" }, { pdfa: 2 }, { tagged: "ua3" }, { tagged: "UA1" }, { tagged: 1 }, { pdfa: "" }, { pdfa: null }, { tagged: null }]) {
     const r = await t.both(`<p>x</p>`, { ...o, metadata: META });
-    t.same(JSON.stringify(o), outcome(r.bm), outcome(r.ref));
+    t.same(JSON.stringify(o), ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`${JSON.stringify(o)} => bm: ${outcome(r.bm)} | takumi: ${outcome(r.ref)}`);
   }
 });
@@ -153,7 +153,7 @@ for (const [name, html, options] of CASES) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
   probe("conformance.validation." + slug, "validation: " + name, async (t) => {
     const r = await t.both(html, options);
-    t.same("outcome", outcome(r.bm), outcome(r.ref));
+    t.same("outcome", ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`takumi: ${outcome(r.ref)}`);
   });
 }
@@ -161,7 +161,7 @@ for (const [name, html, options] of CASES) {
 probe("conformance.output-intent", "OutputIntents + ICC profile bytes per PDF/A level; ICCBased colour spaces instead of DeviceRGB", async (t) => {
   for (const pdfa of ["2b", "3u", "4", "4f"]) {
     const r = await t.both(`<p style="color:#123456;background:#eee">x</p><div style="width:20px;height:20px;background:linear-gradient(red,blue)"></div>`, { pdfa, metadata: META });
-    if (!t.same(pdfa + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(pdfa + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     const oi = (d) => deep(d, d.catalog.OutputIntents, 0, 2);
     t.same(pdfa + " OutputIntents", oi(r.bm), oi(r.ref));
     const icc = (d) => [...d.pdf.objs.values()].filter((o) => o.raw && o.dict.N !== undefined && !o.dict.Type).map((o) => ({ n: o.dict.N, range: JSON.stringify(o.dict.Range), filter: String(o.dict.Filter), bytes: o.data.toString("hex") }));
@@ -174,7 +174,7 @@ probe("conformance.output-intent", "OutputIntents + ICC profile bytes per PDF/A 
 probe("conformance.page-dictionary", "page dictionary per level: /Tabs, /Group, /StructParents, boxes", async (t) => {
   for (const o of [{}, { tagged: false }, { pdfa: "2b" }, { pdfa: "2a", lang: "en" }, { tagged: "ua1", lang: "en" }, { tagged: "ua2", lang: "en" }, { pdfa: "4f", tagged: "ua2", lang: "en" }]) {
     const r = await t.both(`<h1>T</h1><p>Hello <a href="https://example.com/">link</a></p><div style="opacity:.5">o</div>`, { ...o, metadata: META });
-    if (!t.same(JSON.stringify(o) + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(JSON.stringify(o) + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     const pg = (d) => d.pdf.pages.map((p) => Object.fromEntries(Object.entries(p.dict).filter(([k]) => !["Parent", "Contents", "Resources", "Annots"].includes(k)).map(([k, v]) => [k, deep(d, v, 0, 1)])));
     t.same(JSON.stringify(o) + " page dict", pg(r.bm), pg(r.ref));
   }
@@ -190,7 +190,7 @@ probe("conformance.fonts.restricted-license", "RestrictedLicense (OS/2 fsType & 
   const f = [{ name: "Restricted", data: new Uint8Array(patched) }];
   for (const o of [{}, { pdfa: "2b" }, { pdfa: "4" }, { tagged: "ua1", lang: "en" }, { pdfa: "3a", tagged: "ua1", lang: "en" }]) {
     const r = await t.both(`<h1 style="font-family:Restricted">Title</h1>`, { ...o, metadata: META }, { fonts: f });
-    t.same(JSON.stringify(o), outcome(r.bm), outcome(r.ref));
+    t.same(JSON.stringify(o), ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`${JSON.stringify(o)} => bm: ${outcome(r.bm)} | takumi: ${outcome(r.ref)}`);
   }
 });
@@ -210,7 +210,7 @@ probe("conformance.validation.error-count-per-glyph", "krilla counts one error p
   ];
   for (const [name, html, o, fonts] of cases) {
     const r = await t.both(html, o, fonts ? { fonts } : undefined);
-    t.same(name, outcome(r.bm), outcome(r.ref));
+    t.same(name, ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`${name} => bm: ${outcome(r.bm)} | takumi: ${outcome(r.ref)}`);
   }
 });

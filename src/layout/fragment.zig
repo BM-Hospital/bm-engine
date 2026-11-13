@@ -177,6 +177,12 @@ pub const PagedState = struct {
     /// empty when no element names a page) and the names (id `k` is `page_names[k - 1]`).
     page_of: []const u32 = &.{},
     page_names: []const []const u8 = &.{},
+    /// What viewport units resolve against when set (a header / footer band: the whole page, takumi-pdf
+    /// `band_viewport`'s unit reference), whatever the frame's own viewport.
+    units: ?[2]f32 = null,
+    /// The HTML source's own `<style>` texts are already in the frame's `css` option (a PDF pools the
+    /// document's and its bands' `<style>` sheets into one stylesheet, src/pdf/pdf.zig `poolStyles`).
+    skip_dom_styles: bool = false,
 };
 
 /// Paginates the subtree of `root` (laid out by `t.compute`, normally with a definite available width =

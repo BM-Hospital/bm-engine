@@ -56,9 +56,79 @@ pub fn renderReadable(r: *Renderer, kind: SourceKind, source: []const u8, opts_j
 /// (looked up by id; attachments are already resolved into `PdfOptions.attachments[i].data`).
 pub fn render(r: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
     const a = r.arena.allocator();
-    const o = try parseOptions(r, opts_json);
+    var o = try parseOptions(r, opts_json);
+    try poolStyles(a, &o, kind, source);
     const input: Input = .{ .r = r, .opts = o, .kind = kind, .source = source };
     return emit(a, input);
+}
+
+/// takumi-pdf-js `read_document`: the `<style>` sheets of the HTML document and of every HTML band (header,
+/// footer, then the `pages` rules' first / last / odd / even header and footer) are appended to `css`, so
+/// every one of them styles the document and every band alike (and an `@page` rule in a band's sheet is a
+/// page rule). Skipped when it changes nothing: no band, or no `<style>` anywhere.
+pub fn poolStyles(a: Allocator, o: *opt.PdfOptions, kind: SourceKind, source: []const u8) Error!void {
+    if (comptime !@import("../config.zig").enable_html) return;
+    const p = o.pages;
+    const bands = [_]?opt.Band{ o.header, o.footer, p.first.header, p.first.footer, p.last.header, p.last.footer, p.odd.header, p.odd.footer, p.even.header, p.even.footer };
+    var any_band = false;
+    var styled = kind == .html and hasStyleTag(source);
+    for (bands) |b| if (b) |x| switch (x) {
+        .off => {},
+        .node => any_band = true,
+        .html => |h| {
+            any_band = true;
+            styled = styled or hasStyleTag(h);
+        },
+    };
+    if (!any_band or !styled) return;
+    const html = @import("../html/html.zig");
+    var items: std.ArrayList(json.Value) = .empty;
+    if (o.css) |c| switch (c) {
+        .array => |arr| try items.appendSlice(a, arr),
+        else => try items.append(a, c),
+    };
+    const sources = [_]?[]const u8{if (kind == .html) source else null} ++ blk: {
+        var hs: [bands.len]?[]const u8 = undefined;
+        for (bands, 0..) |b, i| hs[i] = if (b) |x| switch (x) {
+            .html => |h| h,
+            else => null,
+        } else null;
+        break :blk hs;
+    };
+    for (sources) |s0| {
+        const s = s0 orelse continue;
+        if (!hasStyleTag(s)) continue;
+        const doc = html.parse(a, s) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => continue, // (the frame reports it)
+        };
+        for (doc.styles) |t| try items.append(a, .{ .string = t });
+    }
+    o.css = .{ .array = items.items };
+    o.pooled_styles = true;
+}
+
+/// Bytes some image decoder may read: a raster format bm-engine sniffs, SVG / XML text, or the magic of
+/// ICO, TIFF, AVIF / HEIF (ISO-BMFF), QOI, DDS, farbfeld, PNM.
+fn looksLikeImage(d: []const u8) bool {
+    if (@import("../codec/codec.zig").sniff(d) != .unknown) return true;
+    const t = std.mem.trimStart(u8, d, " \t\r\n\xEF\xBB\xBF");
+    if (t.len > 0 and t[0] == '<') return true;
+    if (d.len >= 4 and std.mem.eql(u8, d[0..4], "\x00\x00\x01\x00")) return true;
+    if (d.len >= 4 and (std.mem.eql(u8, d[0..4], "II*\x00") or std.mem.eql(u8, d[0..4], "MM\x00*"))) return true;
+    if (d.len >= 12 and std.mem.eql(u8, d[4..8], "ftyp")) return true;
+    if (d.len >= 4 and (std.mem.eql(u8, d[0..4], "qoif") or std.mem.eql(u8, d[0..4], "DDS "))) return true;
+    if (d.len >= 8 and std.mem.eql(u8, d[0..8], "farbfeld")) return true;
+    if (d.len >= 2 and d[0] == 'P' and d[1] >= '1' and d[1] <= '7') return true;
+    return false;
+}
+
+fn hasStyleTag(s: []const u8) bool {
+    var i: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, s, i, '<')) |k| : (i = k + 1) {
+        if (k + 6 <= s.len and std.ascii.eqlIgnoreCase(s[k + 1 .. k + 6], "style")) return true;
+    }
+    return false;
 }
 
 /// takumi-pdf `measure`: the laid-out size of `source` in CSS px as `{"width":w,"height":h}`.
@@ -97,6 +167,16 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
             return error.Invalid;
         },
     };
+    // takumi-pdf-js `decode_images`: every `images` entry is decoded before layout, and one in no image format
+    // fails the render (bm-engine decodes when an image is drawn: only bytes that are no image at all are
+    // rejected here, so a format bm reads and takumi does not, or the other way round, is not)
+    for (r.images.items) |e| {
+        if (e.width != 0 or std.mem.startsWith(u8, e.src, "bm-att:")) continue;
+        if (!looksLikeImage(e.data)) {
+            r.setErr("An error occurred while decoding the image data: the image format is not supported", "");
+            return error.Invalid;
+        }
+    }
     if (o.background_color) |c| {
         // (takumi-pdf-js `page_background`: only `ColorInput::Value` is a colour, `currentColor` is not)
         const parsed = style.color.parse(c) catch null;
@@ -139,6 +219,7 @@ fn buildFrameEx(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind,
     ro.css = try cssWithVariables(a, o);
     var f: Frame = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined, .pre = pre };
     f.tree.paged.pdf = true;
+    f.tree.paged.skip_dom_styles = o.pooled_styles;
     if (o.geometry == .page and mode == .document) {
         const ar = area orelse blk: {
             const p = o.geometry.page;

@@ -19,8 +19,14 @@ export declare function wasmUrl(): URL;
 /** Build profile of this entry. */
 export declare const profile: "pdf";
 
-/** A document input: a node tree, `{ json }` (the tree as JSON text), an HTML string, or a prepared handle. */
-export type PdfSource = Source | Prepared;
+/**
+ * A document input: a node tree, `{ json }` (the tree as JSON text), an HTML string, a prepared handle, or (as
+ * takumi-pdf) a JSX / React element tree, laid out as the HTML it describes (components are called once, without a
+ * React dispatcher; `<style>` elements style the document).
+ */
+export type PdfSource = Source | Prepared | JsxElement;
+/** A React element (`$$typeof`, `type`, `props`), as JSX creates it. */
+export type JsxElement = { $$typeof: symbol; type: unknown; props: Record<string, unknown> };
 
 /** takumi-pdf's `PdfRenderer` (a wrapper of one `Renderer`; registered fonts live in it). */
 export declare class PdfRenderer {
@@ -31,8 +37,12 @@ export declare class PdfRenderer {
   loadFont(font: FontLoader | Promise<FontLoader>): RegisteredFamily[] | Promise<RegisteredFamily[]>;
   unregisterFont(family: string | { name: string }): boolean;
   clearFonts(): void;
-  /** Resolves `fonts` / lazy `images` once. Fetches nothing (no `needs` pass): pass image bytes via `images`. */
-  prepare(source: Source, options?: PdfRenderOptions): Promise<Prepared>;
+  /**
+   * Resolves `fonts` / lazy `images` once and fetches the remote images the document and its bands name that
+   * `images` does not provide (`images: { sources?, fetch?, throwOnError?, timeout? }`; without a custom `fetch`,
+   * http(s) URLs only). Rejects on an aborted `signal`.
+   */
+  prepare(source: Source | JsxElement, options?: PdfRenderOptions): Promise<Prepared>;
   /** A node tree, an HTML string or a prepared document -> PDF bytes. Paged A4 by default; `viewport` renders one page. */
   render(source: PdfSource, options?: PdfRenderOptions): Promise<OutputBytes>;
   renderSync(source: PdfSource, options?: PdfRenderOptions): OutputBytes;
@@ -44,7 +54,7 @@ export declare class PdfRenderer {
 }
 
 /** Prepares with a lazily created shared {@link PdfRenderer}. */
-export declare function prepare(source: Source, options?: PdfRenderOptions): Promise<Prepared>;
+export declare function prepare(source: Source | JsxElement, options?: PdfRenderOptions): Promise<Prepared>;
 /** Renders with a lazily created shared {@link PdfRenderer}. */
 export declare function render(source: PdfSource, options?: PdfRenderOptions): Promise<OutputBytes>;
 /** Measures with a lazily created shared {@link PdfRenderer}. */

@@ -507,7 +507,8 @@ await bad({ pageRanges: [0] }, /Page range is invalid: 0\. Pages are numbered fr
 await bad({ pageRanges: [{ from: 5, to: 2 }] }, /Page range is invalid: 5-2/, "backwards page range");
 await bad({ viewport: { width: 100, height: 100 }, pageRanges: undefined, backgroundColor: "nope" }, /backgroundColor is not a color: nope/, "bad backgroundColor");
 await rejects(() => r.render(node, { viewport: { width: 100, height: 100 }, header: true }), /mutually exclusive/, "viewport + header (viewport first)");
-await bad({ header: true }, /a band is a node, HTML, or false; true names nothing/, "band true");
+// (takumi-pdf hands a band that is neither HTML nor a node to fromJsx, which writes `true` as text)
+check((await r.render(node, { header: true })).length > 0, "band true renders (the text \"true\", as takumi-pdf)");
 await bad({ pages: { middle: {} } }, /unknown page rule: middle/, "unknown page rule");
 await bad({ pages: { first: { body: 1 } } }, /unknown field of pages\.first: body/, "unknown page override field");
 await bad({ margin: "wide" }, /invalid margin/, "bad margin");
@@ -516,11 +517,11 @@ await bad({ metadata: { creationDate: "2026-02-30" } }, /invalid creationDate: e
 await bad({ attachments: [{ name: "a", data: "x", modificationDate: "yesterday" }] }, /invalid modificationDate/, "bad modificationDate");
 await bad({ attachments: [{ name: "a", data: "x" }, { name: "a", data: "y" }] }, /Two attachments are named a/, "duplicate attachment");
 await bad({ attachments: [{ name: "a", data: "x", mimeType: "plain" }] }, /Attachment mime type is not a type\/subtype pair: plain/, "bad mime type");
-await bad({ pdfa: "1b" }, /unknown pdfa level: 1b/, "unknown pdfa level");
+await bad({ pdfa: "1b" }, /unknown variant `1b`/, "unknown pdfa level");
 // (pdfa / tagged / attachment / date / placeholder combinations: takumi fails them while writing; see the tagging section)
 await bad({ uncoveredText: "skip" }, /unknown uncoveredText: skip/, "unknown uncoveredText");
-await bad({ tagged: "ua3" }, /invalid tagged/, "bad tagged");
-await bad({ attachments: [{ name: "a" }] }, /attachment data is missing: a/, "attachment without data");
+await bad({ tagged: "ua3" }, /untagged enum TaggedInput/, "bad tagged");
+await bad({ attachments: [{ name: "a" }] }, /missing field `data`/, "attachment without data");
 await rejects(() => r.render({ type: "container", style: { width: "banana" } }), /width/, "layout error surfaces");
 await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "aborted signal");
 // ---- tagged PDF, PDF/A, PDF/UA (tags.zig, conform.zig, tagdoc.zig)

@@ -32,15 +32,17 @@ probe("bands.node-tree", "header / footer as a node tree", async (t) => {
   ], G);
 });
 probe("bands.false-and-invalid", "band values: false, null, true, numbers", async (t) => {
+  // (takumi-pdf renders the last four: its wrapper hands a band that is neither HTML nor a node to `fromJsx`, which
+  // writes `true`, `5`, `{}` as text and a list as its items)
   await cmpAll(t, [
     ["header:false", D, { size: S, header: false }],
     ["header:null", D, { size: S, header: null }],
     ["footer:false + header", D, { size: S, header: band("HEAD"), footer: false }],
   ], G);
-  await cmp(t, "header:true", D, { size: S, header: true }, { expect: "error" });
-  await cmp(t, "header:5", D, { size: S, header: 5 }, { expect: "error" });
-  await cmp(t, "header:[]", D, { size: S, header: [] }, { expect: "error" });
-  await cmp(t, "header:{} (not a node)", D, { size: S, header: {} }, { expect: "error" });
+  await cmp(t, "header:true", D, { size: S, header: true });
+  await cmp(t, "header:5", D, { size: S, header: 5 });
+  await cmp(t, "header:[]", D, { size: S, header: [] });
+  await cmp(t, "header:{} (not a node)", D, { size: S, header: {} });
 });
 probe("bands.geometry", "bands lay out at the full page width, 20 px from the page edge", async (t) => {
   await cmpAll(t, [
@@ -137,7 +139,7 @@ probe("bands.pages-rules.unknown-keys", "pages: unknown keys are rejected", asyn
   await cmp(t, "pages as an array", D, { size: S, pages: [] });
   await cmp(t, "pages as a string", D, { size: S, pages: "first" }, { expect: "error" });
   await cmp(t, "pages.first as a string", D, { size: S, pages: { first: "x" } }, { expect: "error" });
-  await cmp(t, "pages.first.header:true", D, { size: S, pages: { first: { header: true } } }, { expect: "error" });
+  await cmp(t, "pages.first.header:true", D, { size: S, pages: { first: { header: true } } });
 });
 probe("bands.styles", "which styles reach a band: the css option, the document's <style>, the band's own <style>", async (t) => {
   const hidden = (cls) => `<div class="${cls}" style="font:10px/20px Inter">BANDX</div><div style="font:10px/20px Inter">BAND</div>`;

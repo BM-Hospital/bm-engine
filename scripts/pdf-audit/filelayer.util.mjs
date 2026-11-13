@@ -1,12 +1,25 @@
 // Helpers shared by the file-layer audit probes (conformance / tagging / links / metadata / fonts / file).
 // Not a probe file (run.mjs only imports *.probe.mjs).
-import { Name, Ref, fmt, pdfText } from "./lib.mjs";
+import { Name, Ref, fmt, pdfText, errNorm, isSerdeMessage } from "./lib.mjs";
 
 /**
  * The error message, or "ok". bm-engine prefixes every message with "bm-engine: " (js/engine.mjs); the prefix is removed here so
  * that the rest of the text is compared (the prefix itself is checked once, by file.error-prefix).
  */
 export const outcome = (r) => (r ? (r.error ? "ERR: " + String(r.error).replace(/^bm-engine: /, "") : "ok") : null);
+
+/**
+ * The outcomes of both engines, `[bm, takumi]`, for `t.same(label, ...outcomes(bm, ref))`. As lib.mjs `sameError`
+ * does for the API probes: takumi-pdf's wasm glue prefix `Error: ` is dropped, and when takumi's message is one serde
+ * (or the wasm-bindgen glue) generates for a value of the wrong shape, an implementation detail of the Rust options
+ * types rather than takumi-pdf's API, bm only has to reject too (both become "ERR: <type error>").
+ */
+export function outcomes(bm, ref) {
+  const a = outcome(bm);
+  const b = ref ? (ref.error ? "ERR: " + errNorm(ref.error) : "ok") : null;
+  if (a && b && a.startsWith("ERR: ") && b.startsWith("ERR: ") && isSerdeMessage(b)) return ["ERR: <type error>", "ERR: <type error>"];
+  return [a, b];
+}
 
 /** XMP packet text of a described render (the catalog /Metadata stream), or null. */
 export function xmp(d) {

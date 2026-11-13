@@ -303,7 +303,13 @@ export function sameDocument(t, r, { text = true, boxes = true } = {}) {
 /** bm-engine prefixes its messages with `bm-engine: `; takumi-pdf's wasm glue sometimes with `Error: `. */
 export const errNorm = (m) => (m == null ? m : String(m).replace(/^bm-engine: /, "").replace(/^Error: /, ""));
 /** Messages serde generates for a value of the wrong shape: Rust implementation detail, not part of takumi-pdf's API. */
-export const isSerdeMessage = (m) => /did not match any variant|invalid type: |unknown variant|unknown field|missing field|invalid value: |invalid length|a band is a node, HTML, or false|expected .* at line \d+|EOF while parsing|key must be a string|invalid entry/.test(String(m));
+export const isSerdeMessage = (m) => /did not match any variant|invalid type: |unknown variant|unknown field|missing field|invalid value: |invalid length|a band is a node, HTML, or false|expected .* at line \d+|EOF while parsing|key must be a string|invalid entry/.test(String(m)) || isGlueCrash(m);
+/**
+ * TypeErrors takumi-pdf's JS / wasm-bindgen glue throws when it dereferences an option of the wrong shape (a string
+ * where it reads a list: `Reflect.get called on non-object`, `fonts.map is not a function`, ...): an accident of the
+ * glue rather than a message takumi-pdf words; like serde's type errors, bm only has to reject the input too.
+ */
+export const isGlueCrash = (m) => /^(TypeError: )?(Reflect\.get called on non-object|Cannot use 'in' operator to search for|[\w.$]+ is not a function|Cannot read properties of (undefined|null))/.test(String(m));
 /**
  * Compares the outcome of both engines when at least one failed: the messages must be equal after errNorm; when
  * takumi's message is a serde type error, bm only has to reject too (its own wording), noted as such.

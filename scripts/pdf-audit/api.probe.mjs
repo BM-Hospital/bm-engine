@@ -220,7 +220,7 @@ probe("api.metadata", "metadata: Info dictionary + XMP, validation of dates and 
     if (sameError(t, label, r.bm, r.ref)) continue;
     const strip = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !/Date$/.test(k) || options.metadata?.creationDate).map(([k, v]) => [k, noProducer(v)]));
     t.same(`${label}: Info`, strip(r.bm.info), strip(r.ref.info));
-    const xmp = (d) => { const o = d.typed("Metadata")[0]; return o ? noProducer(o.data.toString("utf8")).replace(/\d{4}-\d\d-\d\dT[\d:]+Z?/g, options.metadata?.creationDate ? "$&" : "DATE").replace(/uuid:[0-9a-f-]+|xmp\.(d|i)id:[\w-]+/g, "ID") : null; };
+    const xmp = (d) => { const o = d.typed("Metadata")[0]; return o ? noProducer(o.data.toString("utf8")).replace(/\d{4}-\d\d-\d\dT[\d:]+Z?/g, options.metadata?.creationDate ? "$&" : "DATE").replace(/uuid:[0-9a-f-]+|xmp\.(d|i)id:[\w-]+/g, "ID").replace(/(<xmpMM:(?:InstanceID|DocumentID)>)[^<]*/g, "$1ID") : null; }; // ids hash the file bytes (filelayer.util xmpNorm)
     t.same(`${label}: XMP`, xmp(r.bm), xmp(r.ref));
     t.same(`${label}: catalog /Lang`, r.bm.catalog.Lang, r.ref.catalog.Lang);
   }
@@ -387,10 +387,12 @@ probe("api.signal", "signal: an aborted signal rejects render / measure / prepar
     const run = async (mod) => {
       const c = new AbortController(); c.abort();
       const r = new mod.PdfRenderer();
+      await r.registerFont(font(INTER)); // (bm-engine bundles no font; only the signal is under test here)
       try { await r[method]("<p>x</p>", { signal: c.signal }); return "(no error)"; } catch (e) { return `${e.name}`; } finally { r.free(); }
     };
     const a = await run(bmMod);
-    t.ok(a !== "(no error)", `bm ${method} rejects on an aborted signal (${a})`);
+    // (takumi-pdf's `measure` does not read `signal`: export.ts passes it to `render` and `prepare` only)
+    if (method !== "measure") t.ok(a !== "(no error)", `bm ${method} rejects on an aborted signal (${a})`);
     if (refMod) t.same(`${method}: error name`, a, await run(refMod)); else t.same(method, 0, 0);
   }
 });
@@ -529,8 +531,8 @@ probe("api.renderer.fonts", "PdfRenderer: registerFont result, unregisterFont, c
       out.registered = reg.map((f) => ({ name: f.name, faces: f.faces.map((x) => ({ weight: x.weight, style: x.style, width: x.width, index: x.index })) }));
       const named = await r.registerFont({ name: "Alias", data: font(INTER), weight: 300 });
       out.named = named.map((f) => ({ name: f.name, faces: f.faces.length }));
-      out.unregisterKnown = r.unregisterFont("Alias");
-      out.unregisterUnknown = r.unregisterFont("Nope");
+      out.unregisterKnown = r.unregisterFont({ name: "Alias" }); // (takumi-pdf takes a family: `{ name }`)
+      out.unregisterUnknown = r.unregisterFont({ name: "Nope" });
       r.clearFonts();
       try { await r.render(`<p style="font-family: Inter">Zażółć</p>`, { viewport: { width: 200, height: 50 } }); out.afterClear = "renders"; } catch (e) { out.afterClear = e.message; }
     } catch (e) { out.error = e.message; } finally { r.free(); }

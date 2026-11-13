@@ -1372,6 +1372,10 @@ pub const Frame = struct {
             f.ctx.viewport_w = f.tree.paged.page_w;
             f.ctx.viewport_h = f.tree.paged.page_h;
         };
+        if (comptime layout.fragment.enabled) if (f.tree.paged.units) |u| {
+            f.ctx.viewport_w = u[0];
+            f.ctx.viewport_h = u[1];
+        };
         f.dom = .{ .lang = o.lang, .max_depth = max_node_depth };
         switch (kind) {
             .json => {
@@ -1521,7 +1525,8 @@ pub const Frame = struct {
             .string => |s| try buf.appendSlice(a, s),
             else => return f.fail("the `css` option must be an array", ""),
         };
-        for (f.dom.styles) |s| try buf.appendSlice(a, s);
+        const own_styles = if (comptime layout.fragment.enabled) !f.tree.paged.skip_dom_styles else true;
+        if (own_styles) for (f.dom.styles) |s| try buf.appendSlice(a, s);
         if (comptime config.enable_tw) if (hasThemeVar(buf.items)) {
             f.tw_theme = true;
         };

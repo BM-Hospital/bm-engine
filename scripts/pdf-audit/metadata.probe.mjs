@@ -1,13 +1,13 @@
 // Document metadata: Info dictionary, XMP packet, /Lang, /ViewerPreferences, /ID, custom XMP schemas, dates, attachments.
 import { probe } from "./lib.mjs";
-import { outcome, xmp, xmpNorm, catalogText, infoNorm, fileId, attachmentsText, deep, sameText, META, DATE } from "./filelayer.util.mjs";
+import { outcome, outcomes, xmp, xmpNorm, catalogText, infoNorm, fileId, attachmentsText, deep, sameText, META, DATE } from "./filelayer.util.mjs";
 
 const HTML = `<h1>Title</h1><p>Hello</p>`;
 
 /** Compares outcome, Info, XMP, catalog and /ID relation for one option set. */
 async function meta(t, id, options, html = HTML) {
   const r = await t.both(html, options);
-  if (!t.same(id + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) return r;
+  if (!t.same(id + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) return r;
   t.same(id + " info", infoNorm(r.bm), infoNorm(r.ref));
   t.same(id + " raw Info object", rawInfo(r.bm), rawInfo(r.ref));
   sameText(t, id + " xmp", xmpNorm(r.bm), xmpNorm(r.ref));
@@ -43,7 +43,7 @@ probe("metadata.producer", "/Producer and pdf:Producer text: `takumi-pdf <versio
     t.same("pdf:Producer equals /Producer", (xmp(r.bm).match(/<pdf:Producer>([^<]*)/) || [])[1] === r.bm.info.Producer, (xmp(r.ref).match(/<pdf:Producer>([^<]*)/) || [])[1] === r.ref.info.Producer);
   }
   const p = await t.both(HTML, { producer: "ACME Writer 1.0" });
-  t.same("producer option outcome", outcome(p.bm), outcome(p.ref));
+  t.same("producer option outcome", ...outcomes(p.bm, p.ref));
   if (p.ref && !p.bm.error && !p.ref.error) {
     t.same("producer option honoured (Info /Producer == option)", p.bm.info.Producer === "ACME Writer 1.0", p.ref.info.Producer === "ACME Writer 1.0");
     t.note(`producer option: bm ${JSON.stringify(p.bm.info.Producer)} | takumi ${JSON.stringify(p.ref.info.Producer)}`);
@@ -79,19 +79,19 @@ probe("metadata.info.encoding", "non-ASCII / special characters in Info strings 
 probe("metadata.date.invalid", "creationDate validation: accepted forms and error text", async (t) => {
   for (const d of ["2026-08-06", "2026-08-06T01:02:03", "2026-08-06T01:02:03Z", "2028-02-29", "2026-02-30", "2026-13-01", "26-08-06", "2026-8-6", "2026-08-06 01:02:03", "2026-08-06T01:02", "2026-08-06T24:00:00", "2026-08-06T01:02:03+02:00", "2026-08-06T01:02:03.123", "", "today", "0000-01-01", "9999-12-31T23:59:59"]) {
     const r = await t.both(HTML, { metadata: { creationDate: d } });
-    t.same(JSON.stringify(d) + " outcome", outcome(r.bm), outcome(r.ref));
+    t.same(JSON.stringify(d) + " outcome", ...outcomes(r.bm, r.ref));
     if (r.ref && !r.bm.error && !r.ref.error) t.same(JSON.stringify(d) + " dates", [r.bm.info.CreationDate, r.bm.info.ModDate], [r.ref.info.CreationDate, r.ref.info.ModDate]);
   }
   for (const d of [new Date(Date.UTC(2026, 7, 6, 1, 2, 3)), 1786000000000, null]) {
     const r = await t.both(HTML, { metadata: { creationDate: d } });
-    t.same("non-string " + String(d) + " outcome", outcome(r.bm), outcome(r.ref));
+    t.same("non-string " + String(d) + " outcome", ...outcomes(r.bm, r.ref));
   }
 });
 
 probe("metadata.lang", "lang -> catalog /Lang, dc:language, structure root /Lang; element lang attributes", async (t) => {
   for (const lang of ["en", "en-US", "zh-Hant-TW", "de-CH-1996", "x-private", "EN", "en_US", "i-klingon", "e", "toolongsubtagxx"]) {
     const r = await t.both(HTML, { lang });
-    if (!t.same(lang + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(lang + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     t.same(lang + " catalog /Lang", deep(r.bm, r.bm.catalog.Lang), deep(r.ref, r.ref.catalog.Lang));
     t.same(lang + " xmp", xmpNorm(r.bm), xmpNorm(r.ref));
     t.same(lang + " structure", r.bm.structure, r.ref.structure);
@@ -106,7 +106,7 @@ probe("metadata.lang", "lang -> catalog /Lang, dc:language, structure root /Lang
   ];
   for (const [name, html, o] of cases) {
     const r = await t.both(html, o);
-    if (!t.same(name + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     t.same(name + " catalog /Lang", deep(r.bm, r.bm.catalog.Lang), deep(r.ref, r.ref.catalog.Lang));
     t.same(name + " xmp", xmpNorm(r.bm), xmpNorm(r.ref));
     t.same(name + " structure", r.bm.structure, r.ref.structure);
@@ -116,7 +116,7 @@ probe("metadata.lang", "lang -> catalog /Lang, dc:language, structure root /Lang
 probe("metadata.viewer-preferences", "/ViewerPreferences /DisplayDocTitle (UA only), no /PageMode, /PageLayout, /Direction", async (t) => {
   for (const o of [{ metadata: { title: "T" } }, { tagged: "ua1", lang: "en", metadata: { title: "T" } }, { tagged: "ua2", lang: "en", metadata: { title: "T" } }, { pdfa: "2a", lang: "en", metadata: META }, { outline: true, metadata: { title: "T" } }]) {
     const r = await t.both(`<html dir="rtl"><body><h1>T</h1></body></html>`, o);
-    if (!t.same(JSON.stringify(o) + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(JSON.stringify(o) + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     t.same(JSON.stringify(o) + " catalog keys", Object.keys(r.bm.catalog).sort(), Object.keys(r.ref.catalog).sort());
     t.same(JSON.stringify(o) + " ViewerPreferences", deep(r.bm, r.bm.catalog.ViewerPreferences), deep(r.ref, r.ref.catalog.ViewerPreferences));
   }
@@ -186,7 +186,7 @@ probe("metadata.xmp.invalid-schema", "InvalidXmpSchema: prefix / property name /
   ];
   for (const [name, ...schemas] of bad) {
     const r = await t.both(HTML, { metadata: { title: "T", xmp: schemas } });
-    t.same(name + " outcome", outcome(r.bm), outcome(r.ref));
+    t.same(name + " outcome", ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`${name} => takumi: ${outcome(r.ref)}`);
   }
 });
@@ -197,7 +197,7 @@ const ATT = { name: "factur-x.xml", data: "<invoice>é</invoice>", mimeType: "ap
 
 async function att(t, id, options) {
   const r = await t.both(HTML, options);
-  if (!t.same(id + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) return r;
+  if (!t.same(id + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) return r;
   t.same(id + " attachments", attachmentsText(r.bm), attachmentsText(r.ref));
   t.same(id + " catalog", catalogText(r.bm, ["Names", "AF", "Type", "MarkInfo", "Lang"]), catalogText(r.ref, ["Names", "AF", "Type", "MarkInfo", "Lang"]));
   return r;
@@ -226,7 +226,7 @@ probe("metadata.attachments.compression", "attachment stream filter: compressed 
   const rnd = new Uint8Array(4096); let s = 12345; for (let i = 0; i < rnd.length; i++) { s = (s * 1103515245 + 12345) >>> 0; rnd[i] = s >>> 24; }
   for (const [name, data] of [["compressible text 8k", "abcdefgh".repeat(1024)], ["random 4k", rnd], ["tiny", "x"], ["png signature (already compressed type)", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...rnd.subarray(0, 600)])]]) {
     const r = await t.both(HTML, { attachments: [{ name: "f.bin", data, mimeType: "application/octet-stream" }] });
-    if (!t.same(name + " outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) continue;
+    if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     const f = (d) => { const a = attachmentsText(d).files[0]; return { filter: a.stream.Filter || null, size: a.stream.Params, sub: a.stream.Subtype }; };
     t.same(name + " filter / params", f(r.bm), f(r.ref));
     t.same(name + " encoded length", attachmentsText(r.bm).files[0].rawLen, attachmentsText(r.ref).files[0].rawLen);
@@ -258,7 +258,7 @@ probe("metadata.attachments.errors", "attachment errors: duplicate name, invalid
   ];
   for (const [name, o] of cases) {
     const r = await t.both(HTML, o);
-    t.same(name + " outcome", outcome(r.bm), outcome(r.ref));
+    t.same(name + " outcome", ...outcomes(r.bm, r.ref));
     if (r.ref) t.note(`${name} => takumi: ${outcome(r.ref)}`);
   }
   // per level: full attachment / no mime / no description / no date at all
@@ -267,7 +267,7 @@ probe("metadata.attachments.errors", "attachment errors: duplicate name, invalid
     if ((tagged === "ua2" && pdfa && !pdfa.startsWith("4")) || (tagged === "ua1" && pdfa && pdfa.startsWith("4"))) continue;
     for (const [an, a, md] of [["full", full, META], ["no mime", noMime, META], ["no description", noDesc, META], ["bare", bare, META], ["full, no document date", full, { title: "T" }], ["full, own date, no document date", { ...full, modificationDate: "2026-01-01" }, { title: "T" }], ["two bare", [bare, { ...bare, name: "b.xml" }], META]]) {
       const r = await t.both(`<h1>T</h1>`, { pdfa, tagged, lang: "en", metadata: md, attachments: Array.isArray(a) ? a : [a] });
-      t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} ${an}`, outcome(r.bm), outcome(r.ref));
+      t.same(`pdfa=${pdfa ?? "none"} tagged=${tagged} ${an}`, ...outcomes(r.bm, r.ref));
     }
   }
 });
