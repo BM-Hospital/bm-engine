@@ -64,7 +64,7 @@ fn hasBackground(cs: *const CS) bool {
 /// Marks the row groups, rows and cells of `tg` so they paint as table parts.
 noinline fn register(p: *Painter, tg: *const TG) Error!void {
     if (p.tparts.len == 0) {
-        p.tparts = try p.a.alloc(Part, p.f.nodes.items.len);
+        p.tparts = try p.keep.alloc(Part, p.f.nodes.items.len);
         @memset(p.tparts, .{});
     }
     const sep_hide = !tg.collapse;

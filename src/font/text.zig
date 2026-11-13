@@ -226,6 +226,10 @@ pub const ParagraphOptions = struct {
     features: []const FeatureSetting = &.{},
     /// Long-lived shape-plan cache (see `shape.Cache`); null = rebuild plans per paragraph.
     shape_cache: ?*ShapeCache = null,
+    /// Working memory of `init` (the characters, their break classes and bidi levels, the shaping
+    /// buffer): nothing the paragraph keeps is allocated from it, so the caller may rewind it once
+    /// `init` returns. Null: the paragraph's allocator (where, in a bump arena, most of it stays).
+    scratch: ?std.mem.Allocator = null,
     /// Inline boxes referenced by `Run.box` (parents before children). Only read during `init`.
     boxes: []const InlineBox = &.{},
     /// text-indent: `indent` px plus `indent_pct` (a fraction) of the width the lines are broken at (0
@@ -813,21 +817,22 @@ pub const Paragraph = struct {
         for (runs) |r| total += r.text.len;
         if (total > 0x3fff_ffff or runs.len > 0xffff) return error.OutOfMemory;
 
-        const chars = try alloc.alloc(Char, total + 2 * runs.len);
-        defer alloc.free(chars);
+        const tmp = opts.scratch orelse alloc;
+        const chars = try tmp.alloc(Char, total + 2 * runs.len);
+        defer tmp.free(chars);
         var info: CharInfo = .{};
         collectChars(runs, opts, chars, &info);
         const n_chars = info.n;
         const rtl_base = complex and opts.direction == .rtl;
         if (info.any_wrap) {
             if (complex) {
-                try markBreaksFull(alloc, chars[0..n_chars], opts);
+                try markBreaksFull(tmp, chars[0..n_chars], opts);
             } else markBreaks(chars[0..n_chars], opts);
             if (info.any_nowrap or info.any_obj) fixBreaks(chars[0..n_chars]);
         }
-        if (complex) try resolveBidi(alloc, chars[0..n_chars], rtl_base);
+        if (complex) try resolveBidi(tmp, chars[0..n_chars], rtl_base);
 
-        var local_cache = shp.Cache.init(alloc);
+        var local_cache = shp.Cache.init(tmp);
         defer local_cache.deinit();
         var b: Builder = .{
             .alloc = alloc,
@@ -835,7 +840,8 @@ pub const Paragraph = struct {
             .opts = opts,
             .chars = chars[0..n_chars],
             .cache = opts.shape_cache orelse &local_cache,
-            .buf = .{ .alloc = alloc },
+            .buf = .{ .alloc = tmp },
+            .tmp = tmp,
         };
         defer b.buf.deinit();
         errdefer b.glyphs.deinit(alloc);
@@ -843,15 +849,16 @@ pub const Paragraph = struct {
         errdefer b.objs.deinit(alloc);
         errdefer alloc.free(b.boxes);
         errdefer alloc.free(b.run_box);
-        defer b.open_tmp.deinit(alloc);
+        defer b.open_tmp.deinit(tmp);
         try b.prepareBoxes(runs);
         try b.glyphs.ensureTotalCapacity(alloc, n_chars);
-        try b.buf.list.ensureTotalCapacity(alloc, @min(n_chars, 256));
+        try b.buf.list.ensureTotalCapacity(tmp, @min(n_chars, 256));
         try b.build(feat, runs);
         if (b.cx) moveBreaks(b.glyphs.items);
 
         var p: Paragraph = .{ .alloc = alloc, .opts = opts, .glyphs = &.{}, .metrics = &.{}, .multi_run = b.item > 1, .rtl = rtl_base, .has_bidi = b.any_rtl or rtl_base, .any_wrap = info.any_wrap, .complex = b.cx };
         p.opts.boxes = &.{};
+        p.opts.scratch = null;
         p.has_indent = opts.indent != 0 or opts.indent_pct != 0;
         // strut + ellipsis
         const strut_style: ?TextStyle = opts.strut orelse if (runs.len > 0) runs[0].style else null;
@@ -3190,6 +3197,8 @@ const BracketRec = struct { close: u16, script: u8 };
 
 const Builder = struct {
     alloc: std.mem.Allocator,
+    /// working memory (`ParagraphOptions.scratch`): `buf`, `open_tmp` and copies of the buffer
+    tmp: std.mem.Allocator,
     fonts: *const FontCollection,
     opts: ParagraphOptions,
     chars: []Char,
@@ -3321,7 +3330,7 @@ const Builder = struct {
                 try b.special(Special.close, a, b.boxes[a].end, 0, lv, 0);
                 a = b.boxes[a].parent;
             } else {
-                try b.open_tmp.append(b.alloc, t);
+                try b.open_tmp.append(b.tmp, t);
                 t = b.boxes[t].parent;
             }
         }
@@ -3572,7 +3581,7 @@ const Builder = struct {
                 b.seg_script = script;
                 b.seg_level = c.level;
             }
-            try b.buf.list.append(b.alloc, .{ .cp = c.cp, .cluster = @intCast(ci), .gid = gid });
+            try b.buf.list.append(b.tmp, .{ .cp = c.cp, .cluster = @intCast(ci), .gid = gid });
         }
         try b.flush(complex, style);
         if (b.cx) {
@@ -3643,8 +3652,8 @@ const Builder = struct {
         const split = support != .full and style.caps != .titling and style.synth_small_caps and b.seg_level & 1 == 0;
         if (!split) return b.shapeCaps(complex, style, support, synth, .same, false);
         // split the segment at case changes (combining marks follow their base)
-        const saved = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
-        defer b.alloc.free(saved);
+        const saved = try b.tmp.dupe(ot.Glyph, b.buf.list.items);
+        defer b.tmp.free(saved);
         const n = saved.len;
         var i: usize = 0;
         while (i < n) {
@@ -3659,7 +3668,7 @@ const Builder = struct {
                 } else if (k != kind.?) break;
             }
             b.buf.list.clearRetainingCapacity();
-            try b.buf.list.appendSlice(b.alloc, saved[i..j]);
+            try b.buf.list.appendSlice(b.tmp, saved[i..j]);
             try b.shapeCaps(complex, style, support, synth, kind orelse .same, true);
             i = j;
         }
@@ -3671,8 +3680,8 @@ const Builder = struct {
         const to_upper = allowed and support == .none and run_case == .upper_needed and (synth == .lower or synth == .both);
         const to_lower = allowed and support == .fallback and run_case == .same and (synth == .both or synth == .upper);
         if (to_upper or to_lower) {
-            const src = try b.alloc.dupe(ot.Glyph, b.buf.list.items);
-            defer b.alloc.free(src);
+            const src = try b.tmp.dupe(ot.Glyph, b.buf.list.items);
+            defer b.tmp.free(src);
             b.buf.list.clearRetainingCapacity();
             for (src) |gl| {
                 var m: [3]u21 = undefined;
@@ -3680,7 +3689,7 @@ const Builder = struct {
                 if (to_upper) {
                     k = case.upper(gl.cp, &m);
                 } else m[0] = case.lower(gl.cp);
-                for (m[0..k]) |cp| try b.buf.list.append(b.alloc, .{ .cp = cp, .cluster = gl.cluster, .gid = if (cp == gl.cp) gl.gid else 0 });
+                for (m[0..k]) |cp| try b.buf.list.append(b.tmp, .{ .cp = cp, .cluster = gl.cluster, .gid = if (cp == gl.cp) gl.gid else 0 });
             }
         }
         // synthetic font (NeedsSyntheticFont)

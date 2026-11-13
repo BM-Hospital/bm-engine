@@ -28,9 +28,28 @@ const Allocator = std.mem.Allocator;
 const Frame = rt.Frame;
 const Error = rt.Error;
 
-/// One band drawn on one page: `frame` laid out at the page width, drawn translated to (`x`, `y`)
-/// and clipped to the `w` x `h` rect there (CSS px, page coordinates).
-pub const Draw = struct { frame: *Frame, x: f32, y: f32, w: f32, h: f32 };
+/// One band drawn on one page: `frame` laid out at the page width (null: `lazy` lays it out when
+/// the page is drawn), drawn translated to (`x`, `y`) and clipped to the `w` x `h` rect there
+/// (CSS px, page coordinates).
+pub const Draw = struct { frame: ?*Frame, lazy: ?Lazy = null, x: f32, y: f32, w: f32, h: f32 };
+
+/// A band laid out for one page only (its page counters, or the page's own width): laid out when
+/// that page is drawn, in the page's working memory (emit.zig `writeDocument`), so a long
+/// document does not keep a band frame per page.
+pub const Lazy = struct {
+    doc: *const Doc,
+    node: opt.Band,
+    /// 1-based page number and page count of the counters
+    page: usize,
+    pages: usize,
+
+    /// The band laid out from `a`.
+    pub fn layOut(l: Lazy, a: Allocator) Error!*Frame {
+        var d = l.doc.*;
+        d.a = a;
+        return layOutBand(&d, l.node, l.page, l.pages, null);
+    }
+};
 
 /// Paints a band on the page `e` draws (takumi `RepeatablePage::emit` / `ContentWindow::emit`).
 pub fn paint(e: *emit.Emitter, band: ?Draw) Error!void {
@@ -42,12 +61,13 @@ pub fn paint(e: *emit.Emitter, band: ?Draw) Error!void {
     defer etag.endWindow(e);
     const d0 = s.depth();
     defer s.popTo(d0);
-    var be = emit.Emitter.init(b.frame, e.cx, s, e.fonts);
+    const frame = b.frame orelse try b.lazy.?.layOut(e.a);
+    var be = emit.Emitter.init(frame, e.cx, s, e.fonts);
     be.path.reset();
     try be.path.addRect(be.a, .{ .x = b.x, .y = b.y, .w = b.w, .h = b.h });
     s.pushClip(&be.path, .nonzero);
     if (b.x != 0 or b.y != 0) s.pushTransform(geom.Tf.translate(b.x, b.y));
-    try be.paintNode(b.frame.root, 0, 0, 0);
+    try be.paintNode(frame.root, 0, 0, 0);
     try be.flushOutlines(0, 0);
     if (be.fail_msg) |m| e.fail(m, be.fail_arg);
 }
@@ -217,25 +237,25 @@ pub fn measure(d: *const Doc, s: *Slot, count: usize) Error!void {
 }
 
 /// The band page `page` (0-based) of `pages` draws (takumi `Repeatable::for_page`), placed for a
-/// `page_w` x `page_h` page; null when its rule draws nothing.
+/// `page_w` x `page_h` page; null when its rule draws nothing. `d` must outlive the drawing (a
+/// band of this page only is laid out then: `Lazy`).
 pub fn forPage(d: *const Doc, s: *Slot, page: usize, pages: usize, page_w: f32, page_h: f32) Error!?Draw {
+    const y = if (s.header) opt.band_edge_padding else page_h - opt.band_edge_padding - s.height;
     if (d.o.geometry == .page and page_w != d.o.geometry.page.width) {
         // a page of another width lays its band out at its own width (takumi lays the band out
         // per page box)
-        var dw = d.*;
+        const dw = try d.a.create(Doc);
+        dw.* = d.*;
         dw.o.geometry.page.width = page_w;
         const k = (if (s.dynamic) s.forPage(page + 1, pages) else s.tallest) orelse return null;
-        const frame = try layOutBand(&dw, s.nodes[k], page + 1, pages, null);
-        const y = if (s.header) opt.band_edge_padding else page_h - opt.band_edge_padding - s.height;
-        return .{ .frame = frame, .x = 0, .y = y, .w = page_w, .h = s.height };
+        return .{ .frame = null, .lazy = .{ .doc = dw, .node = s.nodes[k], .page = page + 1, .pages = pages }, .x = 0, .y = y, .w = page_w, .h = s.height };
     }
     const frame = if (!s.dynamic) s.frame else blk: {
         const k = s.forPage(page + 1, pages) orelse return null;
-        if (s.hooked[k]) break :blk try layOutBand(d, s.nodes[k], page + 1, pages, null);
+        if (s.hooked[k]) return .{ .frame = null, .lazy = .{ .doc = d, .node = s.nodes[k], .page = page + 1, .pages = pages }, .x = 0, .y = y, .w = page_w, .h = s.height };
         if (s.cache[k] == null) s.cache[k] = try layOutBand(d, s.nodes[k], page + 1, pages, null);
         break :blk s.cache[k].?;
     };
-    const y = if (s.header) opt.band_edge_padding else page_h - opt.band_edge_padding - s.height;
     return .{ .frame = frame, .x = 0, .y = y, .w = page_w, .h = s.height };
 }
 

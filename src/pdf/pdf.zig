@@ -55,6 +55,9 @@ pub fn renderReadable(r: *Renderer, kind: SourceKind, source: []const u8, opts_j
 /// `error.OutOfMemory`. Binary resources of the call (images, attachment bytes) are in `r.images`
 /// (looked up by id; attachments are already resolved into `PdfOptions.attachments[i].data`).
 pub fn render(r: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+    // (a long document's lists grow large in the call arena: their old buffers go back at once)
+    r.arena.release_freed = true;
+    defer r.arena.release_freed = false;
     const a = r.arena.allocator();
     var o = try parseOptions(r, opts_json);
     try poolStyles(a, &o, kind, source);
@@ -323,6 +326,8 @@ fn emit(a: Allocator, input: Input) Error![]const u8 {
             // `doc.frame` is the content, paginated (`counters.anchor` / `anchorPage`: the page an
             // element with an `id` landed on)
             const doc = try paged.layOut(r, a, o, try cssWithVariables(a, o), input.kind, input.source, p, background);
+            // (the layout is freed once the file is written: the result is in `a`)
+            defer doc.release(r);
             return emitter.writeDocument(a, doc.frame, doc.pages, doc.windows, policy);
         },
     }

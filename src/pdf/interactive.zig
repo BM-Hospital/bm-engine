@@ -108,6 +108,9 @@ pub const Collector = struct {
     /// list the links go to
     groups: std.ArrayList(std.ArrayList(Entry)) = .empty,
     group: u32 = 0,
+    /// the memory of the page being drawn, where `groups` live until `endPage` (null: `a`); the
+    /// emitter ends the page before that memory is rewound
+    page_a: ?Allocator = null,
     failed: bool = false,
     /// the run of pages showing one frame being drawn (`beginRun`): its frame, its index, the span
     /// of the frame its pages show, and whether this is the run's first page
@@ -153,7 +156,8 @@ pub const Collector = struct {
         if (c.groups.items.len > 0) c.flatten(0) catch {
             c.failed = true;
         };
-        c.groups.clearRetainingCapacity();
+        // (groups in a page's memory go with it)
+        if (c.page_a != null) c.groups = .empty else c.groups.clearRetainingCapacity();
         c.group = 0;
     }
 
@@ -165,8 +169,12 @@ pub const Collector = struct {
     }
 
     fn current(c: *Collector) Error!*std.ArrayList(Entry) {
-        if (c.groups.items.len == 0) try c.groups.append(c.a, .empty);
+        if (c.groups.items.len == 0) try c.groups.append(c.groupMem(), .empty);
         return &c.groups.items[c.group];
+    }
+
+    fn groupMem(c: *const Collector) Allocator {
+        return c.page_a orelse c.a;
     }
 
     /// The place of a box queued now and painted later: its group, to `enter` while painting it
@@ -174,8 +182,8 @@ pub const Collector = struct {
     pub fn reserve(c: *Collector) u32 {
         const list = c.current() catch return none;
         const g: u32 = @intCast(c.groups.items.len);
-        list.append(c.a, .{ .group = g }) catch return none;
-        c.groups.append(c.a, .empty) catch {
+        list.append(c.groupMem(), .{ .group = g }) catch return none;
+        c.groups.append(c.groupMem(), .empty) catch {
             c.groups.items[c.group].items.len -= 1;
             return none;
         };
@@ -289,7 +297,7 @@ pub const Collector = struct {
         const h = page.height * pt_per_px;
         const link: Link = .{ .rect = .{ l, h - b, rr, h - t }, .uri = uri, .node = node, .el = el, .frame = e.f, .repeated = e.in_repeat };
         if (fixed) return c.pages[c.cur].fixed.append(c.a, link);
-        try (try c.current()).append(c.a, .{ .link = link });
+        try (try c.current()).append(c.groupMem(), .{ .link = link });
     }
 
     fn summarize(c: *Collector, el: u32, node: u32, top: f32) Error!void {

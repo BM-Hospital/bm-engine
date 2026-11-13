@@ -327,7 +327,7 @@ fn fillStrokeGlyphRun(reg: *FontRegistry, cx: *sf.Ctx, b: *sf.Builder, x: f32, y
     const reversed = isReversed(run.glyphs);
     const do_span = reversed or try useTextSpanner(fc, run.glyphs, run.text, ctx_color);
     if (do_span) {
-        var sp = try Spanner.init(cx.a, fc, run.glyphs, run.text, reversed, ctx_color);
+        var sp = try Spanner.init(cx.work(), fc, run.glyphs, run.text, reversed, ctx_color);
         while (try sp.next()) |frag| try glyphSpan(reg, cx, b, &cur_x, &cur_y, frag, mode, fc, ctx_color, run, reversed);
     } else try glyphSpan(reg, cx, b, &cur_x, &cur_y, .{ .glyphs = run.glyphs, .actual = null }, mode, fc, ctx_color, run, reversed);
     b.c.endText();
@@ -397,7 +397,7 @@ fn encodeRun(reg: *FontRegistry, cx: *sf.Ctx, b: *sf.Builder, cur_x: *f32, y: f3
     for (gs) |g| {
         if (g.gid == 0 or fc.last_resort) reg.notdef_shown += 1;
     }
-    const a = cx.a;
+    const a = cx.work();
     var enc: std.ArrayList(u8) = .empty;
     if (gs.len == 1 and approxZero(gs[0].x * 1.0)) {
         try fc.pdfGlyph(id, gs[0].gid, ctx_color).?.encodeInto(a, &enc);
@@ -540,7 +540,7 @@ fn isColorGlyph(font: *const ttf.Font, gid: u16) bool {
 /// glyph positions are relative to (px, before any shadow offset).
 pub fn paintGlyphRun(reg: *FontRegistry, s: *sf.Surface, run_in: Run, origin_in: [2]f32, p: RunPaint, shadow: ?Shadow, fills: []const GlyphBackground, with_paint: bool) !void {
     if (run_in.glyphs.len == 0 or run_in.size == 0) return;
-    const a = s.cx.a;
+    const a = s.cx.work();
     var origin = origin_in;
     if (shadow) |sh| {
         origin[0] += sh.x;
@@ -1071,7 +1071,7 @@ fn drawSubRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, n: *const rt.Nod
     const rs = f.run_styles.items;
     const rcs = if (g0.user < rs.len) rs[g0.user] else n.cs;
     if (rcs.visibility != .visible) return;
-    const run = (try buildRun(reg, s.cx.a, f, n.para, gs, text)) orelse return;
+    const run = (try buildRun(reg, s.cx.work(), f, n.para, gs, text)) orelse return;
     const face = f.r.fonts.face(g0.face);
     const colored_face = coloredFace(&face.font);
     const fill_col = if (rcs.webkit_text_fill_color) |c| rcs.resolveColor(c) else rcs.color;
@@ -1115,7 +1115,7 @@ pub fn drawSeamRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, run: anytyp
         while (e < all.len and (all[e].bidi_level & 1) == (all[i].bidi_level & 1)) e += 1;
         const gs = all[i..e];
         i = e;
-        const r = (try buildRun(reg, s.cx.a, f, run.node.para, gs, run.text)) orelse continue;
+        const r = (try buildRun(reg, s.cx.work(), f, run.node.para, gs, run.text)) orelse continue;
         var p: RunPaint = .{
             .color = run.fill,
             .stroke_first = run.stroke_first,
