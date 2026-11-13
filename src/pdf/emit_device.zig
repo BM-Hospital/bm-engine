@@ -409,3 +409,13 @@ test "colour filters match takumi-pdf" {
     const g = ColorFilter.compose(null, &.{.{ .grayscale = 1 }}).?;
     try std.testing.expectEqual([4]u8{ 74, 74, 74, 255 }, g.apply(.{ 225, 29, 72, 255 }));
 }
+
+test "unsupported drop-shadow() named as takumi's ToCss writes it" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const black: style.computed.ColorValue = .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 255 } };
+    try std.testing.expectEqualStrings("drop-shadow(2px 2px 2px rgb(0, 0, 0))", unsupported(a, &.{.{ .drop_shadow = .{ .x = 2, .y = 2, .blur = 2, .color = black } }}).?);
+    try std.testing.expectEqualStrings("drop-shadow(2px 2px rgb(0, 0, 0))", unsupported(a, &.{.{ .drop_shadow = .{ .x = 2, .y = 2, .color = black } }}).?);
+    try std.testing.expectEqualStrings("drop-shadow(1px -3px)", unsupported(a, &.{.{ .drop_shadow = .{ .x = 1, .y = -3 } }}).?);
+}
