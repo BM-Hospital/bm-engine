@@ -530,7 +530,9 @@ pub const Emitter = struct {
         if (scope) e.lift_on = true;
         // a context paints its floats, then the content of its in-flow boxes, after their
         // decorations (takumi `paint_phases`)
-        const context = e.contextScope(id);
+        // (a root that opens a group, a filter, a clip or a transform paints its content inside
+        // them: its own context, not the page's one over the passes)
+        const context = e.contextScope(id) or (id == e.f.root and (group or cs.filter.len > 0 or cs.clip_path != null or m_open != null));
         const fq0 = e.float_q.items.len;
         const cq0 = e.content_q.items.len;
         const saved_defer = e.defer_on;
