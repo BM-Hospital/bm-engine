@@ -3,7 +3,7 @@
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
 bm-engine is compiled into three binaries (and a fourth, `pdf`, for PDF output) with different feature sets so that you only download what you
-use: `core` (487.6 KiB), `standard` (934.4 KiB) and `full` (1 141.5 KiB), against 4 234.9 KiB for
+use: `core` (489.6 KiB), `standard` (936.5 KiB) and `full` (1 143.6 KiB), against 4 234.9 KiB for
 takumi 2.20's wasm. This page lists what each profile contains, what each optional feature costs, what a
 smaller profile does with input it cannot handle, how to make a custom build, and why only WOFF is
 available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1024 bytes.
@@ -12,11 +12,11 @@ available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1
 
 | Build | Raw | gzip -9 | brotli (q11) | vs. takumi raw |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 487.6 KiB | 228.4 KiB | 194.3 KiB | 8.7× smaller |
-| `standard` — `bm_engine.standard.wasm` | 934.4 KiB | 463.7 KiB | 398.0 KiB | 4.5× smaller |
-| `full` — `bm_engine.wasm` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | 3.7× smaller |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 555.8 KiB | 761.6 KiB | 625.1 KiB | 2.7× smaller |
-| WOFF add-on — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
+| `core` — `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB | 195.3 KiB | 8.7× smaller |
+| `standard` — `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB | 398.6 KiB | 4.5× smaller |
+| `full` — `bm_engine.wasm` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB | 3.7× smaller |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 675.2 KiB | 810.0 KiB | 660.2 KiB | 2.5× smaller |
+| WOFF add-on — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
 The JavaScript wrapper is a few KiB of dependency-free ESM and the same for every profile. The binaries
@@ -33,15 +33,22 @@ Which backend to use and how they compare: [Native vs WebAssembly](./native-vs-w
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Status |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 083 | 1 120 | 914 | executed (this benchmark) |
-| bm wasm `core` | wasm32 | 487 | 228 | 194 |  |
-| bm wasm `standard` | wasm32 | 934 | 463 | 398 |  |
-| bm wasm `full` | wasm32 | 1 140 | 558 | 470 |  |
-| bm wasm `WOFF add-on` | wasm32 | 84.2 | 67.7 | 65.5 |  |
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | executed (this benchmark) |
+| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
+| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
+| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compiled, structurally verified, never executed |
+| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compiled, structurally verified, never executed |
+| bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
+| bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
+| bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
+| bm wasm `WOFF add-on` | wasm32 | 84.4 | 67.8 | 65.5 |  |
 | takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
 | takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
 
-Native addons from `native/dist/manifest.json` (built 2026-11-12 with Zig 0.17.1, ReleaseFast). Each user downloads one addon (the optional package for their platform) plus the wasm fallback that ships in the main package.
+Native addons from `native/dist/manifest.json` (built 2026-11-13 with Zig 0.17.1, ReleaseFast). Each user downloads one addon (the optional package for their platform) plus the wasm fallback that ships in the main package.
 <!-- /native-bench:sizes -->
 
 ## What each profile contains
@@ -76,7 +83,7 @@ Native addons from `native/dist/manifest.json` (built 2026-11-12 with Zig 0.17.1
 
 `bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
 CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
-Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.4 MB to `full`. It is not part of the table below because `pdf` is
+Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.5 MB to `full`. It is not part of the table below because `pdf` is
 not a feature of `core`, `standard` or `full`.
 
 ## Marginal cost per feature
@@ -165,7 +172,7 @@ binary was built with.
 
 ## The WOFF add-on
 
-`bm_woff.wasm` (84.2 KiB, 65.5 KiB brotli) is the engine's own WOFF / WOFF2 decoder (including brotli)
+`bm_woff.wasm` (84.4 KiB, 65.5 KiB brotli) is the engine's own WOFF / WOFF2 decoder (including brotli)
 as a separate module. `loadWoff()` from `bm-engine/woff` installs it, after which `registerFont`
 converts WOFF / WOFF2 to TTF / OTF before handing it to any entry. The converted font is byte-identical
 to what the built-in decoder produces. It is useful on `core` when your fonts come as WOFF2 (for

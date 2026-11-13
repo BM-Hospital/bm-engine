@@ -96,9 +96,9 @@ your plan and change over time — check Cloudflare's current documentation. Wha
 
 | Module | raw | gzip -9 |
 |:--|--:|--:|
-| `bm_engine.core.wasm` | 487.6 KiB | 228.4 KiB |
-| `bm_engine.standard.wasm` | 934.4 KiB | 463.7 KiB |
-| `bm_engine.wasm` (full) | 1 141.5 KiB | 559.0 KiB |
+| `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB |
+| `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB |
+| `bm_engine.wasm` (full) | 1 143.6 KiB | 560.0 KiB |
 | JS wrapper (bundled) | ~23 KiB | — |
 
 The dry-run of the Worker above reported **Total Upload: 1290.11 KiB / gzip: 618.63 KiB**, most of it the

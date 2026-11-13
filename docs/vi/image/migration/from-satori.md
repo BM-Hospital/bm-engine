@@ -109,7 +109,7 @@ một dòng inline không có box con nào; sau `flexByDefault()` các con nằm
 - CSS animation render thành WebP / APNG / GIF động (`full`), hoặc một khung hình đơn với `timeMs`.
 - Bidi và các hệ chữ phức tạp (Ả Rập, Do Thái, Ấn, Thái) và font emoji màu trên `full`.
 - `measure()` cho các box layout và run của từng dòng chữ (xem [Measure](../measure.md)).
-- API đồng bộ, không dependency, mỗi profile một file `.wasm` (487.6 KiB – 1.11 MiB raw).
+- API đồng bộ, không dependency, mỗi profile một file `.wasm` (489.6 KiB – 1.12 MiB raw).
 
 ## satori có gì mà bm-engine không có
 

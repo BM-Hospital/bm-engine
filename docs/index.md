@@ -24,7 +24,7 @@ hero:
 features:
   - icon: 📦
     title: 4–9× smaller than takumi
-    details: "<strong>core</strong> 487.6 KiB (8.7× smaller), <strong>standard</strong> 934.4 KiB (4.5×), <strong>full</strong> 1 141.5 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 469.8 KiB."
+    details: "<strong>core</strong> 489.6 KiB (8.7× smaller), <strong>standard</strong> 936.5 KiB (4.5×), <strong>full</strong> 1 143.6 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 470.8 KiB."
     link: /profiles-and-size
     linkText: Profiles and size
   - icon: ⚡
@@ -44,7 +44,7 @@ features:
     linkText: Getting started
   - icon: 🧩
     title: Three profiles
-    details: "<code>core</code>: node trees, block / flex / grid layout, gradients, shadows, filters. <code>standard</code>: + stylesheets, HTML, Tailwind, SVG images, tables, floats. <code>full</code>: + emoji, complex scripts, animations, <code>renderSvg</code>. Optional 84.2 KiB WOFF add-on for <code>core</code>."
+    details: "<code>core</code>: node trees, block / flex / grid layout, gradients, shadows, filters. <code>standard</code>: + stylesheets, HTML, Tailwind, SVG images, tables, floats. <code>full</code>: + emoji, complex scripts, animations, <code>renderSvg</code>. Optional 84.4 KiB WOFF add-on for <code>core</code>."
     link: /image/css-support
     linkText: CSS and feature support
   - icon: 📄

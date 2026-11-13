@@ -16,7 +16,7 @@ Documentation: [docs/en](docs/en/README.md) (on GitHub: `https://github.com/OWNE
 Measured against `@takumi-rs/wasm` 2.20.0 on 250 shared fixtures (Node 26, i3-10100; details in
 [docs/en/benchmark.md](docs/en/benchmark.md)):
 
-- **Small**: `core` 487.6 KiB, `standard` 934.4 KiB, `full` 1 141.5 KiB of wasm (194 / 398 / 470 KiB
+- **Small**: `core` 489.6 KiB, `standard` 936.5 KiB, `full` 1 143.6 KiB of wasm (195 / 399 / 471 KiB
   brotli), against 4 234.9 KiB for takumi — 8.7× / 4.5× / 3.7× smaller. The module has **no imports**
   (no WASI, no wasm-bindgen glue) and the JS wrapper has no dependencies.
 - **Same output**: 81 fixtures byte-identical, 169 equivalent (SSIM ≥ 0.99, differences at
@@ -122,9 +122,9 @@ addon when it is installed (same bytes, faster, async off the main thread) and t
 
 | Profile | Import | wasm (raw / brotli) | Adds |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 487.6 / 194.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
-| `standard` | `bm-engine/standard` | 934.4 / 398.0 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 141.5 / 469.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
+| `core` | `bm-engine/core` | 489.6 / 195.3 KiB | node trees + inline styles, `var()` / `calc()`, block / inline / flex / grid / absolute layout, static TTF fonts with OpenType shaping, all border styles, gradients, shadows, filters, 2D transforms, PNG / JPEG input, PNG / JPEG / WebP / raw output |
+| `standard` | `bm-engine/standard` | 936.5 / 398.6 KiB | + stylesheets and selectors, Tailwind, HTML input, SVG images, WOFF / WOFF2, variable and CFF fonts, clip-path / masks / blend modes / backdrop-filter, oklch / lab / color-mix, tables, floats, WebP / GIF input, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 143.6 / 470.8 KiB | + bidi and complex scripts, colour emoji, CSS animations and `renderAnimation`, `renderSvg`, lossy WebP and animated images, ICO output |
 | `pdf` | `bm-engine/pdf` | about 1.5 MB raw | `full` + PDF output: pagination, headers / footers, links, bookmarks, metadata, attachments, tagged PDF, PDF/A. See [PDF output](docs/en/pdf/index.md) |
 
 An 84 KiB add-on (`bm-engine/woff`) gives `core` WOFF / WOFF2 support. `features` tells you what the

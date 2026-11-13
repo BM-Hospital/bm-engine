@@ -24,7 +24,7 @@ hero:
 features:
   - icon: 📦
     title: Nhỏ hơn takumi 4–9×
-    details: "<strong>core</strong> 487.6 KiB (nhỏ hơn 8.7×), <strong>standard</strong> 934.4 KiB (4.5×), <strong>full</strong> 1 141.5 KiB (3.7×) so với 4 234.9 KiB của <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 469.8 KiB."
+    details: "<strong>core</strong> 489.6 KiB (nhỏ hơn 8.7×), <strong>standard</strong> 936.5 KiB (4.5×), <strong>full</strong> 1 143.6 KiB (3.7×) so với 4 234.9 KiB của <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 470.8 KiB."
     link: /vi/profiles-and-size
     linkText: Profile và kích thước
   - icon: ⚡
@@ -44,7 +44,7 @@ features:
     linkText: Bắt đầu
   - icon: 🧩
     title: Ba profile
-    details: "<code>core</code>: cây node, layout block / flex / grid, gradient, bóng đổ, filter. <code>standard</code>: + stylesheet, HTML, Tailwind, ảnh SVG, bảng, float. <code>full</code>: + emoji, chữ phức tạp, animation, <code>renderSvg</code>. Add-on WOFF 84.2 KiB tuỳ chọn cho <code>core</code>."
+    details: "<code>core</code>: cây node, layout block / flex / grid, gradient, bóng đổ, filter. <code>standard</code>: + stylesheet, HTML, Tailwind, ảnh SVG, bảng, float. <code>full</code>: + emoji, chữ phức tạp, animation, <code>renderSvg</code>. Add-on WOFF 84.4 KiB tuỳ chọn cho <code>core</code>."
     link: /vi/image/css-support
     linkText: Hỗ trợ CSS và tính năng
   - icon: 📄

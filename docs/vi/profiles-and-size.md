@@ -3,7 +3,7 @@
 [English](../en/profiles-and-size.md) · [Tiếng Việt](profiles-and-size.md)
 
 bm-engine được biên dịch thành ba binary (và binary thứ tư, `pdf`, cho đầu ra PDF) với tập tính năng khác nhau để bạn chỉ phải tải những gì mình
-dùng: `core` (487.6 KiB), `standard` (934.4 KiB) và `full` (1 141.5 KiB), so với 4 234.9 KiB của bản wasm
+dùng: `core` (489.6 KiB), `standard` (936.5 KiB) và `full` (1 143.6 KiB), so với 4 234.9 KiB của bản wasm
 takumi 2.20. Trang này liệt kê nội dung từng profile, chi phí của từng tính năng tùy chọn, cách một
 profile nhỏ xử lý đầu vào nó không hỗ trợ, cách tự build bản riêng, và lý do chỉ có WOFF được tách thành
 add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 1024 byte.
@@ -12,11 +12,11 @@ add-on tải lười. Mọi kích thước đều đo sau `wasm-opt -Oz`; KiB = 
 
 | Bản build | Gốc | gzip -9 | brotli (q11) | so với takumi (gốc) |
 |:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 487.6 KiB | 228.4 KiB | 194.3 KiB | nhỏ hơn 8.7× |
-| `standard` — `bm_engine.standard.wasm` | 934.4 KiB | 463.7 KiB | 398.0 KiB | nhỏ hơn 4.5× |
-| `full` — `bm_engine.wasm` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | nhỏ hơn 3.7× |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 1 555.8 KiB | 761.6 KiB | 625.1 KiB | nhỏ hơn 2.7× |
-| Add-on WOFF — `bm_woff.wasm` | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
+| `core` — `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB | 195.3 KiB | nhỏ hơn 8.7× |
+| `standard` — `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB | 398.6 KiB | nhỏ hơn 4.5× |
+| `full` — `bm_engine.wasm` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB | nhỏ hơn 3.7× |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 1 675.2 KiB | 810.0 KiB | 660.2 KiB | nhỏ hơn 2.5× |
+| Add-on WOFF — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB | — |
 | takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
 
 Lớp bọc JavaScript chỉ vài KiB ESM không phụ thuộc gì và giống nhau cho mọi profile. Các binary không
@@ -34,15 +34,22 @@ wasm vẫn nằm trong gói chính để làm phương án dự phòng. Nên dù
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 083 | 1 120 | 914 | đã chạy (benchmark này) |
-| bm wasm `core` | wasm32 | 487 | 228 | 194 |  |
-| bm wasm `standard` | wasm32 | 934 | 463 | 398 |  |
-| bm wasm `full` | wasm32 | 1 140 | 558 | 470 |  |
-| bm wasm `add-on WOFF` | wasm32 | 84.2 | 67.7 | 65.5 |  |
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
+| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
+| bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
+| bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
+| bm wasm `add-on WOFF` | wasm32 | 84.4 | 67.8 | 65.5 |  |
 | takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
 | takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
 
-Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 với Zig 0.17.1, ReleaseFast). Mỗi người dùng chỉ tải một addon (gói optional cho nền tảng của họ) cộng với bản wasm dự phòng nằm trong gói chính.
+Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-13 với Zig 0.17.1, ReleaseFast). Mỗi người dùng chỉ tải một addon (gói optional cho nền tảng của họ) cộng với bản wasm dự phòng nằm trong gói chính.
 <!-- /native-bench:sizes -->
 
 ## Mỗi profile gồm những gì
@@ -77,7 +84,7 @@ Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 vớ
 
 `bm_engine.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
 các thuộc tính CSS paged-media ([Đầu ra PDF](pdf/index.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-engine/pdf` trên Node.js (addon là
-tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó thêm khoảng 0.4 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
+tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó thêm khoảng 0.5 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
 tính năng của `core`, `standard` hay `full`.
 
 ## Chi phí biên của từng tính năng
@@ -164,7 +171,7 @@ Các cờ: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects
 
 ## Add-on WOFF
 
-`bm_woff.wasm` (84.2 KiB, 65.5 KiB brotli) là chính bộ giải mã WOFF / WOFF2 của engine (kể cả brotli)
+`bm_woff.wasm` (84.4 KiB, 65.5 KiB brotli) là chính bộ giải mã WOFF / WOFF2 của engine (kể cả brotli)
 được tách thành module riêng. `loadWoff()` từ `bm-engine/woff` cài nó vào, sau đó `registerFont` chuyển
 WOFF / WOFF2 thành TTF / OTF trước khi giao cho bất kỳ entry nào. Font sau khi chuyển trùng từng byte với
 kết quả của bộ giải mã tích hợp. Add-on hữu ích trên `core` khi font của bạn ở dạng WOFF2 (ví dụ lấy từ

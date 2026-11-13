@@ -56,8 +56,8 @@ cũng giống nhau giữa các lần chạy, giúp PDF dễ cache và dễ so s�
 
 ## Profile `pdf` và kích thước
 
-`bm_engine.pdf.wasm` là `full` cộng bộ ghi PDF: 1 555.8 KiB thô, 761.6 KiB với gzip -9 và
-625.1 KiB với brotli -11, nhiều hơn `bm_engine.wasm` (`full`: 1 141.5 / 559.0 / 469.8 KiB) khoảng 0.4 MB. Mã PDF chỉ được biên dịch vào binary này và vào addon native, cùng với phần dàn trang theo trang giấy và các thuộc
+`bm_engine.pdf.wasm` là `full` cộng bộ ghi PDF: 1 675.2 KiB thô, 810.0 KiB với gzip -9 và
+660.2 KiB với brotli -11, nhiều hơn `bm_engine.wasm` (`full`: 1 143.6 / 560.0 / 470.8 KiB) khoảng 0.5 MB. Mã PDF chỉ được biên dịch vào binary này và vào addon native, cùng với phần dàn trang theo trang giấy và các thuộc
 tính CSS paged-media mà nó cần. (Addon native là tập tính năng `full` cộng đầu ra PDF; bản thân `bm-engine` không
 bao giờ cung cấp bộ ghi PDF.) [Profile và kích thước](../profiles-and-size.md) có số liệu chính xác cho mọi binary. Tự build
 bằng `npm run build:pdf` (`node scripts/build.mjs --profile=pdf`) hoặc `zig build -Dprofile=pdf`
@@ -101,34 +101,33 @@ so từng byte trên mọi tài liệu của bộ đo, và mọi PDF đi qua cá
 (`node bench/pdf/validate.mjs`) cùng phép so sánh hình ảnh với takumi-pdf (`node bench/pdf/visual.mjs`).
 
 <!-- pdf-bench:summary -->
-- **Thời gian render, bm-native so với takumi-pdf:** sync 0,30× [0,31× / 0,30× / 0,31×] (nhanh hơn ở 112/112, 0,12×–0,97×); async 0,32× [0,32× / 0,31× / 0,32×] (nhanh hơn ở 112/112, 0,12×–0,94×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
-- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,49× [0,50× / 0,49× / 0,49×] (nhanh hơn ở 107/112, 0,20×–1,36×). **bm-native vs bm-wasm (sync):** 0,62× [0,61× / 0,61× / 0,62×] (nhanh hơn ở 112/112, 0,38×–0,77×).
-- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 284 / 206 / 28 / lỗi; bm-wasm 108 / 89 / 14 / lỗi; takumi-pdf 29 / 46 / 75 / 83.
-- **Trùng byte:** bm-native == bm-wasm 113/114 tài liệu, cùng lỗi ở cả hai: 1.
-- **Bộ kiểm tra:** bm-native 104/113 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 101/113.
-- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 79, equivalent 30, different 3, close 1 (113 tài liệu, pdfium + mupdf).
-- **Nhiễu:** geomean tuyệt đối lệch giữa các lượt bm-native:sync 10,1 %, bm-native:async 10,2 %, bm-wasm:sync 10,2 %, bm-wasm:async 11,6 %, takumi-pdf:async 12,9 % ⚠; hãy đọc tỉ lệ (đo xen kẽ).
+- **Thời gian render, bm-native so với takumi-pdf:** sync 0,33× [0,33× / 0,34× / 0,34×] (nhanh hơn ở 112/112, 0,14×–0,91×); async 0,33× [0,33× / 0,33× / 0,33×] (nhanh hơn ở 112/112, 0,13×–0,92×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
+- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,54× [0,54× / 0,54× / 0,54×] (nhanh hơn ở 107/112, 0,23×–1,34×). **bm-native vs bm-wasm (sync):** 0,62× [0,62× / 0,63× / 0,62×] (nhanh hơn ở 112/112, 0,43×–0,75×).
+- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
+- **Trùng byte:** bm-native == bm-wasm 114/114 tài liệu.
+- **Bộ kiểm tra:** bm-native 105/114 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 114/114.
+- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 86, equivalent 27, different 1 (114 tài liệu, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 <!-- pdf-bench:cold -->
 | Engine | wall median ms | p95 | hơn Node trống | import | font | PDF đầu tiên | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Node.js trống | 55,9 | 88,6 | — | — | — | — | 45 MiB |
-| bm-native | 67,7 | 106 | 11,8 | 6,80 | 0,36 | 3,10 | 50 MiB |
-| bm-wasm | 162 | 209 | 106 | 9,90 | 2,56 | 58,7 | 74 MiB |
-| takumi-pdf | 268 | 296 | 213 | 42,4 | 3,49 | 128 | 76 MiB |
+| Node.js trống | 43,7 | 50,8 | — | — | — | — | 43 MiB |
+| bm-native | 52,7 | 57,1 | 8,90 | 4,90 | 0,34 | 3,20 | 48 MiB |
+| bm-wasm | 136 | 145 | 92,3 | 8,50 | 2,40 | 54,6 | 73 MiB |
+| takumi-pdf | 213 | 233 | 169 | 35,8 | 3,12 | 110 | 75 MiB |
 
-30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 52 %.
+30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 24.3 %.
 <!-- /pdf-bench:cold -->
 
 <!-- pdf-bench:eventloop -->
 | Engine | API | render ms | độ trễ timer lớn nhất | p99 | số tick |
 |:--|--:|--:|--:|--:|--:|
-| bm-native | sync | 3.899 | 3.899 ms | 3.899 ms | 1 |
-| bm-native | async | 3.765 | 15,9 ms | 1,40 ms | 3681 |
-| bm-wasm | sync | 10.694 | 10.694 ms | 10.694 ms | 1 |
-| bm-wasm | async | 10.366 | 10.366 ms | 10.366 ms | 1 |
-| takumi-pdf | async | 1.511 | 1.511 ms | 1.511 ms | 1 |
+| bm-native | sync | 180 | 180 ms | 180 ms | 1 |
+| bm-native | async | 197 | 1,50 ms | 1,10 ms | 198 |
+| bm-wasm | sync | 373 | 374 ms | 374 ms | 1 |
+| bm-wasm | async | 376 | 376 ms | 376 ms | 1 |
+| takumi-pdf | async | 1.135 | 1.135 ms | 1.135 ms | 1 |
 
 Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gần bằng thời gian render nghĩa là event loop bị chặn suốt lần render.
 <!-- /pdf-bench:eventloop -->
@@ -136,25 +135,25 @@ Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gầ
 <!-- pdf-bench:throughput -->
 | Cấu hình | N=1 | N=2 | N=4 | N=8 |
 |:--|--:|--:|--:|--:|
-| bm-native seq uv=4 | 464 |  |  |  |
-| bm-wasm seq | 277 |  |  |  |
-| takumi-pdf seq | 129 |  |  |  |
-| bm-native many k=1 uv=4 | 521 | 529 | 473 | 513 |
-| bm-native many k=2 uv=4 | 503 | 976 | 925 | 738 |
-| bm-native many k=4 uv=4 | 347 | 722 | 1.299 | 1.370 |
-| bm-native many k=8 uv=4 | 430 | 827 | 1.380 | 1.495 |
-| bm-native many k=1 uv=8 | 477 | 492 | 460 | 492 |
-| bm-native many k=2 uv=8 | 485 | 798 | 941 | 914 |
-| bm-native many k=4 uv=8 | 474 | 888 | 1.523 | 1.639 |
-| bm-native many k=8 uv=8 | 513 | 951 | 1.684 | 2.295 |
-| bm-wasm pool k=1 | 308 | 314 | 314 | 321 |
-| bm-wasm pool k=2 | 297 | 620 | 638 | 630 |
-| bm-wasm pool k=4 | 308 | 618 | 981 | 981 |
-| bm-wasm pool k=8 | 321 | 576 | 719 | 1.154 |
-| takumi-pdf pool k=1 | 107 | 129 | 127 | 139 |
-| takumi-pdf pool k=2 | 122 | 293 | 283 | 297 |
-| takumi-pdf pool k=4 | 123 | 282 | 404 | 497 |
-| takumi-pdf pool k=8 | 129 | 288 | 510 | 635 |
+| bm-native seq uv=4 | 502 |  |  |  |
+| bm-wasm seq | 315 |  |  |  |
+| takumi-pdf seq | 146 |  |  |  |
+| bm-native many k=1 uv=4 | 502 | 525 | 529 | 519 |
+| bm-native many k=2 uv=4 | 501 | 1.031 | 1.032 | 1.016 |
+| bm-native many k=4 uv=4 | 493 | 1.009 | 1.943 | 1.888 |
+| bm-native many k=8 uv=4 | 510 | 1.022 | 1.914 | 1.884 |
+| bm-native many k=1 uv=8 | 486 | 522 | 531 | 527 |
+| bm-native many k=2 uv=8 | 495 | 1.025 | 1.028 | 1.002 |
+| bm-native many k=4 uv=8 | 499 | 1.021 | 1.858 | 1.980 |
+| bm-native many k=8 uv=8 | 514 | 1.040 | 1.930 | 2.373 |
+| bm-wasm pool k=1 | 303 | 322 | 321 | 325 |
+| bm-wasm pool k=2 | 304 | 626 | 631 | 629 |
+| bm-wasm pool k=4 | 293 | 625 | 1.171 | 1.199 |
+| bm-wasm pool k=8 | 306 | 624 | 1.182 | 1.416 |
+| takumi-pdf pool k=1 | 143 | 167 | 175 | 178 |
+| takumi-pdf pool k=2 | 145 | 326 | 344 | 350 |
+| takumi-pdf pool k=4 | 146 | 308 | 637 | 655 |
+| takumi-pdf pool k=8 | 146 | 313 | 642 | 739 |
 
 Số PDF mỗi giây, docs/invoice (one-page A4 invoice, HTML + footer), closed loop: N clients each with one request in flight; 2000 ms mỗi điểm, 8 CPU logic. seq = một client với API sync (takumi-pdf: await render), many = N client trên K renderer bm-native (API async trên pool libuv, UV_THREADPOOL_SIZE = uv), pool = pool worker_threads gồm K worker, mỗi worker có engine riêng.
 <!-- /pdf-bench:throughput -->

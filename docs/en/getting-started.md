@@ -224,8 +224,8 @@ export default {
 
 What was tested: `initSync(new WebAssembly.Module(bytes))` was executed in Node, and the package test
 resolves the entries with `node --conditions=workerd` and initialises them from a `WebAssembly.Module`;
-the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 228.4 KiB,
-standard 463.7 KiB, full 559.0 KiB) is what counts against the Workers script-size limit of your plan. The
+the snippet was **not** run under wrangler / workerd. The compressed size of each profile (gzip -9: core 229.5 KiB,
+standard 465.1 KiB, full 560.0 KiB) is what counts against the Workers script-size limit of your plan. The
 WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: the `node` condition applies, so `import { Renderer } from "bm-engine"` tries the native
@@ -236,9 +236,9 @@ WOFF add-on works the same way: `import woff from "bm-engine/woff.wasm"; await l
 
 | Profile | wasm raw / brotli | Pick it when |
 |:--|:--|:--|
-| `core` | 487.6 / 194.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
-| `standard` | 934.4 / 398.0 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
-| `full` | 1 141.5 / 469.8 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
+| `core` | 489.6 / 195.3 KiB | Inputs are node trees with inline `style`, static TTF fonts and PNG/JPEG images (typical OG cards). |
+| `standard` | 936.5 / 398.6 KiB | You need stylesheets (`css`), Tailwind (`tw`), HTML input, SVG images, WOFF2, variable or CFF fonts, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables or floats. |
+| `full` | 1 143.6 / 470.8 KiB | You also need bidi / complex scripts (Arabic, Hebrew, Indic, Thai), colour emoji, CSS animations / `renderAnimation`, `renderSvg`, lossy-WebP or animated image input, or ICO output. |
 
 Details, and what a smaller profile does with input it cannot handle, are in
 [Profiles and size](profiles-and-size.md). At runtime `features` tells you what the loaded binary has:

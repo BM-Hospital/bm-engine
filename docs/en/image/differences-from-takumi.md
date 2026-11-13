@@ -77,7 +77,7 @@ after converting the JSX with `fromJsx` (see step 5).
 | Area | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / module format | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, ESM only (CommonJS via `require(esm)`), WebAssembly only — no native binding |
-| Binary | one 4.2 MB wasm | three profiles (487.6 KiB – 1.11 MiB), a `pdf` profile (about 1.5 MB) + WOFF add-on; `features` reports the loaded one |
+| Binary | one 4.2 MB wasm | three profiles (489.6 KiB – 1.12 MiB), a `pdf` profile (about 1.6 MB) + WOFF add-on; `features` reports the loaded one |
 | Wasm imports | wasm-bindgen glue | none |
 | Sync API | wrapper methods are async | every method has a `*Sync` twin; async methods resolve immediately |
 | `registerFont` | returns `Promise<RegisteredFamily[]>` (wrapper) | returns `RegisteredFamily[]` synchronously for bytes / `{ data: bytes }`; a `Promise` only for URLs and lazy data |

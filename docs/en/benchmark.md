@@ -22,31 +22,30 @@ takumi-pdf's (`node bench/pdf/visual.mjs`). Render times are warm, engines inter
 cold start, memory, event loop, scaling and throughput run one fresh process per point.
 
 <!-- pdf-bench:summary -->
-- **Render time, bm-native vs takumi-pdf:** sync 0.30× [0.31× / 0.30× / 0.31×] (faster on 112/112, 0.12×–0.97×); async 0.32× [0.32× / 0.31× / 0.32×] (faster on 112/112, 0.12×–0.94×). Below 1× = bm takes less time; in brackets the same ratio per pass.
-- **bm-wasm vs takumi-pdf (both wasm):** 0.49× [0.50× / 0.49× / 0.49×] (faster on 107/112, 0.20×–1.36×). **bm-native vs bm-wasm (sync):** 0.62× [0.61× / 0.61× / 0.62×] (faster on 112/112, 0.38×–0.77×).
-- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 284 / 206 / 28 / error; bm-wasm 108 / 89 / 14 / error; takumi-pdf 29 / 46 / 75 / 83.
-- **Identity:** bm-native == bm-wasm 113/114 documents, same error on both: 1.
-- **Validators:** bm-native 104/113 PDFs without any error or warning (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 101/113.
-- **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 79, equivalent 30, different 3, close 1 (113 documents, pdfium + mupdf).
-- **Noise:** absolute geomeans moved between passes by bm-native:sync 10.1 %, bm-native:async 10.2 %, bm-wasm:sync 10.2 %, bm-wasm:async 11.6 %, takumi-pdf:async 12.9 % ⚠; read the ratios (measured interleaved).
+- **Render time, bm-native vs takumi-pdf:** sync 0.33× [0.33× / 0.34× / 0.34×] (faster on 112/112, 0.14×–0.91×); async 0.33× [0.33× / 0.33× / 0.33×] (faster on 112/112, 0.13×–0.92×). Below 1× = bm takes less time; in brackets the same ratio per pass.
+- **bm-wasm vs takumi-pdf (both wasm):** 0.54× [0.54× / 0.54× / 0.54×] (faster on 107/112, 0.23×–1.34×). **bm-native vs bm-wasm (sync):** 0.62× [0.62× / 0.63× / 0.62×] (faster on 112/112, 0.43×–0.75×).
+- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
+- **Identity:** bm-native == bm-wasm 114/114 documents.
+- **Validators:** bm-native 105/114 PDFs without any error or warning (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 114/114.
+- **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 86, equivalent 27, different 1 (114 documents, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 <!-- pdf-bench:speed -->
 | Variant | geomean ms | per pass | spread |
 |:--|--:|--:|--:|
-| bm-native:sync | 1.08 | 1.05 / 1.16 / 1.15 | 10.1 % ⚠ |
-| bm-native:async | 1.13 | 1.09 / 1.20 / 1.21 | 10.2 % ⚠ |
-| bm-wasm:sync | 1.75 | 1.71 / 1.90 / 1.85 | 10.2 % ⚠ |
-| bm-wasm:async | 1.66 | 1.62 / 1.82 / 1.75 | 11.6 % ⚠ |
-| takumi-pdf:async | 3.56 | 3.40 / 3.89 / 3.79 | 12.9 % ⚠ |
+| bm-native:sync | 1.04 | 1.05 / 1.05 / 1.04 | 0.7 % |
+| bm-native:async | 1.03 | 1.04 / 1.05 / 1.04 | 0.3 % |
+| bm-wasm:sync | 1.67 | 1.68 / 1.68 / 1.68 | 0.4 % |
+| bm-wasm:async | 1.56 | 1.56 / 1.56 / 1.56 | 0.4 % |
+| takumi-pdf:async | 3.11 | 3.13 / 3.14 / 3.12 | 0.5 % |
 
 | Ratio (time) | geomean | per pass | faster | range | spread |
 |:--|--:|--:|--:|--:|--:|
-| bm-native:sync / takumi-pdf:async | 0.30× | 0.31× / 0.30× / 0.31× | 112/112 | 0.12×–0.97× | 3.0 % |
-| bm-native:async / takumi-pdf:async | 0.32× | 0.32× / 0.31× / 0.32× | 112/112 | 0.12×–0.94× | 4.1 % |
-| bm-wasm:sync / takumi-pdf:async | 0.49× | 0.50× / 0.49× / 0.49× | 107/112 | 0.20×–1.36× | 3.1 % |
-| bm-native:sync / bm-wasm:sync | 0.62× | 0.61× / 0.61× / 0.62× | 112/112 | 0.38×–0.77× | 1.8 % |
-| bm-native:async / bm-native:sync | 1.05× | 1.04× / 1.03× / 1.05× | 25/112 | 0.88×–1.39× | 2.1 % |
+| bm-native:sync / takumi-pdf:async | 0.33× | 0.33× / 0.34× / 0.34× | 112/112 | 0.14×–0.91× | 0.3 % |
+| bm-native:async / takumi-pdf:async | 0.33× | 0.33× / 0.33× / 0.33× | 112/112 | 0.13×–0.92× | 0.3 % |
+| bm-wasm:sync / takumi-pdf:async | 0.54× | 0.54× / 0.54× / 0.54× | 107/112 | 0.23×–1.34× | 0.2 % |
+| bm-native:sync / bm-wasm:sync | 0.62× | 0.62× / 0.63× / 0.62× | 112/112 | 0.43×–0.75× | 0.6 % |
+| bm-native:async / bm-native:sync | 0.99× | 1.00× / 0.99× / 1.00× | 68/112 | 0.91×–1.09× | 0.4 % |
 
 Warm render time per document (fonts registered beforehand, the output kept in memory), 112 documents, 3 pass(es); variants interleaved in rotating order every round.
 <!-- /pdf-bench:speed -->
@@ -54,32 +53,32 @@ Warm render time per document (fonts registered beforehand, the output kept in m
 <!-- pdf-bench:scale -->
 | Pages | bm-native ms | pages/s | size | peak RSS | bm-wasm ms | pages/s | size | peak RSS | takumi-pdf ms | pages/s | size | peak RSS |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 1 | 3.50 ms | 283.7 | 27 KiB | 60 MiB | 9.30 ms | 107.9 | 27 KiB | 85 MiB | 34.9 ms | 28.6 | 27 KiB | 111 MiB |
-| 10 | 48.5 ms | 206.3 | 99 KiB | 75 MiB | 112 ms | 89.0 | 99 KiB | 89 MiB | 219 ms | 45.6 | 58 KiB | 119 MiB |
-| 100 | 3,553 ms | 28.1 | 4,530 KiB | 571 MiB | 7,147 ms | 14.0 | 4,530 KiB | 669 MiB | 1,341 ms | 74.6 | 426 KiB | 135 MiB |
-| 500 | error: bm-engine: out of memory |  |  | 2,433 MiB | error: bm-engine: out of memory |  |  | 2,098 MiB | 6,015 ms | 83.1 | 2,186 KiB | 191 MiB |
+| 1 | 2.40 ms | 408.8 | 27 KiB | 53 MiB | 7.80 ms | 128.0 | 27 KiB | 81 MiB | 17.5 ms | 57.3 | 27 KiB | 106 MiB |
+| 10 | 17.9 ms | 558.9 | 58 KiB | 60 MiB | 32.7 ms | 306.0 | 58 KiB | 81 MiB | 99.8 ms | 100.2 | 58 KiB | 115 MiB |
+| 100 | 181 ms | 553.1 | 369 KiB | 114 MiB | 292 ms | 342.2 | 369 KiB | 126 MiB | 854 ms | 117.2 | 426 KiB | 127 MiB |
+| 500 | 993 ms | 503.6 | 1,772 KiB | 317 MiB | 1,693 ms | 295.3 | 1,772 KiB | 286 MiB | 4,534 ms | 110.3 | 2,186 KiB | 190 MiB |
 
-One render of the stress document (per page: heading, paragraphs, a 14-row table, an image; `break-after: page`) in a fresh process per point; warmed with the 1-page document. Super-linearity (time per page at 100 pages / at 10 pages; 1× = linear): bm-native 7.33×, bm-wasm 6.36×, takumi-pdf 0.61×.
+One render of the stress document (per page: heading, paragraphs, a 14-row table, an image; `break-after: page`) in a fresh process per point; warmed with the 1-page document. Super-linearity (time per page at 100 pages / at 10 pages; 1× = linear): bm-native 1.01×, bm-wasm 0.89×, takumi-pdf 0.86×.
 <!-- /pdf-bench:scale -->
 
 <!-- pdf-bench:equiv -->
 | Engine | PDFs | clean | errors | warnings | bm-only | shared with takumi-pdf | veraPDF |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| bm-native | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
-| bm-wasm | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-native | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
 | takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
 
-Validators: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Semantics (pdf.js: text per page, links, outline, attachments, tags, metadata) identical to takumi-pdf in 101/113 documents.
+Validators: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Semantics (pdf.js: text per page, links, outline, attachments, tags, metadata) identical to takumi-pdf in 114/114 documents.
 
 | Rasteriser | identical | equivalent | close | different |
 |:--|--:|--:|--:|--:|
-| pdfium | 73 | 35 | 2 | 3 |
-| mupdf | 69 | 39 | 2 | 3 |
-| best of the rasterisers | 79 | 30 | 1 | 3 |
+| pdfium | 78 | 35 | 0 | 1 |
+| mupdf | 78 | 34 | 1 | 1 |
+| best of the rasterisers | 86 | 27 | 0 | 1 |
 
-bm-native vs takumi-pdf, same rasteriser, 96 and 144 dpi, 113 documents (worst page counts). bm's PDF vs bm's own image render of the same tree (viewport documents, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+bm-native vs takumi-pdf, same rasteriser, 96 and 144 dpi, 114 documents (worst page counts). bm's PDF vs bm's own image render of the same tree (viewport documents, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
 
-bm-native == bm-wasm byte for byte: 113/114 (+1 with the same error on both). Render errors: stress/500p bm-native: bm-engine: out of memory; stress/500p bm-wasm: bm-engine: out of memory.
+bm-native == bm-wasm byte for byte: 114/114. Render errors: none.
 <!-- /pdf-bench:equiv -->
 
 ## Native Node.js addon (phase 4)
@@ -93,30 +92,30 @@ noise record) are in [docs/BENCHMARK.md](../BENCHMARK.md#giai-đoạn-4--native-
 is the wasm report (final build; earlier phases are kept as history).
 
 <!-- native-bench:highlights -->
-- **bm-native vs bm-wasm (sync):** raw 0.60× the wasm time [0.60× / 0.59× / 0.60×] (faster on 250/250 fixtures), PNG 0.68× [0.68× / 0.68× / 0.68×] (faster on 250/250).
-- **bm-native vs takumi-native, both async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm faster on 244/250, per fixture 0.13×–1.21×), PNG 0.56× [0.56× / 0.58× / 0.56×] (bm faster on 227/250, per fixture 0.23×–2.28×). With bm's sync API: raw 0.50×, PNG 0.56×. Below 1× = bm-native takes less time; in brackets the same ratio in each pass.
-- **CPU time per image (both async):** PNG 2.32 ms bm-native vs 3.81 ms takumi-native (1.47 vs 1.78 cores busy during a render); raw 1.42 vs 1.71 ms. takumi-native runs parts of one render (PNG deflate segments, blur, WebP, animation frames) on its own rayon thread pool; bm renders one image on one thread (bm-native sync: 0.91 cores for PNG).
-- **takumi's own two builds:** takumi-native takes 0.75× the time of takumi-wasm for raw and 0.56× for PNG.
-- **Identity:** bm-native and bm-wasm produced the same bytes in 1810/1810 comparisons over 250 fixtures (637 MB; 0 mismatches).
-- **Noise:** the absolute raw / PNG geomeans moved by up to 33.4 % between passes (the load from other processes changed during the run), while the engine-to-engine ratios, measured interleaved inside each pass, moved by at most 3.70 %. Read the ratios; treat absolute milliseconds as ±16.7 %.
+- **bm-native vs bm-wasm (sync):** raw 0.61× the wasm time [0.62× / 0.61× / 0.61×] (faster on 250/250 fixtures), PNG 0.67× [0.68× / 0.68× / 0.67×] (faster on 250/250).
+- **bm-native vs takumi-native, both async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm faster on 244/250, per fixture 0.12×–1.20×), PNG 0.54× [0.55× / 0.55× / 0.54×] (bm faster on 227/250, per fixture 0.23×–2.54×). With bm's sync API: raw 0.53×, PNG 0.57×. Below 1× = bm-native takes less time; in brackets the same ratio in each pass.
+- **CPU time per image (both async):** PNG 1.98 ms bm-native vs 3.20 ms takumi-native (1.73 vs 1.98 cores busy during a render); raw 1.30 vs 1.41 ms. takumi-native runs parts of one render (PNG deflate segments, blur, WebP, animation frames) on its own rayon thread pool; bm renders one image on one thread (bm-native sync: 0.87 cores for PNG).
+- **takumi's own two builds:** takumi-native takes 0.72× the time of takumi-wasm for raw and 0.55× for PNG.
+- **Identity:** bm-native and bm-wasm produced the same bytes in 2626/2626 comparisons over 250 fixtures (802 MB; 0 mismatches).
+- **Noise:** the absolute raw / PNG geomeans moved by up to 4.70 % between passes (the load from other processes changed during the run), while the engine-to-engine ratios, measured interleaved inside each pass, moved by at most 1.50 %. Read the ratios; treat absolute milliseconds as ±2.35 %.
 <!-- /native-bench:highlights -->
 
 <!-- native-bench:summary -->
 | Metric | bm-native | bm-wasm | takumi-native | takumi-wasm |
 |:--|--:|--:|--:|--:|
-| raw RGBA, geomean ms — sync API | 0.51 ±15.5 % ⚠ | 0.85 ±16.1 % ⚠ | no sync API | — |
-| raw RGBA, geomean ms — async API | 0.56 ±15.7 % ⚠ | — | 1.02 ±15.3 % ⚠ | 1.36 ±15.8 % ⚠ |
-| PNG, geomean ms — sync API | 1.05 ±14.6 % ⚠ | 1.56 ±15.0 % ⚠ | no sync API | — |
-| PNG, geomean ms — async API | 1.06 ±16.7 % ⚠ | — | 1.89 ±14.5 % ⚠ | 3.36 ±15.8 % ⚠ |
-| CPU time per PNG render, mean ms (cores used) | 1.42 (0.91 cores) | 1.78 (0.77 cores) | 3.81 (1.78 cores) | 4.08 (0.86 cores) |
+| raw RGBA, geomean ms — sync API | 0.45 ±2.15 % | 0.74 ±2.15 % | no sync API | — |
+| raw RGBA, geomean ms — async API | 0.47 ±2.25 % | — | 0.86 ±2.10 % | 1.19 ±2.35 % |
+| PNG, geomean ms — sync API | 0.95 ±1.95 % | 1.41 ±1.55 % | no sync API | — |
+| PNG, geomean ms — async API | 0.90 ±2.30 % | — | 1.66 ±1.55 % | 3.03 ±1.65 % |
+| CPU time per PNG render, mean ms (cores used) | 1.00 (0.87 cores) | 1.30 (0.76 cores) | 3.20 (1.98 cores) | 2.84 (0.81 cores) |
 | PNG file size, geomean vs takumi | 0.80× | 0.80× | 1.00× | 1.00× |
-| Cold start over empty Node, median / p95 ms | 31.3 / 69.2 | 99.9 / 138 | 50.9 / 97.5 | 238 / 304 |
-| RSS after 1 → 10 suite passes, MiB | 94.7 → 96.0 | 132 → 156 | 102 → 139 | 140 → 176 |
-| Peak RSS, one 4000×4000 PNG, MiB | 143 | 149 | 135 | 151 |
-| Event loop: max 1 ms-timer delay, heavy 2400×2400 render, ms | 227 (sync) · 1.50 (async) | 455 (sync) · 473 (async) | 7.30 (async) | 819 (async) |
-| Event loop: same, 60-frame animation, ms | 476 (sync) · 1.20 (async) | 969 (sync) · 954 (async) | 21.6 (async) | 2 072 (async) |
-| Throughput, og card PNG, 4 concurrent, images/s (best config) | 312 (many K=4, UV 4) ⚠ | 233 (pool K=4) ⚠ | 270 (one, UV 8) ⚠ | 137 (pool K=8) ⚠ |
-| Throughput, 8 concurrent, images/s (best config) | 402 (many K=8, UV 8) ⚠ | 270 (pool K=8) ⚠ | 316 (one, UV 8) ⚠ | 180 (pool K=8) ⚠ |
+| Cold start over empty Node, median / p95 ms | 21.8 / 45.5 | 75.5 / 93.0 | 46.2 / 69.2 | 185 / 249 |
+| RSS after 1 → 10 suite passes, MiB | 90.7 → 91.4 | 127 → 150 | 118 → 124 | 138 → 172 |
+| Peak RSS, one 4000×4000 PNG, MiB | 140 | 146 | 133 | 148 |
+| Event loop: max 1 ms-timer delay, heavy 2400×2400 render, ms | 211 (sync) · 1.20 (async) | 401 (sync) · 392 (async) | 13.4 (async) | 746 (async) |
+| Event loop: same, 60-frame animation, ms | 438 (sync) · 1.10 (async) | 848 (sync) · 873 (async) | 11.5 (async) | 1 848 (async) |
+| Throughput, og card PNG, 4 concurrent, images/s (best config) | 372 (many K=8, UV 4) | 263 (pool K=4) | 298 (many K=2, UV 8) | 173 (pool K=8) |
+| Throughput, 8 concurrent, images/s (best config) | 408 (many K=8, UV 8) | 291 (pool K=8) | 336 (one, UV 8) | 202 (pool K=8) |
 
 Geomeans over the 250 fixtures every engine rendered; ± = half the range of the 3 passes' geomeans relative to their median; ⚠ = more than 10 % range. Cold start: median / p95 of 30 fresh processes minus the empty-Node median. Event-loop, memory and throughput are single runs; on the throughput rows ⚠ = other processes used more than one core on average during that stage.
 <!-- /native-bench:summary -->
@@ -154,10 +153,10 @@ Geomeans over the 250 fixtures every engine rendered; ± = half the range of the
 
 | Build | Raw | gzip -9 | brotli | vs. takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 487.6 KiB | 228.4 KiB | 194.3 KiB | 8.7× smaller |
-| `standard` | 934.4 KiB | 463.7 KiB | 398.0 KiB | 4.5× smaller |
-| `full` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | 3.7× smaller |
-| WOFF add-on | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
+| `core` | 489.6 KiB | 229.5 KiB | 195.3 KiB | 8.7× smaller |
+| `standard` | 936.5 KiB | 465.1 KiB | 398.6 KiB | 4.5× smaller |
+| `full` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB | 3.7× smaller |
+| WOFF add-on | 84.4 KiB | 67.8 KiB | 65.5 KiB | — |
 | phase 1 (single build) | 320.9 KiB | 147.1 KiB | 126.5 KiB | 13.2× smaller |
 
 Phase-2 sizes were 428.5 / 849.6 / 1 070.0 KiB (9.9× / 5.0× / 4.0× smaller) and phase-3 sizes 454.5 / 877.5 / 1 099.8 KiB; the inline-formatting work added about 26–30 KB to every profile, and the later fixes about 33–56 KB more.

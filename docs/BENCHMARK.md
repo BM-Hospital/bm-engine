@@ -32,24 +32,22 @@ hai bằng cùng thiết lập.
 |:--|:--|
 | Máy | Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz, 8 CPU logic, 7.8 GiB, win32 10.0.26200 x64 |
 | Node.js | v26.13.0 (V8 14.6.202.34-node.40, libuv 1.52.1) |
-| bm-engine | 0.1.0, git `760e756401` (pdf-validate, 5 file đang sửa) |
-| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3.025 KiB, sha256 `549d5eec000f` |
-| bm-wasm | `js/bm_engine.pdf.wasm` (profile pdf), 1.556 KiB, sha256 `5272da5e6cdf` |
+| bm-engine | 0.1.0, git `cffb3e7f04` (main, 9 file đang sửa) |
+| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3.327 KiB, sha256 `1d5ff5ea0a4f` |
+| bm-wasm | `js/bm_engine.pdf.wasm` (profile pdf), 1.675 KiB, sha256 `9550649646c6` |
 | takumi-pdf | npm `takumi-pdf` 0.20.0 (wasm, 4.335 KiB); không có bản native nào được phát hành |
-| Lần chạy | 2026-11-12 16:59 UTC, full, 11.8 min; CPU bận trước khi chạy: 31.8 % |
-| Chạy lại một phần | 2026-11-12 17:13 (equiv) |
+| Lần chạy | 2026-11-13 04:39 UTC, full, 5.8 min; CPU bận trước khi chạy: 5.5 % |
 <!-- /pdf-bench:env -->
 
 ### Tóm tắt
 
 <!-- pdf-bench:summary -->
-- **Thời gian render, bm-native so với takumi-pdf:** sync 0,30× [0,31× / 0,30× / 0,31×] (nhanh hơn ở 112/112, 0,12×–0,97×); async 0,32× [0,32× / 0,31× / 0,32×] (nhanh hơn ở 112/112, 0,12×–0,94×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
-- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,49× [0,50× / 0,49× / 0,49×] (nhanh hơn ở 107/112, 0,20×–1,36×). **bm-native vs bm-wasm (sync):** 0,62× [0,61× / 0,61× / 0,62×] (nhanh hơn ở 112/112, 0,38×–0,77×).
-- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 284 / 206 / 28 / lỗi; bm-wasm 108 / 89 / 14 / lỗi; takumi-pdf 29 / 46 / 75 / 83.
-- **Trùng byte:** bm-native == bm-wasm 113/114 tài liệu, cùng lỗi ở cả hai: 1.
-- **Bộ kiểm tra:** bm-native 104/113 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 101/113.
-- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 79, equivalent 30, different 3, close 1 (113 tài liệu, pdfium + mupdf).
-- **Nhiễu:** geomean tuyệt đối lệch giữa các lượt bm-native:sync 10,1 %, bm-native:async 10,2 %, bm-wasm:sync 10,2 %, bm-wasm:async 11,6 %, takumi-pdf:async 12,9 % ⚠; hãy đọc tỉ lệ (đo xen kẽ).
+- **Thời gian render, bm-native so với takumi-pdf:** sync 0,33× [0,33× / 0,34× / 0,34×] (nhanh hơn ở 112/112, 0,14×–0,91×); async 0,33× [0,33× / 0,33× / 0,33×] (nhanh hơn ở 112/112, 0,13×–0,92×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
+- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,54× [0,54× / 0,54× / 0,54×] (nhanh hơn ở 107/112, 0,23×–1,34×). **bm-native vs bm-wasm (sync):** 0,62× [0,62× / 0,63× / 0,62×] (nhanh hơn ở 112/112, 0,43×–0,75×).
+- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
+- **Trùng byte:** bm-native == bm-wasm 114/114 tài liệu.
+- **Bộ kiểm tra:** bm-native 105/114 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 114/114.
+- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 86, equivalent 27, different 1 (114 tài liệu, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 ### Thời gian render
@@ -57,19 +55,19 @@ hai bằng cùng thiết lập.
 <!-- pdf-bench:speed -->
 | Biến thể | geomean ms | từng lượt | độ lệch |
 |:--|--:|--:|--:|
-| bm-native:sync | 1,08 | 1,05 / 1,16 / 1,15 | 10,1 % ⚠ |
-| bm-native:async | 1,13 | 1,09 / 1,20 / 1,21 | 10,2 % ⚠ |
-| bm-wasm:sync | 1,75 | 1,71 / 1,90 / 1,85 | 10,2 % ⚠ |
-| bm-wasm:async | 1,66 | 1,62 / 1,82 / 1,75 | 11,6 % ⚠ |
-| takumi-pdf:async | 3,56 | 3,40 / 3,89 / 3,79 | 12,9 % ⚠ |
+| bm-native:sync | 1,04 | 1,05 / 1,05 / 1,04 | 0,7 % |
+| bm-native:async | 1,03 | 1,04 / 1,05 / 1,04 | 0,3 % |
+| bm-wasm:sync | 1,67 | 1,68 / 1,68 / 1,68 | 0,4 % |
+| bm-wasm:async | 1,56 | 1,56 / 1,56 / 1,56 | 0,4 % |
+| takumi-pdf:async | 3,11 | 3,13 / 3,14 / 3,12 | 0,5 % |
 
 | Tỉ lệ (thời gian) | geomean | từng lượt | nhanh hơn | khoảng | độ lệch |
 |:--|--:|--:|--:|--:|--:|
-| bm-native:sync / takumi-pdf:async | 0,30× | 0,31× / 0,30× / 0,31× | 112/112 | 0,12×–0,97× | 3,0 % |
-| bm-native:async / takumi-pdf:async | 0,32× | 0,32× / 0,31× / 0,32× | 112/112 | 0,12×–0,94× | 4,1 % |
-| bm-wasm:sync / takumi-pdf:async | 0,49× | 0,50× / 0,49× / 0,49× | 107/112 | 0,20×–1,36× | 3,1 % |
-| bm-native:sync / bm-wasm:sync | 0,62× | 0,61× / 0,61× / 0,62× | 112/112 | 0,38×–0,77× | 1,8 % |
-| bm-native:async / bm-native:sync | 1,05× | 1,04× / 1,03× / 1,05× | 25/112 | 0,88×–1,39× | 2,1 % |
+| bm-native:sync / takumi-pdf:async | 0,33× | 0,33× / 0,34× / 0,34× | 112/112 | 0,14×–0,91× | 0,3 % |
+| bm-native:async / takumi-pdf:async | 0,33× | 0,33× / 0,33× / 0,33× | 112/112 | 0,13×–0,92× | 0,3 % |
+| bm-wasm:sync / takumi-pdf:async | 0,54× | 0,54× / 0,54× / 0,54× | 107/112 | 0,23×–1,34× | 0,2 % |
+| bm-native:sync / bm-wasm:sync | 0,62× | 0,62× / 0,63× / 0,62× | 112/112 | 0,43×–0,75× | 0,6 % |
+| bm-native:async / bm-native:sync | 0,99× | 1,00× / 0,99× / 1,00× | 68/112 | 0,91×–1,09× | 0,4 % |
 
 Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trước, đầu ra giữ trong bộ nhớ), 112 tài liệu, 3 lượt; các biến thể chạy xen kẽ, đổi thứ tự mỗi vòng.
 <!-- /pdf-bench:speed -->
@@ -79,11 +77,11 @@ Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trướ
 <!-- pdf-bench:sizes -->
 | Nhóm | tài liệu | bm | takumi-pdf | tỉ lệ tổng | tỉ lệ geomean | sau cùng một lần nén lại bằng qpdf |
 |:--|--:|--:|--:|--:|--:|--:|
-| golden | 89 | 1.310 KiB | 1.258 KiB | 1,04× | 1,01× | 1.166 KiB / 1.106 KiB (1,05×) |
-| docs | 21 | 1.312 KiB | 1.311 KiB | 1,00× | 1,01× | 1.344 KiB / 1.343 KiB (1,00×) |
-| stress | 3 | 4.656 KiB | 511 KiB | 9,11× | 2,63× | 4.556 KiB / 441 KiB (10,34×) |
+| golden | 89 | 1.282 KiB | 1.258 KiB | 1,02× | 1,01× | 1.134 KiB / 1.106 KiB (1,03×) |
+| docs | 21 | 1.310 KiB | 1.311 KiB | 1,00× | 1,00× | 1.343 KiB / 1.343 KiB (1,00×) |
+| stress | 4 | 2.227 KiB | 2.697 KiB | 0,83× | 0,92× | 1.841 KiB / 2.314 KiB (0,80×) |
 
-Tỉ lệ kích thước bm / takumi-pdf lớn nhất: `stress/100p` 10,63× (4.530 KiB / 426 KiB), `golden/text-stroke-paint-order` 1,83× (16 KiB / 8,8 KiB), `stress/10p` 1,71× (99 KiB / 58 KiB), `golden/text-shadow-stroke` 1,34× (125 KiB / 93 KiB), `golden/named-pages` 1,33× (22 KiB / 17 KiB), `docs/report-repeating-header` 1,21× (40 KiB / 33 KiB).
+Tỉ lệ kích thước bm / takumi-pdf lớn nhất: `golden/text-stroke-paint-order` 1,75× (15 KiB / 8,8 KiB), `golden/text-shadow-stroke` 1,19× (111 KiB / 93 KiB), `golden/paged-landscape` 1,06× (15 KiB / 14 KiB), `golden/at-page-first-left-right` 1,04× (16 KiB / 15 KiB), `golden/at-page-root-element` 1,04× (15 KiB / 14 KiB), `golden/color-glyph-text-shadow` 1,01× (79 KiB / 78 KiB).
 
 Không engine nào có tuỳ chọn nén (cả hai ghi luồng Flate và object stream); cột cuối nén lại file của cả hai engine bằng cùng thiết lập qpdf (zlib mức 9, object stream).
 <!-- /pdf-bench:sizes -->
@@ -93,12 +91,12 @@ Không engine nào có tuỳ chọn nén (cả hai ghi luồng Flate và object 
 <!-- pdf-bench:scale -->
 | Trang | bm-native ms | trang/s | kích thước | RSS đỉnh | bm-wasm ms | trang/s | kích thước | RSS đỉnh | takumi-pdf ms | trang/s | kích thước | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 1 | 3,50 ms | 283,7 | 27 KiB | 60 MiB | 9,30 ms | 107,9 | 27 KiB | 85 MiB | 34,9 ms | 28,6 | 27 KiB | 111 MiB |
-| 10 | 48,5 ms | 206,3 | 99 KiB | 75 MiB | 112 ms | 89,0 | 99 KiB | 89 MiB | 219 ms | 45,6 | 58 KiB | 119 MiB |
-| 100 | 3.553 ms | 28,1 | 4.530 KiB | 571 MiB | 7.147 ms | 14,0 | 4.530 KiB | 669 MiB | 1.341 ms | 74,6 | 426 KiB | 135 MiB |
-| 500 | lỗi: bm-engine: out of memory |  |  | 2.433 MiB | lỗi: bm-engine: out of memory |  |  | 2.098 MiB | 6.015 ms | 83,1 | 2.186 KiB | 191 MiB |
+| 1 | 2,40 ms | 408,8 | 27 KiB | 53 MiB | 7,80 ms | 128,0 | 27 KiB | 81 MiB | 17,5 ms | 57,3 | 27 KiB | 106 MiB |
+| 10 | 17,9 ms | 558,9 | 58 KiB | 60 MiB | 32,7 ms | 306,0 | 58 KiB | 81 MiB | 99,8 ms | 100,2 | 58 KiB | 115 MiB |
+| 100 | 181 ms | 553,1 | 369 KiB | 114 MiB | 292 ms | 342,2 | 369 KiB | 126 MiB | 854 ms | 117,2 | 426 KiB | 127 MiB |
+| 500 | 993 ms | 503,6 | 1.772 KiB | 317 MiB | 1.693 ms | 295,3 | 1.772 KiB | 286 MiB | 4.534 ms | 110,3 | 2.186 KiB | 190 MiB |
 
-Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 7,33×, bm-wasm 6,36×, takumi-pdf 0,61×.
+Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 1,01×, bm-wasm 0,89×, takumi-pdf 0,86×.
 <!-- /pdf-bench:scale -->
 
 ### Khởi động lạnh
@@ -106,12 +104,12 @@ Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, b
 <!-- pdf-bench:cold -->
 | Engine | wall median ms | p95 | hơn Node trống | import | font | PDF đầu tiên | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Node.js trống | 55,9 | 88,6 | — | — | — | — | 45 MiB |
-| bm-native | 67,7 | 106 | 11,8 | 6,80 | 0,36 | 3,10 | 50 MiB |
-| bm-wasm | 162 | 209 | 106 | 9,90 | 2,56 | 58,7 | 74 MiB |
-| takumi-pdf | 268 | 296 | 213 | 42,4 | 3,49 | 128 | 76 MiB |
+| Node.js trống | 43,7 | 50,8 | — | — | — | — | 43 MiB |
+| bm-native | 52,7 | 57,1 | 8,90 | 4,90 | 0,34 | 3,20 | 48 MiB |
+| bm-wasm | 136 | 145 | 92,3 | 8,50 | 2,40 | 54,6 | 73 MiB |
+| takumi-pdf | 213 | 233 | 169 | 35,8 | 3,12 | 110 | 75 MiB |
 
-30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 52 %.
+30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 24.3 %.
 <!-- /pdf-bench:cold -->
 
 ### Bộ nhớ
@@ -119,11 +117,11 @@ Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, b
 <!-- pdf-bench:memory -->
 | Engine | RSS sau lượt 1 | RSS sau lượt 10 | bộ nhớ engine (lượt 1 → cuối) | RSS đỉnh, tài liệu stress lớn nhất |
 |:--|--:|--:|--:|--:|
-| bm-native | 95 MiB | 97 MiB | 33,2 → 33,6 MiB | 500 trang: 2.433 MiB (thất bại) |
-| bm-wasm | 123 MiB | 125 MiB | 61,7 → 61,7 MiB | 500 trang: 2.098 MiB (thất bại) |
-| takumi-pdf | 123 MiB | 126 MiB | 46,3 → 46,3 MiB | 500 trang: 191 MiB |
+| bm-native | 88 MiB | 89 MiB | 29,8 → 29,6 MiB | 500 trang: 317 MiB |
+| bm-wasm | 119 MiB | 121 MiB | 59,1 → 59,1 MiB | 500 trang: 286 MiB |
+| takumi-pdf | 124 MiB | 125 MiB | 46,3 → 46,3 MiB | 500 trang: 190 MiB |
 
-Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần đọc; Node.js trống: 46.4 MiB RSS. Bộ nhớ engine: bm Renderer.memoryBytes (bộ nhớ tuyến tính wasm, hoặc phần cấp phát đang sống của addon native), takumi-pdf: bộ nhớ wasm.
+Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần đọc; Node.js trống: 41.6 MiB RSS. Bộ nhớ engine: bm Renderer.memoryBytes (bộ nhớ tuyến tính wasm, hoặc phần cấp phát đang sống của addon native), takumi-pdf: bộ nhớ wasm.
 <!-- /pdf-bench:memory -->
 
 ### Chặn event loop
@@ -131,11 +129,11 @@ Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần �
 <!-- pdf-bench:eventloop -->
 | Engine | API | render ms | độ trễ timer lớn nhất | p99 | số tick |
 |:--|--:|--:|--:|--:|--:|
-| bm-native | sync | 3.899 | 3.899 ms | 3.899 ms | 1 |
-| bm-native | async | 3.765 | 15,9 ms | 1,40 ms | 3681 |
-| bm-wasm | sync | 10.694 | 10.694 ms | 10.694 ms | 1 |
-| bm-wasm | async | 10.366 | 10.366 ms | 10.366 ms | 1 |
-| takumi-pdf | async | 1.511 | 1.511 ms | 1.511 ms | 1 |
+| bm-native | sync | 180 | 180 ms | 180 ms | 1 |
+| bm-native | async | 197 | 1,50 ms | 1,10 ms | 198 |
+| bm-wasm | sync | 373 | 374 ms | 374 ms | 1 |
+| bm-wasm | async | 376 | 376 ms | 376 ms | 1 |
+| takumi-pdf | async | 1.135 | 1.135 ms | 1.135 ms | 1 |
 
 Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gần bằng thời gian render nghĩa là event loop bị chặn suốt lần render.
 <!-- /pdf-bench:eventloop -->
@@ -145,25 +143,25 @@ Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gầ
 <!-- pdf-bench:throughput -->
 | Cấu hình | N=1 | N=2 | N=4 | N=8 |
 |:--|--:|--:|--:|--:|
-| bm-native seq uv=4 | 464 |  |  |  |
-| bm-wasm seq | 277 |  |  |  |
-| takumi-pdf seq | 129 |  |  |  |
-| bm-native many k=1 uv=4 | 521 | 529 | 473 | 513 |
-| bm-native many k=2 uv=4 | 503 | 976 | 925 | 738 |
-| bm-native many k=4 uv=4 | 347 | 722 | 1.299 | 1.370 |
-| bm-native many k=8 uv=4 | 430 | 827 | 1.380 | 1.495 |
-| bm-native many k=1 uv=8 | 477 | 492 | 460 | 492 |
-| bm-native many k=2 uv=8 | 485 | 798 | 941 | 914 |
-| bm-native many k=4 uv=8 | 474 | 888 | 1.523 | 1.639 |
-| bm-native many k=8 uv=8 | 513 | 951 | 1.684 | 2.295 |
-| bm-wasm pool k=1 | 308 | 314 | 314 | 321 |
-| bm-wasm pool k=2 | 297 | 620 | 638 | 630 |
-| bm-wasm pool k=4 | 308 | 618 | 981 | 981 |
-| bm-wasm pool k=8 | 321 | 576 | 719 | 1.154 |
-| takumi-pdf pool k=1 | 107 | 129 | 127 | 139 |
-| takumi-pdf pool k=2 | 122 | 293 | 283 | 297 |
-| takumi-pdf pool k=4 | 123 | 282 | 404 | 497 |
-| takumi-pdf pool k=8 | 129 | 288 | 510 | 635 |
+| bm-native seq uv=4 | 502 |  |  |  |
+| bm-wasm seq | 315 |  |  |  |
+| takumi-pdf seq | 146 |  |  |  |
+| bm-native many k=1 uv=4 | 502 | 525 | 529 | 519 |
+| bm-native many k=2 uv=4 | 501 | 1.031 | 1.032 | 1.016 |
+| bm-native many k=4 uv=4 | 493 | 1.009 | 1.943 | 1.888 |
+| bm-native many k=8 uv=4 | 510 | 1.022 | 1.914 | 1.884 |
+| bm-native many k=1 uv=8 | 486 | 522 | 531 | 527 |
+| bm-native many k=2 uv=8 | 495 | 1.025 | 1.028 | 1.002 |
+| bm-native many k=4 uv=8 | 499 | 1.021 | 1.858 | 1.980 |
+| bm-native many k=8 uv=8 | 514 | 1.040 | 1.930 | 2.373 |
+| bm-wasm pool k=1 | 303 | 322 | 321 | 325 |
+| bm-wasm pool k=2 | 304 | 626 | 631 | 629 |
+| bm-wasm pool k=4 | 293 | 625 | 1.171 | 1.199 |
+| bm-wasm pool k=8 | 306 | 624 | 1.182 | 1.416 |
+| takumi-pdf pool k=1 | 143 | 167 | 175 | 178 |
+| takumi-pdf pool k=2 | 145 | 326 | 344 | 350 |
+| takumi-pdf pool k=4 | 146 | 308 | 637 | 655 |
+| takumi-pdf pool k=8 | 146 | 313 | 642 | 739 |
 
 Số PDF mỗi giây, docs/invoice (one-page A4 invoice, HTML + footer), closed loop: N clients each with one request in flight; 2000 ms mỗi điểm, 8 CPU logic. seq = một client với API sync (takumi-pdf: await render), many = N client trên K renderer bm-native (API async trên pool libuv, UV_THREADPOOL_SIZE = uv), pool = pool worker_threads gồm K worker, mỗi worker có engine riêng.
 <!-- /pdf-bench:throughput -->
@@ -173,21 +171,21 @@ Số PDF mỗi giây, docs/invoice (one-page A4 invoice, HTML + footer), closed 
 <!-- pdf-bench:equiv -->
 | Engine | PDF | sạch | lỗi | cảnh báo | bm-only | chung với takumi-pdf | veraPDF |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| bm-native | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
-| bm-wasm | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-native | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
 | takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
 
-Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 101/113 tài liệu.
+Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 114/114 tài liệu.
 
 | Bộ raster | identical | equivalent | close | different |
 |:--|--:|--:|--:|--:|
-| pdfium | 73 | 35 | 2 | 3 |
-| mupdf | 69 | 39 | 2 | 3 |
-| tốt nhất trong các bộ raster | 79 | 30 | 1 | 3 |
+| pdfium | 78 | 35 | 0 | 1 |
+| mupdf | 78 | 34 | 1 | 1 |
+| tốt nhất trong các bộ raster | 86 | 27 | 0 | 1 |
 
-bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 113 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 114 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
 
-bm-native == bm-wasm từng byte: 113/114 (+1 cùng lỗi ở cả hai). Lỗi render: stress/500p bm-native: bm-engine: out of memory; stress/500p bm-wasm: bm-engine: out of memory.
+bm-native == bm-wasm từng byte: 114/114. Lỗi render: không có.
 <!-- /pdf-bench:equiv -->
 
 ### Nhiễu
@@ -195,16 +193,16 @@ bm-native == bm-wasm từng byte: 113/114 (+1 cùng lỗi ở cả hai). Lỗi r
 <!-- pdf-bench:noise -->
 | Giai đoạn | CPU bận trước | CPU bận trong lúc đo | tiến trình khác (lõi) |
 |:--|--:|--:|--:|
-| speed lượt 1 | 21,8 % | 42,1 % | 2,31 |
-| speed lượt 2 | 31,4 % | 52,3 % | 3,15 |
-| speed lượt 3 | 16,6 % | 47,8 % | 2,76 |
-| scale | — | 57,0 % | — |
-| cold | — | 52,0 % | 2,96 |
-| memory | — | 69,5 % | 4,20 |
-| eventloop | — | 55,9 % | — |
-| throughput | — | 57,6 % | 2,88 |
+| speed lượt 1 | 4,5 % | 16,4 % | 0,23 |
+| speed lượt 2 | 2,8 % | 16,6 % | 0,25 |
+| speed lượt 3 | 3,0 % | 18,6 % | 0,41 |
+| scale | — | 21,8 % | — |
+| cold | — | 24,3 % | 0,67 |
+| memory | — | 19,7 % | 0,18 |
+| eventloop | — | 24,0 % | — |
+| throughput | — | 31,6 % | 0,73 |
 
-Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 363 (ví dụ golden/box-chrome bm-wasm:sync, golden/box-chrome bm-wasm:async, golden/box-chrome takumi-pdf:async, golden/gradients bm-native:sync, golden/gradients bm-native:async).
+Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 52 (ví dụ golden/box-chrome bm-native:sync, golden/box-chrome bm-native:async, golden/box-chrome bm-wasm:sync, golden/box-chrome bm-wasm:async, golden/box-chrome takumi-pdf:async).
 <!-- /pdf-bench:noise -->
 
 <details><summary>Từng tài liệu</summary>
@@ -212,118 +210,118 @@ Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 363
 <!-- pdf-bench:per-doc -->
 | Tài liệu | bm-native:sync | bm-native:async | bm-wasm:sync | bm-wasm:async | takumi-pdf:async | bm-n sync / tk | byte bm / tk |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| `golden/box-chrome` | 0,58 / 0,95 | 0,64 / 1,29 | 1,16 / 1,42 | 1,12 / 1,50 | 2,29 / 2,63 | 0,26× | 5433 / 5453 |
-| `golden/gradients` | 0,42 / 0,85 | 0,47 / 1,18 | 0,68 / 1,20 | 0,66 / 1,20 | 1,10 / 2,03 | 0,38× | 4477 / 4483 |
-| `golden/repeating-gradients` | 0,44 / 0,60 | 0,47 / 0,65 | 0,72 / 0,91 | 0,68 / 0,85 | 1,01 / 1,22 | 0,44× | 8465 / 8454 |
-| `golden/box-shadows` | 0,27 / 0,41 | 0,29 / 0,41 | 0,47 / 0,76 | 0,43 / 0,70 | 0,77 / 1,17 | 0,36× | 4091 / 4128 |
-| `golden/blend-opacity` | 0,18 / 0,29 | 0,20 / 0,30 | 0,29 / 0,48 | 0,25 / 0,38 | 0,61 / 0,88 | 0,30× | 3154 / 3172 |
-| `golden/overflow-clip` | 0,15 / 0,21 | 0,18 / 0,25 | 0,25 / 0,31 | 0,21 / 0,30 | 0,51 / 0,65 | 0,30× | 2487 / 2505 |
-| `golden/transformed-overflow-clip` | 0,11 / 0,20 | 0,13 / 0,25 | 0,17 / 0,31 | 0,13 / 0,27 | 0,39 / 0,72 | 0,29× | 1828 / 1846 |
-| `golden/clip-path-shapes` | 0,21 / 0,37 | 0,23 / 0,40 | 0,38 / 0,61 | 0,35 / 0,56 | 0,66 / 1,08 | 0,32× | 4344 / 4367 |
-| `golden/mask-image` | 0,35 / 0,49 | 0,35 / 0,50 | 0,55 / 0,83 | 0,49 / 0,78 | 1,03 / 1,54 | 0,34× | 9341 / 9354 |
-| `golden/color-filters` | 0,19 / 0,34 | 0,21 / 0,41 | 0,30 / 0,48 | 0,25 / 0,61 | 0,61 / 1,04 | 0,31× | 1924 / 1939 |
-| `golden/outlines` | 0,19 / 0,31 | 0,20 / 0,31 | 0,29 / 0,51 | 0,24 / 0,41 | 0,55 / 0,94 | 0,35× | 2403 / 2421 |
-| `golden/background-boxes` | 0,19 / 0,29 | 0,20 / 0,29 | 0,35 / 0,44 | 0,31 / 0,42 | 0,58 / 0,79 | 0,33× | 3935 / 3954 |
-| `golden/background-placement` | 0,20 / 0,33 | 0,21 / 0,29 | 0,35 / 0,45 | 0,31 / 0,51 | 0,60 / 0,89 | 0,34× | 4676 / 4694 |
-| `golden/url-layers` | 0,24 / 0,48 | 0,26 / 0,60 | 0,35 / 0,91 | 0,30 / 0,73 | 0,71 / 1,60 | 0,34× | 3486 / 3501 |
-| `golden/edge-degenerate` | 0,46 / 0,74 | 0,50 / 0,70 | 0,75 / 0,91 | 0,68 / 1,19 | 1,45 / 2,11 | 0,32× | 5504 / 5520 |
-| `golden/image-object-fit` | 0,19 / 0,49 | 0,22 / 0,74 | 0,25 / 0,56 | 0,21 / 0,54 | 1,00 / 2,30 | 0,19× | 2290 / 2302 |
-| `golden/encoded-bitmaps` | 0,14 / 0,29 | 0,17 / 0,32 | 0,19 / 0,38 | 0,15 / 0,35 | 0,55 / 1,08 | 0,25× | 3213 / 3228 |
-| `golden/png-streams` | 0,12 / 0,21 | 0,16 / 0,25 | 0,17 / 0,26 | 0,13 / 0,23 | 0,40 / 0,67 | 0,29× | 2561 / 2576 |
-| `golden/border-mixed-sides` | 0,20 / 0,29 | 0,21 / 0,33 | 0,31 / 0,46 | 0,24 / 0,45 | 0,68 / 0,99 | 0,30× | 2428 / 2442 |
-| `golden/inline-span-background` | 0,53 / 0,74 | 0,58 / 0,75 | 0,88 / 1,19 | 0,81 / 1,17 | 1,62 / 2,23 | 0,33× | 6518 / 6537 |
-| `golden/inline-span-border` | 0,47 / 0,74 | 0,47 / 0,77 | 0,76 / 1,15 | 0,68 / 0,92 | 1,37 / 2,03 | 0,35× | 6222 / 6246 |
-| `golden/inline-images` | 0,44 / 0,53 | 0,43 / 0,58 | 0,66 / 0,76 | 0,59 / 0,77 | 1,47 / 1,77 | 0,30× | 6311 / 6330 |
-| `golden/inline-image-decorations` | 0,43 / 0,50 | 0,43 / 0,62 | 0,66 / 0,84 | 0,58 / 0,71 | 1,33 / 1,57 | 0,33× | 6125 / 6141 |
-| `golden/page-background` | 0,38 / 0,51 | 0,38 / 0,50 | 0,58 / 0,84 | 0,50 / 0,75 | 1,31 / 1,91 | 0,29× | 5463 / 5488 |
-| `golden/svg-background-image` | 0,42 / 0,62 | 0,41 / 0,59 | 0,63 / 0,79 | 0,56 / 0,68 | 1,15 / 1,77 | 0,36× | 6118 / 5980 |
-| `golden/collapsed-table` | 0,95 / 1,39 | 0,97 / 1,32 | 1,69 / 2,11 | 1,59 / 1,90 | 3,47 / 4,60 | 0,27× | 9576 / 9618 |
-| `golden/text-decorations` | 0,62 / 0,82 | 0,65 / 0,91 | 0,99 / 1,23 | 0,94 / 1,30 | 1,76 / 2,48 | 0,35× | 8895 / 8924 |
-| `golden/text-decoration-styles` | 0,47 / 0,80 | 0,49 / 0,71 | 0,78 / 1,09 | 0,72 / 1,16 | 1,44 / 2,50 | 0,33× | 6061 / 6082 |
-| `golden/svg-vector-image` | 0,12 / 0,19 | 0,16 / 0,27 | 0,20 / 0,30 | 0,16 / 0,26 | 0,48 / 0,74 | 0,26× | 2460 / 2473 |
-| `golden/text-basic` | 0,34 / 0,58 | 0,35 / 0,59 | 0,50 / 0,88 | 0,43 / 0,84 | 1,01 / 1,60 | 0,34× | 5090 / 5113 |
-| `golden/text-ligatures` | 0,33 / 0,45 | 0,33 / 0,51 | 0,47 / 0,73 | 0,40 / 0,65 | 0,94 / 1,38 | 0,35× | 4965 / 4983 |
-| `golden/text-decoration-shadow` | 3,26 / 3,71 | 3,08 / 3,49 | 4,38 / 5,46 | 4,41 / 4,66 | 5,18 / 6,35 | 0,63× | 45357 / 41576 |
-| `golden/text-shadow-stroke` | 10,8 / 12,6 | 10,5 / 11,0 | 15,2 / 16,6 | 14,8 / 15,8 | 11,1 / 14,5 | 0,97× | 127887 / 95472 |
-| `golden/color-glyph-text-shadow` | 5,72 / 6,68 | 5,80 / 6,17 | 8,29 / 8,98 | 8,11 / 9,80 | 8,25 / 10,4 | 0,69× | 84286 / 80275 |
-| `golden/bitmap-glyph-text-shadow` | 1,63 / 2,32 | 1,77 / 2,50 | 2,28 / 3,44 | 2,39 / 3,36 | 3,02 / 3,80 | 0,54× | 15166 / 15247 |
-| `golden/text-stroke-paint-order` | 1,18 / 1,40 | 1,20 / 1,44 | 1,75 / 1,90 | 1,66 / 1,90 | 1,45 / 1,83 | 0,82× | 16462 / 8977 |
-| `golden/cluster-closing-on-a-mark` | 0,21 / 0,31 | 0,22 / 0,34 | 0,31 / 0,43 | 0,26 / 0,37 | 0,64 / 0,88 | 0,33× | 4989 / 5003 |
-| `golden/font-weights` | 3,31 / 3,49 | 3,45 / 3,58 | 5,72 / 6,28 | 5,42 / 5,72 | 8,86 / 9,74 | 0,37× | 57046 / 57162 |
-| `golden/certificate` | 1,25 / 1,52 | 1,28 / 1,74 | 2,12 / 2,50 | 2,09 / 2,38 | 3,31 / 3,74 | 0,38× | 14269 / 14304 |
-| `golden/paged-lines` | 1,63 / 1,99 | 1,69 / 1,85 | 2,96 / 3,05 | 2,99 / 3,31 | 7,73 / 8,63 | 0,21× | 8713 / 8688 |
-| `golden/paged-page-ranges` | 1,02 / 1,53 | 1,03 / 1,36 | 1,78 / 1,98 | 1,76 / 1,95 | 8,82 / 9,11 | 0,12× | 7154 / 7192 |
-| `golden/paged-table` | 2,87 / 4,18 | 2,83 / 3,06 | 4,90 / 5,80 | 4,96 / 7,02 | 9,82 / 11,6 | 0,29× | 14569 / 14664 |
-| `golden/paged-breaks` | 0,47 / 0,75 | 0,53 / 0,77 | 0,72 / 1,20 | 0,66 / 1,28 | 1,98 / 3,15 | 0,24× | 5930 / 5948 |
-| `golden/paged-widows-orphans` | 0,78 / 1,03 | 0,85 / 1,04 | 1,26 / 1,45 | 1,22 / 1,50 | 2,96 / 3,89 | 0,26× | 8271 / 8296 |
-| `golden/paged-narrow` | 1,43 / 1,70 | 1,53 / 1,93 | 2,50 / 2,89 | 2,48 / 2,85 | 5,15 / 5,60 | 0,28× | 9202 / 9266 |
-| `golden/paged-landscape` | 6,27 / 9,82 | 6,24 / 6,80 | 12,0 / 16,8 | 11,9 / 14,6 | 17,2 / 22,5 | 0,36× | 15006 / 14122 |
-| `golden/legacy-page-break` | 0,68 / 0,79 | 0,75 / 0,81 | 1,09 / 1,25 | 1,05 / 1,21 | 2,46 / 2,75 | 0,28× | 7789 / 7826 |
-| `golden/text-shadow-page-cut` | 0,83 / 1,21 | 0,86 / 1,37 | 1,23 / 1,92 | 1,20 / 1,90 | 1,65 / 2,77 | 0,50× | 11436 / 10562 |
-| `golden/fixed-repeats-per-page` | 0,50 / 0,71 | 0,53 / 0,76 | 0,77 / 1,20 | 0,72 / 1,10 | 1,79 / 2,56 | 0,28× | 6381 / 6402 |
-| `golden/invoice` | 8,91 / 12,1 | 8,30 / 10,8 | 15,7 / 21,8 | 16,4 / 20,4 | 54,8 / 61,9 | 0,16× | 28817 / 28723 |
-| `golden/report-links-outline` | 1,10 / 1,64 | 1,17 / 1,73 | 1,81 / 2,74 | 1,76 / 2,70 | 4,75 / 8,08 | 0,23× | 14179 / 14223 |
-| `golden/paged-footer` | 1,68 / 2,51 | 1,63 / 2,42 | 2,71 / 2,95 | 2,77 / 3,72 | 9,79 / 11,6 | 0,17× | 11377 / 11427 |
-| `golden/paged-band-remeasure` | 0,72 / 1,19 | 0,72 / 1,03 | 1,12 / 1,74 | 1,08 / 1,37 | 3,50 / 4,82 | 0,21× | 6848 / 6879 |
-| `golden/paged-header-footer` | 2,44 / 3,39 | 2,33 / 3,48 | 4,03 / 5,75 | 3,93 / 6,45 | 13,8 / 20,0 | 0,18× | 10628 / 10657 |
-| `golden/auto-margin-bands` | 1,65 / 2,52 | 1,81 / 2,71 | 2,94 / 3,05 | 3,06 / 3,54 | 9,95 / 12,3 | 0,17× | 8697 / 8727 |
-| `golden/page-rules` | 1,33 / 2,06 | 1,38 / 1,56 | 2,28 / 2,89 | 2,22 / 3,65 | 8,16 / 9,97 | 0,16× | 10492 / 10542 |
-| `golden/paged-target-counters` | 0,86 / 1,11 | 0,87 / 1,21 | 1,35 / 1,94 | 1,19 / 1,95 | 5,20 / 7,54 | 0,17× | 7532 / 7555 |
-| `golden/content-page-counters` | 0,44 / 0,62 | 0,49 / 0,66 | 0,64 / 0,98 | 0,63 / 0,97 | 1,97 / 2,85 | 0,22× | 5128 / 5145 |
-| `golden/fixed-page-counters` | 0,44 / 0,66 | 0,44 / 0,73 | 0,61 / 1,00 | 0,57 / 0,94 | 1,55 / 2,43 | 0,29× | 4271 / 4292 |
-| `golden/stream-total-pages-band` | 2,10 / 2,90 | 1,96 / 2,69 | 3,31 / 5,25 | 3,34 / 4,90 | 8,71 / 11,2 | 0,24× | 11087 / 11120 |
-| `golden/stream-content-counters` | 1,47 / 2,16 | 1,50 / 1,67 | 2,41 / 2,65 | 2,43 / 3,12 | 10,2 / 10,6 | 0,14× | 11946 / 11979 |
-| `golden/stream-page-ranges-middle` | 0,93 / 1,34 | 1,01 / 1,41 | 1,48 / 2,46 | 1,49 / 2,41 | 4,25 / 5,80 | 0,22× | 10517 / 10540 |
-| `golden/at-page-first-left-right` | 6,74 / 7,26 | 6,84 / 7,56 | 12,7 / 16,5 | 13,2 / 14,0 | 26,6 / 30,5 | 0,25× | 16173 / 15653 |
-| `golden/at-page-root-element` | 7,75 / 12,0 | 7,58 / 10,9 | 13,9 / 17,2 | 14,8 / 18,1 | 14,2 / 19,8 | 0,54× | 14829 / 14404 |
-| `golden/named-pages` | 6,97 / 8,41 | 6,99 / 9,27 | 14,5 / 20,3 | 16,4 / 22,5 | 37,4 / 39,6 | 0,19× | 22858 / 17129 |
-| `golden/stream-forward-link` | 1,05 / 1,54 | 1,10 / 1,56 | 1,69 / 2,74 | 1,67 / 2,31 | 6,10 / 8,96 | 0,17× | 12394 / 12432 |
-| `golden/stream-tagged-outline` | 1,10 / 1,68 | 1,18 / 1,69 | 1,77 / 2,93 | 1,75 / 2,85 | 4,77 / 7,36 | 0,23× | 12391 / 12416 |
-| `golden/invoice-pdfa-3b-attachment` | 8,64 / 12,5 | 9,02 / 12,8 | 15,3 / 21,3 | 15,5 / 21,7 | 55,0 / 68,5 | 0,16× | 34007 / 33899 |
-| `golden/font-formats-pdfa-2b` | 1,57 / 2,19 | 1,68 / 2,24 | 2,65 / 3,36 | 2,41 / 2,95 | 3,74 / 5,39 | 0,42× | 35141 / 35291 |
-| `golden/font-formats-pdfa-2u` | 1,60 / 2,30 | 1,68 / 2,06 | 2,50 / 3,89 | 2,46 / 3,21 | 3,83 / 5,54 | 0,42× | 35141 / 35291 |
-| `golden/font-formats-pdfa-2a` | 1,61 / 2,20 | 1,66 / 1,85 | 2,44 / 2,62 | 2,42 / 2,76 | 3,69 / 4,55 | 0,44× | 35141 / 35291 |
-| `golden/font-formats-pdfa-3b` | 1,56 / 1,79 | 1,62 / 2,21 | 2,39 / 2,82 | 2,38 / 2,88 | 3,83 / 4,13 | 0,41× | 35141 / 35291 |
-| `golden/font-formats-pdfa-3u` | 1,58 / 2,32 | 1,72 / 2,35 | 2,50 / 2,83 | 2,40 / 2,69 | 3,77 / 4,56 | 0,42× | 35141 / 35291 |
-| `golden/font-formats-pdfa-3a` | 1,59 / 1,75 | 1,68 / 2,10 | 2,41 / 2,57 | 2,37 / 2,65 | 3,85 / 4,10 | 0,41× | 35141 / 35291 |
-| `golden/font-formats-pdfa-4` | 1,59 / 1,92 | 1,70 / 1,98 | 2,40 / 2,62 | 2,38 / 2,67 | 3,66 / 4,36 | 0,43× | 31772 / 31906 |
-| `golden/invoice-pdfa-2b` | 8,46 / 11,9 | 8,36 / 9,67 | 14,7 / 17,8 | 14,9 / 20,3 | 46,3 / 60,3 | 0,18× | 32058 / 31953 |
-| `golden/invoice-pdfa-4` | 10,8 / 14,7 | 9,50 / 14,4 | 20,3 / 25,4 | 17,6 / 25,2 | 51,5 / 88,8 | 0,21× | 29745 / 29644 |
-| `golden/invoice-pdfa-4f-attachment` | 9,26 / 12,4 | 8,88 / 13,6 | 16,2 / 21,6 | 15,1 / 19,1 | 52,1 / 66,3 | 0,18× | 31903 / 31803 |
-| `golden/report-tagged-ua1` | 1,12 / 1,65 | 1,25 / 1,73 | 1,81 / 2,88 | 1,78 / 2,66 | 4,62 / 6,72 | 0,24× | 18423 / 18461 |
-| `golden/report-tagged-a2a` | 1,24 / 1,68 | 1,20 / 1,79 | 1,82 / 2,52 | 1,80 / 2,63 | 5,22 / 7,26 | 0,24× | 17128 / 17166 |
-| `golden/list-tagged-ua1` | 0,86 / 1,21 | 0,89 / 1,24 | 1,36 / 1,85 | 1,32 / 1,65 | 2,88 / 4,32 | 0,30× | 10488 / 10522 |
-| `golden/inline-block-tagged` | 0,57 / 0,80 | 0,59 / 0,85 | 0,87 / 1,09 | 0,79 / 1,24 | 1,75 / 2,62 | 0,32× | 8605 / 8630 |
-| `golden/structure-types-a4` | 1,22 / 1,69 | 1,22 / 1,72 | 1,88 / 2,85 | 1,84 / 2,38 | 5,15 / 8,08 | 0,24× | 13686 / 13724 |
-| `golden/table-tagged-ua2` | 0,93 / 1,41 | 0,97 / 1,37 | 1,49 / 2,19 | 1,48 / 2,35 | 2,82 / 4,11 | 0,33× | 12295 / 12319 |
-| `golden/report-tagged-ua2` | 0,84 / 1,12 | 0,89 / 1,33 | 1,34 / 1,87 | 1,34 / 1,67 | 2,64 / 3,32 | 0,32× | 12532 / 12555 |
-| `golden/borders-tagged-ua1` | 0,59 / 0,92 | 0,69 / 0,92 | 0,93 / 1,34 | 0,90 / 1,34 | 1,80 / 2,69 | 0,33× | 12934 / 12955 |
-| `golden/decorative-image-ua1` | 0,37 / 0,66 | 0,38 / 0,63 | 0,53 / 0,80 | 0,49 / 0,77 | 1,16 / 1,54 | 0,32× | 5740 / 5762 |
-| `golden/inline-box-lang-ua1` | 0,58 / 0,79 | 0,61 / 0,88 | 0,86 / 1,24 | 0,81 / 1,28 | 1,71 / 2,29 | 0,34× | 12813 / 12835 |
-| `golden/heading-levels-ua1` | 0,88 / 1,32 | 0,93 / 1,31 | 1,36 / 1,86 | 1,30 / 2,14 | 2,53 / 3,83 | 0,35× | 16960 / 16995 |
-| `docs/invoice` | 1,95 / 2,21 | 1,99 / 2,69 | 3,25 / 5,04 | 3,08 / 4,79 | 7,41 / 8,70 | 0,26× | 26059 / 26094 |
-| `docs/report-repeating-header` | 10,9 / 15,4 | 11,1 / 13,7 | 20,6 / 26,2 | 19,9 / 23,2 | 33,8 / 45,3 | 0,32× | 41042 / 34052 |
-| `docs/ticket` | 0,80 / 1,12 | 0,85 / 1,08 | 1,20 / 1,63 | 1,19 / 1,78 | 1,80 / 2,70 | 0,44× | 19037 / 19063 |
-| `docs/multipage-text` | 8,69 / 12,8 | 8,49 / 8,91 | 15,3 / 21,4 | 15,0 / 21,5 | 23,0 / 27,6 | 0,38× | 23780 / 23586 |
-| `docs/headers-footers` | 6,99 / 11,1 | 7,13 / 9,52 | 11,8 / 18,0 | 11,6 / 17,3 | 26,7 / 38,7 | 0,26× | 16051 / 15898 |
-| `docs/links-outline` | 5,75 / 8,87 | 5,67 / 8,33 | 10,6 / 15,9 | 9,92 / 15,2 | 23,5 / 26,3 | 0,24× | 28346 / 28260 |
-| `docs/images` | 1,06 / 1,45 | 1,29 / 2,25 | 2,59 / 3,42 | 2,64 / 3,26 | 2,28 / 3,54 | 0,46× | 405147 / 407901 |
-| `docs/images-viewport` | 1,13 / 1,48 | 1,39 / 2,69 | 2,97 / 4,12 | 2,64 / 4,24 | 2,22 / 3,27 | 0,51× | 405035 / 407788 |
-| `docs/effects` | 1,19 / 1,67 | 1,21 / 1,76 | 1,82 / 2,42 | 1,79 / 2,82 | 2,22 / 3,46 | 0,54× | 19527 / 19643 |
-| `docs/intl-rtl-cjk-emoji` | 2,32 / 3,16 | 2,23 / 2,79 | 3,38 / 3,73 | 3,39 / 5,25 | 4,78 / 7,14 | 0,48× | 39257 / 39475 |
-| `docs/tagged-ua1` | 1,17 / 1,68 | 1,27 / 1,67 | 1,84 / 2,94 | 1,88 / 2,19 | 3,29 / 4,82 | 0,35× | 27397 / 27439 |
-| `docs/tagged-ua2-pdfa4` | 1,22 / 1,82 | 1,32 / 1,84 | 1,99 / 2,92 | 2,01 / 3,03 | 3,38 / 5,50 | 0,36× | 28727 / 28758 |
-| `docs/attachments` | 2,02 / 3,24 | 2,09 / 2,43 | 3,22 / 4,28 | 3,12 / 4,86 | 6,89 / 10,4 | 0,29× | 26669 / 26698 |
-| `docs/invoice-pdfa-2b` | 2,08 / 2,32 | 2,14 / 2,33 | 3,39 / 4,45 | 3,31 / 5,04 | 6,85 / 9,48 | 0,30× | 29700 / 29736 |
-| `docs/invoice-pdfa-2u` | 2,06 / 2,92 | 2,18 / 2,72 | 3,34 / 5,03 | 3,35 / 5,29 | 7,51 / 10,4 | 0,27× | 29700 / 29736 |
-| `docs/invoice-pdfa-2a` | 1,97 / 2,16 | 2,00 / 2,35 | 3,15 / 3,44 | 3,11 / 3,46 | 6,58 / 8,50 | 0,30× | 29706 / 29741 |
-| `docs/invoice-pdfa-3b` | 2,08 / 2,76 | 2,06 / 2,28 | 3,23 / 3,38 | 3,24 / 3,75 | 6,82 / 10,1 | 0,31× | 30812 / 30848 |
-| `docs/invoice-pdfa-3u` | 2,11 / 2,30 | 2,13 / 3,07 | 3,24 / 3,75 | 3,20 / 3,52 | 6,87 / 9,13 | 0,31× | 30812 / 30848 |
-| `docs/invoice-pdfa-3a` | 2,11 / 2,72 | 2,08 / 2,43 | 3,19 / 4,58 | 3,24 / 4,30 | 7,64 / 10,1 | 0,28× | 30820 / 30857 |
-| `docs/invoice-pdfa-4` | 1,95 / 2,93 | 2,00 / 2,27 | 3,15 / 4,78 | 3,14 / 4,42 | 6,57 / 9,46 | 0,30× | 27319 / 27351 |
-| `docs/invoice-pdfa-4f` | 1,97 / 2,33 | 2,06 / 2,41 | 3,20 / 3,80 | 3,13 / 4,85 | 6,65 / 9,01 | 0,30× | 28725 / 28754 |
-| `stress/1p` | 2,31 / 2,81 | 2,24 / 2,38 | 3,48 / 3,78 | 3,62 / 3,71 | 8,43 / 10,5 | 0,27× | 27390 / 27389 |
-| `stress/10p` | 35,2 / 60,9 | 42,1 / 62,5 | 68,9 / 110 | 70,4 / 106 | 92,7 / 144 | 0,38× | 101748 / 59608 |
+| `golden/box-chrome` | 0,67 / 1,16 | 0,66 / 1,77 | 1,09 / 1,39 | 1,06 / 1,37 | 2,01 / 2,37 | 0,33× | 5433 / 5453 |
+| `golden/gradients` | 0,42 / 1,09 | 0,39 / 0,76 | 0,62 / 1,04 | 0,57 / 1,04 | 0,93 / 1,79 | 0,46× | 4477 / 4483 |
+| `golden/repeating-gradients` | 0,46 / 0,59 | 0,45 / 0,58 | 0,72 / 0,83 | 0,67 / 0,78 | 0,98 / 1,13 | 0,47× | 8465 / 8454 |
+| `golden/box-shadows` | 0,28 / 0,39 | 0,27 / 0,42 | 0,46 / 0,55 | 0,42 / 0,54 | 0,74 / 0,86 | 0,38× | 4091 / 4128 |
+| `golden/blend-opacity` | 0,18 / 0,25 | 0,18 / 0,25 | 0,28 / 0,32 | 0,25 / 0,31 | 0,54 / 0,62 | 0,34× | 3154 / 3172 |
+| `golden/overflow-clip` | 0,17 / 0,24 | 0,17 / 0,27 | 0,25 / 0,31 | 0,22 / 0,29 | 0,50 / 0,62 | 0,34× | 2487 / 2505 |
+| `golden/transformed-overflow-clip` | 0,11 / 0,13 | 0,11 / 0,15 | 0,15 / 0,17 | 0,13 / 0,16 | 0,31 / 0,37 | 0,34× | 1828 / 1846 |
+| `golden/clip-path-shapes` | 0,21 / 0,26 | 0,21 / 0,32 | 0,37 / 0,43 | 0,34 / 0,40 | 0,61 / 0,69 | 0,35× | 4344 / 4367 |
+| `golden/mask-image` | 0,31 / 0,40 | 0,30 / 0,43 | 0,49 / 0,53 | 0,45 / 0,53 | 0,88 / 1,01 | 0,36× | 9341 / 9354 |
+| `golden/color-filters` | 0,15 / 0,20 | 0,16 / 0,21 | 0,24 / 0,29 | 0,21 / 0,25 | 0,43 / 0,52 | 0,36× | 1924 / 1939 |
+| `golden/outlines` | 0,17 / 0,21 | 0,17 / 0,22 | 0,26 / 0,28 | 0,23 / 0,28 | 0,42 / 0,49 | 0,40× | 2403 / 2421 |
+| `golden/background-boxes` | 0,19 / 0,23 | 0,19 / 0,24 | 0,34 / 0,40 | 0,31 / 0,36 | 0,51 / 0,56 | 0,38× | 3935 / 3954 |
+| `golden/background-placement` | 0,21 / 0,26 | 0,21 / 0,30 | 0,35 / 0,38 | 0,31 / 0,37 | 0,56 / 0,64 | 0,38× | 4676 / 4694 |
+| `golden/url-layers` | 0,21 / 0,28 | 0,21 / 0,34 | 0,32 / 0,38 | 0,28 / 0,34 | 0,59 / 0,70 | 0,36× | 3486 / 3501 |
+| `golden/edge-degenerate` | 0,49 / 0,60 | 0,47 / 0,61 | 0,76 / 0,85 | 0,67 / 0,80 | 1,36 / 1,50 | 0,36× | 5504 / 5520 |
+| `golden/image-object-fit` | 0,15 / 0,19 | 0,16 / 0,22 | 0,21 / 0,24 | 0,17 / 0,22 | 0,69 / 0,85 | 0,22× | 2290 / 2302 |
+| `golden/encoded-bitmaps` | 0,15 / 0,23 | 0,16 / 0,25 | 0,20 / 0,26 | 0,16 / 0,23 | 0,46 / 0,65 | 0,32× | 3213 / 3228 |
+| `golden/png-streams` | 0,13 / 0,16 | 0,13 / 0,18 | 0,17 / 0,20 | 0,14 / 0,18 | 0,37 / 0,44 | 0,34× | 2561 / 2576 |
+| `golden/border-mixed-sides` | 0,18 / 0,24 | 0,18 / 0,27 | 0,27 / 0,31 | 0,23 / 0,28 | 0,56 / 0,67 | 0,32× | 2428 / 2442 |
+| `golden/inline-span-background` | 0,52 / 0,62 | 0,50 / 0,57 | 0,85 / 0,91 | 0,76 / 0,87 | 1,49 / 1,59 | 0,35× | 6518 / 6537 |
+| `golden/inline-span-border` | 0,47 / 0,54 | 0,45 / 0,53 | 0,74 / 0,78 | 0,66 / 0,76 | 1,26 / 1,36 | 0,37× | 6222 / 6246 |
+| `golden/inline-images` | 0,47 / 0,56 | 0,45 / 0,58 | 0,69 / 0,75 | 0,59 / 0,75 | 1,44 / 1,70 | 0,33× | 6311 / 6330 |
+| `golden/inline-image-decorations` | 0,46 / 0,50 | 0,43 / 0,57 | 0,67 / 0,73 | 0,58 / 0,69 | 1,27 / 1,48 | 0,36× | 6125 / 6141 |
+| `golden/page-background` | 0,39 / 0,50 | 0,35 / 0,49 | 0,58 / 0,63 | 0,49 / 0,60 | 1,26 / 1,36 | 0,31× | 5463 / 5488 |
+| `golden/svg-background-image` | 0,41 / 0,51 | 0,37 / 0,58 | 0,62 / 0,67 | 0,54 / 0,64 | 1,06 / 1,22 | 0,39× | 5947 / 5980 |
+| `golden/collapsed-table` | 0,95 / 1,04 | 0,94 / 1,07 | 1,63 / 1,73 | 1,55 / 1,67 | 3,29 / 3,44 | 0,29× | 9576 / 9618 |
+| `golden/text-decorations` | 0,67 / 0,70 | 0,67 / 0,78 | 1,12 / 1,18 | 1,05 / 1,14 | 1,69 / 1,81 | 0,40× | 8895 / 8924 |
+| `golden/text-decoration-styles` | 0,52 / 0,56 | 0,52 / 0,60 | 0,86 / 0,94 | 0,78 / 0,88 | 1,23 / 1,34 | 0,42× | 6061 / 6082 |
+| `golden/svg-vector-image` | 0,14 / 0,18 | 0,15 / 0,22 | 0,21 / 0,27 | 0,17 / 0,23 | 0,46 / 0,59 | 0,31× | 2460 / 2473 |
+| `golden/text-basic` | 0,33 / 0,36 | 0,31 / 0,40 | 0,48 / 0,51 | 0,41 / 0,49 | 0,87 / 0,95 | 0,38× | 5090 / 5113 |
+| `golden/text-ligatures` | 0,32 / 0,39 | 0,31 / 0,39 | 0,46 / 0,49 | 0,39 / 0,48 | 0,84 / 0,94 | 0,38× | 4965 / 4983 |
+| `golden/text-decoration-shadow` | 2,76 / 2,83 | 2,74 / 2,83 | 4,08 / 4,12 | 4,08 / 4,25 | 4,80 / 4,88 | 0,57× | 41383 / 41576 |
+| `golden/text-shadow-stroke` | 9,15 / 9,34 | 9,32 / 9,50 | 13,5 / 13,7 | 13,5 / 13,7 | 10,1 / 10,5 | 0,91× | 113528 / 95472 |
+| `golden/color-glyph-text-shadow` | 5,33 / 5,46 | 5,48 / 5,62 | 7,81 / 7,93 | 7,71 / 7,84 | 7,78 / 7,95 | 0,69× | 81290 / 80275 |
+| `golden/bitmap-glyph-text-shadow` | 1,38 / 1,51 | 1,39 / 1,51 | 1,97 / 2,09 | 1,88 / 1,98 | 2,41 / 2,57 | 0,57× | 15157 / 15247 |
+| `golden/text-stroke-paint-order` | 1,18 / 1,27 | 1,18 / 1,32 | 1,69 / 1,82 | 1,61 / 1,75 | 1,41 / 1,54 | 0,84× | 15719 / 8977 |
+| `golden/cluster-closing-on-a-mark` | 0,23 / 0,27 | 0,25 / 0,32 | 0,32 / 0,35 | 0,26 / 0,33 | 0,61 / 0,70 | 0,38× | 4989 / 5003 |
+| `golden/font-weights` | 3,20 / 3,31 | 3,23 / 3,31 | 5,38 / 5,54 | 5,26 / 5,37 | 8,38 / 8,51 | 0,38× | 57046 / 57162 |
+| `golden/certificate` | 1,23 / 1,37 | 1,25 / 1,40 | 2,05 / 2,17 | 1,99 / 2,15 | 3,14 / 3,27 | 0,39× | 14269 / 14304 |
+| `golden/paged-lines` | 1,60 / 1,73 | 1,62 / 1,74 | 2,92 / 3,03 | 2,82 / 2,94 | 6,78 / 6,96 | 0,24× | 8713 / 8688 |
+| `golden/paged-page-ranges` | 1,05 / 1,14 | 1,01 / 1,14 | 1,79 / 1,87 | 1,68 / 1,79 | 7,67 / 7,85 | 0,14× | 7154 / 7192 |
+| `golden/paged-table` | 2,63 / 2,79 | 2,62 / 2,72 | 4,65 / 4,77 | 4,52 / 4,70 | 8,57 / 8,74 | 0,31× | 14569 / 14664 |
+| `golden/paged-breaks` | 0,47 / 0,51 | 0,46 / 0,61 | 0,71 / 0,77 | 0,62 / 0,72 | 1,79 / 1,93 | 0,26× | 5930 / 5948 |
+| `golden/paged-widows-orphans` | 0,77 / 0,89 | 0,76 / 0,94 | 1,27 / 1,40 | 1,18 / 1,30 | 2,66 / 3,00 | 0,29× | 8271 / 8296 |
+| `golden/paged-narrow` | 1,40 / 1,46 | 1,41 / 1,52 | 2,49 / 2,54 | 2,38 / 2,48 | 4,66 / 4,85 | 0,30× | 9202 / 9266 |
+| `golden/paged-landscape` | 5,77 / 6,38 | 5,93 / 6,19 | 10,7 / 10,9 | 10,6 / 11,3 | 13,9 / 14,3 | 0,41× | 15006 / 14122 |
+| `golden/legacy-page-break` | 0,68 / 0,73 | 0,66 / 0,77 | 1,08 / 1,26 | 0,99 / 1,10 | 2,17 / 2,35 | 0,31× | 7789 / 7826 |
+| `golden/text-shadow-page-cut` | 0,78 / 0,84 | 0,78 / 0,88 | 1,13 / 1,23 | 1,05 / 1,16 | 1,55 / 1,69 | 0,50× | 10452 / 10562 |
+| `golden/fixed-repeats-per-page` | 0,49 / 0,52 | 0,47 / 0,59 | 0,76 / 0,83 | 0,66 / 0,77 | 1,54 / 1,69 | 0,32× | 6381 / 6402 |
+| `golden/invoice` | 7,60 / 8,19 | 7,68 / 8,08 | 13,8 / 14,2 | 13,7 / 13,8 | 42,4 / 44,3 | 0,18× | 28817 / 28723 |
+| `golden/report-links-outline` | 1,15 / 1,19 | 1,13 / 1,25 | 1,90 / 1,97 | 1,78 / 1,93 | 4,30 / 4,56 | 0,27× | 14186 / 14223 |
+| `golden/paged-footer` | 1,58 / 1,62 | 1,65 / 1,70 | 2,68 / 2,75 | 2,60 / 2,74 | 8,34 / 8,55 | 0,19× | 11377 / 11427 |
+| `golden/paged-band-remeasure` | 0,72 / 0,77 | 0,72 / 0,85 | 1,15 / 1,25 | 1,07 / 1,18 | 3,23 / 3,50 | 0,22× | 6848 / 6879 |
+| `golden/paged-header-footer` | 2,20 / 2,24 | 2,17 / 2,28 | 3,89 / 3,98 | 3,79 / 4,11 | 11,2 / 11,3 | 0,20× | 10628 / 10657 |
+| `golden/auto-margin-bands` | 1,72 / 1,78 | 1,69 / 1,84 | 3,01 / 3,15 | 2,92 / 3,07 | 8,26 / 8,54 | 0,21× | 8697 / 8727 |
+| `golden/page-rules` | 1,28 / 1,37 | 1,28 / 1,46 | 2,22 / 2,32 | 2,10 / 2,24 | 6,98 / 7,06 | 0,18× | 10492 / 10542 |
+| `golden/paged-target-counters` | 0,71 / 0,84 | 0,70 / 0,85 | 1,10 / 1,27 | 1,01 / 1,18 | 3,99 / 4,50 | 0,18× | 7532 / 7555 |
+| `golden/content-page-counters` | 0,41 / 0,48 | 0,41 / 0,50 | 0,60 / 0,64 | 0,51 / 0,61 | 1,49 / 1,65 | 0,27× | 5128 / 5145 |
+| `golden/fixed-page-counters` | 0,41 / 0,46 | 0,37 / 0,47 | 0,61 / 0,66 | 0,52 / 0,63 | 1,30 / 1,42 | 0,31× | 4271 / 4292 |
+| `golden/stream-total-pages-band` | 1,84 / 1,94 | 1,81 / 1,94 | 3,17 / 3,26 | 3,05 / 3,19 | 6,34 / 6,59 | 0,29× | 11087 / 11120 |
+| `golden/stream-content-counters` | 1,40 / 1,48 | 1,40 / 1,51 | 2,32 / 2,39 | 2,24 / 2,32 | 8,66 / 9,09 | 0,16× | 11945 / 11979 |
+| `golden/stream-page-ranges-middle` | 0,91 / 0,98 | 0,91 / 1,01 | 1,46 / 1,58 | 1,37 / 1,48 | 3,72 / 3,95 | 0,24× | 10517 / 10540 |
+| `golden/at-page-first-left-right` | 8,37 / 8,52 | 8,68 / 9,18 | 15,8 / 16,0 | 15,8 / 16,3 | 21,2 / 21,6 | 0,40× | 16221 / 15653 |
+| `golden/at-page-root-element` | 6,69 / 6,88 | 6,82 / 7,19 | 12,3 / 12,9 | 12,3 / 12,6 | 12,6 / 12,8 | 0,53× | 14926 / 14404 |
+| `golden/named-pages` | 11,8 / 13,0 | 12,0 / 13,8 | 22,7 / 25,3 | 22,5 / 24,2 | 30,6 / 33,3 | 0,39× | 17054 / 17129 |
+| `golden/stream-forward-link` | 1,03 / 1,10 | 1,05 / 1,20 | 1,70 / 1,86 | 1,60 / 1,82 | 5,41 / 5,79 | 0,19× | 12394 / 12432 |
+| `golden/stream-tagged-outline` | 1,07 / 1,18 | 1,06 / 1,17 | 1,77 / 1,87 | 1,66 / 1,82 | 4,16 / 4,31 | 0,26× | 12391 / 12416 |
+| `golden/invoice-pdfa-3b-attachment` | 7,71 / 8,36 | 7,77 / 8,53 | 13,9 / 14,2 | 13,8 / 14,4 | 39,7 / 40,8 | 0,19× | 34007 / 33899 |
+| `golden/font-formats-pdfa-2b` | 1,55 / 1,63 | 1,51 / 1,64 | 2,35 / 2,49 | 2,23 / 2,40 | 3,55 / 3,61 | 0,44× | 35145 / 35291 |
+| `golden/font-formats-pdfa-2u` | 1,55 / 1,68 | 1,53 / 1,65 | 2,36 / 2,51 | 2,29 / 2,52 | 3,57 / 3,70 | 0,44× | 35145 / 35291 |
+| `golden/font-formats-pdfa-2a` | 1,55 / 1,62 | 1,52 / 1,70 | 2,36 / 2,45 | 2,24 / 2,40 | 3,54 / 3,66 | 0,44× | 35145 / 35291 |
+| `golden/font-formats-pdfa-3b` | 1,53 / 1,66 | 1,52 / 1,88 | 2,35 / 2,44 | 2,23 / 2,36 | 3,53 / 3,66 | 0,43× | 35145 / 35291 |
+| `golden/font-formats-pdfa-3u` | 1,55 / 1,60 | 1,52 / 1,65 | 2,35 / 2,40 | 2,23 / 2,38 | 3,52 / 3,67 | 0,44× | 35145 / 35291 |
+| `golden/font-formats-pdfa-3a` | 1,55 / 1,70 | 1,51 / 1,72 | 2,37 / 2,47 | 2,25 / 2,40 | 3,57 / 3,70 | 0,43× | 35145 / 35291 |
+| `golden/font-formats-pdfa-4` | 1,52 / 1,71 | 1,53 / 1,69 | 2,34 / 2,39 | 2,22 / 2,35 | 3,47 / 3,57 | 0,44× | 31772 / 31906 |
+| `golden/invoice-pdfa-2b` | 7,60 / 7,78 | 7,76 / 8,49 | 13,8 / 14,0 | 13,7 / 13,9 | 39,1 / 39,9 | 0,19× | 32058 / 31953 |
+| `golden/invoice-pdfa-4` | 7,73 / 7,92 | 7,73 / 8,49 | 13,8 / 14,0 | 13,5 / 13,9 | 39,1 / 39,5 | 0,20× | 29745 / 29644 |
+| `golden/invoice-pdfa-4f-attachment` | 7,70 / 8,26 | 7,79 / 8,77 | 13,9 / 14,6 | 13,8 / 14,1 | 39,2 / 41,2 | 0,20× | 31903 / 31803 |
+| `golden/report-tagged-ua1` | 1,17 / 1,21 | 1,16 / 1,29 | 1,94 / 2,03 | 1,82 / 1,94 | 4,28 / 4,47 | 0,27× | 18431 / 18461 |
+| `golden/report-tagged-a2a` | 1,17 / 1,28 | 1,18 / 1,39 | 1,93 / 2,01 | 1,81 / 1,93 | 4,23 / 4,61 | 0,28× | 17134 / 17166 |
+| `golden/list-tagged-ua1` | 0,83 / 0,94 | 0,82 / 0,97 | 1,32 / 1,40 | 1,22 / 1,38 | 2,63 / 2,79 | 0,32× | 10488 / 10522 |
+| `golden/inline-block-tagged` | 0,57 / 0,69 | 0,55 / 0,67 | 0,85 / 0,93 | 0,75 / 0,96 | 1,59 / 1,72 | 0,36× | 8605 / 8630 |
+| `golden/structure-types-a4` | 1,14 / 1,19 | 1,10 / 1,24 | 1,83 / 1,95 | 1,73 / 1,85 | 4,77 / 4,91 | 0,24× | 13686 / 13724 |
+| `golden/table-tagged-ua2` | 0,92 / 0,97 | 0,90 / 1,02 | 1,47 / 1,55 | 1,36 / 1,52 | 2,53 / 2,64 | 0,37× | 12295 / 12319 |
+| `golden/report-tagged-ua2` | 0,85 / 0,90 | 0,82 / 0,96 | 1,33 / 1,49 | 1,22 / 1,34 | 2,43 / 2,66 | 0,35× | 12532 / 12555 |
+| `golden/borders-tagged-ua1` | 0,57 / 0,62 | 0,55 / 0,65 | 0,86 / 0,93 | 0,76 / 0,88 | 1,52 / 1,65 | 0,37× | 12934 / 12955 |
+| `golden/decorative-image-ua1` | 0,37 / 0,42 | 0,34 / 0,44 | 0,53 / 0,57 | 0,44 / 0,54 | 1,05 / 1,16 | 0,35× | 5740 / 5762 |
+| `golden/inline-box-lang-ua1` | 0,57 / 0,66 | 0,55 / 0,67 | 0,84 / 0,91 | 0,74 / 0,84 | 1,54 / 1,70 | 0,37× | 12813 / 12835 |
+| `golden/heading-levels-ua1` | 0,84 / 0,89 | 0,83 / 1,00 | 1,32 / 1,41 | 1,22 / 1,44 | 2,35 / 2,53 | 0,36× | 16960 / 16995 |
+| `docs/invoice` | 1,97 / 2,02 | 1,95 / 2,07 | 3,21 / 3,26 | 3,06 / 3,49 | 6,10 / 6,62 | 0,32× | 26055 / 26094 |
+| `docs/report-repeating-header` | 7,86 / 8,28 | 7,92 / 8,05 | 14,3 / 14,7 | 14,3 / 14,6 | 28,1 / 28,6 | 0,28× | 33703 / 34052 |
+| `docs/ticket` | 0,79 / 0,91 | 0,81 / 0,91 | 1,18 / 1,29 | 1,09 / 1,25 | 1,70 / 1,80 | 0,46× | 19037 / 19063 |
+| `docs/multipage-text` | 7,56 / 8,00 | 7,68 / 7,91 | 13,6 / 14,1 | 13,6 / 14,5 | 16,0 / 16,6 | 0,47× | 23780 / 23586 |
+| `docs/headers-footers` | 6,13 / 6,43 | 6,11 / 6,78 | 10,9 / 11,5 | 10,7 / 11,5 | 21,7 / 23,3 | 0,28× | 16051 / 15898 |
+| `docs/links-outline` | 4,93 / 5,08 | 4,99 / 5,32 | 8,57 / 8,69 | 8,60 / 8,90 | 18,3 / 18,6 | 0,27× | 28346 / 28260 |
+| `docs/images` | 1,06 / 1,16 | 1,15 / 1,34 | 2,40 / 2,48 | 2,34 / 2,52 | 2,08 / 2,20 | 0,51× | 407883 / 407901 |
+| `docs/images-viewport` | 1,03 / 1,21 | 1,13 / 1,40 | 2,39 / 2,63 | 2,34 / 2,56 | 1,94 / 2,39 | 0,53× | 407774 / 407788 |
+| `docs/effects` | 1,14 / 1,27 | 1,13 / 1,32 | 1,75 / 1,83 | 1,66 / 1,78 | 2,04 / 2,17 | 0,56× | 19527 / 19643 |
+| `docs/intl-rtl-cjk-emoji` | 1,99 / 2,08 | 2,05 / 2,13 | 3,16 / 3,33 | 3,11 / 3,27 | 4,30 / 4,40 | 0,46× | 39262 / 39475 |
+| `docs/tagged-ua1` | 1,14 / 1,26 | 1,15 / 1,36 | 1,82 / 1,91 | 1,68 / 1,82 | 2,98 / 3,21 | 0,38× | 27397 / 27439 |
+| `docs/tagged-ua2-pdfa4` | 1,18 / 1,26 | 1,15 / 1,46 | 1,86 / 1,91 | 1,72 / 1,89 | 3,03 / 3,22 | 0,39× | 28723 / 28758 |
+| `docs/attachments` | 1,98 / 2,07 | 1,94 / 2,07 | 3,22 / 3,29 | 3,09 / 3,23 | 6,01 / 6,15 | 0,33× | 26664 / 26698 |
+| `docs/invoice-pdfa-2b` | 2,00 / 2,09 | 1,97 / 2,08 | 3,26 / 3,28 | 3,11 / 3,25 | 6,03 / 6,20 | 0,33× | 29699 / 29736 |
+| `docs/invoice-pdfa-2u` | 2,00 / 2,06 | 2,00 / 2,12 | 3,23 / 3,34 | 3,14 / 3,32 | 6,01 / 6,30 | 0,33× | 29699 / 29736 |
+| `docs/invoice-pdfa-2a` | 2,00 / 2,17 | 1,96 / 2,14 | 3,26 / 3,42 | 3,11 / 3,27 | 5,99 / 6,23 | 0,33× | 29707 / 29741 |
+| `docs/invoice-pdfa-3b` | 2,03 / 2,07 | 2,01 / 2,10 | 3,27 / 3,38 | 3,14 / 3,26 | 5,99 / 6,10 | 0,34× | 30813 / 30848 |
+| `docs/invoice-pdfa-3u` | 2,03 / 2,07 | 1,99 / 2,31 | 3,26 / 3,46 | 3,17 / 3,35 | 6,04 / 6,27 | 0,34× | 30813 / 30848 |
+| `docs/invoice-pdfa-3a` | 2,06 / 2,13 | 2,02 / 2,29 | 3,27 / 3,47 | 3,14 / 3,27 | 6,12 / 6,31 | 0,34× | 30821 / 30857 |
+| `docs/invoice-pdfa-4` | 2,00 / 2,13 | 2,00 / 2,21 | 3,26 / 3,36 | 3,10 / 3,29 | 5,98 / 6,24 | 0,33× | 27320 / 27351 |
+| `docs/invoice-pdfa-4f` | 2,03 / 2,10 | 1,98 / 2,15 | 3,27 / 3,37 | 3,13 / 3,25 | 5,99 / 6,08 | 0,34× | 28727 / 28754 |
+| `stress/1p` | 2,03 / 2,06 | 2,04 / 2,14 | 3,44 / 3,85 | 3,34 / 3,57 | 7,23 / 7,46 | 0,28× | 27378 / 27389 |
+| `stress/10p` | 15,6 / 16,0 | 15,6 / 17,5 | 27,7 / 28,7 | 27,8 / 29,4 | 76,3 / 77,7 | 0,20× | 59551 / 59608 |
 
 median / p95 ms.
 <!-- /pdf-bench:per-doc -->
@@ -345,41 +343,41 @@ Trang tóm tắt bằng tiếng Anh và tiếng Việt: [en/native-vs-wasm.md](e
 |:--|:--|
 | Máy | Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz, 8 CPU logic, 7.80 GiB, win32 10.0.26200 x64 |
 | Node.js | v26.13.0 (V8 14.6.202.34-node.40, N-API 10, libuv 1.52.1) |
-| bm-engine | 0.1.0, git `ef21c5674b` (integ, 4 file đang sửa) |
-| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 2 083 KiB, Zig 0.17.1, ReleaseFast, sha256 `ec92d1feb24f` |
-| bm-wasm | `js/bm_engine.wasm` (profile full), 1 140 KiB, sha256 `7a7e363d2c98` |
+| bm-engine | 0.1.0, git `e5c535cbbf` (main, 3 file đang sửa) |
+| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3 327 KiB, Zig 0.17.1, ReleaseFast, sha256 `1d5ff5ea0a4f` |
+| bm-wasm | `js/bm_engine.wasm` (profile full), 1 144 KiB, sha256 `a7e1528586ac` |
 | takumi-native | `@takumi-rs/core` 2.20.0 + `@takumi-rs/core-win32-x64-msvc` 2.20.0, 9 796 KiB |
 | takumi-wasm | `@takumi-rs/wasm` 2.20.0, 4 235 KiB |
-| Lần chạy | 2026-11-12 11:03 UTC, chế độ full, 250 fixtures, 16.6 min; CPU bận trước khi chạy: 53.5 % |
+| Lần chạy | 2026-11-13 04:23 UTC, chế độ full, 250 fixtures, 16.0 min; CPU bận trước khi chạy: 5.00 % |
 <!-- /native-bench:env -->
 
 ### Tóm tắt
 
 <!-- native-bench:highlights -->
-- **bm-native so với bm-wasm (sync):** raw bằng 0.60× thời gian của wasm [0.60× / 0.59× / 0.60×] (nhanh hơn ở 250/250 fixture), PNG 0.68× [0.68× / 0.68× / 0.68×] (nhanh hơn ở 250/250).
-- **bm-native so với takumi-native, cùng async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm nhanh hơn ở 244/250, từng fixture 0.13×–1.21×), PNG 0.56× [0.56× / 0.58× / 0.56×] (bm nhanh hơn ở 227/250, từng fixture 0.23×–2.28×). Với API sync của bm: raw 0.50×, PNG 0.56×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
-- **Thời gian CPU mỗi ảnh (cùng async):** PNG 2.32 ms bm-native so với 3.81 ms takumi-native (1.47 so với 1.78 lõi bận trong một lần render); raw 1.42 so với 1.71 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.91 lõi với PNG).
-- **Hai bản build của chính takumi:** takumi-native tốn 0.75× thời gian của takumi-wasm với raw và 0.56× với PNG.
-- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 1810/1810 phép so trên 250 fixture (637 MB; 0 khác biệt).
-- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 33.4 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 3.70 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±16.7 %.
+- **bm-native so với bm-wasm (sync):** raw bằng 0.61× thời gian của wasm [0.62× / 0.61× / 0.61×] (nhanh hơn ở 250/250 fixture), PNG 0.67× [0.68× / 0.68× / 0.67×] (nhanh hơn ở 250/250).
+- **bm-native so với takumi-native, cùng async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm nhanh hơn ở 244/250, từng fixture 0.12×–1.20×), PNG 0.54× [0.55× / 0.55× / 0.54×] (bm nhanh hơn ở 227/250, từng fixture 0.23×–2.54×). Với API sync của bm: raw 0.53×, PNG 0.57×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
+- **Thời gian CPU mỗi ảnh (cùng async):** PNG 1.98 ms bm-native so với 3.20 ms takumi-native (1.73 so với 1.98 lõi bận trong một lần render); raw 1.30 so với 1.41 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.87 lõi với PNG).
+- **Hai bản build của chính takumi:** takumi-native tốn 0.72× thời gian của takumi-wasm với raw và 0.55× với PNG.
+- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 2626/2626 phép so trên 250 fixture (802 MB; 0 khác biệt).
+- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 4.70 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 1.50 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±2.35 %.
 <!-- /native-bench:highlights -->
 
 <!-- native-bench:summary -->
 | Chỉ số | bm-native | bm-wasm | takumi-native | takumi-wasm |
 |:--|--:|--:|--:|--:|
-| raw RGBA, geomean ms — API sync | 0.51 ±15.5 % ⚠ | 0.85 ±16.1 % ⚠ | không có API sync | — |
-| raw RGBA, geomean ms — API async | 0.56 ±15.7 % ⚠ | — | 1.02 ±15.3 % ⚠ | 1.36 ±15.8 % ⚠ |
-| PNG, geomean ms — API sync | 1.05 ±14.6 % ⚠ | 1.56 ±15.0 % ⚠ | không có API sync | — |
-| PNG, geomean ms — API async | 1.06 ±16.7 % ⚠ | — | 1.89 ±14.5 % ⚠ | 3.36 ±15.8 % ⚠ |
-| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 1.42 (0.91 lõi) | 1.78 (0.77 lõi) | 3.81 (1.78 lõi) | 4.08 (0.86 lõi) |
+| raw RGBA, geomean ms — API sync | 0.45 ±2.15 % | 0.74 ±2.15 % | không có API sync | — |
+| raw RGBA, geomean ms — API async | 0.47 ±2.25 % | — | 0.86 ±2.10 % | 1.19 ±2.35 % |
+| PNG, geomean ms — API sync | 0.95 ±1.95 % | 1.41 ±1.55 % | không có API sync | — |
+| PNG, geomean ms — API async | 0.90 ±2.30 % | — | 1.66 ±1.55 % | 3.03 ±1.65 % |
+| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 1.00 (0.87 lõi) | 1.30 (0.76 lõi) | 3.20 (1.98 lõi) | 2.84 (0.81 lõi) |
 | Dung lượng PNG, geomean so với takumi | 0.80× | 0.80× | 1.00× | 1.00× |
-| Cold start so với Node rỗng, median / p95 ms | 31.3 / 69.2 | 99.9 / 138 | 50.9 / 97.5 | 238 / 304 |
-| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 94.7 → 96.0 | 132 → 156 | 102 → 139 | 140 → 176 |
-| RSS đỉnh, một PNG 4000×4000, MiB | 143 | 149 | 135 | 151 |
-| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 227 (sync) · 1.50 (async) | 455 (sync) · 473 (async) | 7.30 (async) | 819 (async) |
-| Event loop: như trên, animation 60 khung, ms | 476 (sync) · 1.20 (async) | 969 (sync) · 954 (async) | 21.6 (async) | 2 072 (async) |
-| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 312 (many K=4, UV 4) ⚠ | 233 (pool K=4) ⚠ | 270 (one, UV 8) ⚠ | 137 (pool K=8) ⚠ |
-| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 402 (many K=8, UV 8) ⚠ | 270 (pool K=8) ⚠ | 316 (one, UV 8) ⚠ | 180 (pool K=8) ⚠ |
+| Cold start so với Node rỗng, median / p95 ms | 21.8 / 45.5 | 75.5 / 93.0 | 46.2 / 69.2 | 185 / 249 |
+| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 90.7 → 91.4 | 127 → 150 | 118 → 124 | 138 → 172 |
+| RSS đỉnh, một PNG 4000×4000, MiB | 140 | 146 | 133 | 148 |
+| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 211 (sync) · 1.20 (async) | 401 (sync) · 392 (async) | 13.4 (async) | 746 (async) |
+| Event loop: như trên, animation 60 khung, ms | 438 (sync) · 1.10 (async) | 848 (sync) · 873 (async) | 11.5 (async) | 1 848 (async) |
+| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 372 (many K=8, UV 4) | 263 (pool K=4) | 298 (many K=2, UV 8) | 173 (pool K=8) |
+| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 408 (many K=8, UV 8) | 291 (pool K=8) | 336 (one, UV 8) | 202 (pool K=8) |
 
 Geomean trên 250 fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của 3 lượt so với median của chúng; ⚠ = chênh quá 10 %. Cold start: median / p95 của 30 tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo; ở các dòng thông lượng ⚠ = tiến trình khác dùng trung bình hơn một lõi trong lúc đo.
 <!-- /native-bench:summary -->
@@ -440,14 +438,14 @@ inline…), nên geomean không so trực tiếp được với số cũ; cột 
 <!-- native-bench:speed -->
 | Định dạng (số fixture) | bm-native sync | bm-native async | bm-wasm sync | takumi-native async | takumi-wasm |
 |:--|--:|--:|--:|--:|--:|
-| raw (250) | 0.51 ±15.5 % ⚠ | 0.56 ±15.7 % ⚠ | 0.85 ±16.1 % ⚠ | 1.02 ±15.3 % ⚠ | 1.36 ±15.8 % ⚠ |
-| png (250) | 1.05 ±14.6 % ⚠ | 1.06 ±16.7 % ⚠ | 1.56 ±15.0 % ⚠ | 1.89 ±14.5 % ⚠ | 3.36 ±15.8 % ⚠ |
-| jpeg (3) | 13.5 ±19.9 % ⚠ | 13.2 ±17.9 % ⚠ | 21.7 ±24.1 % ⚠ | 19.5 ±15.1 % ⚠ | 28.4 ±25.3 % ⚠ |
-| webp (3) | 10.1 ±21.2 % ⚠ | 9.95 ±22.0 % ⚠ | 13.9 ±26.9 % ⚠ | 73.9 ±23.4 % ⚠ | 17.8 ±24.3 % ⚠ |
-| raw, bỏ known-gaps | 0.52 | 0.57 | 0.87 | 1.04 | 1.38 |
-| png, bỏ known-gaps | 1.07 | 1.08 | 1.59 | 1.92 | 3.41 |
-| raw, từng lượt | 0.52 / 0.64 / 0.48 | 0.56 / 0.69 / 0.51 | 0.87 / 1.07 / 0.79 | 1.03 / 1.26 / 0.94 | 1.37 / 1.71 / 1.28 |
-| png, từng lượt | 1.07 / 1.32 / 1.01 | 1.07 / 1.36 / 1.00 | 1.57 / 1.96 / 1.49 | 1.89 / 2.33 / 1.78 | 3.37 / 4.29 / 3.23 |
+| raw (250) | 0.45 ±2.15 % | 0.47 ±2.25 % | 0.74 ±2.15 % | 0.86 ±2.10 % | 1.19 ±2.35 % |
+| png (250) | 0.95 ±1.95 % | 0.90 ±2.30 % | 1.41 ±1.55 % | 1.66 ±1.55 % | 3.03 ±1.65 % |
+| jpeg (3) | 11.1 ±2.90 % | 11.3 ±2.40 % | 18.3 ±1.95 % | 17.5 ±2.45 % | 24.2 ±2.50 % |
+| webp (3) | 8.71 ±3.15 % | 8.87 ±2.65 % | 12.4 ±2.55 % | 66.6 ±2.20 % | 15.8 ±2.35 % |
+| raw, bỏ known-gaps | 0.47 | 0.48 | 0.76 | 0.87 | 1.21 |
+| png, bỏ known-gaps | 0.97 | 0.92 | 1.44 | 1.69 | 3.07 |
+| raw, từng lượt | 0.46 / 0.47 / 0.45 | 0.47 / 0.48 / 0.46 | 0.74 / 0.76 / 0.73 | 0.86 / 0.89 / 0.85 | 1.19 / 1.23 / 1.17 |
+| png, từng lượt | 0.96 / 0.98 / 0.94 | 0.91 / 0.94 / 0.90 | 1.42 / 1.45 / 1.41 | 1.67 / 1.70 / 1.65 | 3.04 / 3.11 / 3.01 |
 
 Trung bình nhân của thời gian render median từng fixture, ms. jpeg (quality 85) và webp (lossless; takumi-wasm dùng bộ mã hoá WebP khác takumi-native, xem bảng định dạng) chỉ đo trên ba fixture.
 <!-- /native-bench:speed -->
@@ -455,11 +453,11 @@ Trung bình nhân của thời gian render median từng fixture, ms. jpeg (qual
 <!-- native-bench:cpu -->
 | Biến thể | raw: thực / CPU ms / lõi | PNG: thực / CPU ms / lõi |
 |:--|--:|--:|
-| bm-native sync | 0.53 / 0.55 / 1.05 | 1.56 / 1.42 / 0.91 |
-| bm-native async | 0.60 / 1.42 / 2.35 | 1.58 / 2.32 / 1.47 |
-| bm-wasm sync | 0.87 / 0.69 / 0.79 | 2.31 / 1.78 / 0.77 |
-| takumi-native async | 1.02 / 1.71 / 1.67 | 2.14 / 3.81 / 1.78 |
-| takumi-wasm | 1.40 / 1.10 / 0.79 | 4.77 / 4.08 / 0.86 |
+| bm-native sync | 0.41 / 0.38 / 0.91 | 1.16 / 1.00 / 0.87 |
+| bm-native async | 0.46 / 1.30 / 2.81 | 1.15 / 1.98 / 1.73 |
+| bm-wasm sync | 0.66 / 0.51 / 0.77 | 1.71 / 1.30 / 0.76 |
+| takumi-native async | 0.78 / 1.41 / 1.80 | 1.61 / 3.20 / 1.98 |
+| takumi-wasm | 1.06 / 0.78 / 0.73 | 3.50 / 2.84 / 0.81 |
 
 Trung bình trên mọi lần render được đo (không phải geomean): thời gian thực mỗi lần render, thời gian CPU của tiến trình (mọi thread) trong lúc đó, và tỉ số. Tỉ số trên 1 nghĩa là một lần render dùng hơn một lõi.
 <!-- /native-bench:cpu -->
@@ -469,71 +467,71 @@ Theo nhóm fixture:
 <!-- native-bench:categories -->
 | Nhóm | n | raw bm-n sync | raw bm-n async | raw bm-w | raw tk-n | raw tk-w | raw bm-n/tk-n | png bm-n sync | png bm-n async | png bm-w | png tk-n | png tk-w | png bm-n/tk-n |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| aa-exact | 2 | 0.41 | 0.43 | 0.59 | 0.77 | 1.01 | 0.56× | 0.75 | 0.82 | 1.16 | 1.47 | 2.37 | 0.56× |
-| absolute | 3 | 0.88 | 0.91 | 1.29 | 1.12 | 1.69 | 0.81× | 1.69 | 1.86 | 2.52 | 3.20 | 6.29 | 0.58× |
-| animation | 44 | 0.15 | 0.17 | 0.25 | 0.35 | 0.44 | 0.49× | 0.25 | 0.25 | 0.36 | 0.65 | 0.92 | 0.38× |
-| backdrop-filter | 1 | 1.46 | 1.54 | 2.74 | 2.67 | 4.54 | 0.58× | 2.23 | 2.30 | 4.00 | 3.25 | 8.05 | 0.71× |
-| bg-blend | 1 | 0.75 | 0.89 | 1.67 | 5.07 | 6.10 | 0.18× | 3.04 | 3.04 | 4.76 | 5.54 | 12.4 | 0.55× |
-| bg-clip-text | 1 | 0.43 | 0.48 | 0.61 | 2.28 | 3.05 | 0.21× | 1.58 | 1.61 | 2.24 | 2.87 | 5.94 | 0.56× |
-| block-in-inline | 4 | 0.34 | 0.36 | 0.55 | 0.82 | 1.02 | 0.44× | 0.64 | 0.64 | 0.92 | 1.37 | 1.89 | 0.47× |
-| blog-card | 2 | 4.59 | 4.59 | 8.21 | 5.89 | 12.0 | 0.78× | 10.7 | 10.8 | 16.6 | 9.52 | 32.3 | 1.13× |
-| border-radius | 4 | 0.98 | 1.03 | 1.57 | 1.15 | 1.52 | 0.89× | 2.04 | 1.97 | 2.84 | 2.91 | 6.33 | 0.68× |
-| borders | 3 | 0.96 | 1.08 | 1.67 | 1.41 | 2.11 | 0.77× | 1.60 | 1.61 | 2.43 | 2.90 | 5.30 | 0.55× |
-| box-shadow | 4 | 1.97 | 2.18 | 3.70 | 4.33 | 6.58 | 0.50× | 4.90 | 4.89 | 8.12 | 6.10 | 17.4 | 0.80× |
-| clip-path | 1 | 0.44 | 0.47 | 0.76 | 0.76 | 1.09 | 0.61× | 1.33 | 1.40 | 2.08 | 1.77 | 6.28 | 0.79× |
-| colors | 5 | 0.74 | 0.83 | 1.32 | 1.31 | 2.02 | 0.64× | 1.10 | 1.13 | 1.73 | 2.71 | 4.55 | 0.42× |
-| css-stylesheet | 8 | 0.58 | 0.64 | 0.92 | 0.99 | 1.22 | 0.65× | 0.91 | 0.92 | 1.34 | 2.03 | 3.27 | 0.45× |
-| dashed-border | 1 | 1.00 | 1.32 | 2.02 | 1.81 | 3.23 | 0.73× | 1.13 | 1.21 | 1.76 | 2.20 | 3.55 | 0.55× |
-| dotted-border | 1 | 0.95 | 0.99 | 1.68 | 1.97 | 3.01 | 0.50× | 1.78 | 1.39 | 3.13 | 3.26 | 4.92 | 0.43× |
-| double-3d-border | 1 | 0.35 | 0.39 | 0.62 | 0.59 | 0.80 | 0.66× | 0.55 | 0.58 | 0.85 | 1.20 | 1.70 | 0.49× |
-| drop-shadow | 1 | 0.81 | 0.80 | 1.35 | 1.18 | 1.71 | 0.68× | 2.28 | 2.29 | 3.61 | 1.98 | 7.22 | 1.16× |
-| emoji | 5 | 0.14 | 0.15 | 0.22 | 0.51 | 0.65 | 0.28× | 0.53 | 0.53 | 0.74 | 0.81 | 1.05 | 0.66× |
-| filter | 1 | 0.65 | 0.69 | 1.31 | 1.29 | 1.93 | 0.53× | 1.79 | 1.84 | 2.98 | 2.02 | 5.18 | 0.91× |
-| flex | 5 | 0.89 | 0.96 | 1.43 | 1.19 | 1.74 | 0.81× | 1.46 | 1.47 | 2.13 | 2.82 | 5.21 | 0.52× |
-| float | 4 | 0.31 | 0.33 | 0.55 | 0.61 | 0.78 | 0.55× | 0.74 | 0.74 | 1.09 | 1.37 | 2.64 | 0.54× |
-| float-paint-order | 3 | 0.42 | 0.45 | 0.71 | 0.90 | 1.09 | 0.50× | 0.67 | 0.68 | 1.00 | 1.29 | 1.74 | 0.52× |
-| float-text | 7 | 0.49 | 0.54 | 0.80 | 0.91 | 1.15 | 0.59× | 1.19 | 1.18 | 1.67 | 1.76 | 2.98 | 0.67× |
-| font-variant | 3 | 0.40 | 0.44 | 0.62 | 0.96 | 1.19 | 0.45× | 1.18 | 1.19 | 1.63 | 1.87 | 3.23 | 0.63× |
-| fonts | 2 | 1.35 | 1.51 | 2.16 | 2.34 | 3.19 | 0.64× | 3.93 | 4.12 | 5.42 | 4.41 | 10.1 | 0.94× |
-| grid | 4 | 0.99 | 1.07 | 1.57 | 1.63 | 2.11 | 0.65× | 1.74 | 1.67 | 2.75 | 3.41 | 6.49 | 0.49× |
-| grid-areas | 3 | 0.35 | 0.42 | 0.71 | 0.78 | 0.94 | 0.54× | 0.71 | 0.78 | 1.12 | 1.61 | 2.34 | 0.48× |
-| html | 4 | 0.77 | 0.80 | 1.11 | 1.34 | 1.73 | 0.59× | 1.68 | 1.70 | 2.41 | 2.84 | 5.06 | 0.60× |
-| images | 7 | 1.02 | 1.10 | 2.00 | 3.01 | 4.24 | 0.37× | 8.59 | 8.94 | 13.5 | 6.50 | 23.7 | 1.37× |
-| inline-bidi | 3 | 0.51 | 0.52 | 0.82 | 1.09 | 1.40 | 0.48× | 0.93 | 0.93 | 1.35 | 1.65 | 2.50 | 0.56× |
-| inline-block | 4 | 0.33 | 0.38 | 0.58 | 0.71 | 0.86 | 0.53× | 0.79 | 0.80 | 1.16 | 1.45 | 2.13 | 0.56× |
-| inline-box | 1 | 1.32 | 1.30 | 2.24 | 2.12 | 2.92 | 0.61× | 2.61 | 2.65 | 3.99 | 3.03 | 6.43 | 0.88× |
-| inline-box-model | 4 | 0.70 | 0.74 | 1.14 | 1.26 | 1.67 | 0.59× | 1.54 | 1.57 | 2.24 | 2.12 | 3.72 | 0.74× |
-| inline-flow | 5 | 0.47 | 0.49 | 0.82 | 0.92 | 1.17 | 0.53× | 1.11 | 1.12 | 1.68 | 1.70 | 2.97 | 0.66× |
-| inline-relative | 1 | 0.52 | 0.53 | 0.78 | 1.09 | 1.33 | 0.48× | 0.86 | 0.88 | 1.23 | 1.55 | 2.11 | 0.57× |
-| known-gaps | 9 | 0.30 | 0.32 | 0.48 | 0.63 | 0.85 | 0.51× | 0.62 | 0.63 | 0.91 | 1.31 | 2.36 | 0.48× |
-| linear-gradient | 4 | 1.83 | 1.99 | 3.14 | 3.75 | 5.13 | 0.53× | 5.03 | 4.98 | 7.65 | 5.80 | 20.8 | 0.86× |
-| mask | 1 | 0.82 | 0.84 | 1.30 | 1.36 | 1.82 | 0.62× | 2.46 | 2.27 | 2.97 | 2.41 | 9.13 | 0.94× |
-| mix-blend | 1 | 1.13 | 1.20 | 1.86 | 1.61 | 3.02 | 0.74× | 2.91 | 3.06 | 4.63 | 2.31 | 8.53 | 1.33× |
-| mixed-border | 1 | 0.56 | 0.59 | 1.08 | 0.92 | 1.35 | 0.65× | 0.73 | 0.71 | 1.11 | 1.57 | 2.18 | 0.45× |
-| og-card | 2 | 1.97 | 1.93 | 3.21 | 3.64 | 5.21 | 0.53× | 6.72 | 6.44 | 9.81 | 5.71 | 14.1 | 1.13× |
-| opacity | 4 | 1.36 | 1.45 | 2.59 | 2.86 | 5.51 | 0.51× | 2.33 | 2.43 | 3.83 | 4.34 | 9.70 | 0.56× |
-| outline | 1 | 0.62 | 0.79 | 1.19 | 1.24 | 1.92 | 0.64× | 0.86 | 0.86 | 1.34 | 1.96 | 2.91 | 0.44× |
-| overflow | 3 | 0.82 | 0.96 | 1.44 | 1.64 | 2.09 | 0.58× | 1.69 | 1.66 | 2.57 | 3.38 | 6.15 | 0.49× |
-| pseudo-elements | 4 | 0.42 | 0.46 | 0.69 | 0.79 | 1.03 | 0.58× | 0.77 | 0.71 | 1.08 | 1.53 | 2.59 | 0.46× |
-| radial-gradient | 3 | 1.34 | 1.62 | 2.34 | 4.41 | 5.62 | 0.37× | 9.05 | 9.45 | 13.1 | 8.06 | 27.3 | 1.17× |
-| rtl | 5 | 0.31 | 0.34 | 0.57 | 0.67 | 0.83 | 0.51× | 0.47 | 0.48 | 0.75 | 1.06 | 1.49 | 0.45× |
-| sizing | 5 | 0.69 | 0.76 | 1.03 | 0.93 | 1.26 | 0.82× | 1.23 | 1.18 | 1.70 | 2.94 | 5.15 | 0.40× |
-| stress | 3 | 7.84 | 8.93 | 13.1 | 12.8 | 17.4 | 0.70× | 17.5 | 17.2 | 26.4 | 18.4 | 39.9 | 0.94× |
-| svg-image | 1 | 0.69 | 0.75 | 1.48 | 0.71 | 1.01 | 1.05× | 1.39 | 1.74 | 3.13 | 1.82 | 2.92 | 0.96× |
-| table | 8 | 0.53 | 0.54 | 0.88 | 1.09 | 1.41 | 0.50× | 0.92 | 0.92 | 1.43 | 1.73 | 2.76 | 0.53× |
-| tailwind | 8 | 0.72 | 0.74 | 1.14 | 1.12 | 1.53 | 0.66× | 1.01 | 1.01 | 1.52 | 1.96 | 3.22 | 0.52× |
-| text-decoration | 1 | 1.12 | 1.21 | 1.90 | 1.37 | 1.90 | 0.89× | 1.98 | 1.95 | 3.00 | 2.12 | 3.95 | 0.92× |
-| text-i18n | 2 | 1.28 | 1.31 | 1.70 | 2.30 | 2.69 | 0.57× | 3.11 | 3.19 | 4.21 | 4.07 | 8.48 | 0.78× |
-| text-indent | 4 | 0.50 | 0.51 | 0.78 | 1.03 | 1.27 | 0.50× | 1.08 | 1.09 | 1.49 | 1.66 | 2.67 | 0.66× |
-| text-overflow | 4 | 0.33 | 0.36 | 0.50 | 0.86 | 1.07 | 0.42× | 0.66 | 0.67 | 0.94 | 1.49 | 2.14 | 0.45× |
-| text-paragraph | 5 | 1.33 | 1.43 | 2.00 | 2.22 | 3.10 | 0.65× | 2.86 | 2.86 | 3.85 | 4.04 | 7.83 | 0.71× |
-| text-shadow | 1 | 0.64 | 0.65 | 1.15 | 0.93 | 1.19 | 0.70× | 2.67 | 2.76 | 4.04 | 2.07 | 4.57 | 1.33× |
-| text-single-line | 3 | 0.81 | 0.86 | 1.21 | 1.47 | 1.92 | 0.59× | 1.74 | 1.79 | 2.33 | 2.91 | 5.10 | 0.61× |
-| text-stroke | 2 | 0.79 | 0.85 | 1.45 | 0.72 | 0.97 | 1.18× | 1.40 | 1.39 | 2.07 | 1.39 | 2.40 | 1.00× |
-| text-truncation | 3 | 0.81 | 0.95 | 1.26 | 1.49 | 1.96 | 0.64× | 1.50 | 1.51 | 2.02 | 2.85 | 4.97 | 0.53× |
-| text-wrap-balance | 3 | 0.64 | 0.64 | 1.00 | 1.22 | 1.63 | 0.52× | 1.17 | 1.20 | 1.70 | 1.89 | 3.16 | 0.63× |
-| transform | 5 | 0.69 | 0.73 | 1.09 | 1.49 | 2.30 | 0.49× | 1.16 | 1.23 | 1.77 | 2.47 | 4.48 | 0.50× |
-| visibility | 1 | 0.21 | 0.23 | 0.33 | 0.44 | 0.54 | 0.51× | 0.30 | 0.32 | 0.41 | 1.12 | 1.39 | 0.29× |
+| aa-exact | 2 | 0.29 | 0.29 | 0.46 | 0.54 | 0.75 | 0.53× | 0.63 | 0.61 | 0.92 | 1.09 | 1.68 | 0.56× |
+| absolute | 3 | 0.66 | 0.67 | 1.02 | 0.84 | 1.23 | 0.80× | 1.33 | 1.21 | 2.02 | 2.33 | 5.46 | 0.52× |
+| animation | 44 | 0.14 | 0.15 | 0.23 | 0.30 | 0.39 | 0.49× | 0.22 | 0.21 | 0.33 | 0.57 | 0.84 | 0.36× |
+| backdrop-filter | 1 | 1.33 | 1.34 | 2.59 | 2.46 | 4.25 | 0.54× | 2.18 | 2.17 | 3.98 | 3.21 | 7.36 | 0.68× |
+| bg-blend | 1 | 0.69 | 0.71 | 1.07 | 3.70 | 4.84 | 0.19× | 2.92 | 2.95 | 4.25 | 4.75 | 10.4 | 0.62× |
+| bg-clip-text | 1 | 0.42 | 0.41 | 0.59 | 1.81 | 2.75 | 0.23× | 1.50 | 1.49 | 2.15 | 2.66 | 5.31 | 0.56× |
+| block-in-inline | 4 | 0.34 | 0.32 | 0.52 | 0.75 | 0.98 | 0.43× | 0.62 | 0.57 | 0.89 | 1.25 | 1.78 | 0.46× |
+| blog-card | 2 | 3.76 | 3.82 | 6.46 | 4.96 | 10.3 | 0.77× | 10.1 | 10.1 | 15.7 | 8.73 | 30.4 | 1.15× |
+| border-radius | 4 | 0.72 | 0.73 | 1.08 | 0.78 | 1.02 | 0.93× | 1.33 | 1.21 | 1.87 | 2.14 | 4.23 | 0.57× |
+| borders | 3 | 0.72 | 0.75 | 1.10 | 0.98 | 1.36 | 0.76× | 1.20 | 1.06 | 1.78 | 2.19 | 4.12 | 0.49× |
+| box-shadow | 4 | 1.79 | 1.83 | 3.30 | 3.84 | 5.99 | 0.48× | 4.50 | 4.52 | 7.48 | 5.52 | 15.9 | 0.82× |
+| clip-path | 1 | 0.41 | 0.42 | 0.72 | 0.65 | 1.01 | 0.66× | 1.31 | 1.30 | 1.99 | 1.46 | 5.38 | 0.89× |
+| colors | 5 | 0.65 | 0.69 | 1.04 | 1.07 | 1.64 | 0.65× | 0.96 | 0.89 | 1.46 | 2.23 | 3.98 | 0.40× |
+| css-stylesheet | 8 | 0.52 | 0.52 | 0.79 | 0.82 | 1.06 | 0.63× | 0.86 | 0.79 | 1.27 | 1.80 | 3.03 | 0.44× |
+| dashed-border | 1 | 0.86 | 0.87 | 1.41 | 1.36 | 2.48 | 0.63× | 1.07 | 1.07 | 1.70 | 1.88 | 3.29 | 0.57× |
+| dotted-border | 1 | 0.87 | 0.91 | 1.55 | 1.56 | 2.83 | 0.59× | 1.15 | 1.14 | 1.88 | 2.10 | 3.68 | 0.54× |
+| double-3d-border | 1 | 0.30 | 0.32 | 0.55 | 0.52 | 0.74 | 0.61× | 0.51 | 0.48 | 0.78 | 0.98 | 1.46 | 0.49× |
+| drop-shadow | 1 | 0.79 | 0.78 | 1.29 | 1.09 | 1.65 | 0.71× | 2.21 | 2.17 | 3.44 | 1.88 | 6.89 | 1.15× |
+| emoji | 5 | 0.13 | 0.13 | 0.20 | 0.45 | 0.59 | 0.28× | 0.50 | 0.47 | 0.71 | 0.76 | 0.99 | 0.62× |
+| filter | 1 | 0.66 | 0.66 | 1.31 | 1.25 | 1.91 | 0.52× | 1.74 | 1.73 | 2.94 | 1.93 | 4.90 | 0.89× |
+| flex | 5 | 0.79 | 0.81 | 1.23 | 0.98 | 1.34 | 0.82× | 1.29 | 1.15 | 1.97 | 2.36 | 4.64 | 0.49× |
+| float | 4 | 0.26 | 0.28 | 0.48 | 0.53 | 0.70 | 0.53× | 0.69 | 0.65 | 1.05 | 1.24 | 2.49 | 0.52× |
+| float-paint-order | 3 | 0.36 | 0.35 | 0.57 | 0.72 | 0.95 | 0.49× | 0.66 | 0.63 | 0.96 | 1.19 | 1.63 | 0.53× |
+| float-text | 7 | 0.48 | 0.48 | 0.75 | 0.77 | 1.07 | 0.62× | 1.10 | 1.06 | 1.57 | 1.58 | 2.73 | 0.67× |
+| font-variant | 3 | 0.39 | 0.39 | 0.58 | 0.88 | 1.13 | 0.44× | 1.12 | 1.08 | 1.56 | 1.76 | 3.04 | 0.61× |
+| fonts | 2 | 1.20 | 1.23 | 1.63 | 1.95 | 2.68 | 0.63× | 3.30 | 3.17 | 4.55 | 4.13 | 8.64 | 0.77× |
+| grid | 4 | 0.84 | 0.88 | 1.33 | 1.28 | 1.73 | 0.69× | 1.53 | 1.42 | 2.29 | 2.83 | 5.62 | 0.50× |
+| grid-areas | 3 | 0.32 | 0.32 | 0.58 | 0.61 | 0.83 | 0.52× | 0.67 | 0.60 | 1.01 | 1.33 | 2.09 | 0.46× |
+| html | 4 | 0.71 | 0.73 | 1.04 | 1.20 | 1.59 | 0.61× | 1.60 | 1.51 | 2.27 | 2.61 | 4.73 | 0.58× |
+| images | 7 | 0.86 | 0.94 | 1.64 | 2.62 | 3.67 | 0.36× | 7.88 | 7.98 | 12.0 | 5.75 | 21.1 | 1.39× |
+| inline-bidi | 3 | 0.50 | 0.48 | 0.79 | 1.00 | 1.34 | 0.48× | 0.89 | 0.85 | 1.31 | 1.61 | 2.37 | 0.53× |
+| inline-block | 4 | 0.28 | 0.29 | 0.47 | 0.56 | 0.73 | 0.52× | 0.67 | 0.63 | 1.00 | 1.13 | 1.84 | 0.56× |
+| inline-box | 1 | 1.27 | 1.28 | 2.09 | 1.93 | 2.84 | 0.66× | 2.43 | 2.40 | 3.75 | 2.88 | 5.32 | 0.83× |
+| inline-box-model | 4 | 0.69 | 0.69 | 1.10 | 1.15 | 1.54 | 0.60× | 1.45 | 1.41 | 2.15 | 2.02 | 3.57 | 0.70× |
+| inline-flow | 5 | 0.45 | 0.45 | 0.77 | 0.82 | 1.08 | 0.55× | 1.07 | 1.03 | 1.61 | 1.55 | 2.78 | 0.67× |
+| inline-relative | 1 | 0.47 | 0.46 | 0.71 | 1.00 | 1.26 | 0.47× | 0.84 | 0.82 | 1.21 | 1.53 | 2.01 | 0.53× |
+| known-gaps | 9 | 0.24 | 0.26 | 0.41 | 0.52 | 0.74 | 0.51× | 0.55 | 0.53 | 0.82 | 1.10 | 2.12 | 0.48× |
+| linear-gradient | 4 | 1.43 | 1.48 | 2.37 | 2.80 | 4.04 | 0.53× | 4.25 | 4.22 | 6.44 | 4.75 | 17.0 | 0.89× |
+| mask | 1 | 0.71 | 0.73 | 1.20 | 1.06 | 1.64 | 0.69× | 1.55 | 1.53 | 2.30 | 1.92 | 6.30 | 0.79× |
+| mix-blend | 1 | 0.77 | 0.77 | 1.32 | 1.11 | 1.92 | 0.69× | 2.70 | 2.72 | 4.12 | 2.15 | 7.59 | 1.27× |
+| mixed-border | 1 | 0.46 | 0.46 | 0.78 | 0.71 | 1.22 | 0.65× | 0.73 | 0.69 | 1.11 | 1.25 | 2.08 | 0.55× |
+| og-card | 2 | 1.58 | 1.60 | 2.42 | 2.87 | 4.13 | 0.56× | 6.09 | 6.12 | 8.95 | 5.11 | 13.1 | 1.20× |
+| opacity | 4 | 1.28 | 1.26 | 2.31 | 2.56 | 5.19 | 0.49× | 2.07 | 1.96 | 3.41 | 3.84 | 8.84 | 0.51× |
+| outline | 1 | 0.53 | 0.55 | 0.90 | 1.02 | 1.70 | 0.54× | 0.80 | 0.79 | 1.23 | 1.59 | 2.66 | 0.50× |
+| overflow | 3 | 0.72 | 0.75 | 1.10 | 1.25 | 1.69 | 0.60× | 1.50 | 1.42 | 2.15 | 2.66 | 5.58 | 0.53× |
+| pseudo-elements | 4 | 0.36 | 0.39 | 0.61 | 0.69 | 0.94 | 0.56× | 0.73 | 0.65 | 1.05 | 1.38 | 2.45 | 0.47× |
+| radial-gradient | 3 | 1.22 | 1.27 | 1.88 | 3.90 | 4.83 | 0.33× | 8.35 | 8.35 | 11.5 | 6.81 | 24.2 | 1.23× |
+| rtl | 5 | 0.28 | 0.28 | 0.49 | 0.57 | 0.71 | 0.50× | 0.45 | 0.43 | 0.70 | 0.98 | 1.36 | 0.44× |
+| sizing | 5 | 0.60 | 0.62 | 0.87 | 0.75 | 1.00 | 0.83× | 1.01 | 0.92 | 1.48 | 2.36 | 4.58 | 0.39× |
+| stress | 3 | 7.14 | 7.78 | 11.6 | 11.6 | 16.0 | 0.67× | 15.3 | 15.4 | 23.4 | 16.5 | 35.6 | 0.93× |
+| svg-image | 1 | 0.66 | 0.65 | 1.37 | 0.61 | 0.94 | 1.08× | 1.08 | 1.05 | 1.89 | 1.28 | 2.26 | 0.82× |
+| table | 8 | 0.50 | 0.50 | 0.84 | 1.00 | 1.35 | 0.50× | 0.89 | 0.83 | 1.36 | 1.62 | 2.62 | 0.51× |
+| tailwind | 8 | 0.62 | 0.64 | 0.94 | 0.91 | 1.26 | 0.70× | 0.95 | 0.88 | 1.40 | 1.77 | 2.95 | 0.50× |
+| text-decoration | 1 | 1.09 | 1.09 | 1.83 | 1.27 | 1.80 | 0.86× | 1.85 | 1.81 | 2.84 | 2.03 | 3.62 | 0.89× |
+| text-i18n | 2 | 1.13 | 1.19 | 1.52 | 1.73 | 2.35 | 0.69× | 2.82 | 2.65 | 3.83 | 3.75 | 7.70 | 0.71× |
+| text-indent | 4 | 0.47 | 0.46 | 0.73 | 0.88 | 1.18 | 0.52× | 1.00 | 0.97 | 1.42 | 1.58 | 2.50 | 0.62× |
+| text-overflow | 4 | 0.32 | 0.31 | 0.47 | 0.80 | 1.02 | 0.38× | 0.64 | 0.61 | 0.89 | 1.33 | 1.97 | 0.46× |
+| text-paragraph | 5 | 1.06 | 1.14 | 1.56 | 1.66 | 2.33 | 0.69× | 2.50 | 2.39 | 3.53 | 3.48 | 6.88 | 0.69× |
+| text-shadow | 1 | 0.61 | 0.61 | 1.10 | 0.83 | 1.15 | 0.73× | 2.67 | 2.67 | 4.00 | 2.03 | 4.39 | 1.32× |
+| text-single-line | 3 | 0.63 | 0.64 | 0.88 | 1.08 | 1.47 | 0.59× | 1.57 | 1.48 | 2.19 | 2.52 | 4.63 | 0.59× |
+| text-stroke | 2 | 0.80 | 0.82 | 1.33 | 0.70 | 0.95 | 1.16× | 1.34 | 1.33 | 2.06 | 1.40 | 2.39 | 0.95× |
+| text-truncation | 3 | 0.72 | 0.75 | 1.06 | 1.23 | 1.69 | 0.61× | 1.30 | 1.17 | 1.87 | 2.35 | 4.31 | 0.50× |
+| text-wrap-balance | 3 | 0.63 | 0.60 | 0.97 | 1.13 | 1.55 | 0.53× | 1.15 | 1.13 | 1.67 | 1.79 | 2.84 | 0.63× |
+| transform | 5 | 0.59 | 0.62 | 0.96 | 1.31 | 2.11 | 0.47× | 1.07 | 1.02 | 1.59 | 2.22 | 4.14 | 0.46× |
+| visibility | 1 | 0.16 | 0.17 | 0.26 | 0.38 | 0.48 | 0.47× | 0.26 | 0.23 | 0.38 | 0.84 | 1.26 | 0.28× |
 
 Geomean ms theo nhóm fixture. bm-n = bm-native, bm-w = bm-wasm (sync), tk-n = takumi-native (async), tk-w = takumi-wasm; tỉ lệ = bm-native async / takumi-native async (dưới 1× = bm nhanh hơn).
 <!-- /native-bench:categories -->
@@ -545,78 +543,78 @@ bm-native so với takumi-native (cùng async):
 
 | Fixture | bm-native sync ms | bm-native async ms | takumi-native ms | lõi takumi | bm/takumi (async) |
 |:--|--:|--:|--:|--:|--:|
-| `img-jpeg-fit` | 1.68 | 1.67 | 13.4 | 1.43 | 0.12× |
-| `pfx-bg-blend` | 0.75 | 0.89 | 5.07 | 1.04 | 0.18× |
-| `pfx-bg-clip-text` | 0.43 | 0.48 | 2.28 | 0.93 | 0.21× |
-| `gap-background-clip-text` | 0.34 | 0.38 | 1.62 | 1.05 | 0.23× |
-| `fix-text-emoji-wrap` | 0.13 | 0.14 | 0.55 | 1.10 | 0.25× |
-| `fix-text-emoji-zwj` | 0.16 | 0.17 | 0.66 | 2.21 | 0.26× |
-| `fix-text-emoji-spacing` | 0.14 | 0.15 | 0.54 | 1.14 | 0.27× |
-| `fix-text-emoji-keycap-vs` | 0.13 | 0.13 | 0.42 | 1.90 | 0.32× |
-| `radial-spotlight-small` | 0.45 | 0.49 | 1.50 | 2.02 | 0.33× |
-| `fix-text-emoji-flags-skin` | 0.12 | 0.14 | 0.42 | 1.52 | 0.33× |
+| `img-jpeg-fit` | 1.37 | 1.45 | 11.9 | 1.30 | 0.12× |
+| `pfx-bg-blend` | 0.69 | 0.71 | 3.70 | 0.92 | 0.19× |
+| `pfx-bg-clip-text` | 0.42 | 0.41 | 1.81 | 1.07 | 0.23× |
+| `gap-background-clip-text` | 0.27 | 0.30 | 1.30 | 1.28 | 0.23× |
+| `fix-text-emoji-spacing` | 0.13 | 0.14 | 0.52 | 1.72 | 0.26× |
+| `fix-text-emoji-wrap` | 0.12 | 0.13 | 0.48 | 1.66 | 0.26× |
+| `fix-text-emoji-zwj` | 0.13 | 0.13 | 0.48 | 2.46 | 0.27× |
+| `fix-text-emoji-flags-skin` | 0.12 | 0.12 | 0.41 | 2.05 | 0.29× |
+| `fix-text-emoji-keycap-vs` | 0.12 | 0.12 | 0.39 | 2.31 | 0.31× |
+| `radial-shapes` | 1.97 | 1.99 | 6.30 | 1.26 | 0.32× |
 
 **raw — 10 ca bm-native kém nhất**
 
 | Fixture | bm-native sync ms | bm-native async ms | takumi-native ms | lõi takumi | bm/takumi (async) |
 |:--|--:|--:|--:|--:|--:|
-| `fix-text-paint-order` | 0.82 | 0.87 | 0.71 | 1.17 | 1.21× |
-| `abs-zorder` | 2.09 | 1.78 | 1.51 | 1.08 | 1.18× |
-| `pfx-text-stroke` | 0.77 | 0.83 | 0.73 | 1.43 | 1.14× |
-| `radius-elliptical` | 1.49 | 1.53 | 1.37 | 0.82 | 1.12× |
-| `pfx-svg-background` | 0.69 | 0.75 | 0.71 | 3.19 | 1.05× |
-| `sizing-padding-margin` | 1.01 | 1.22 | 1.21 | 1.72 | 1.01× |
-| `sizing-aspect-ratio` | 0.95 | 1.08 | 1.09 | 2.73 | 1.00× |
-| `radius-pill-circle` | 1.57 | 1.77 | 1.84 | 1.07 | 0.96× |
-| `borders-with-radius` | 0.77 | 0.87 | 0.92 | 0.87 | 0.95× |
-| `flex-row-column` | 1.11 | 1.16 | 1.23 | 1.77 | 0.94× |
+| `fix-text-paint-order` | 0.77 | 0.80 | 0.67 | 2.24 | 1.20× |
+| `abs-zorder` | 1.38 | 1.42 | 1.20 | 1.76 | 1.19× |
+| `pfx-text-stroke` | 0.83 | 0.83 | 0.75 | 1.31 | 1.12× |
+| `pfx-svg-background` | 0.66 | 0.65 | 0.61 | 2.75 | 1.08× |
+| `radius-uniform-percorner` | 1.07 | 1.10 | 1.07 | 1.46 | 1.03× |
+| `radius-pill-circle` | 1.09 | 1.07 | 1.06 | 3.75 | 1.01× |
+| `flex-wrap-gap` | 1.34 | 1.37 | 1.42 | 1.78 | 0.97× |
+| `flex-row-column` | 1.09 | 1.07 | 1.12 | 1.55 | 0.96× |
+| `tw-structural` | 0.64 | 0.66 | 0.69 | 2.94 | 0.95× |
+| `radius-elliptical` | 1.07 | 1.10 | 1.15 | 1.60 | 0.95× |
 
 **png — 10 ca bm-native tốt nhất**
 
 | Fixture | bm-native sync ms | bm-native async ms | takumi-native ms | lõi takumi | bm/takumi (async) |
 |:--|--:|--:|--:|--:|--:|
-| `colors-solid-bg` | 0.25 | 0.28 | 1.22 | 2.54 | 0.23× |
-| `gap-oklch-color` | 0.22 | 0.22 | 0.88 | 1.27 | 0.25× |
-| `anim-opacity-t250` | 0.23 | 0.22 | 0.78 | 2.33 | 0.28× |
-| `pfx-visibility` | 0.30 | 0.32 | 1.12 | 1.36 | 0.29× |
-| `anim-kf-option-t500` | 0.20 | 0.20 | 0.69 | 1.75 | 0.30× |
-| `anim-alternate-t700` | 0.19 | 0.19 | 0.64 | 1.11 | 0.30× |
-| `anim-opacity-t1500` | 0.19 | 0.17 | 0.57 | 0.88 | 0.30× |
-| `anim-alternate-t1100` | 0.19 | 0.20 | 0.62 | 2.39 | 0.32× |
-| `anim-two-anims-t400` | 0.25 | 0.24 | 0.76 | 1.13 | 0.32× |
-| `anim-opacity-t900` | 0.22 | 0.21 | 0.66 | 1.52 | 0.32× |
+| `colors-solid-bg` | 0.20 | 0.19 | 0.82 | 1.30 | 0.23× |
+| `gap-oklch-color` | 0.18 | 0.17 | 0.72 | 0.83 | 0.24× |
+| `anim-kf-option-t500` | 0.19 | 0.17 | 0.64 | 1.12 | 0.27× |
+| `pfx-visibility` | 0.26 | 0.23 | 0.84 | 0.72 | 0.28× |
+| `anim-alternate-t100` | 0.18 | 0.17 | 0.59 | 1.23 | 0.29× |
+| `anim-opacity-t900` | 0.17 | 0.16 | 0.55 | 1.31 | 0.29× |
+| `anim-opacity-t500` | 0.17 | 0.16 | 0.55 | 1.76 | 0.29× |
+| `anim-alternate-t1100` | 0.18 | 0.17 | 0.58 | 1.53 | 0.29× |
+| `anim-opacity-t250` | 0.17 | 0.16 | 0.54 | 1.79 | 0.30× |
+| `anim-alternate-t700` | 0.17 | 0.17 | 0.56 | 1.91 | 0.30× |
 
 **png — 10 ca bm-native kém nhất**
 
 | Fixture | bm-native sync ms | bm-native async ms | takumi-native ms | lõi takumi | bm/takumi (async) |
 |:--|--:|--:|--:|--:|--:|
-| `img-photo-bg` | 30.8 | 30.5 | 13.4 | 3.52 | 2.28× |
-| `card-blog` | 20.0 | 20.1 | 12.5 | 2.50 | 1.61× |
-| `img-intrinsic-size` | 2.06 | 2.54 | 1.69 | 2.96 | 1.50× |
-| `img-radius-clip` | 17.4 | 17.6 | 12.0 | 2.02 | 1.46× |
-| `radial-spotlight-small` | 4.37 | 4.51 | 3.17 | 2.57 | 1.42× |
-| `fx-text-shadow` | 2.67 | 2.76 | 2.07 | 4.04 | 1.33× |
-| `pfx-mix-blend` | 2.91 | 3.06 | 2.31 | 1.30 | 1.33× |
-| `stress-3000x2000-card` | 57.9 | 56.5 | 45.1 | 1.80 | 1.25× |
-| `img-png-fit` | 11.8 | 12.1 | 9.63 | 1.79 | 1.25× |
-| `fix-css-image-rendering-modes` | 5.25 | 5.46 | 4.41 | 3.18 | 1.24× |
+| `img-photo-bg` | 28.5 | 28.7 | 11.3 | 4.33 | 2.54× |
+| `card-blog` | 18.9 | 19.1 | 11.8 | 2.51 | 1.62× |
+| `radial-spotlight-small` | 4.14 | 4.14 | 2.62 | 2.80 | 1.58× |
+| `img-radius-clip` | 14.6 | 14.7 | 9.53 | 2.69 | 1.54× |
+| `stress-3000x2000-card` | 52.6 | 53.6 | 39.6 | 2.88 | 1.35× |
+| `fx-text-shadow` | 2.67 | 2.67 | 2.03 | 3.35 | 1.32× |
+| `img-intrinsic-size` | 1.76 | 1.83 | 1.40 | 2.38 | 1.31× |
+| `img-png-fit` | 11.2 | 11.3 | 8.65 | 1.75 | 1.31× |
+| `card-og` | 9.61 | 9.70 | 7.50 | 2.49 | 1.29× |
+| `pfx-mix-blend` | 2.70 | 2.72 | 2.15 | 4.14 | 1.27× |
 <!-- /native-bench:best-worst -->
 
 <!-- native-bench:formats -->
 | Fixture | Định dạng | bm-native sync | bm-native async | bm-wasm sync | takumi-native async | takumi-wasm |
 |:--|--:|--:|--:|--:|--:|--:|
-| `lingrad-angles` | raw | 2.64 ms · 2 953 KiB | 3.02 ms · 2 953 KiB | 4.85 ms · 2 953 KiB | 4.97 ms · 2 953 KiB | 7.18 ms · 2 953 KiB |
-| `lingrad-angles` | png | 7.68 ms · 32.6 KiB | 7.28 ms · 32.6 KiB | 11.6 ms · 32.6 KiB | 9.17 ms · 102 KiB | 39.1 ms · 102 KiB |
-| `lingrad-angles` | jpeg | 12.4 ms · 52.2 KiB | 13.3 ms · 52.2 KiB | 23.8 ms · 52.2 KiB | 20.4 ms · 52.3 KiB | 27.4 ms · 52.3 KiB |
-| `lingrad-angles` | webp | 9.23 ms · 28.9 KiB | 8.91 ms · 28.9 KiB | 12.1 ms · 28.9 KiB | 126 ms · 22.8 KiB | 17.2 ms · 169 KiB |
-| `img-photo-bg` | raw | 1.34 ms · 2 953 KiB | 1.39 ms · 2 953 KiB | 2.06 ms · 2 953 KiB | 4.01 ms · 2 953 KiB | 6.67 ms · 2 953 KiB |
-| `img-photo-bg` | png | 30.8 ms · 511 KiB | 30.5 ms · 511 KiB | 46.3 ms · 511 KiB | 13.4 ms · 513 KiB | 58.8 ms · 513 KiB |
-| `img-photo-bg` | jpeg | 16.4 ms · 55.1 KiB | 14.0 ms · 55.1 KiB | 21.3 ms · 55.1 KiB | 20.3 ms · 55.2 KiB | 31.7 ms · 55.2 KiB |
-| `img-photo-bg` | webp | 15.9 ms · 367 KiB | 14.7 ms · 367 KiB | 20.7 ms · 367 KiB | 183 ms · 414 KiB | 25.0 ms · 470 KiB |
-| `card-flat-ui` | raw | 2.92 ms · 2 953 KiB | 3.14 ms · 2 953 KiB | 5.63 ms · 2 953 KiB | 3.95 ms · 2 953 KiB | 7.41 ms · 2 953 KiB |
-| `card-flat-ui` | png | 5.69 ms · 23.1 KiB | 5.78 ms · 23.1 KiB | 8.90 ms · 23.1 KiB | 7.25 ms · 25.3 KiB | 20.8 ms · 25.3 KiB |
-| `card-flat-ui` | jpeg | 12.2 ms · 48.9 KiB | 12.4 ms · 48.9 KiB | 20.2 ms · 48.9 KiB | 17.9 ms · 49.0 KiB | 26.4 ms · 49.0 KiB |
-| `card-flat-ui` | webp | 6.96 ms · 18.5 KiB | 7.51 ms · 18.5 KiB | 10.7 ms · 18.5 KiB | 17.5 ms · 13.4 KiB | 13.2 ms · 27.6 KiB |
+| `lingrad-angles` | raw | 2.13 ms · 2 953 KiB | 2.22 ms · 2 953 KiB | 3.81 ms · 2 953 KiB | 4.47 ms · 2 953 KiB | 6.53 ms · 2 953 KiB |
+| `lingrad-angles` | png | 6.49 ms · 32.6 KiB | 6.40 ms · 32.6 KiB | 9.84 ms · 32.6 KiB | 7.78 ms · 102 KiB | 34.6 ms · 102 KiB |
+| `lingrad-angles` | jpeg | 11.0 ms · 52.2 KiB | 11.3 ms · 52.2 KiB | 18.7 ms · 52.2 KiB | 17.8 ms · 52.3 KiB | 24.0 ms · 52.3 KiB |
+| `lingrad-angles` | webp | 7.02 ms · 28.9 KiB | 7.27 ms · 28.9 KiB | 10.4 ms · 28.9 KiB | 109 ms · 22.8 KiB | 15.3 ms · 169 KiB |
+| `img-photo-bg` | raw | 1.17 ms · 2 953 KiB | 1.24 ms · 2 953 KiB | 1.66 ms · 2 953 KiB | 3.76 ms · 2 953 KiB | 5.89 ms · 2 953 KiB |
+| `img-photo-bg` | png | 28.5 ms · 511 KiB | 28.7 ms · 511 KiB | 39.9 ms · 511 KiB | 11.3 ms · 513 KiB | 53.4 ms · 513 KiB |
+| `img-photo-bg` | jpeg | 10.6 ms · 55.1 KiB | 10.8 ms · 55.1 KiB | 17.2 ms · 55.1 KiB | 17.6 ms · 55.2 KiB | 24.2 ms · 55.2 KiB |
+| `img-photo-bg` | webp | 13.6 ms · 367 KiB | 13.8 ms · 367 KiB | 19.2 ms · 367 KiB | 160 ms · 414 KiB | 20.7 ms · 470 KiB |
+| `card-flat-ui` | raw | 2.68 ms · 2 953 KiB | 2.68 ms · 2 953 KiB | 4.45 ms · 2 953 KiB | 3.65 ms · 2 953 KiB | 6.72 ms · 2 953 KiB |
+| `card-flat-ui` | png | 5.39 ms · 23.1 KiB | 5.31 ms · 23.1 KiB | 8.40 ms · 23.1 KiB | 6.48 ms · 25.3 KiB | 19.2 ms · 25.3 KiB |
+| `card-flat-ui` | jpeg | 11.6 ms · 48.9 KiB | 11.8 ms · 48.9 KiB | 19.1 ms · 48.9 KiB | 17.1 ms · 49.0 KiB | 24.5 ms · 49.0 KiB |
+| `card-flat-ui` | webp | 6.91 ms · 18.5 KiB | 6.96 ms · 18.5 KiB | 9.66 ms · 18.5 KiB | 16.8 ms · 13.4 KiB | 12.6 ms · 27.6 KiB |
 
 Thời gian median và dung lượng đầu ra. JPEG: quality 85 cho mọi engine. WebP: lossless cho mọi engine (không có `quality`); takumi-native mã hoá bằng libwebp, takumi-wasm bằng crate `image-webp` (nên file lớn hơn). PNG: không engine nào cho chỉnh mức nén; mỗi engine dùng mức mặc định của nó (bm: deflate riêng; takumi: `png` + `zlib-rs`, chọn giữa level 7 / không lọc và level 3 / lọc thích ứng trên một mẫu, nén thành tối đa 8 đoạn song song ở bản native), nên thời gian PNG được so kèm dung lượng file.
 <!-- /native-bench:formats -->
@@ -645,19 +643,19 @@ thì được ghi là giả thuyết):
 <!-- native-bench:diagnose -->
 | Khung trắng rỗng | bm-native sync | bm-native async | bm-wasm sync | takumi-native async | takumi-wasm |
 |:--|--:|--:|--:|--:|--:|
-| 300×200 raw | 0.13 | 0.14 | 0.22 | 0.28 | 0.41 |
-| 300×200 png | 0.22 | 0.15 | 0.19 | 0.47 | 0.56 |
-| 1200×630 raw | 0.73 | 0.77 | 1.14 | 0.92 | 1.18 |
-| 1200×630 png | 1.08 | 0.72 | 1.30 | 3.14 | 5.17 |
-| 2400×1260 raw | 2.60 | 2.98 | 5.16 | 2.96 | 5.88 |
-| 2400×1260 png | 4.84 | 4.96 | 6.11 | 11.0 | 20.4 |
+| 300×200 raw | 0.10 | 0.11 | 0.18 | 0.22 | 0.29 |
+| 300×200 png | 0.15 | 0.12 | 0.18 | 0.45 | 0.53 |
+| 1200×630 raw | 0.70 | 0.70 | 0.97 | 0.78 | 1.09 |
+| 1200×630 png | 1.11 | 0.69 | 1.24 | 2.94 | 4.88 |
+| 2400×1260 raw | 2.50 | 2.66 | 4.50 | 2.77 | 4.91 |
+| 2400×1260 png | 4.60 | 4.32 | 5.78 | 10.3 | 19.3 |
 
 | Cảnh animation, một khung raw 800×420 | bm-native sync | bm-native async | bm-wasm sync | takumi-native async | takumi-wasm |
 |:--|--:|--:|--:|--:|--:|
-| shadow + blur (as animated) | 7.16 | 7.19 | 14.3 | 17.9 | 32.3 |
-| shadow only | 2.17 | 2.24 | 4.37 | 5.08 | 8.11 |
-| blur only | 2.22 | 2.30 | 4.01 | 3.78 | 6.60 |
-| neither | 0.97 | 1.00 | 1.59 | 1.38 | 2.16 |
+| shadow + blur (as animated) | 6.85 | 6.87 | 12.9 | 16.9 | 30.1 |
+| shadow only | 2.18 | 2.13 | 4.10 | 4.86 | 7.78 |
+| blur only | 2.15 | 2.14 | 3.80 | 3.53 | 6.12 |
+| neither | 0.93 | 0.96 | 1.50 | 1.30 | 2.04 |
 
 Median ms, các biến thể chạy xen kẽ (40 lần cho khung rỗng, ít hơn cho cảnh). Khung rỗng không vẽ gì, nên thời gian của nó là chi phí theo điểm ảnh mà khung nào cũng trả (xoá canvas, đổi alpha, chép kết quả ra) cộng, với PNG, việc mã hoá một ảnh phẳng. Cảnh là cảnh của animation trong phép đo event loop: 12 hình tròn 60×60 xoay, có `box-shadow: 0 8px 30px` và `filter: blur(2px)`.
 <!-- /native-bench:diagnose -->
@@ -676,7 +674,7 @@ Median ms, các biến thể chạy xen kẽ (40 lần cho khung rỗng, ít hơ
 | bm-native = bm-wasm | 250/250 | 250/250 |
 | takumi-native = takumi-wasm | 250/250 | 250/250 |
 
-`bench/native-identity.mjs`: 250 fixture, 1810 phép so (raw, PNG, JPEG, WebP, measure, SVG, animation, ICO, HTML, ảnh, WOFF2, thông báo lỗi, native async so với sync), 1810 trùng (8 trong số đó là cùng thông báo lỗi ở cả hai), 0 khác, 637 MB đã so.
+`bench/native-identity.mjs`: 250 fixture, 2626 phép so (raw, PNG, JPEG, WebP, measure, SVG, animation, ICO, HTML, ảnh, WOFF2, thông báo lỗi, native async so với sync), 2626 trùng (121 trong số đó là cùng thông báo lỗi ở cả hai), 0 khác, 802 MB đã so.
 <!-- /native-bench:equiv -->
 
 ### Cold start
@@ -684,13 +682,13 @@ Median ms, các biến thể chạy xen kẽ (40 lần cho khung rỗng, ít hơ
 <!-- native-bench:cold -->
 | Engine | thực median | wall p95 | hơn Node, median | hơn Node, p95 | import | registerFont | PNG đầu tiên |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Node rỗng (mốc) | 68.6 | 101 | 0 | 0 | — | — | — |
-| bm-native | 99.9 | 138 | 31.3 | 69.2 | 6.20 | 0.36 | 21.7 |
-| bm-wasm | 168 | 207 | 99.9 | 138 | 10.1 | 3.18 | 85.0 |
-| takumi-native | 120 | 166 | 50.9 | 97.5 | 28.9 | 0.98 | 22.5 |
-| takumi-wasm | 306 | 373 | 238 | 304 | 42.3 | 3.97 | 188 |
+| Node rỗng (mốc) | 49.1 | 68.5 | 0 | 0 | — | — | — |
+| bm-native | 71.0 | 94.7 | 21.8 | 45.5 | 4.70 | 0.34 | 17.9 |
+| bm-wasm | 125 | 142 | 75.5 | 93.0 | 7.10 | 2.43 | 65.4 |
+| takumi-native | 95.4 | 118 | 46.2 | 69.2 | 23.1 | 0.92 | 20.2 |
+| takumi-wasm | 234 | 298 | 185 | 249 | 33.7 | 3.29 | 146 |
 
-ms. 30 lần mỗi engine, xen kẽ các engine; spawn node → import engine như người dùng → registerFont(Inter Regular) → PNG og card 1200×630 → thoát; thời gian thực = đồng hồ của tiến trình cha từ spawn tới khi thoát. Các cột import / registerFont / PNG đầu tiên là median đo bên trong tiến trình con. CPU bận trong lúc đo: trung bình 76.7 % (tiến trình khác ≈ 4.78 lõi). ⚠ Trong lúc đo, các tiến trình khác dùng trung bình khoảng 4.78 lõi của máy, nên các số này (nhất là mức mở rộng) thấp hơn những gì một máy rảnh cho; hãy chạy lại trên máy rảnh trước khi trích dẫn.
+ms. 30 lần mỗi engine, xen kẽ các engine; spawn node → import engine như người dùng → registerFont(Inter Regular) → PNG og card 1200×630 → thoát; thời gian thực = đồng hồ của tiến trình cha từ spawn tới khi thoát. Các cột import / registerFont / PNG đầu tiên là median đo bên trong tiến trình con. CPU bận trong lúc đo: trung bình 33.3 % (tiến trình khác ≈ 1.20 lõi). ⚠ Trong lúc đo, các tiến trình khác dùng trung bình khoảng 1.20 lõi của máy, nên các số này (nhất là mức mở rộng) thấp hơn những gì một máy rảnh cho; hãy chạy lại trên máy rảnh trước khi trích dẫn.
 <!-- /native-bench:cold -->
 
 ### Bộ nhớ
@@ -698,12 +696,12 @@ ms. 30 lần mỗi engine, xen kẽ các engine; spawn node → import engine nh
 <!-- native-bench:memory -->
 | Engine | RSS sau khởi tạo | RSS sau lượt 1 → 10 | bộ nhớ engine 1 → N | JS heap 1 → N | RSS đỉnh, cả bộ | RSS đỉnh PNG 4000×4000 (tăng thêm) |
 |:--|--:|--:|--:|--:|--:|--:|
-| bm-native | 67.2 | 94.7 → 96.0 | 31.6 → 31.6 | 7.50 → 6.40 | 186 | 143 (85.8) |
-| bm-wasm | 75.0 | 132 → 156 | 65.1 → 88.1 | 6.60 → 6.70 | 253 | 149 (89.3) |
-| takumi-native | 70.4 | 102 → 139 | — → — | 7.70 → 6.70 | 201 | 135 (74.8) |
-| takumi-wasm | 86.0 | 140 → 176 | 71.5 → 71.5 | 7.40 → 7.50 | 237 | 151 (83.6) |
+| bm-native | 63.2 | 90.7 → 91.4 | 31.6 → 31.6 | 6.40 → 6.50 | 183 | 140 (85.6) |
+| bm-wasm | 75.4 | 127 → 150 | 63.8 → 86.8 | 6.60 → 6.70 | 247 | 146 (88.9) |
+| takumi-native | 67.0 | 118 → 124 | — → — | 6.60 → 6.70 | 199 | 133 (74.5) |
+| takumi-wasm | 83.5 | 138 → 172 | 71.5 → 71.5 | 7.40 → 7.50 | 237 | 148 (83.3) |
 
-MiB, sau khi ép GC. Một tiến trình cho mỗi engine; mỗi lượt render mọi fixture ra raw và PNG (API async), một renderer cho mỗi bộ font. Bộ nhớ engine: bm-native = số byte addon đang cấp phát (`memoryBytes()`), bm-wasm / takumi-wasm = bộ nhớ tuyến tính wasm, takumi-native = không công bố. Node rỗng: 45.0 MiB RSS. "Tăng thêm" = RSS đỉnh trừ RSS ngay trước lần render 4000×4000.
+MiB, sau khi ép GC. Một tiến trình cho mỗi engine; mỗi lượt render mọi fixture ra raw và PNG (API async), một renderer cho mỗi bộ font. Bộ nhớ engine: bm-native = số byte addon đang cấp phát (`memoryBytes()`), bm-wasm / takumi-wasm = bộ nhớ tuyến tính wasm, takumi-native = không công bố. Node rỗng: 41.5 MiB RSS. "Tăng thêm" = RSS đỉnh trừ RSS ngay trước lần render 4000×4000.
 <!-- /native-bench:memory -->
 
 ### Event loop
@@ -711,20 +709,20 @@ MiB, sau khi ép GC. Một tiến trình cho mỗi engine; mỗi lượt render 
 <!-- native-bench:eventloop -->
 | Việc | Engine | API | ms của việc | CPU ms | trễ timer lớn nhất ms | trễ p99 ms | số lần timer chạy |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| heavy | bm-native | sync | 227 | 218 | 227 | 227 | 1 |
-| heavy | bm-native | async | 235 | 469 | 1.50 | 1.00 | 236 |
-| heavy | bm-wasm | sync | 455 | 688 | 455 | 455 | 1 |
-| heavy | bm-wasm | async (chạy trên main thread) | 473 | 750 | 473 | 473 | 1 |
-| heavy | takumi-native | async | 262 | 796 | 7.30 | 2.50 | 253 |
-| heavy | takumi-wasm | async (chạy trên main thread) | 819 | 968 | 819 | 819 | 1 |
-| anim | bm-native | sync | 476 | 484 | 476 | 476 | 1 |
-| anim | bm-native | async | 544 | 1 064 | 1.20 | 1.10 | 545 |
-| anim | bm-wasm | sync | 969 | 1 219 | 969 | 969 | 1 |
-| anim | bm-wasm | async (chạy trên main thread) | 954 | 1 094 | 954 | 954 | 1 |
-| anim | takumi-native | async | 409 | 2 156 | 21.6 | 13.2 | 286 |
-| anim | takumi-wasm | async (chạy trên main thread) | 2 072 | 2 360 | 2 072 | 2 072 | 1 |
+| heavy | bm-native | sync | 211 | 219 | 211 | 211 | 1 |
+| heavy | bm-native | async | 247 | 500 | 1.20 | 1.10 | 248 |
+| heavy | bm-wasm | sync | 401 | 579 | 401 | 401 | 1 |
+| heavy | bm-wasm | async (chạy trên main thread) | 391 | 563 | 392 | 392 | 1 |
+| heavy | takumi-native | async | 242 | 671 | 13.4 | 2.00 | 231 |
+| heavy | takumi-wasm | async (chạy trên main thread) | 745 | 814 | 746 | 746 | 1 |
+| anim | bm-native | sync | 437 | 437 | 438 | 438 | 1 |
+| anim | bm-native | async | 448 | 875 | 1.10 | 1.00 | 450 |
+| anim | bm-wasm | sync | 848 | 1 015 | 848 | 848 | 1 |
+| anim | bm-wasm | async (chạy trên main thread) | 872 | 1 031 | 873 | 873 | 1 |
+| anim | takumi-native | async | 367 | 2 141 | 11.5 | 8.90 | 312 |
+| anim | takumi-wasm | async (chạy trên main thread) | 1 848 | 2 218 | 1 848 | 1 848 | 1 |
 
-heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, cứ ba thẻ có một thẻ `filter: blur(6px)`, chữ; anim = renderAnimation: 60 khung (2 s ở 30 fps) WebP lossless 800×420, 12 hình tròn có bóng, mờ, xoay (cảnh tĩnh). Một `setInterval` 1 ms ghi khoảng cách giữa các lần chạy trong lúc lời gọi chạy. Một chuỗi setImmediate giữ cho vòng lặp không ngủ, vì vòng lặp Node rảnh trên Windows thức theo đồng hồ hệ thống 15,6 ms và timer sẽ không bao giờ cho thấy dưới ~16 ms. Lời gọi chặn vòng lặp cho thấy một lần chạy có độ trễ bằng cả lời gọi. CPU ms là của cả tiến trình trong lúc gọi, kể cả chuỗi setImmediate trên main thread (khoảng một lõi mỗi khi vòng lặp rảnh). ⚠ Trong lúc đo, các tiến trình khác dùng trung bình khoảng 2.95 lõi của máy, nên các số này (nhất là mức mở rộng) thấp hơn những gì một máy rảnh cho; hãy chạy lại trên máy rảnh trước khi trích dẫn.
+heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, cứ ba thẻ có một thẻ `filter: blur(6px)`, chữ; anim = renderAnimation: 60 khung (2 s ở 30 fps) WebP lossless 800×420, 12 hình tròn có bóng, mờ, xoay (cảnh tĩnh). Một `setInterval` 1 ms ghi khoảng cách giữa các lần chạy trong lúc lời gọi chạy. Một chuỗi setImmediate giữ cho vòng lặp không ngủ, vì vòng lặp Node rảnh trên Windows thức theo đồng hồ hệ thống 15,6 ms và timer sẽ không bao giờ cho thấy dưới ~16 ms. Lời gọi chặn vòng lặp cho thấy một lần chạy có độ trễ bằng cả lời gọi. CPU ms là của cả tiến trình trong lúc gọi, kể cả chuỗi setImmediate trên main thread (khoảng một lõi mỗi khi vòng lặp rảnh).
 <!-- /native-bench:eventloop -->
 
 ### Thông lượng khi chạy đồng thời
@@ -732,34 +730,34 @@ heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, c�
 <!-- native-bench:throughput -->
 | Engine | Cách chạy | UV_THREADPOOL_SIZE | N=1 | N=2 | N=4 | N=8 | N=16 |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| bm-native | 1 client, tuần tự | 4 | 92.1 |  |  |  |  |
-| bm-wasm | 1 client, tuần tự | — | 62.2 |  |  |  |  |
-| takumi-native | 1 client, tuần tự | 4 | 115 |  |  |  |  |
-| takumi-wasm | 1 client, tuần tự | — | 38.5 |  |  |  |  |
-| bm-native | 1 renderer, async | 4 | 89.1 (0.97×, 97 %) | 97.9 (1.06×, 106 %) | 98.9 (1.07×, 107 %) | 98.9 (1.07×, 107 %) | 98.8 (1.07×, 107 %) |
-| bm-native | 2 renderer, async | 4 | 96.6 (1.05×, 105 %) | 188 (2.04×, 102 %) | 191 (2.08×, 104 %) | 185 (2.01×, 101 %) | 182 (1.98×, 99 %) |
-| bm-native | 4 renderer, async | 4 | 97.5 (1.06×, 106 %) | 189 (2.05×, 102 %) | 312 (3.39×, 85 %) | 312 (3.38×, 85 %) | 314 (3.41×, 85 %) |
-| bm-native | 8 renderer, async | 4 | 96.9 (1.05×, 105 %) | 183 (1.99×, 99 %) | 309 (3.36×, 84 %) | 309 (3.35×, 84 %) | 305 (3.31×, 83 %) |
-| bm-native | 1 renderer, async | 8 | 97.3 (1.06×, 106 %) | 101 (1.09×, 109 %) | 98.0 (1.06×, 106 %) | 100 (1.09×, 109 %) | 98.9 (1.07×, 107 %) |
-| bm-native | 2 renderer, async | 8 | 97.9 (1.06×, 106 %) | 189 (2.05×, 102 %) | 187 (2.03×, 102 %) | 184 (1.99×, 100 %) | 190 (2.06×, 103 %) |
-| bm-native | 4 renderer, async | 8 | 97.2 (1.06×, 106 %) | 184 (1.99×, 100 %) | 299 (3.25×, 81 %) | 274 (2.97×, 74 %) | 301 (3.26×, 82 %) |
-| bm-native | 8 renderer, async | 8 | 96.9 (1.05×, 105 %) | 184 (2.00×, 100 %) | 312 (3.39×, 85 %) | 402 (4.36×, 55 %) | 416 (4.51×, 56 %) |
-| takumi-native | 1 renderer, async | 4 | 124 (1.08×, 108 %) | 198 (1.71×, 86 %) | 264 (2.29×, 57 %) | 272 (2.36×, 59 %) | 267 (2.32×, 58 %) |
-| takumi-native | 1 renderer, async | 8 | 123 (1.07×, 107 %) | 198 (1.72×, 86 %) | 270 (2.34×, 59 %) | 316 (2.74×, 34 %) | 303 (2.63×, 33 %) |
-| takumi-native | 2 renderer, async | 4 | 124 (1.07×, 107 %) | 197 (1.71×, 85 %) | 264 (2.29×, 114 %) | 265 (2.30×, 115 %) | 267 (2.32×, 116 %) |
-| takumi-native | 4 renderer, async | 4 | 123 (1.07×, 107 %) | 197 (1.71×, 85 %) | 231 (2.01×, 50 %) | 236 (2.04×, 51 %) | 220 (1.91×, 48 %) |
-| takumi-native | 2 renderer, async | 8 | 108 (0.93×, 93 %) | 177 (1.53×, 77 %) | 238 (2.06×, 103 %) | 298 (2.59×, 129 %) | 311 (2.70×, 135 %) |
-| takumi-native | 4 renderer, async | 8 | 124 (1.08×, 108 %) | 190 (1.64×, 82 %) | 259 (2.25×, 56 %) | 314 (2.73×, 68 %) | 287 (2.49×, 62 %) |
-| bm-wasm | worker pool, 1 worker | — | 62.2 (1.00×, 100 %) | 68.1 (1.09×, 109 %) | 68.3 (1.10×, 110 %) | 68.1 (1.09×, 109 %) | 68.6 (1.10×, 110 %) |
-| bm-wasm | worker pool, 2 worker | — | 67.9 (1.09×, 109 %) | 130 (2.09×, 105 %) | 129 (2.08×, 104 %) | 130 (2.10×, 105 %) | 131 (2.10×, 105 %) |
-| bm-wasm | worker pool, 4 worker | — | 67.9 (1.09×, 109 %) | 123 (1.97×, 99 %) | 233 (3.74×, 94 %) | 217 (3.49×, 87 %) | 228 (3.67×, 92 %) |
-| bm-wasm | worker pool, 8 worker | — | 64.5 (1.04×, 104 %) | 113 (1.81×, 91 %) | 193 (3.10×, 78 %) | 270 (4.34×, 54 %) | 260 (4.18×, 52 %) |
-| takumi-wasm | worker pool, 1 worker | — | 39.4 (1.02×, 102 %) | 41.1 (1.07×, 107 %) | 41.1 (1.07×, 107 %) | 41.0 (1.06×, 106 %) | 42.2 (1.10×, 110 %) |
-| takumi-wasm | worker pool, 2 worker | — | 40.6 (1.05×, 105 %) | 81.5 (2.12×, 106 %) | 80.8 (2.10×, 105 %) | 81.9 (2.13×, 106 %) | 81.3 (2.11×, 106 %) |
-| takumi-wasm | worker pool, 4 worker | — | 42.4 (1.10×, 110 %) | 82.3 (2.14×, 107 %) | 134 (3.48×, 87 %) | 134 (3.49×, 87 %) | 132 (3.43×, 86 %) |
-| takumi-wasm | worker pool, 8 worker | — | 41.9 (1.09×, 109 %) | 83.0 (2.16×, 108 %) | 137 (3.55×, 89 %) | 180 (4.68×, 58 %) | 188 (4.88×, 61 %) |
+| bm-native | 1 client, tuần tự | 4 | 109 |  |  |  |  |
+| bm-wasm | 1 client, tuần tự | — | 72.3 |  |  |  |  |
+| takumi-native | 1 client, tuần tự | 4 | 123 |  |  |  |  |
+| takumi-wasm | 1 client, tuần tự | — | 45.6 |  |  |  |  |
+| bm-native | 1 renderer, async | 4 | 104 (0.96×, 96 %) | 106 (0.98×, 98 %) | 104 (0.96×, 96 %) | 105 (0.96×, 96 %) | 105 (0.97×, 97 %) |
+| bm-native | 2 renderer, async | 4 | 104 (0.95×, 95 %) | 194 (1.79×, 89 %) | 197 (1.82×, 91 %) | 205 (1.89×, 94 %) | 200 (1.84×, 92 %) |
+| bm-native | 4 renderer, async | 4 | 101 (0.93×, 93 %) | 197 (1.81×, 91 %) | 371 (3.42×, 85 %) | 367 (3.39×, 85 %) | 359 (3.31×, 83 %) |
+| bm-native | 8 renderer, async | 4 | 99.6 (0.92×, 92 %) | 198 (1.82×, 91 %) | 372 (3.43×, 86 %) | 369 (3.40×, 85 %) | 366 (3.38×, 84 %) |
+| bm-native | 1 renderer, async | 8 | 103 (0.95×, 95 %) | 106 (0.97×, 97 %) | 105 (0.96×, 96 %) | 104 (0.95×, 95 %) | 106 (0.97×, 97 %) |
+| bm-native | 2 renderer, async | 8 | 104 (0.95×, 95 %) | 195 (1.79×, 90 %) | 197 (1.82×, 91 %) | 199 (1.84×, 92 %) | 202 (1.86×, 93 %) |
+| bm-native | 4 renderer, async | 8 | 103 (0.95×, 95 %) | 197 (1.81×, 91 %) | 360 (3.32×, 83 %) | 371 (3.42×, 85 %) | 356 (3.28×, 82 %) |
+| bm-native | 8 renderer, async | 8 | 104 (0.96×, 96 %) | 198 (1.82×, 91 %) | 365 (3.36×, 84 %) | 408 (3.76×, 47 %) | 406 (3.74×, 47 %) |
+| takumi-native | 1 renderer, async | 4 | 130 (1.06×, 106 %) | 210 (1.71×, 85 %) | 296 (2.40×, 60 %) | 296 (2.40×, 60 %) | 298 (2.42×, 60 %) |
+| takumi-native | 1 renderer, async | 8 | 129 (1.04×, 104 %) | 209 (1.69×, 85 %) | 273 (2.21×, 55 %) | 336 (2.72×, 34 %) | 338 (2.74×, 34 %) |
+| takumi-native | 2 renderer, async | 4 | 132 (1.07×, 107 %) | 212 (1.72×, 86 %) | 298 (2.41×, 121 %) | 293 (2.38×, 119 %) | 300 (2.43×, 122 %) |
+| takumi-native | 4 renderer, async | 4 | 132 (1.07×, 107 %) | 212 (1.72×, 86 %) | 295 (2.39×, 60 %) | 298 (2.42×, 60 %) | 264 (2.14×, 54 %) |
+| takumi-native | 2 renderer, async | 8 | 131 (1.06×, 106 %) | 211 (1.71×, 85 %) | 298 (2.42×, 121 %) | 327 (2.65×, 133 %) | 305 (2.47×, 124 %) |
+| takumi-native | 4 renderer, async | 8 | 130 (1.06×, 106 %) | 210 (1.70×, 85 %) | 294 (2.38×, 60 %) | 333 (2.70×, 68 %) | 324 (2.63×, 66 %) |
+| bm-wasm | worker pool, 1 worker | — | 70.5 (0.98×, 98 %) | 67.8 (0.94×, 94 %) | 69.9 (0.97×, 97 %) | 71.1 (0.98×, 98 %) | 71.0 (0.98×, 98 %) |
+| bm-wasm | worker pool, 2 worker | — | 69.0 (0.95×, 95 %) | 137 (1.89×, 95 %) | 137 (1.90×, 95 %) | 139 (1.92×, 96 %) | 137 (1.89×, 95 %) |
+| bm-wasm | worker pool, 4 worker | — | 70.7 (0.98×, 98 %) | 138 (1.91×, 95 %) | 263 (3.64×, 91 %) | 249 (3.45×, 86 %) | 263 (3.63×, 91 %) |
+| bm-wasm | worker pool, 8 worker | — | 70.7 (0.98×, 98 %) | 138 (1.91×, 95 %) | 236 (3.27×, 82 %) | 291 (4.03×, 50 %) | 309 (4.27×, 53 %) |
+| takumi-wasm | worker pool, 1 worker | — | 46.0 (1.01×, 101 %) | 46.4 (1.02×, 102 %) | 47.0 (1.03×, 103 %) | 47.4 (1.04×, 104 %) | 47.1 (1.03×, 103 %) |
+| takumi-wasm | worker pool, 2 worker | — | 44.5 (0.98×, 98 %) | 90.3 (1.98×, 99 %) | 88.9 (1.95×, 97 %) | 92.4 (2.03×, 101 %) | 91.8 (2.01×, 101 %) |
+| takumi-wasm | worker pool, 4 worker | — | 46.1 (1.01×, 101 %) | 91.3 (2.00×, 100 %) | 170 (3.72×, 93 %) | 174 (3.82×, 96 %) | 179 (3.92×, 98 %) |
+| takumi-wasm | worker pool, 8 worker | — | 46.4 (1.02×, 102 %) | 90.1 (1.98×, 99 %) | 173 (3.80×, 95 %) | 202 (4.43×, 55 %) | 213 (4.67×, 58 %) |
 
-Ảnh mỗi giây; trong ngoặc là mức tăng so với tốc độ tuần tự một client của cùng engine (các dòng đầu) và hiệu suất mở rộng = mức tăng / min(N, số thread có thể render các ảnh khác nhau cùng lúc, 8 CPU logic); một renderer bm tính là 1, K renderer là min(K, UV_THREADPOOL_SIZE), renderer của takumi-native là UV_THREADPOOL_SIZE, pool worker là K. og card 1200×630 PNG, vòng kín: N client, mỗi client luôn có một yêu cầu đang chạy; 2000 ms mỗi điểm sau khi khởi động. CPU bận trong lúc đo: trung bình 56.8 % (tiến trình khác ≈ 2.14 lõi). ⚠ Trong lúc đo, các tiến trình khác dùng trung bình khoảng 2.14 lõi của máy, nên các số này (nhất là mức mở rộng) thấp hơn những gì một máy rảnh cho; hãy chạy lại trên máy rảnh trước khi trích dẫn.
+Ảnh mỗi giây; trong ngoặc là mức tăng so với tốc độ tuần tự một client của cùng engine (các dòng đầu) và hiệu suất mở rộng = mức tăng / min(N, số thread có thể render các ảnh khác nhau cùng lúc, 8 CPU logic); một renderer bm tính là 1, K renderer là min(K, UV_THREADPOOL_SIZE), renderer của takumi-native là UV_THREADPOOL_SIZE, pool worker là K. og card 1200×630 PNG, vòng kín: N client, mỗi client luôn có một yêu cầu đang chạy; 2000 ms mỗi điểm sau khi khởi động. CPU bận trong lúc đo: trung bình 42.8 % (tiến trình khác ≈ 0.90 lõi).
 <!-- /native-bench:throughput -->
 
 ### Kích thước
@@ -767,15 +765,22 @@ heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, c�
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 2 083 | 1 120 | 914 | đã chạy (benchmark này) |
-| bm wasm `core` | wasm32 | 487 | 228 | 194 |  |
-| bm wasm `standard` | wasm32 | 934 | 463 | 398 |  |
-| bm wasm `full` | wasm32 | 1 140 | 558 | 470 |  |
-| bm wasm `add-on WOFF` | wasm32 | 84.2 | 67.7 | 65.5 |  |
+| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
+| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
+| bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
+| bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
+| bm wasm `add-on WOFF` | wasm32 | 84.4 | 67.8 | 65.5 |  |
 | takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
 | takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
 
-Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 với Zig 0.17.1, ReleaseFast). Mỗi người dùng chỉ tải một addon (gói optional cho nền tảng của họ) cộng với bản wasm dự phòng nằm trong gói chính.
+Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-13 với Zig 0.17.1, ReleaseFast). Mỗi người dùng chỉ tải một addon (gói optional cho nền tảng của họ) cộng với bản wasm dự phòng nằm trong gói chính.
 <!-- /native-bench:sizes -->
 
 ### Nhiễu
@@ -783,15 +788,15 @@ Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-12 vớ
 <!-- native-bench:noise -->
 | Giai đoạn | bắt đầu (UTC) | thời lượng | CPU bận ngay trước | CPU bận trong lúc đo | tiến trình khác, lõi |
 |:--|--:|--:|--:|--:|--:|
-| speed lượt 1 | 11:03 | 160 s | 46.9 % | 58.1 % (max 83.3 %) | 3.50 |
-| speed lượt 2 | 11:07 | 190 s | 45.8 % | 79.6 % (max 99.6 %) | 5.32 |
-| speed lượt 3 | 11:12 | 152 s | 32.0 % | 48.4 % (max 75.1 %) | 2.70 |
-| cold |  | 23.6 s |  | 76.7 % (max 97.0 %) | 4.78 |
-| memory |  | 60.3 s |  | 50.1 % (max 70.8 %) | 2.82 |
-| eventloop |  | 12.9 s |  | 48.7 % (max 56.9 %) | 2.95 |
-| throughput |  | 286.1 s |  | 56.8 % (max 100 %) | 2.14 |
+| speed lượt 1 | 04:23 | 144 s | 2.80 % | 20.1 % (max 49.8 %) | 0.44 |
+| speed lượt 2 | 04:26 | 147 s | 6.80 % | 22.0 % (max 45.1 %) | 0.60 |
+| speed lượt 3 | 04:30 | 143 s | 6.00 % | 18.4 % (max 44.0 %) | 0.30 |
+| cold |  | 17.8 s |  | 33.3 % (max 59.9 %) | 1.20 |
+| memory |  | 56.7 s |  | 22.1 % (max 41.1 %) | 0.58 |
+| eventloop |  | 11.9 s |  | 20.1 % (max 39.2 %) | 0.68 |
+| throughput |  | 284.2 s |  | 42.8 % (max 100 %) | 0.90 |
 
-"Tiến trình khác" = số lõi-giây bận của cả máy trừ thời gian CPU của chính benchmark, chia cho thời gian thực (8 CPU logic). Số fixture có median lệch quá 10 % giữa các lượt: bm-native:sync raw: 225, bm-native:sync png: 209, bm-native:async raw: 235, bm-native:async png: 228, bm-wasm:sync raw: 228, bm-wasm:sync png: 192, takumi-native:async raw: 241, takumi-native:async png: 236, takumi-wasm:async raw: 222, takumi-wasm:async png: 198. 20 geomean tuyệt đối (biến thể × định dạng) lệch quá 10 % giữa các lượt (khoảng lệch lớn nhất: 53.7 %), vì vậy các bảng ưu tiên tỉ lệ đo trong từng lượt. Tỉ lệ giữa engine lệch quá 10 %: ratio takumi-native:async/takumi-wasm:async jpeg: range between passes 15.5 %.
+"Tiến trình khác" = số lõi-giây bận của cả máy trừ thời gian CPU của chính benchmark, chia cho thời gian thực (8 CPU logic). Số fixture có median lệch quá 10 % giữa các lượt: bm-native:sync raw: 109, bm-native:sync png: 49, bm-native:async raw: 141, bm-native:async png: 79, bm-wasm:sync raw: 76, bm-wasm:sync png: 19, takumi-native:async raw: 84, takumi-native:async png: 36, takumi-wasm:async raw: 72, takumi-wasm:async png: 21. 0 geomean tuyệt đối (biến thể × định dạng) lệch quá 10 % giữa các lượt (khoảng lệch lớn nhất: 6.30 %), vì vậy các bảng ưu tiên tỉ lệ đo trong từng lượt. Tỉ lệ giữa engine lệch quá 10 %: không có.
 <!-- /native-bench:noise -->
 
 ### Chạy lại
@@ -808,256 +813,256 @@ node bench/native/report.mjs              # chỉ sinh lại Markdown và bảng
 <!-- native-bench:per-fixture -->
 | Fixture | Nhóm | raw bm-n sync | raw bm-n async | raw bm-w | raw tk-n | raw tk-w | raw bm-n/tk-n | raw bm-n/bm-w | png bm-n sync | png bm-n async | png bm-w | png tk-n | png tk-w | png bm-n/tk-n | png bm-n/bm-w |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| `colors-solid-bg` | colors | 0.23 / 0.48 | 0.25 / 0.89 | 0.40 / 0.61 | 0.41 / 1.46 | 0.63 / 0.97 | 0.62× | 0.57× | 0.25 / 0.42 | 0.28 / 0.54 | 0.50 / 0.64 | 1.22 / 1.74 | 1.60 / 2.46 | 0.23× | 0.49× |
-| `colors-hex` | colors | 1.96 / 3.37 | 2.12 / 3.07 | 3.84 / 4.69 | 3.18 / 4.19 | 6.15 / 10.2 | 0.67× | 0.51× | 2.24 / 3.17 | 2.40 / 2.96 | 3.64 / 4.33 | 4.97 / 5.94 | 9.37 / 12.0 | 0.48× | 0.61× |
-| `colors-functional` | colors | 1.22 / 2.24 | 1.41 / 2.21 | 2.45 / 3.48 | 2.27 / 2.94 | 3.20 / 4.23 | 0.62× | 0.50× | 2.10 / 2.90 | 2.01 / 2.54 | 3.23 / 5.10 | 4.71 / 5.73 | 9.10 / 11.0 | 0.43× | 0.65× |
-| `colors-named` | colors | 1.29 / 1.86 | 1.44 / 2.23 | 2.12 / 3.06 | 2.20 / 2.82 | 3.43 / 4.12 | 0.65× | 0.61× | 2.87 / 3.66 | 2.94 / 4.00 | 3.81 / 5.56 | 5.29 / 6.36 | 9.34 / 11.3 | 0.56× | 0.75× |
-| `colors-transparent-canvas` | colors | 0.31 / 0.52 | 0.37 / 0.61 | 0.51 / 0.90 | 0.59 / 1.12 | 0.79 / 1.41 | 0.62× | 0.62× | 0.48 / 0.72 | 0.46 / 0.68 | 0.69 / 1.12 | 0.97 / 1.44 | 1.53 / 2.09 | 0.48× | 0.70× |
-| `flex-row-column` | flex | 1.11 / 4.45 | 1.16 / 2.23 | 1.63 / 2.73 | 1.23 / 1.92 | 1.54 / 2.41 | 0.94× | 0.68× | 2.15 / 3.13 | 2.24 / 2.62 | 3.19 / 4.51 | 3.91 / 4.58 | 7.98 / 10.0 | 0.57× | 0.68× |
-| `flex-justify-align` | flex | 1.36 / 2.56 | 1.50 / 2.63 | 2.14 / 3.09 | 1.65 / 2.83 | 3.05 / 4.98 | 0.91× | 0.64× | 2.06 / 2.98 | 1.90 / 2.62 | 2.94 / 4.24 | 3.47 / 3.86 | 7.44 / 8.60 | 0.55× | 0.70× |
-| `flex-wrap-gap` | flex | 1.42 / 2.44 | 1.54 / 2.13 | 2.53 / 3.06 | 1.72 / 2.29 | 2.84 / 3.58 | 0.89× | 0.56× | 2.73 / 3.67 | 2.79 / 3.76 | 4.00 / 5.03 | 4.02 / 4.83 | 7.99 / 11.1 | 0.69× | 0.68× |
-| `flex-grow-shrink-basis` | flex | 1.20 / 1.91 | 1.23 / 2.00 | 1.84 / 2.32 | 1.53 / 2.04 | 2.25 / 2.67 | 0.81× | 0.65× | 1.54 / 2.41 | 1.58 / 2.13 | 2.17 / 3.36 | 3.38 / 4.11 | 6.18 / 7.52 | 0.47× | 0.71× |
-| `flex-nested-small` | flex | 0.22 / 0.35 | 0.25 / 0.72 | 0.36 / 0.65 | 0.44 / 1.16 | 0.53 / 0.80 | 0.56× | 0.61× | 0.35 / 0.55 | 0.37 / 0.53 | 0.53 / 0.84 | 0.97 / 1.27 | 1.30 / 2.01 | 0.38× | 0.66× |
-| `sizing-percent` | sizing | 0.92 / 1.65 | 0.98 / 2.16 | 1.39 / 1.96 | 1.31 / 1.74 | 2.00 / 2.64 | 0.75× | 0.66× | 2.27 / 2.67 | 2.12 / 2.71 | 2.91 / 3.93 | 4.77 / 5.57 | 8.53 / 11.4 | 0.44× | 0.78× |
-| `sizing-minmax` | sizing | 0.98 / 3.72 | 0.96 / 2.33 | 1.42 / 2.58 | 1.18 / 1.88 | 1.67 / 2.09 | 0.81× | 0.69× | 1.73 / 2.21 | 1.62 / 2.02 | 2.19 / 3.14 | 3.95 / 5.21 | 7.39 / 8.68 | 0.41× | 0.79× |
-| `sizing-aspect-ratio` | sizing | 0.95 / 1.49 | 1.08 / 1.78 | 1.37 / 2.32 | 1.09 / 1.72 | 1.48 / 2.16 | 1.00× | 0.69× | 1.63 / 2.32 | 1.51 / 2.05 | 2.36 / 3.30 | 3.98 / 4.48 | 7.14 / 7.95 | 0.38× | 0.69× |
-| `sizing-padding-margin` | sizing | 1.01 / 1.37 | 1.22 / 1.85 | 1.40 / 2.20 | 1.21 / 1.66 | 1.57 / 2.80 | 1.01× | 0.73× | 1.52 / 2.18 | 1.47 / 2.54 | 2.25 / 3.50 | 3.88 / 4.92 | 7.38 / 9.15 | 0.38× | 0.67× |
-| `sizing-auto-margin-center` | sizing | 0.18 / 0.27 | 0.20 / 0.41 | 0.31 / 0.47 | 0.34 / 0.58 | 0.42 / 0.67 | 0.61× | 0.59× | 0.29 / 0.43 | 0.30 / 0.41 | 0.43 / 0.66 | 0.75 / 1.04 | 1.09 / 1.73 | 0.40× | 0.68× |
-| `abs-inset` | absolute | 1.08 / 4.10 | 1.28 / 2.27 | 1.64 / 2.55 | 1.44 / 2.02 | 2.32 / 3.16 | 0.89× | 0.66× | 2.21 / 3.18 | 2.28 / 3.24 | 3.09 / 4.81 | 4.71 / 5.34 | 8.90 / 13.5 | 0.48× | 0.72× |
-| `abs-zorder` | absolute | 2.09 / 4.97 | 1.78 / 2.58 | 2.75 / 3.76 | 1.51 / 2.26 | 2.75 / 3.32 | 1.18× | 0.76× | 4.87 / 6.74 | 5.14 / 7.48 | 7.71 / 10.3 | 4.81 / 6.20 | 16.2 / 18.8 | 1.07× | 0.63× |
-| `abs-in-flow` | absolute | 0.30 / 0.43 | 0.33 / 0.52 | 0.47 / 0.79 | 0.64 / 0.83 | 0.75 / 1.12 | 0.51× | 0.63× | 0.44 / 0.68 | 0.55 / 0.77 | 0.67 / 1.02 | 1.45 / 1.57 | 1.73 / 2.50 | 0.38× | 0.66× |
-| `borders-uniform` | borders | 1.04 / 2.02 | 1.16 / 2.60 | 1.64 / 2.80 | 1.79 / 2.57 | 2.40 / 3.00 | 0.65× | 0.64× | 2.10 / 3.57 | 2.03 / 3.88 | 3.32 / 5.74 | 4.61 / 5.17 | 7.61 / 10.3 | 0.44× | 0.63× |
-| `borders-per-side` | borders | 1.11 / 1.48 | 1.26 / 1.84 | 1.96 / 2.89 | 1.73 / 2.59 | 2.47 / 3.47 | 0.73× | 0.56× | 2.38 / 3.61 | 2.29 / 3.84 | 3.51 / 4.91 | 4.07 / 4.76 | 8.12 / 11.8 | 0.56× | 0.68× |
-| `borders-with-radius` | borders | 0.77 / 0.92 | 0.87 / 1.15 | 1.44 / 1.78 | 0.92 / 1.14 | 1.59 / 2.09 | 0.95× | 0.53× | 0.82 / 1.28 | 0.89 / 1.40 | 1.24 / 2.04 | 1.30 / 1.62 | 2.40 / 3.21 | 0.68× | 0.66× |
-| `radius-uniform-percorner` | border-radius | 1.54 / 3.08 | 1.40 / 1.97 | 2.27 / 3.64 | 1.66 / 3.09 | 2.15 / 2.82 | 0.85× | 0.68× | 2.70 / 3.78 | 2.69 / 3.41 | 3.68 / 4.36 | 3.94 / 4.53 | 8.27 / 11.6 | 0.68× | 0.73× |
-| `radius-elliptical` | border-radius | 1.49 / 2.78 | 1.53 / 2.16 | 2.54 / 3.26 | 1.37 / 2.18 | 1.98 / 2.72 | 1.12× | 0.59× | 3.87 / 4.52 | 3.72 / 4.42 | 4.98 / 5.41 | 4.19 / 4.41 | 10.8 / 12.6 | 0.89× | 0.78× |
-| `radius-pill-circle` | border-radius | 1.57 / 2.68 | 1.77 / 3.92 | 2.55 / 3.32 | 1.84 / 3.15 | 2.55 / 3.49 | 0.96× | 0.61× | 3.09 / 3.98 | 2.91 / 4.53 | 4.28 / 5.15 | 4.19 / 4.74 | 10.2 / 11.4 | 0.69× | 0.72× |
-| `radius-small` | border-radius | 0.26 / 0.41 | 0.29 / 1.04 | 0.41 / 0.68 | 0.42 / 0.77 | 0.49 / 0.75 | 0.69× | 0.63× | 0.54 / 0.59 | 0.52 / 0.65 | 0.83 / 0.92 | 1.03 / 1.13 | 1.75 / 1.89 | 0.51× | 0.65× |
-| `lingrad-angles` | linear-gradient | 2.64 / 3.31 | 3.02 / 4.07 | 4.85 / 6.57 | 4.97 / 5.98 | 7.18 / 9.56 | 0.61× | 0.55× | 7.68 / 9.83 | 7.28 / 8.91 | 11.6 / 13.9 | 9.17 / 11.0 | 39.1 / 44.9 | 0.79× | 0.67× |
-| `lingrad-multistop` | linear-gradient | 2.44 / 3.80 | 2.53 / 3.87 | 4.69 / 6.45 | 6.18 / 7.52 | 9.06 / 11.2 | 0.41× | 0.52× | 7.58 / 8.43 | 6.97 / 10.1 | 12.6 / 16.0 | 8.14 / 9.98 | 30.9 / 39.9 | 0.86× | 0.60× |
-| `lingrad-alpha` | linear-gradient | 4.13 / 4.92 | 4.75 / 5.80 | 7.13 / 8.66 | 6.99 / 7.50 | 10.2 / 12.8 | 0.68× | 0.58× | 7.05 / 10.3 | 7.16 / 10.7 | 11.0 / 16.2 | 8.55 / 16.0 | 40.2 / 60.4 | 0.84× | 0.64× |
-| `lingrad-hero-small` | linear-gradient | 0.42 / 0.60 | 0.43 / 0.82 | 0.60 / 1.01 | 0.92 / 1.23 | 1.04 / 1.50 | 0.47× | 0.71× | 1.56 / 2.15 | 1.70 / 2.20 | 2.14 / 3.15 | 1.78 / 2.07 | 3.85 / 5.91 | 0.96× | 0.73× |
-| `radial-shapes` | radial-gradient | 2.17 / 2.86 | 2.66 / 3.47 | 3.93 / 5.25 | 6.58 / 8.50 | 8.37 / 11.5 | 0.40× | 0.55× | 13.8 / 18.1 | 14.0 / 18.4 | 20.3 / 25.3 | 11.7 / 14.6 | 44.5 / 56.2 | 1.19× | 0.68× |
-| `radial-at-position` | radial-gradient | 2.48 / 3.38 | 3.29 / 4.12 | 5.83 / 6.74 | 8.72 / 10.3 | 13.4 / 15.2 | 0.38× | 0.42× | 12.3 / 15.1 | 13.4 / 16.2 | 19.4 / 25.7 | 14.1 / 16.0 | 42.7 / 55.6 | 0.95× | 0.63× |
-| `radial-spotlight-small` | radial-gradient | 0.45 / 0.59 | 0.49 / 0.69 | 0.56 / 0.91 | 1.50 / 1.85 | 1.59 / 2.32 | 0.33× | 0.80× | 4.37 / 5.14 | 4.51 / 5.82 | 5.68 / 8.26 | 3.17 / 3.74 | 10.7 / 12.3 | 1.42× | 0.77× |
-| `shadow-offset-blur` | box-shadow | 3.09 / 4.00 | 2.74 / 5.26 | 5.31 / 7.81 | 6.14 / 8.13 | 9.33 / 11.4 | 0.45× | 0.58× | 8.99 / 11.8 | 8.78 / 11.1 | 15.2 / 17.5 | 8.79 / 9.93 | 33.1 / 43.1 | 1.00× | 0.59× |
-| `shadow-spread-multi` | box-shadow | 3.07 / 4.81 | 4.52 / 5.21 | 6.34 / 9.88 | 5.70 / 8.29 | 9.21 / 13.8 | 0.79× | 0.48× | 9.26 / 12.3 | 9.33 / 12.5 | 15.9 / 19.5 | 8.63 / 11.0 | 33.6 / 40.6 | 1.08× | 0.58× |
-| `shadow-inset` | box-shadow | 3.34 / 4.20 | 3.33 / 5.55 | 6.23 / 8.70 | 8.75 / 10.8 | 14.0 / 16.5 | 0.38× | 0.54× | 9.33 / 13.0 | 9.23 / 13.3 | 14.4 / 17.7 | 10.9 / 13.6 | 33.8 / 43.0 | 0.85× | 0.65× |
-| `shadow-small` | box-shadow | 0.48 / 0.74 | 0.54 / 0.99 | 0.89 / 1.49 | 1.15 / 1.71 | 1.56 / 2.46 | 0.47× | 0.53× | 0.74 / 0.89 | 0.76 / 1.01 | 1.25 / 1.35 | 1.68 / 2.46 | 2.44 / 3.67 | 0.45× | 0.60× |
-| `opacity-basic` | opacity | 2.53 / 3.35 | 2.73 / 3.92 | 4.09 / 5.35 | 3.38 / 4.34 | 7.33 / 10.1 | 0.81× | 0.62× | 4.31 / 5.68 | 4.68 / 5.83 | 6.45 / 8.16 | 6.42 / 7.71 | 15.6 / 18.6 | 0.73× | 0.67× |
-| `opacity-nested` | opacity | 1.58 / 2.31 | 1.69 / 2.78 | 2.75 / 4.06 | 4.51 / 5.86 | 10.1 / 11.3 | 0.38× | 0.58× | 2.67 / 3.14 | 2.77 / 3.04 | 3.98 / 4.51 | 6.87 / 7.69 | 15.5 / 17.2 | 0.40× | 0.67× |
-| `opacity-with-radius-shadow` | opacity | 0.75 / 0.97 | 0.84 / 1.10 | 1.59 / 2.26 | 2.23 / 2.80 | 3.87 / 5.27 | 0.38× | 0.47× | 1.08 / 1.26 | 1.11 / 1.71 | 1.97 / 2.51 | 2.67 / 3.41 | 4.97 / 5.73 | 0.41× | 0.55× |
-| `overflow-hidden-clip` | overflow | 1.02 / 3.95 | 1.09 / 2.31 | 1.79 / 2.06 | 2.17 / 2.90 | 2.70 / 3.42 | 0.51× | 0.57× | 1.98 / 2.59 | 2.05 / 2.59 | 2.87 / 3.41 | 4.32 / 5.18 | 7.70 / 8.79 | 0.47× | 0.69× |
-| `overflow-radius-clip` | overflow | 1.66 / 2.32 | 1.99 / 2.89 | 2.46 / 4.56 | 3.08 / 3.73 | 4.40 / 7.00 | 0.65× | 0.68× | 5.10 / 6.55 | 4.59 / 6.94 | 8.03 / 10.4 | 6.16 / 7.39 | 18.1 / 27.0 | 0.75× | 0.64× |
-| `overflow-nested` | overflow | 0.33 / 0.49 | 0.40 / 1.33 | 0.67 / 0.88 | 0.66 / 1.06 | 0.76 / 1.27 | 0.61× | 0.49× | 0.48 / 0.80 | 0.49 / 0.76 | 0.74 / 1.13 | 1.45 / 2.06 | 1.66 / 2.92 | 0.34× | 0.65× |
-| `transform-basic` | transform | 1.87 / 3.06 | 1.83 / 2.43 | 2.72 / 3.63 | 3.18 / 4.40 | 5.11 / 6.79 | 0.58× | 0.69× | 2.75 / 4.18 | 3.25 / 4.34 | 4.77 / 5.97 | 5.19 / 6.93 | 11.5 / 14.8 | 0.63× | 0.58× |
-| `transform-combined-origin` | transform | 1.42 / 2.11 | 1.44 / 2.26 | 2.14 / 3.56 | 2.77 / 3.49 | 4.14 / 5.32 | 0.52× | 0.66× | 2.67 / 3.89 | 2.65 / 2.93 | 3.61 / 4.60 | 4.65 / 5.43 | 9.45 / 10.6 | 0.57× | 0.74× |
-| `transform-text-small` | transform | 0.57 / 0.85 | 0.60 / 0.93 | 1.05 / 1.61 | 1.20 / 1.72 | 1.81 / 2.63 | 0.50× | 0.54× | 0.96 / 1.32 | 1.02 / 1.51 | 1.57 / 2.36 | 1.90 / 2.47 | 2.85 / 4.53 | 0.54× | 0.61× |
-| `text-single-sizes` | text-single-line | 1.27 / 1.93 | 1.36 / 1.75 | 2.10 / 2.94 | 2.00 / 2.49 | 3.07 / 3.84 | 0.68× | 0.61× | 2.80 / 3.76 | 2.87 / 3.28 | 3.61 / 4.25 | 4.00 / 4.45 | 7.81 / 9.76 | 0.72× | 0.78× |
-| `text-single-colors-small` | text-single-line | 0.30 / 0.45 | 0.32 / 0.72 | 0.43 / 0.71 | 0.78 / 1.02 | 0.90 / 1.45 | 0.41× | 0.70× | 0.61 / 0.86 | 0.59 / 0.79 | 0.84 / 1.32 | 1.42 / 1.58 | 1.86 / 2.92 | 0.42× | 0.72× |
-| `text-single-fonts` | text-single-line | 1.37 / 2.74 | 1.48 / 2.39 | 1.94 / 2.62 | 2.02 / 2.62 | 2.57 / 3.28 | 0.73× | 0.71× | 3.11 / 4.62 | 3.36 / 4.50 | 4.18 / 4.90 | 4.36 / 5.30 | 9.14 / 12.8 | 0.77× | 0.74× |
-| `text-paragraph-wrap` | text-paragraph | 2.02 / 2.53 | 2.27 / 3.29 | 3.18 / 4.20 | 3.12 / 3.79 | 4.67 / 6.97 | 0.73× | 0.63× | 3.63 / 4.50 | 3.63 / 4.63 | 4.86 / 6.37 | 4.80 / 5.49 | 9.60 / 11.2 | 0.76× | 0.75× |
-| `text-paragraph-lineheight` | text-paragraph | 1.82 / 2.76 | 1.78 / 3.36 | 2.86 / 3.75 | 3.07 / 4.13 | 4.55 / 6.27 | 0.58× | 0.64× | 4.14 / 5.01 | 3.91 / 5.79 | 5.77 / 8.09 | 5.27 / 7.03 | 10.2 / 11.7 | 0.74× | 0.72× |
-| `text-paragraph-letterspacing` | text-paragraph | 2.48 / 2.96 | 2.41 / 3.67 | 3.90 / 5.58 | 3.82 / 4.34 | 6.23 / 7.54 | 0.63× | 0.64× | 4.67 / 6.13 | 4.69 / 6.26 | 6.03 / 8.68 | 5.61 / 6.71 | 11.2 / 14.5 | 0.83× | 0.77× |
-| `text-paragraph-small` | text-paragraph | 0.34 / 0.52 | 0.36 / 0.61 | 0.50 / 0.75 | 0.71 / 0.97 | 0.82 / 1.29 | 0.51× | 0.68× | 0.81 / 1.15 | 0.78 / 1.20 | 1.10 / 1.73 | 1.35 / 1.66 | 2.00 / 3.03 | 0.58× | 0.74× |
-| `text-long-wrap` | text-paragraph | 1.32 / 3.23 | 1.71 / 2.05 | 1.82 / 3.11 | 2.08 / 2.65 | 2.64 / 3.62 | 0.82× | 0.73× | 3.37 / 5.33 | 3.67 / 5.41 | 4.55 / 6.58 | 5.61 / 6.57 | 13.4 / 18.2 | 0.65× | 0.74× |
-| `fonts-weights-italic` | fonts | 1.62 / 2.31 | 1.98 / 2.19 | 2.55 / 3.51 | 2.93 / 3.72 | 3.87 / 4.96 | 0.68× | 0.64× | 4.59 / 5.81 | 4.28 / 5.03 | 5.91 / 8.69 | 4.76 / 6.21 | 10.8 / 14.1 | 0.90× | 0.78× |
-| `fonts-mixed-inline` | fonts | 1.12 / 1.43 | 1.15 / 2.38 | 1.82 / 2.90 | 1.88 / 2.79 | 2.62 / 5.88 | 0.61× | 0.61× | 3.37 / 4.65 | 3.97 / 4.63 | 4.97 / 6.37 | 4.08 / 5.40 | 9.36 / 11.7 | 0.97× | 0.68× |
-| `text-vietnamese` | text-i18n | 1.33 / 1.97 | 1.46 / 2.02 | 1.68 / 2.66 | 2.30 / 3.40 | 3.01 / 4.10 | 0.64× | 0.79× | 3.12 / 4.72 | 3.11 / 4.56 | 4.10 / 6.47 | 4.21 / 4.95 | 8.58 / 11.3 | 0.74× | 0.76× |
-| `text-accented-latin` | text-i18n | 1.22 / 1.73 | 1.17 / 2.39 | 1.72 / 3.35 | 2.30 / 2.67 | 2.40 / 5.38 | 0.51× | 0.71× | 3.10 / 3.92 | 3.28 / 4.21 | 4.31 / 6.05 | 3.94 / 5.05 | 8.38 / 10.6 | 0.83× | 0.72× |
-| `text-ellipsis-nowrap` | text-truncation | 1.08 / 1.69 | 1.21 / 2.13 | 1.50 / 2.59 | 1.87 / 2.49 | 2.22 / 3.38 | 0.65× | 0.72× | 2.06 / 3.12 | 2.07 / 3.12 | 2.82 / 4.07 | 4.03 / 4.52 | 7.14 / 10.5 | 0.51× | 0.73× |
-| `text-lineclamp` | text-truncation | 1.63 / 2.54 | 2.10 / 3.08 | 2.47 / 3.87 | 2.33 / 3.49 | 3.48 / 5.15 | 0.90× | 0.66× | 3.12 / 4.52 | 3.15 / 4.87 | 4.18 / 6.54 | 4.86 / 6.37 | 9.82 / 14.0 | 0.65× | 0.75× |
-| `text-lineclamp-small` | text-truncation | 0.30 / 0.51 | 0.33 / 0.49 | 0.54 / 0.67 | 0.76 / 1.10 | 0.97 / 1.24 | 0.44× | 0.56× | 0.52 / 0.76 | 0.53 / 0.81 | 0.70 / 1.11 | 1.18 / 1.54 | 1.75 / 2.47 | 0.45× | 0.75× |
-| `img-png-fit` | images | 1.60 / 2.14 | 1.85 / 2.68 | 3.08 / 4.28 | 4.29 / 5.22 | 6.29 / 7.87 | 0.43× | 0.52× | 11.8 / 14.3 | 12.1 / 13.1 | 18.7 / 24.8 | 9.63 / 11.3 | 36.8 / 40.9 | 1.25× | 0.63× |
-| `img-jpeg-fit` | images | 1.68 / 1.93 | 1.67 / 1.95 | 3.21 / 4.17 | 13.4 / 16.2 | 20.5 / 24.4 | 0.12× | 0.52× | 19.8 / 28.9 | 20.0 / 24.1 | 29.1 / 41.2 | 18.8 / 25.8 | 55.7 / 68.8 | 1.06× | 0.68× |
-| `img-intrinsic-size` | images | 0.23 / 0.35 | 0.28 / 0.84 | 0.62 / 0.77 | 0.57 / 1.21 | 0.80 / 1.08 | 0.49× | 0.36× | 2.06 / 2.74 | 2.54 / 3.18 | 3.32 / 4.65 | 1.69 / 2.00 | 5.68 / 7.25 | 1.50× | 0.62× |
-| `img-radius-clip` | images | 3.18 / 4.18 | 2.94 / 4.99 | 5.53 / 7.17 | 6.10 / 7.85 | 9.92 / 12.2 | 0.48× | 0.57× | 17.4 / 22.2 | 17.6 / 23.4 | 29.3 / 34.2 | 12.0 / 13.5 | 47.9 / 52.8 | 1.46× | 0.59× |
-| `img-photo-bg` | images | 1.34 / 2.86 | 1.39 / 2.97 | 2.06 / 3.48 | 4.01 / 6.85 | 6.67 / 10.5 | 0.35× | 0.65× | 30.8 / 36.1 | 30.5 / 34.3 | 46.3 / 50.9 | 13.4 / 15.2 | 58.8 / 75.2 | 2.28× | 0.66× |
-| `grid-fixed-fr` | grid | 1.17 / 4.96 | 1.36 / 2.53 | 1.88 / 3.14 | 1.81 / 2.20 | 2.18 / 2.99 | 0.75× | 0.62× | 2.07 / 3.30 | 2.10 / 2.85 | 3.36 / 4.03 | 4.05 / 4.45 | 7.42 / 9.77 | 0.52× | 0.62× |
-| `grid-repeat-gap` | grid | 1.30 / 3.75 | 1.41 / 2.49 | 2.13 / 3.22 | 1.91 / 3.32 | 2.57 / 3.22 | 0.74× | 0.61× | 2.50 / 3.57 | 2.36 / 3.26 | 3.71 / 4.44 | 4.65 / 4.92 | 11.6 / 14.0 | 0.51× | 0.67× |
-| `grid-spans` | grid | 1.26 / 1.83 | 1.27 / 1.89 | 1.84 / 2.67 | 1.98 / 2.64 | 2.44 / 3.87 | 0.64× | 0.68× | 2.20 / 3.27 | 2.10 / 3.60 | 3.02 / 4.11 | 3.99 / 4.89 | 8.34 / 9.45 | 0.53× | 0.73× |
-| `grid-small-mixed` | grid | 0.51 / 0.62 | 0.54 / 1.00 | 0.82 / 1.18 | 1.04 / 1.33 | 1.46 / 1.75 | 0.52× | 0.62× | 0.80 / 1.08 | 0.75 / 1.09 | 1.51 / 1.76 | 1.80 / 2.14 | 2.47 / 3.28 | 0.42× | 0.53× |
-| `card-og` | og-card | 3.52 / 4.01 | 3.27 / 4.13 | 5.83 / 6.31 | 6.07 / 6.77 | 7.95 / 9.62 | 0.54× | 0.60× | 11.1 / 15.3 | 10.2 / 14.2 | 16.1 / 23.4 | 8.82 / 11.4 | 23.3 / 28.6 | 1.16× | 0.69× |
-| `card-og-small` | og-card | 1.10 / 1.46 | 1.13 / 1.31 | 1.77 / 2.04 | 2.19 / 3.44 | 3.42 / 3.75 | 0.52× | 0.62× | 4.06 / 5.42 | 4.07 / 5.51 | 5.99 / 7.24 | 3.69 / 5.20 | 8.60 / 9.86 | 1.10× | 0.68× |
-| `card-blog` | blog-card | 7.20 / 8.84 | 6.70 / 9.06 | 12.0 / 14.9 | 8.78 / 10.6 | 19.5 / 25.7 | 0.76× | 0.60× | 20.0 / 23.5 | 20.1 / 24.1 | 30.8 / 36.4 | 12.5 / 15.8 | 50.0 / 58.5 | 1.61× | 0.65× |
-| `card-flat-ui` | blog-card | 2.92 / 4.58 | 3.14 / 4.62 | 5.63 / 7.02 | 3.95 / 5.33 | 7.41 / 10.4 | 0.79× | 0.52× | 5.69 / 8.10 | 5.78 / 6.38 | 8.90 / 11.4 | 7.25 / 9.21 | 20.8 / 23.4 | 0.80× | 0.64× |
-| `stress-600-boxes` | stress | 5.59 / 9.47 | 7.00 / 9.58 | 9.81 / 13.1 | 7.62 / 9.62 | 9.79 / 11.9 | 0.92× | 0.57× | 9.01 / 12.9 | 8.39 / 10.7 | 13.6 / 19.6 | 9.44 / 11.1 | 17.7 / 21.8 | 0.89× | 0.66× |
-| `stress-200-labels` | stress | 5.68 / 8.52 | 6.14 / 8.25 | 10.4 / 15.0 | 11.6 / 17.1 | 16.2 / 23.9 | 0.53× | 0.55× | 10.2 / 12.5 | 10.8 / 15.1 | 16.2 / 21.5 | 14.7 / 19.1 | 24.6 / 31.4 | 0.74× | 0.63× |
-| `stress-3000x2000-card` | stress | 15.2 / 17.5 | 16.6 / 21.2 | 22.2 / 29.0 | 23.5 / 31.9 | 33.3 / 38.0 | 0.71× | 0.68× | 57.9 / 68.6 | 56.5 / 59.8 | 83.2 / 97.4 | 45.1 / 55.5 | 146 / 166 | 1.25× | 0.70× |
-| `fx-text-shadow` | text-shadow | 0.64 / 1.01 | 0.65 / 1.16 | 1.15 / 1.89 | 0.93 / 1.49 | 1.19 / 2.02 | 0.70× | 0.56× | 2.67 / 3.93 | 2.76 / 3.93 | 4.04 / 5.90 | 2.07 / 2.50 | 4.57 / 6.36 | 1.33× | 0.66× |
-| `gap-dashed-dotted-border` | known-gaps | 0.62 / 0.99 | 0.67 / 1.00 | 1.14 / 1.76 | 1.27 / 1.93 | 1.98 / 3.00 | 0.53× | 0.55× | 0.84 / 1.27 | 0.82 / 1.33 | 1.31 / 2.07 | 2.24 / 2.61 | 2.79 / 3.43 | 0.36× | 0.64× |
-| `fx-filter-blur-grayscale` | filter | 0.65 / 1.03 | 0.69 / 1.02 | 1.31 / 1.74 | 1.29 / 1.81 | 1.93 / 2.61 | 0.53× | 0.50× | 1.79 / 2.13 | 1.84 / 2.17 | 2.98 / 3.83 | 2.02 / 2.71 | 5.18 / 6.71 | 0.91× | 0.60× |
-| `gap-tailwind-tw` | known-gaps | 0.28 / 0.41 | 0.30 / 0.55 | 0.43 / 0.65 | 0.50 / 0.78 | 0.59 / 0.93 | 0.59× | 0.66× | 0.45 / 0.69 | 0.46 / 0.80 | 0.66 / 1.04 | 1.00 / 1.64 | 1.46 / 2.38 | 0.47× | 0.69× |
-| `gap-oklch-color` | known-gaps | 0.15 / 0.27 | 0.19 / 0.37 | 0.25 / 0.37 | 0.30 / 0.82 | 0.33 / 0.59 | 0.64× | 0.60× | 0.22 / 0.33 | 0.22 / 0.36 | 0.30 / 0.48 | 0.88 / 1.24 | 1.22 / 1.82 | 0.25× | 0.74× |
-| `gap-svg-image` | known-gaps | 0.21 / 0.34 | 0.21 / 0.45 | 0.38 / 0.63 | 0.38 / 0.62 | 0.50 / 0.83 | 0.57× | 0.56× | 0.41 / 0.69 | 0.41 / 0.66 | 0.61 / 0.97 | 0.83 / 1.24 | 1.25 / 2.05 | 0.49× | 0.68× |
-| `gap-inline-box-decoration` | known-gaps | 0.27 / 0.42 | 0.29 / 0.51 | 0.41 / 0.64 | 0.58 / 0.87 | 0.73 / 1.15 | 0.50× | 0.65× | 0.69 / 1.05 | 0.66 / 1.02 | 0.94 / 1.46 | 1.25 / 1.56 | 1.94 / 2.83 | 0.53× | 0.74× |
-| `gap-mix-blend-mode` | known-gaps | 0.28 / 0.45 | 0.30 / 0.54 | 0.48 / 0.78 | 0.56 / 0.82 | 0.90 / 1.30 | 0.55× | 0.59× | 0.59 / 0.88 | 0.67 / 0.88 | 0.92 / 1.40 | 1.21 / 1.76 | 1.86 / 2.85 | 0.55× | 0.64× |
-| `gap-clip-path` | known-gaps | 0.51 / 0.68 | 0.53 / 0.80 | 0.90 / 1.12 | 0.72 / 0.96 | 1.21 / 1.35 | 0.74× | 0.56× | 1.04 / 1.43 | 1.03 / 1.62 | 1.56 / 2.46 | 1.43 / 2.13 | 7.31 / 11.0 | 0.72× | 0.67× |
-| `gap-background-clip-text` | known-gaps | 0.34 / 0.65 | 0.38 / 0.52 | 0.49 / 0.75 | 1.62 / 2.18 | 2.17 / 3.58 | 0.23× | 0.70× | 1.55 / 1.67 | 1.54 / 1.66 | 2.28 / 2.61 | 2.50 / 2.97 | 7.90 / 9.55 | 0.62× | 0.68× |
-| `gap-text-wrap-balance` | known-gaps | 0.25 / 0.46 | 0.26 / 0.47 | 0.37 / 0.64 | 0.57 / 0.92 | 0.68 / 1.06 | 0.45× | 0.67× | 0.61 / 0.84 | 0.61 / 0.89 | 0.85 / 1.28 | 1.31 / 1.44 | 1.73 / 2.71 | 0.46× | 0.72× |
-| `pfx-aa-shapes` | aa-exact | 0.39 / 0.47 | 0.44 / 0.64 | 0.59 / 0.83 | 0.60 / 1.10 | 0.94 / 1.30 | 0.73× | 0.66× | 0.65 / 1.26 | 0.77 / 1.01 | 1.17 / 1.40 | 1.36 / 1.70 | 2.16 / 2.57 | 0.56× | 0.56× |
-| `pfx-aa-text` | aa-exact | 0.43 / 0.63 | 0.43 / 0.62 | 0.60 / 0.84 | 0.98 / 1.31 | 1.09 / 1.75 | 0.44× | 0.72× | 0.87 / 1.30 | 0.88 / 1.27 | 1.16 / 1.73 | 1.58 / 2.06 | 2.60 / 3.38 | 0.56× | 0.75× |
-| `pfx-border-dashed` | dashed-border | 1.00 / 1.36 | 1.32 / 1.46 | 2.02 / 2.49 | 1.81 / 2.42 | 3.23 / 4.35 | 0.73× | 0.50× | 1.13 / 1.74 | 1.21 / 1.72 | 1.76 / 2.73 | 2.20 / 3.09 | 3.55 / 5.59 | 0.55× | 0.64× |
-| `pfx-border-dotted` | dotted-border | 0.95 / 1.55 | 0.99 / 1.56 | 1.68 / 2.77 | 1.97 / 2.76 | 3.01 / 3.74 | 0.50× | 0.57× | 1.78 / 1.99 | 1.39 / 1.77 | 3.13 / 3.45 | 3.26 / 3.64 | 4.92 / 6.51 | 0.43× | 0.57× |
-| `pfx-border-double-3d` | double-3d-border | 0.35 / 0.56 | 0.39 / 0.59 | 0.62 / 1.05 | 0.59 / 0.90 | 0.80 / 1.27 | 0.66× | 0.56× | 0.55 / 0.91 | 0.58 / 0.88 | 0.85 / 1.37 | 1.20 / 1.75 | 1.70 / 2.57 | 0.49× | 0.64× |
-| `pfx-border-mixed` | mixed-border | 0.56 / 0.89 | 0.59 / 0.89 | 1.08 / 1.49 | 0.92 / 1.54 | 1.35 / 2.10 | 0.65× | 0.52× | 0.73 / 1.10 | 0.71 / 1.25 | 1.11 / 1.78 | 1.57 / 1.81 | 2.18 / 3.34 | 0.45× | 0.66× |
-| `pfx-outline` | outline | 0.62 / 0.94 | 0.79 / 0.93 | 1.19 / 1.59 | 1.24 / 1.94 | 1.92 / 3.06 | 0.64× | 0.52× | 0.86 / 1.23 | 0.86 / 1.36 | 1.34 / 1.92 | 1.96 / 2.29 | 2.91 / 3.94 | 0.44× | 0.64× |
-| `pfx-clip-path-shapes` | clip-path | 0.44 / 0.71 | 0.47 / 0.73 | 0.76 / 1.28 | 0.76 / 1.15 | 1.09 / 1.71 | 0.61× | 0.58× | 1.33 / 2.16 | 1.40 / 2.09 | 2.08 / 3.24 | 1.77 / 2.00 | 6.28 / 7.75 | 0.79× | 0.64× |
-| `pfx-mask-gradient` | mask | 0.82 / 1.08 | 0.84 / 1.22 | 1.30 / 2.12 | 1.36 / 1.76 | 1.82 / 2.90 | 0.62× | 0.63× | 2.46 / 2.78 | 2.27 / 3.10 | 2.97 / 5.06 | 2.41 / 3.23 | 9.13 / 11.9 | 0.94× | 0.83× |
-| `pfx-bg-clip-text` | bg-clip-text | 0.43 / 0.64 | 0.48 / 0.63 | 0.61 / 0.93 | 2.28 / 3.05 | 3.05 / 4.00 | 0.21× | 0.70× | 1.58 / 2.27 | 1.61 / 2.32 | 2.24 / 2.70 | 2.87 / 3.84 | 5.94 / 7.67 | 0.56× | 0.70× |
-| `pfx-mix-blend` | mix-blend | 1.13 / 1.33 | 1.20 / 1.33 | 1.86 / 2.30 | 1.61 / 1.76 | 3.02 / 3.31 | 0.74× | 0.61× | 2.91 / 4.08 | 3.06 / 4.30 | 4.63 / 5.35 | 2.31 / 2.85 | 8.53 / 10.3 | 1.33× | 0.63× |
-| `pfx-bg-blend` | bg-blend | 0.75 / 1.18 | 0.89 / 1.41 | 1.67 / 1.91 | 5.07 / 6.86 | 6.10 / 9.29 | 0.18× | 0.45× | 3.04 / 3.72 | 3.04 / 4.61 | 4.76 / 5.87 | 5.54 / 7.82 | 12.4 / 14.0 | 0.55× | 0.64× |
-| `pfx-drop-shadow` | drop-shadow | 0.81 / 1.27 | 0.80 / 1.27 | 1.35 / 1.99 | 1.18 / 1.68 | 1.71 / 2.63 | 0.68× | 0.60× | 2.28 / 3.48 | 2.29 / 3.40 | 3.61 / 4.23 | 1.98 / 2.79 | 7.22 / 12.6 | 1.16× | 0.63× |
-| `pfx-backdrop-filter` | backdrop-filter | 1.46 / 2.15 | 1.54 / 1.85 | 2.74 / 3.43 | 2.67 / 3.59 | 4.54 / 5.42 | 0.58× | 0.53× | 2.23 / 3.31 | 2.30 / 2.80 | 4.00 / 4.76 | 3.25 / 4.04 | 8.05 / 8.89 | 0.71× | 0.56× |
-| `pfx-text-stroke` | text-stroke | 0.77 / 1.01 | 0.83 / 1.06 | 1.29 / 1.51 | 0.73 / 0.91 | 0.92 / 1.22 | 1.14× | 0.59× | 1.35 / 1.85 | 1.33 / 1.69 | 1.98 / 3.01 | 1.38 / 1.71 | 2.32 / 3.61 | 0.96× | 0.68× |
-| `pfx-text-decoration` | text-decoration | 1.12 / 1.74 | 1.21 / 1.78 | 1.90 / 3.06 | 1.37 / 1.95 | 1.90 / 2.84 | 0.89× | 0.59× | 1.98 / 2.88 | 1.95 / 2.43 | 3.00 / 4.52 | 2.12 / 2.86 | 3.95 / 5.86 | 0.92× | 0.66× |
-| `pfx-visibility` | visibility | 0.21 / 0.32 | 0.23 / 0.37 | 0.33 / 0.47 | 0.44 / 0.71 | 0.54 / 0.81 | 0.51× | 0.63× | 0.30 / 0.50 | 0.32 / 0.54 | 0.41 / 0.63 | 1.12 / 1.43 | 1.39 / 2.20 | 0.29× | 0.72× |
-| `pfx-opacity-layers` | opacity | 1.13 / 1.78 | 1.15 / 1.29 | 2.50 / 4.06 | 1.96 / 2.98 | 3.23 / 5.13 | 0.58× | 0.45× | 2.39 / 3.76 | 2.41 / 3.17 | 4.26 / 7.42 | 3.01 / 3.78 | 7.38 / 10.7 | 0.80× | 0.56× |
-| `pfx-svg-background` | svg-image | 0.69 / 1.21 | 0.75 / 1.15 | 1.48 / 2.27 | 0.71 / 1.06 | 1.01 / 1.66 | 1.05× | 0.46× | 1.39 / 1.90 | 1.74 / 2.03 | 3.13 / 3.62 | 1.82 / 2.93 | 2.92 / 4.27 | 0.96× | 0.44× |
-| `pfx-inline-boxes-many` | inline-box | 1.32 / 1.59 | 1.30 / 1.92 | 2.24 / 3.08 | 2.12 / 2.86 | 2.92 / 4.41 | 0.61× | 0.59× | 2.61 / 3.37 | 2.65 / 3.75 | 3.99 / 5.25 | 3.03 / 4.12 | 6.43 / 7.64 | 0.88× | 0.65× |
-| `css-class-id` | css-stylesheet | 1.46 / 2.07 | 1.97 / 2.66 | 2.79 / 4.31 | 2.46 / 3.29 | 3.27 / 4.48 | 0.80× | 0.52× | 2.40 / 2.85 | 2.42 / 2.58 | 3.61 / 4.68 | 3.84 / 4.31 | 7.73 / 10.0 | 0.63× | 0.67× |
-| `css-nth-child` | css-stylesheet | 0.76 / 1.37 | 0.81 / 1.87 | 1.21 / 1.92 | 1.50 / 2.24 | 1.85 / 3.24 | 0.54× | 0.63× | 1.28 / 1.76 | 1.27 / 1.71 | 1.91 / 2.14 | 2.46 / 3.09 | 4.58 / 5.85 | 0.52× | 0.67× |
-| `css-media-layer` | css-stylesheet | 0.68 / 3.62 | 0.77 / 1.47 | 1.05 / 1.74 | 0.86 / 2.34 | 0.97 / 1.84 | 0.89× | 0.65× | 1.11 / 1.42 | 1.07 / 1.40 | 1.62 / 2.15 | 2.67 / 3.26 | 4.83 / 5.32 | 0.40× | 0.68× |
-| `css-important-var` | css-stylesheet | 0.53 / 0.82 | 0.57 / 1.06 | 0.81 / 1.14 | 0.89 / 1.92 | 1.12 / 1.78 | 0.64× | 0.65× | 0.83 / 1.15 | 0.79 / 1.13 | 1.22 / 1.73 | 2.40 / 2.77 | 3.60 / 4.09 | 0.33× | 0.68× |
-| `tw-card` | tailwind | 1.33 / 2.34 | 1.36 / 2.64 | 1.85 / 2.29 | 1.96 / 2.63 | 2.64 / 3.48 | 0.69× | 0.72× | 2.87 / 3.42 | 2.72 / 4.20 | 3.84 / 4.93 | 4.00 / 4.68 | 7.35 / 10.5 | 0.68× | 0.75× |
-| `tw-responsive` | tailwind | 0.88 / 3.23 | 0.89 / 1.42 | 1.29 / 1.51 | 0.96 / 1.72 | 1.27 / 1.79 | 0.93× | 0.68× | 1.04 / 1.60 | 1.05 / 1.28 | 1.59 / 2.21 | 2.87 / 3.69 | 4.27 / 5.57 | 0.37× | 0.66× |
-| `tw-structural` | tailwind | 0.87 / 1.29 | 0.91 / 1.45 | 1.40 / 2.88 | 1.00 / 1.72 | 1.27 / 1.73 | 0.90× | 0.62× | 0.98 / 1.22 | 0.97 / 1.26 | 1.48 / 2.26 | 2.08 / 2.69 | 3.30 / 4.22 | 0.47× | 0.66× |
-| `tw-arbitrary` | tailwind | 1.81 / 2.42 | 1.68 / 2.76 | 2.85 / 4.00 | 3.92 / 5.24 | 5.56 / 7.13 | 0.43× | 0.64× | 2.44 / 3.43 | 2.60 / 3.69 | 4.42 / 5.96 | 4.92 / 6.36 | 9.64 / 11.7 | 0.53× | 0.55× |
-| `html-article` | html | 1.03 / 1.83 | 1.06 / 2.45 | 1.34 / 2.47 | 1.73 / 2.46 | 2.02 / 2.83 | 0.61× | 0.77× | 1.90 / 2.68 | 1.99 / 2.46 | 2.62 / 3.70 | 3.40 / 3.70 | 5.89 / 6.83 | 0.58× | 0.72× |
-| `html-document` | html | 0.46 / 1.06 | 0.48 / 1.01 | 0.68 / 1.01 | 0.79 / 1.43 | 0.97 / 1.67 | 0.61× | 0.68× | 0.87 / 1.34 | 0.83 / 1.33 | 1.25 / 1.83 | 1.96 / 2.80 | 2.95 / 4.54 | 0.42× | 0.69× |
-| `html-flex-card` | html | 1.34 / 1.62 | 1.39 / 2.25 | 2.20 / 2.57 | 2.50 / 3.91 | 3.73 / 4.62 | 0.56× | 0.61× | 4.75 / 5.71 | 4.96 / 5.98 | 7.13 / 8.49 | 4.66 / 5.97 | 12.8 / 14.2 | 1.06× | 0.67× |
-| `html-inline` | html | 0.55 / 0.81 | 0.57 / 0.87 | 0.76 / 1.06 | 0.96 / 1.34 | 1.22 / 1.92 | 0.60× | 0.73× | 1.02 / 1.19 | 1.03 / 1.22 | 1.46 / 1.95 | 2.09 / 2.37 | 2.96 / 3.91 | 0.49× | 0.70× |
-| `pseudo-inline` | pseudo-elements | 0.40 / 0.69 | 0.43 / 0.79 | 0.62 / 0.98 | 0.82 / 2.51 | 1.06 / 1.46 | 0.52× | 0.64× | 0.78 / 1.10 | 0.74 / 1.03 | 1.12 / 1.35 | 1.50 / 1.90 | 2.65 / 4.15 | 0.50× | 0.70× |
-| `pseudo-block` | pseudo-elements | 0.62 / 0.92 | 0.66 / 1.24 | 0.90 / 1.36 | 0.98 / 1.55 | 1.23 / 1.86 | 0.67× | 0.69× | 0.91 / 1.29 | 0.85 / 1.18 | 1.31 / 1.74 | 1.95 / 2.15 | 2.99 / 4.24 | 0.43× | 0.69× |
-| `pseudo-attr` | pseudo-elements | 0.31 / 0.55 | 0.34 / 1.22 | 0.56 / 0.82 | 0.72 / 1.25 | 0.97 / 1.56 | 0.47× | 0.55× | 0.66 / 0.86 | 0.56 / 0.78 | 0.86 / 1.30 | 1.29 / 1.88 | 2.34 / 3.54 | 0.44× | 0.77× |
-| `pseudo-tw` | pseudo-elements | 0.43 / 0.66 | 0.46 / 1.26 | 0.71 / 1.07 | 0.68 / 1.28 | 0.88 / 1.27 | 0.68× | 0.61× | 0.75 / 1.20 | 0.70 / 1.11 | 1.07 / 1.30 | 1.46 / 1.99 | 2.42 / 3.16 | 0.48× | 0.71× |
-| `anim-opacity-t0` | animation | 0.10 / 0.17 | 0.12 / 0.25 | 0.18 / 0.30 | 0.23 / 0.38 | 0.26 / 0.44 | 0.53× | 0.54× | 0.18 / 0.29 | 0.18 / 0.28 | 0.26 / 0.39 | 0.50 / 0.71 | 0.71 / 1.13 | 0.36× | 0.72× |
-| `anim-opacity-t250` | animation | 0.13 / 0.18 | 0.13 / 0.20 | 0.22 / 0.32 | 0.33 / 0.45 | 0.46 / 0.66 | 0.41× | 0.57× | 0.23 / 0.31 | 0.22 / 0.33 | 0.31 / 0.48 | 0.78 / 1.05 | 1.02 / 1.57 | 0.28× | 0.73× |
-| `anim-opacity-t500` | animation | 0.14 / 0.24 | 0.16 / 0.70 | 0.23 / 0.40 | 0.39 / 0.70 | 0.51 / 0.98 | 0.41× | 0.58× | 0.20 / 0.37 | 0.21 / 0.35 | 0.29 / 0.45 | 0.62 / 0.98 | 0.94 / 1.48 | 0.33× | 0.69× |
-| `anim-opacity-t900` | animation | 0.12 / 0.19 | 0.14 / 0.23 | 0.22 / 0.37 | 0.32 / 0.55 | 0.46 / 0.70 | 0.46× | 0.57× | 0.22 / 0.34 | 0.21 / 0.36 | 0.30 / 0.49 | 0.66 / 1.00 | 0.99 / 1.53 | 0.32× | 0.73× |
-| `anim-opacity-t1500` | animation | 0.14 / 0.21 | 0.15 / 0.31 | 0.24 / 0.34 | 0.32 / 0.49 | 0.39 / 0.58 | 0.46× | 0.59× | 0.19 / 0.28 | 0.17 / 0.31 | 0.25 / 0.40 | 0.57 / 0.85 | 0.80 / 1.32 | 0.30× | 0.74× |
-| `anim-transform-t0` | animation | 0.13 / 0.23 | 0.16 / 0.31 | 0.24 / 0.41 | 0.28 / 0.43 | 0.31 / 0.51 | 0.57× | 0.54× | 0.25 / 0.38 | 0.24 / 0.39 | 0.37 / 0.59 | 0.56 / 0.92 | 0.81 / 1.31 | 0.42× | 0.66× |
-| `anim-transform-t200` | animation | 0.16 / 0.26 | 0.17 / 0.30 | 0.25 / 0.41 | 0.28 / 0.49 | 0.33 / 0.53 | 0.61× | 0.62× | 0.27 / 0.42 | 0.26 / 0.37 | 0.41 / 0.51 | 0.57 / 0.78 | 0.82 / 1.27 | 0.45× | 0.65× |
-| `anim-transform-t400` | animation | 0.16 / 0.25 | 0.17 / 0.27 | 0.25 / 0.44 | 0.27 / 0.42 | 0.34 / 0.51 | 0.63× | 0.61× | 0.28 / 0.43 | 0.28 / 0.42 | 0.42 / 0.66 | 0.58 / 0.84 | 0.82 / 1.31 | 0.49× | 0.67× |
-| `anim-transform-t600` | animation | 0.15 / 0.25 | 0.17 / 0.28 | 0.26 / 0.42 | 0.29 / 0.46 | 0.34 / 0.51 | 0.61× | 0.56× | 0.31 / 0.48 | 0.30 / 0.47 | 0.45 / 0.66 | 0.63 / 0.94 | 0.85 / 1.32 | 0.48× | 0.69× |
-| `anim-transform-t800` | animation | 0.12 / 0.22 | 0.15 / 0.25 | 0.22 / 0.35 | 0.26 / 0.47 | 0.30 / 0.50 | 0.60× | 0.54× | 0.23 / 0.34 | 0.22 / 0.31 | 0.35 / 0.57 | 0.55 / 0.81 | 0.80 / 1.19 | 0.40× | 0.65× |
-| `anim-color-t0` | animation | 0.20 / 0.30 | 0.19 / 0.34 | 0.30 / 0.45 | 0.45 / 0.72 | 0.54 / 0.85 | 0.42× | 0.65× | 0.30 / 0.42 | 0.28 / 0.39 | 0.44 / 0.59 | 0.73 / 1.04 | 1.02 / 1.20 | 0.38× | 0.69× |
-| `anim-color-t300` | animation | 0.18 / 0.28 | 0.18 / 0.29 | 0.29 / 0.42 | 0.42 / 0.66 | 0.51 / 0.78 | 0.44× | 0.62× | 0.30 / 0.45 | 0.30 / 0.38 | 0.43 / 0.66 | 0.74 / 1.07 | 0.99 / 1.57 | 0.40× | 0.68× |
-| `anim-color-t700` | animation | 0.16 / 0.23 | 0.18 / 0.29 | 0.26 / 0.41 | 0.41 / 0.65 | 0.50 / 0.69 | 0.43× | 0.60× | 0.29 / 0.44 | 0.27 / 0.40 | 0.43 / 0.66 | 0.73 / 1.10 | 1.00 / 1.61 | 0.37× | 0.68× |
-| `anim-color-t2000` | animation | 0.16 / 0.24 | 0.18 / 0.30 | 0.27 / 0.42 | 0.41 / 0.64 | 0.52 / 0.76 | 0.44× | 0.60× | 0.29 / 0.41 | 0.27 / 0.46 | 0.43 / 0.70 | 0.71 / 1.17 | 1.00 / 1.38 | 0.37× | 0.68× |
-| `anim-width-t0` | animation | 0.13 / 0.17 | 0.14 / 0.26 | 0.22 / 0.33 | 0.26 / 0.46 | 0.31 / 0.49 | 0.56× | 0.60× | 0.19 / 0.27 | 0.19 / 0.27 | 0.28 / 0.43 | 0.50 / 0.74 | 0.71 / 1.13 | 0.39× | 0.67× |
-| `anim-width-t100` | animation | 0.16 / 0.23 | 0.17 / 0.30 | 0.27 / 0.40 | 0.28 / 0.42 | 0.33 / 0.53 | 0.61× | 0.60× | 0.28 / 0.39 | 0.28 / 0.43 | 0.41 / 0.64 | 0.62 / 0.93 | 0.85 / 1.32 | 0.45× | 0.68× |
-| `anim-width-t500` | animation | 0.26 / 0.31 | 0.25 / 0.35 | 0.37 / 0.54 | 0.41 / 0.63 | 0.52 / 0.69 | 0.61× | 0.70× | 0.37 / 0.55 | 0.36 / 0.55 | 0.56 / 0.88 | 0.71 / 1.04 | 1.00 / 1.46 | 0.51× | 0.66× |
-| `anim-width-t999` | animation | 0.18 / 0.32 | 0.21 / 0.40 | 0.32 / 0.52 | 0.32 / 0.57 | 0.37 / 0.60 | 0.65× | 0.56× | 0.52 / 0.70 | 0.54 / 1.27 | 0.78 / 1.03 | 0.92 / 1.44 | 1.36 / 1.78 | 0.58× | 0.67× |
-| `anim-delay-fill-t0` | animation | 0.15 / 0.23 | 0.18 / 0.28 | 0.27 / 0.43 | 0.35 / 0.56 | 0.50 / 0.74 | 0.50× | 0.56× | 0.26 / 0.41 | 0.27 / 0.40 | 0.40 / 0.62 | 0.67 / 1.02 | 0.97 / 1.34 | 0.40× | 0.65× |
-| `anim-delay-fill-t750` | animation | 0.20 / 0.32 | 0.21 / 0.48 | 0.34 / 0.52 | 0.42 / 0.88 | 0.64 / 0.98 | 0.50× | 0.59× | 0.26 / 0.43 | 0.27 / 0.46 | 0.42 / 0.71 | 0.66 / 1.07 | 1.03 / 1.51 | 0.41× | 0.63× |
-| `anim-delay-fill-t2000` | animation | 0.14 / 0.22 | 0.17 / 0.28 | 0.25 / 0.40 | 0.29 / 0.44 | 0.35 / 0.55 | 0.59× | 0.56× | 0.27 / 0.41 | 0.27 / 0.38 | 0.39 / 0.63 | 0.67 / 0.95 | 0.86 / 1.40 | 0.41× | 0.69× |
-| `anim-alternate-t100` | animation | 0.12 / 0.25 | 0.16 / 0.25 | 0.22 / 0.35 | 0.36 / 0.53 | 0.47 / 0.75 | 0.46× | 0.56× | 0.19 / 0.31 | 0.20 / 0.29 | 0.27 / 0.42 | 0.62 / 0.94 | 0.92 / 1.50 | 0.33× | 0.70× |
-| `anim-alternate-t500` | animation | 0.14 / 0.18 | 0.16 / 0.23 | 0.23 / 0.30 | 0.34 / 0.52 | 0.47 / 0.74 | 0.46× | 0.61× | 0.19 / 0.30 | 0.20 / 0.34 | 0.28 / 0.45 | 0.60 / 0.95 | 0.93 / 1.48 | 0.33× | 0.68× |
-| `anim-alternate-t700` | animation | 0.11 / 0.21 | 0.13 / 0.75 | 0.20 / 0.34 | 0.32 / 0.54 | 0.46 / 0.72 | 0.41× | 0.57× | 0.19 / 0.31 | 0.19 / 0.28 | 0.27 / 0.44 | 0.64 / 0.94 | 0.94 / 1.48 | 0.30× | 0.71× |
-| `anim-alternate-t1100` | animation | 0.13 / 0.22 | 0.15 / 0.31 | 0.22 / 0.36 | 0.34 / 0.62 | 0.47 / 0.72 | 0.44× | 0.60× | 0.19 / 0.29 | 0.20 / 0.30 | 0.28 / 0.44 | 0.62 / 0.98 | 0.93 / 1.48 | 0.32× | 0.70× |
-| `anim-alternate-t1300` | animation | 0.12 / 0.21 | 0.14 / 0.27 | 0.21 / 0.35 | 0.27 / 0.45 | 0.31 / 0.52 | 0.52× | 0.60× | 0.17 / 0.25 | 0.19 / 0.25 | 0.25 / 0.41 | 0.50 / 0.78 | 0.73 / 1.10 | 0.37× | 0.68× |
-| `anim-steps-t0` | animation | 0.12 / 0.20 | 0.13 / 0.24 | 0.21 / 0.34 | 0.26 / 0.44 | 0.32 / 0.51 | 0.51× | 0.57× | 0.22 / 0.36 | 0.22 / 0.42 | 0.31 / 0.48 | 0.59 / 0.83 | 0.80 / 1.27 | 0.38× | 0.71× |
-| `anim-steps-t260` | animation | 0.15 / 0.22 | 0.16 / 0.27 | 0.24 / 0.37 | 0.29 / 0.45 | 0.32 / 0.51 | 0.56× | 0.62× | 0.21 / 0.31 | 0.23 / 0.31 | 0.30 / 0.47 | 0.58 / 0.83 | 0.78 / 1.19 | 0.40× | 0.68× |
-| `anim-steps-t500` | animation | 0.12 / 0.22 | 0.13 / 0.26 | 0.21 / 0.36 | 0.25 / 0.48 | 0.30 / 0.52 | 0.53× | 0.56× | 0.20 / 0.29 | 0.20 / 0.31 | 0.30 / 0.46 | 0.53 / 0.76 | 0.77 / 1.22 | 0.38× | 0.67× |
-| `anim-steps-t990` | animation | 0.12 / 0.21 | 0.14 / 0.25 | 0.21 / 0.36 | 0.26 / 0.47 | 0.31 / 0.48 | 0.53× | 0.56× | 0.20 / 0.32 | 0.20 / 0.31 | 0.30 / 0.50 | 0.53 / 0.81 | 0.75 / 1.19 | 0.38× | 0.67× |
-| `anim-two-anims-t0` | animation | 0.16 / 0.27 | 0.18 / 0.32 | 0.28 / 0.43 | 0.39 / 0.59 | 0.49 / 0.78 | 0.46× | 0.56× | 0.22 / 0.31 | 0.21 / 0.36 | 0.32 / 0.48 | 0.63 / 0.87 | 0.95 / 1.44 | 0.34× | 0.70× |
-| `anim-two-anims-t400` | animation | 0.18 / 0.30 | 0.21 / 0.36 | 0.29 / 0.46 | 0.54 / 0.84 | 0.77 / 1.14 | 0.38× | 0.62× | 0.25 / 0.44 | 0.24 / 0.37 | 0.37 / 0.54 | 0.76 / 1.10 | 1.24 / 1.90 | 0.32× | 0.68× |
-| `anim-two-anims-t600` | animation | 0.19 / 0.26 | 0.23 / 0.30 | 0.31 / 0.48 | 0.49 / 0.74 | 0.80 / 1.21 | 0.46× | 0.62× | 0.29 / 0.40 | 0.28 / 0.46 | 0.40 / 0.61 | 0.83 / 1.22 | 1.33 / 2.04 | 0.34× | 0.73× |
-| `anim-two-anims-t1200` | animation | 0.14 / 0.24 | 0.16 / 0.30 | 0.24 / 0.39 | 0.36 / 0.62 | 0.53 / 0.84 | 0.45× | 0.59× | 0.24 / 0.35 | 0.25 / 0.35 | 0.34 / 0.52 | 0.67 / 1.00 | 1.01 / 1.62 | 0.37× | 0.70× |
-| `anim-inherit-t0` | animation | 0.22 / 0.32 | 0.22 / 0.30 | 0.34 / 0.49 | 0.46 / 0.69 | 0.58 / 0.86 | 0.48× | 0.64× | 0.35 / 0.50 | 0.34 / 0.49 | 0.50 / 0.76 | 0.79 / 1.12 | 1.04 / 1.62 | 0.44× | 0.70× |
-| `anim-inherit-t500` | animation | 0.21 / 0.32 | 0.23 / 0.34 | 0.32 / 0.50 | 0.52 / 0.73 | 0.62 / 0.89 | 0.43× | 0.65× | 0.45 / 0.65 | 0.43 / 0.69 | 0.63 / 0.93 | 1.00 / 1.28 | 1.24 / 1.79 | 0.43× | 0.72× |
-| `anim-inherit-t1000` | animation | 0.22 / 0.37 | 0.23 / 0.39 | 0.36 / 0.59 | 0.54 / 0.84 | 0.65 / 1.01 | 0.42× | 0.63× | 0.51 / 0.62 | 0.50 / 0.58 | 0.70 / 0.81 | 1.00 / 1.27 | 1.39 / 1.88 | 0.50× | 0.72× |
-| `anim-tw-spin-t125` | animation | 0.16 / 0.25 | 0.18 / 0.31 | 0.28 / 0.37 | 0.44 / 0.61 | 0.57 / 0.91 | 0.42× | 0.58× | 0.21 / 0.33 | 0.21 / 0.36 | 0.30 / 0.49 | 0.64 / 1.00 | 0.96 / 1.56 | 0.32× | 0.70× |
-| `anim-tw-spin-t375` | animation | 0.15 / 0.19 | 0.17 / 0.27 | 0.24 / 0.37 | 0.35 / 0.56 | 0.46 / 0.70 | 0.50× | 0.62× | 0.21 / 0.35 | 0.22 / 0.33 | 0.31 / 0.49 | 0.64 / 0.98 | 0.94 / 1.47 | 0.34× | 0.69× |
-| `anim-tw-spin-t1600` | animation | 0.14 / 0.25 | 0.17 / 0.36 | 0.24 / 0.44 | 0.44 / 0.63 | 0.51 / 0.82 | 0.40× | 0.61× | 0.23 / 0.34 | 0.23 / 0.32 | 0.32 / 0.50 | 0.67 / 0.97 | 0.97 / 1.47 | 0.34× | 0.71× |
-| `anim-kf-option-t0` | animation | 0.13 / 0.20 | 0.14 / 0.24 | 0.20 / 0.29 | 0.31 / 0.55 | 0.41 / 0.63 | 0.47× | 0.63× | 0.18 / 0.30 | 0.20 / 0.27 | 0.26 / 0.42 | 0.55 / 0.84 | 0.79 / 1.34 | 0.35× | 0.71× |
-| `anim-kf-option-t500` | animation | 0.18 / 0.28 | 0.19 / 0.33 | 0.28 / 0.41 | 0.46 / 0.69 | 0.68 / 1.05 | 0.41× | 0.67× | 0.20 / 0.29 | 0.20 / 0.29 | 0.29 / 0.46 | 0.69 / 1.01 | 1.07 / 1.71 | 0.30× | 0.70× |
-| `layout2-table-auto` | table | 0.66 / 0.85 | 0.62 / 1.07 | 1.01 / 1.56 | 1.17 / 1.58 | 1.52 / 2.23 | 0.53× | 0.65× | 1.15 / 1.50 | 1.11 / 1.52 | 1.68 / 2.33 | 2.08 / 2.68 | 3.20 / 4.03 | 0.53× | 0.69× |
-| `layout2-table-spans` | table | 0.49 / 0.75 | 0.54 / 1.02 | 0.81 / 1.20 | 0.88 / 1.23 | 1.13 / 1.43 | 0.62× | 0.61× | 0.86 / 1.24 | 0.84 / 1.19 | 1.28 / 1.80 | 1.53 / 1.85 | 2.39 / 3.71 | 0.55× | 0.67× |
-| `layout2-table-fixed` | table | 0.51 / 0.72 | 0.52 / 0.88 | 0.87 / 1.37 | 1.10 / 1.78 | 1.41 / 2.15 | 0.47× | 0.59× | 0.95 / 1.38 | 0.97 / 1.35 | 1.42 / 2.19 | 1.75 / 2.17 | 2.97 / 4.20 | 0.55× | 0.67× |
-| `layout2-table-percent` | table | 0.37 / 0.43 | 0.35 / 0.64 | 0.58 / 0.78 | 0.71 / 0.99 | 0.89 / 1.14 | 0.49× | 0.64× | 0.53 / 0.68 | 0.52 / 0.78 | 0.80 / 1.26 | 1.13 / 1.55 | 1.67 / 1.91 | 0.46× | 0.67× |
-| `layout2-table-collapse-conflicts` | table | 0.53 / 0.81 | 0.59 / 1.27 | 0.94 / 1.41 | 1.11 / 1.92 | 1.41 / 2.18 | 0.53× | 0.56× | 0.91 / 1.60 | 0.96 / 1.43 | 1.42 / 2.43 | 1.81 / 2.80 | 2.70 / 4.23 | 0.53× | 0.64× |
-| `layout2-table-col-backgrounds` | table | 0.68 / 1.03 | 0.69 / 1.06 | 1.15 / 1.79 | 1.60 / 2.37 | 2.20 / 3.53 | 0.43× | 0.59× | 1.85 / 2.25 | 1.88 / 2.51 | 3.07 / 3.65 | 2.51 / 2.90 | 5.12 / 5.86 | 0.75× | 0.60× |
-| `layout2-table-empty-cells` | table | 0.46 / 0.70 | 0.48 / 0.70 | 0.77 / 1.13 | 1.09 / 1.60 | 1.40 / 2.13 | 0.44× | 0.60× | 0.65 / 0.89 | 0.63 / 0.90 | 1.01 / 1.71 | 1.50 / 2.19 | 2.18 / 3.67 | 0.42× | 0.64× |
-| `layout2-table-caption-bottom` | table | 0.63 / 1.04 | 0.64 / 1.01 | 1.07 / 1.85 | 1.27 / 2.15 | 1.68 / 2.32 | 0.50× | 0.59× | 0.96 / 1.42 | 0.95 / 1.26 | 1.60 / 2.38 | 1.88 / 2.49 | 2.92 / 3.65 | 0.51× | 0.60× |
-| `layout2-float-image` | float | 0.37 / 0.65 | 0.43 / 0.78 | 0.76 / 1.20 | 0.76 / 1.09 | 0.93 / 1.49 | 0.57× | 0.48× | 1.73 / 2.51 | 1.69 / 3.25 | 2.53 / 4.29 | 1.63 / 1.98 | 6.05 / 8.54 | 1.04× | 0.69× |
-| `layout2-float-clear` | float | 0.27 / 0.43 | 0.27 / 0.66 | 0.46 / 0.76 | 0.53 / 0.85 | 0.62 / 1.01 | 0.52× | 0.59× | 0.49 / 0.72 | 0.50 / 0.70 | 0.71 / 1.10 | 1.37 / 1.75 | 2.08 / 3.13 | 0.36× | 0.69× |
-| `layout2-float-bfc` | float | 0.26 / 0.37 | 0.28 / 0.43 | 0.47 / 0.71 | 0.56 / 0.92 | 0.75 / 1.23 | 0.49× | 0.55× | 0.41 / 0.63 | 0.41 / 0.56 | 0.65 / 1.04 | 1.09 / 1.60 | 1.64 / 2.67 | 0.38× | 0.63× |
-| `layout2-float-wrap` | float | 0.35 / 0.54 | 0.38 / 1.16 | 0.56 / 0.91 | 0.63 / 1.06 | 0.85 / 1.21 | 0.61× | 0.62× | 0.85 / 1.28 | 0.86 / 1.43 | 1.20 / 1.86 | 1.44 / 1.76 | 2.35 / 3.59 | 0.60× | 0.71× |
-| `layout2-ib-badges` | inline-block | 0.29 / 0.41 | 0.31 / 0.49 | 0.52 / 0.71 | 0.66 / 0.91 | 0.79 / 1.13 | 0.48× | 0.56× | 0.70 / 0.85 | 0.72 / 0.83 | 0.95 / 1.23 | 1.46 / 1.83 | 1.93 / 2.51 | 0.50× | 0.73× |
-| `layout2-ib-wrap` | inline-block | 0.46 / 0.67 | 0.55 / 1.03 | 0.93 / 1.16 | 0.89 / 1.88 | 1.23 / 1.59 | 0.62× | 0.50× | 0.81 / 1.30 | 0.77 / 1.26 | 1.18 / 1.70 | 1.73 / 2.11 | 2.32 / 3.64 | 0.45× | 0.68× |
-| `layout2-ib-valign` | inline-block | 0.34 / 0.48 | 0.39 / 0.58 | 0.55 / 0.85 | 0.66 / 1.07 | 0.80 / 1.16 | 0.59× | 0.61× | 1.55 / 2.36 | 1.59 / 2.40 | 2.41 / 3.61 | 1.61 / 1.85 | 3.58 / 5.29 | 0.99× | 0.64× |
-| `layout2-ib-json` | inline-block | 0.27 / 0.42 | 0.29 / 0.45 | 0.43 / 0.65 | 0.67 / 0.95 | 0.72 / 1.12 | 0.44× | 0.63× | 0.44 / 0.86 | 0.48 / 0.78 | 0.66 / 1.12 | 1.08 / 1.70 | 1.29 / 2.28 | 0.44× | 0.67× |
-| `layout2-grid-areas` | grid-areas | 0.47 / 0.75 | 0.54 / 0.86 | 0.94 / 1.26 | 0.84 / 1.19 | 1.03 / 1.60 | 0.64× | 0.50× | 0.83 / 1.35 | 0.96 / 1.31 | 1.37 / 2.05 | 1.72 / 2.27 | 2.62 / 3.82 | 0.55× | 0.60× |
-| `layout2-grid-named-lines` | grid-areas | 0.35 / 0.50 | 0.42 / 0.74 | 0.67 / 1.00 | 0.76 / 1.28 | 0.91 / 1.32 | 0.55× | 0.52× | 0.74 / 1.02 | 0.76 / 1.06 | 1.14 / 1.66 | 1.71 / 2.16 | 2.48 / 2.94 | 0.45× | 0.65× |
-| `layout2-grid-areas-auto` | grid-areas | 0.27 / 0.50 | 0.33 / 0.58 | 0.57 / 0.90 | 0.76 / 1.14 | 0.89 / 1.48 | 0.44× | 0.49× | 0.59 / 0.85 | 0.64 / 0.86 | 0.91 / 1.36 | 1.43 / 1.88 | 1.97 / 3.01 | 0.45× | 0.66× |
-| `layout3-float-left` | float-text | 0.38 / 0.55 | 0.46 / 0.73 | 0.68 / 1.04 | 0.81 / 1.07 | 0.93 / 1.33 | 0.57× | 0.57× | 0.92 / 1.34 | 0.90 / 1.23 | 1.25 / 1.88 | 1.66 / 1.81 | 2.47 / 3.54 | 0.55× | 0.73× |
-| `layout3-float-right` | float-text | 0.38 / 0.60 | 0.43 / 0.94 | 0.66 / 1.06 | 0.79 / 1.07 | 0.94 / 1.34 | 0.54× | 0.58× | 0.87 / 1.31 | 0.91 / 1.23 | 1.24 / 1.85 | 1.62 / 1.92 | 2.40 / 3.83 | 0.56× | 0.70× |
-| `layout3-float-stacked` | float-text | 0.57 / 0.77 | 0.62 / 1.17 | 0.88 / 1.34 | 0.98 / 1.22 | 1.22 / 1.75 | 0.63× | 0.64× | 1.60 / 1.90 | 1.36 / 1.98 | 2.10 / 2.68 | 1.86 / 2.39 | 3.57 / 5.02 | 0.73× | 0.76× |
-| `layout3-float-tall` | float-text | 0.66 / 0.99 | 0.73 / 1.09 | 1.03 / 1.64 | 1.20 / 1.58 | 1.54 / 2.11 | 0.61× | 0.64× | 1.54 / 2.41 | 1.55 / 2.36 | 2.23 / 3.28 | 2.12 / 2.57 | 3.95 / 6.06 | 0.73× | 0.69× |
-| `layout3-float-in-text` | float-text | 0.48 / 0.76 | 0.50 / 0.86 | 0.80 / 1.37 | 0.93 / 1.28 | 1.15 / 1.77 | 0.54× | 0.60× | 1.19 / 1.60 | 1.17 / 1.35 | 1.67 / 2.20 | 1.63 / 2.05 | 2.88 / 3.72 | 0.72× | 0.71× |
-| `layout3-float-rtl` | float-text | 0.67 / 1.10 | 0.72 / 1.20 | 1.03 / 1.86 | 1.08 / 1.84 | 1.47 / 2.51 | 0.66× | 0.65× | 1.62 / 2.35 | 1.64 / 1.80 | 2.31 / 2.75 | 1.94 / 2.60 | 3.68 / 5.03 | 0.85× | 0.70× |
-| `layout3-float-inline-box` | float-text | 0.38 / 0.59 | 0.40 / 0.83 | 0.62 / 1.00 | 0.68 / 0.99 | 0.91 / 1.33 | 0.59× | 0.61× | 0.90 / 1.13 | 0.93 / 1.08 | 1.30 / 1.71 | 1.56 / 2.00 | 2.38 / 3.17 | 0.59× | 0.69× |
-| `layout3-inline-badges` | inline-flow | 0.49 / 0.63 | 0.51 / 0.87 | 0.83 / 1.24 | 0.94 / 1.40 | 1.24 / 1.42 | 0.54× | 0.60× | 1.02 / 1.45 | 1.01 / 1.29 | 1.49 / 2.27 | 1.71 / 2.01 | 2.82 / 4.15 | 0.59× | 0.68× |
-| `layout3-inline-image` | inline-flow | 0.49 / 0.71 | 0.54 / 0.81 | 0.96 / 1.59 | 1.01 / 1.47 | 1.23 / 2.06 | 0.53× | 0.51× | 1.79 / 2.91 | 1.86 / 2.80 | 2.91 / 4.42 | 2.00 / 2.93 | 4.34 / 6.85 | 0.93× | 0.61× |
-| `layout3-inline-flex-chip` | inline-flow | 0.61 / 0.92 | 0.66 / 1.22 | 1.29 / 2.07 | 1.16 / 2.00 | 1.60 / 2.33 | 0.57× | 0.47× | 1.68 / 2.00 | 1.77 / 2.58 | 2.83 / 3.76 | 2.18 / 2.77 | 4.67 / 5.77 | 0.81× | 0.59× |
-| `layout3-inline-br` | inline-flow | 0.42 / 0.60 | 0.43 / 0.74 | 0.63 / 0.98 | 0.90 / 1.11 | 1.04 / 1.55 | 0.48× | 0.66× | 0.75 / 1.26 | 0.73 / 1.05 | 1.03 / 1.58 | 1.48 / 1.75 | 2.05 / 3.47 | 0.50× | 0.72× |
-| `layout3-inline-abs` | inline-flow | 0.35 / 0.54 | 0.36 / 0.56 | 0.57 / 0.87 | 0.67 / 0.99 | 0.87 / 1.27 | 0.53× | 0.62× | 0.73 / 1.12 | 0.73 / 1.09 | 1.05 / 1.55 | 1.30 / 1.58 | 1.98 / 3.01 | 0.56× | 0.69× |
-| `layout3-span-edges` | inline-box-model | 0.57 / 0.75 | 0.58 / 1.09 | 0.94 / 1.41 | 0.80 / 1.19 | 1.14 / 1.75 | 0.73× | 0.60× | 1.05 / 1.56 | 1.09 / 1.55 | 1.57 / 1.90 | 1.51 / 1.81 | 2.49 / 3.71 | 0.72× | 0.67× |
-| `layout3-span-nowrap` | inline-box-model | 0.48 / 0.83 | 0.54 / 0.82 | 0.76 / 1.23 | 0.91 / 1.32 | 1.22 / 1.72 | 0.59× | 0.63× | 1.03 / 1.47 | 1.07 / 1.55 | 1.49 / 2.32 | 1.58 / 2.08 | 2.59 / 3.81 | 0.68× | 0.69× |
-| `layout3-span-valign` | inline-box-model | 0.64 / 0.95 | 0.67 / 1.02 | 1.00 / 1.58 | 1.47 / 1.74 | 1.72 / 2.47 | 0.45× | 0.64× | 1.25 / 1.73 | 1.31 / 1.71 | 1.76 / 2.51 | 1.99 / 2.56 | 3.19 / 4.31 | 0.66× | 0.71× |
-| `layout3-card-all` | inline-box-model | 1.39 / 1.68 | 1.43 / 1.69 | 2.37 / 3.00 | 2.33 / 2.64 | 3.22 / 3.48 | 0.62× | 0.59× | 4.13 / 4.68 | 4.00 / 4.79 | 6.14 / 7.46 | 4.25 / 4.91 | 9.31 / 10.3 | 0.94× | 0.67× |
-| `fix-css-struct-text-nodes` | css-stylesheet | 0.59 / 1.00 | 0.63 / 1.16 | 0.89 / 1.37 | 1.23 / 2.35 | 1.46 / 2.40 | 0.51× | 0.67× | 0.89 / 1.30 | 0.89 / 1.31 | 1.33 / 1.93 | 2.16 / 2.91 | 3.28 / 4.53 | 0.41× | 0.67× |
-| `fix-css-blank-text-dropped` | css-stylesheet | 0.31 / 0.40 | 0.29 / 0.43 | 0.48 / 0.72 | 0.62 / 0.89 | 0.78 / 1.16 | 0.47× | 0.64× | 0.45 / 0.65 | 0.47 / 0.68 | 0.65 / 1.00 | 1.07 / 1.47 | 1.45 / 2.29 | 0.44× | 0.69× |
-| `fix-css-tw-structural-text` | tailwind | 0.58 / 1.00 | 0.61 / 1.06 | 0.93 / 1.49 | 1.08 / 1.78 | 1.38 / 2.20 | 0.56× | 0.62× | 0.80 / 1.22 | 0.84 / 1.31 | 1.19 / 1.97 | 1.54 / 2.38 | 2.33 / 2.99 | 0.55× | 0.67× |
-| `fix-css-playground-css-demo` | css-stylesheet | 1.01 / 1.29 | 1.06 / 1.67 | 1.36 / 2.03 | 1.47 / 2.30 | 1.97 / 3.16 | 0.72× | 0.74× | 1.57 / 2.15 | 1.44 / 1.76 | 2.19 / 2.51 | 2.65 / 3.47 | 5.01 / 6.33 | 0.54× | 0.71× |
-| `fix-css-transform-nested` | transform | 0.31 / 0.47 | 0.35 / 0.62 | 0.48 / 0.73 | 0.80 / 1.25 | 1.27 / 1.90 | 0.43× | 0.65× | 0.52 / 0.74 | 0.52 / 0.73 | 0.76 / 1.24 | 1.34 / 2.12 | 2.32 / 2.72 | 0.38× | 0.69× |
-| `fix-css-transform-abs-text` | transform | 0.34 / 0.44 | 0.36 / 0.54 | 0.53 / 0.70 | 0.86 / 1.29 | 1.32 / 1.89 | 0.42× | 0.64× | 0.58 / 0.89 | 0.61 / 0.93 | 0.86 / 1.36 | 1.50 / 1.94 | 2.49 / 3.63 | 0.41× | 0.68× |
-| `fix-css-image-rendering-pixelated` | images | 0.44 / 0.65 | 0.50 / 0.84 | 0.90 / 1.13 | 1.18 / 1.74 | 1.27 / 1.84 | 0.43× | 0.49× | 2.56 / 3.60 | 2.54 / 3.82 | 3.89 / 4.95 | 2.26 / 2.79 | 7.80 / 9.36 | 1.13× | 0.66× |
-| `fix-css-image-rendering-modes` | images | 0.97 / 1.33 | 1.11 / 1.64 | 2.01 / 3.44 | 2.32 / 3.55 | 2.83 / 4.52 | 0.48× | 0.48× | 5.25 / 6.87 | 5.46 / 5.93 | 8.58 / 9.96 | 4.41 / 4.72 | 16.2 / 21.6 | 1.24× | 0.61× |
-| `fix-css-tw-theme` | tailwind | 0.62 / 0.82 | 0.60 / 1.25 | 1.02 / 1.51 | 0.98 / 1.52 | 1.46 / 1.97 | 0.62× | 0.61× | 0.94 / 1.51 | 0.90 / 1.45 | 1.36 / 2.05 | 1.66 / 2.31 | 3.02 / 4.15 | 0.54× | 0.69× |
-| `fix-css-tw-theme-node-vars` | tailwind | 0.24 / 0.35 | 0.29 / 0.43 | 0.45 / 0.59 | 0.48 / 0.86 | 0.59 / 0.78 | 0.61× | 0.54× | 0.34 / 0.51 | 0.35 / 0.58 | 0.51 / 0.81 | 0.71 / 1.05 | 1.03 / 1.59 | 0.49× | 0.66× |
-| `fix-css-tw-animate` | tailwind | 0.44 / 0.66 | 0.46 / 0.67 | 0.72 / 1.23 | 0.69 / 1.06 | 1.10 / 1.49 | 0.67× | 0.61× | 0.58 / 0.81 | 0.58 / 0.81 | 0.89 / 1.37 | 1.03 / 1.53 | 1.62 / 2.67 | 0.57× | 0.65× |
-| `fix-css-cascade-layers-tw` | css-stylesheet | 0.17 / 0.30 | 0.21 / 0.36 | 0.30 / 0.54 | 0.30 / 0.51 | 0.33 / 0.57 | 0.70× | 0.58× | 0.27 / 0.44 | 0.32 / 0.45 | 0.40 / 0.66 | 0.78 / 0.93 | 0.89 / 1.44 | 0.41× | 0.68× |
-| `fix-css-anim-font-size-em-t0` | animation | 0.15 / 0.22 | 0.15 / 0.27 | 0.24 / 0.36 | 0.36 / 0.55 | 0.39 / 0.59 | 0.43× | 0.62× | 0.21 / 0.33 | 0.21 / 0.38 | 0.33 / 0.50 | 0.51 / 0.76 | 0.64 / 0.92 | 0.42× | 0.64× |
-| `fix-css-anim-font-size-em-t500` | animation | 0.14 / 0.25 | 0.15 / 0.26 | 0.24 / 0.38 | 0.32 / 0.57 | 0.38 / 0.64 | 0.47× | 0.60× | 0.23 / 0.34 | 0.23 / 0.37 | 0.34 / 0.56 | 0.56 / 0.82 | 0.66 / 1.03 | 0.41× | 0.67× |
-| `fix-text-overflow-string` | text-overflow | 0.38 / 0.65 | 0.41 / 0.65 | 0.58 / 0.91 | 0.95 / 1.37 | 1.19 / 1.86 | 0.43× | 0.66× | 0.69 / 1.01 | 0.70 / 1.00 | 0.96 / 1.50 | 1.45 / 1.99 | 2.15 / 3.41 | 0.48× | 0.71× |
-| `fix-text-overflow-string-fallback` | text-overflow | 0.30 / 0.46 | 0.34 / 0.51 | 0.43 / 0.74 | 0.82 / 1.31 | 0.99 / 1.48 | 0.41× | 0.69× | 0.68 / 0.99 | 0.70 / 0.94 | 0.93 / 1.54 | 1.60 / 1.82 | 1.89 / 2.95 | 0.44× | 0.73× |
-| `fix-text-overflow-string-rtl` | text-overflow | 0.31 / 0.46 | 0.31 / 0.45 | 0.45 / 0.71 | 0.78 / 1.15 | 0.95 / 1.26 | 0.39× | 0.69× | 0.53 / 0.76 | 0.55 / 0.78 | 0.81 / 1.08 | 1.41 / 1.58 | 2.15 / 2.66 | 0.39× | 0.66× |
-| `fix-text-line-clamp-marker` | text-overflow | 0.36 / 0.62 | 0.39 / 0.58 | 0.57 / 0.87 | 0.90 / 1.34 | 1.16 / 1.92 | 0.43× | 0.64× | 0.75 / 1.09 | 0.76 / 1.15 | 1.06 / 1.82 | 1.51 / 2.00 | 2.38 / 3.73 | 0.51× | 0.70× |
-| `fix-text-paint-order` | text-stroke | 0.82 / 1.32 | 0.87 / 1.39 | 1.62 / 2.27 | 0.71 / 1.11 | 1.02 / 1.56 | 1.21× | 0.51× | 1.44 / 1.80 | 1.47 / 2.11 | 2.15 / 2.93 | 1.41 / 1.78 | 2.49 / 3.51 | 1.04× | 0.67× |
-| `fix-text-small-caps` | font-variant | 0.26 / 0.36 | 0.28 / 0.41 | 0.42 / 0.72 | 0.69 / 1.02 | 0.85 / 1.32 | 0.40× | 0.62× | 0.83 / 1.15 | 0.85 / 1.31 | 1.15 / 1.49 | 1.36 / 1.80 | 2.23 / 3.27 | 0.62× | 0.72× |
-| `fix-text-all-small-caps` | font-variant | 0.36 / 0.55 | 0.41 / 0.62 | 0.59 / 0.83 | 0.91 / 1.34 | 1.15 / 1.72 | 0.45× | 0.61× | 1.05 / 1.49 | 1.00 / 1.19 | 1.44 / 1.73 | 1.61 / 2.22 | 3.05 / 4.60 | 0.62× | 0.73× |
-| `fix-text-petite-unicase-caps` | font-variant | 0.70 / 1.04 | 0.73 / 1.30 | 0.98 / 1.64 | 1.42 / 2.23 | 1.76 / 2.62 | 0.51× | 0.72× | 1.87 / 2.61 | 1.97 / 2.90 | 2.63 / 3.82 | 3.00 / 3.53 | 4.97 / 7.08 | 0.66× | 0.71× |
-| `fix-text-emoji-zwj` | emoji | 0.16 / 0.22 | 0.17 / 0.27 | 0.25 / 0.39 | 0.66 / 0.93 | 0.80 / 1.20 | 0.26× | 0.64× | 1.01 / 1.57 | 1.04 / 1.68 | 1.47 / 2.24 | 0.87 / 1.20 | 1.12 / 1.72 | 1.20× | 0.69× |
-| `fix-text-emoji-flags-skin` | emoji | 0.12 / 0.19 | 0.14 / 0.19 | 0.19 / 0.28 | 0.42 / 0.64 | 0.54 / 0.75 | 0.33× | 0.63× | 0.27 / 0.40 | 0.26 / 0.40 | 0.36 / 0.54 | 0.76 / 1.12 | 0.97 / 1.48 | 0.34× | 0.75× |
-| `fix-text-emoji-keycap-vs` | emoji | 0.13 / 0.21 | 0.13 / 0.20 | 0.21 / 0.30 | 0.42 / 0.64 | 0.54 / 0.87 | 0.32× | 0.63× | 0.31 / 0.48 | 0.31 / 0.45 | 0.42 / 0.63 | 0.75 / 1.10 | 0.96 / 1.43 | 0.42× | 0.74× |
-| `fix-text-emoji-spacing` | emoji | 0.14 / 0.22 | 0.15 / 0.23 | 0.22 / 0.34 | 0.54 / 0.85 | 0.72 / 1.13 | 0.27× | 0.65× | 1.07 / 1.71 | 1.07 / 1.64 | 1.61 / 1.92 | 0.87 / 1.16 | 1.16 / 1.86 | 1.24× | 0.66× |
-| `fix-text-emoji-wrap` | emoji | 0.13 / 0.21 | 0.14 / 0.23 | 0.21 / 0.32 | 0.55 / 0.80 | 0.67 / 1.06 | 0.25× | 0.63× | 0.46 / 0.68 | 0.47 / 0.69 | 0.64 / 0.95 | 0.82 / 1.13 | 1.05 / 1.57 | 0.57× | 0.71× |
-| `fix-layout-rtl-flex` | rtl | 0.37 / 0.56 | 0.42 / 0.64 | 0.70 / 1.13 | 0.70 / 1.02 | 0.83 / 1.32 | 0.60× | 0.52× | 0.53 / 0.83 | 0.55 / 0.84 | 0.89 / 1.48 | 1.18 / 1.87 | 1.61 / 2.51 | 0.47× | 0.60× |
-| `fix-layout-rtl-flex-wrap-abs` | rtl | 0.47 / 0.58 | 0.50 / 1.13 | 0.94 / 1.05 | 0.87 / 1.03 | 1.13 / 1.42 | 0.58× | 0.50× | 0.51 / 0.62 | 0.49 / 0.62 | 0.83 / 0.94 | 1.09 / 1.22 | 1.55 / 1.77 | 0.45× | 0.62× |
-| `fix-layout-rtl-grid-block` | rtl | 0.36 / 0.55 | 0.42 / 0.66 | 0.68 / 1.03 | 0.76 / 1.10 | 0.93 / 1.35 | 0.55× | 0.53× | 0.60 / 0.87 | 0.61 / 0.93 | 0.95 / 1.49 | 1.34 / 1.74 | 1.79 / 2.73 | 0.46× | 0.64× |
-| `fix-layout-rtl-table` | rtl | 0.73 / 1.11 | 0.74 / 1.10 | 1.26 / 1.97 | 1.74 / 2.65 | 2.34 / 3.58 | 0.43× | 0.58× | 1.19 / 1.90 | 1.25 / 1.88 | 1.94 / 3.02 | 2.37 / 3.54 | 4.22 / 6.07 | 0.53× | 0.62× |
-| `fix-layout-rtl-node-dir` | rtl | 0.06 / 0.11 | 0.07 / 0.15 | 0.10 / 0.19 | 0.17 / 0.37 | 0.19 / 0.37 | 0.43× | 0.60× | 0.12 / 0.20 | 0.12 / 0.23 | 0.17 / 0.28 | 0.32 / 0.52 | 0.40 / 0.64 | 0.38× | 0.69× |
-| `fix-layout-text-indent` | text-indent | 0.62 / 0.98 | 0.63 / 0.97 | 0.97 / 1.46 | 1.38 / 1.59 | 1.43 / 1.95 | 0.46× | 0.65× | 1.47 / 2.25 | 1.66 / 2.09 | 2.09 / 3.01 | 1.99 / 2.58 | 3.54 / 5.21 | 0.83× | 0.70× |
-| `fix-layout-text-indent-keywords` | text-indent | 0.70 / 1.09 | 0.71 / 1.16 | 1.10 / 1.58 | 1.23 / 1.85 | 1.64 / 2.58 | 0.58× | 0.64× | 1.51 / 2.38 | 1.48 / 1.97 | 2.12 / 3.06 | 1.96 / 2.54 | 3.70 / 5.09 | 0.76× | 0.71× |
-| `fix-layout-text-indent-sizing` | text-indent | 0.49 / 0.59 | 0.52 / 0.70 | 0.79 / 1.28 | 1.02 / 1.43 | 1.35 / 2.01 | 0.51× | 0.62× | 0.95 / 1.38 | 0.97 / 1.38 | 1.39 / 1.45 | 1.69 / 2.25 | 2.62 / 3.45 | 0.57× | 0.69× |
-| `fix-layout-text-indent-node` | text-indent | 0.28 / 0.46 | 0.29 / 0.62 | 0.44 / 0.71 | 0.65 / 1.02 | 0.83 / 1.32 | 0.44× | 0.64× | 0.64 / 0.89 | 0.60 / 0.87 | 0.81 / 1.24 | 1.15 / 1.63 | 1.48 / 2.25 | 0.53× | 0.78× |
-| `fix-layout-inline-rtl-box` | inline-bidi | 0.51 / 0.77 | 0.53 / 0.77 | 0.85 / 1.34 | 1.03 / 1.46 | 1.35 / 1.99 | 0.51× | 0.60× | 0.94 / 1.46 | 0.98 / 1.40 | 1.39 / 2.28 | 1.59 / 2.22 | 2.39 / 3.52 | 0.62× | 0.67× |
-| `fix-layout-inline-bidi-fragments` | inline-bidi | 0.48 / 0.71 | 0.48 / 0.68 | 0.76 / 1.17 | 1.03 / 1.43 | 1.36 / 1.88 | 0.47× | 0.63× | 0.84 / 1.24 | 0.83 / 1.19 | 1.20 / 1.90 | 1.56 / 2.13 | 2.32 / 3.39 | 0.53× | 0.70× |
-| `fix-layout-inline-bidi-wrap` | inline-bidi | 0.53 / 0.84 | 0.55 / 0.84 | 0.84 / 1.33 | 1.20 / 1.62 | 1.50 / 2.15 | 0.46× | 0.63× | 1.02 / 1.45 | 1.00 / 1.31 | 1.48 / 1.80 | 1.83 / 2.27 | 2.84 / 4.28 | 0.55× | 0.69× |
-| `fix-layout-balance-inline-boxes` | text-wrap-balance | 0.69 / 0.94 | 0.70 / 1.16 | 1.10 / 1.68 | 1.46 / 1.98 | 1.86 / 2.80 | 0.48× | 0.63× | 1.18 / 1.84 | 1.21 / 1.79 | 1.77 / 2.24 | 2.00 / 2.56 | 3.41 / 4.88 | 0.60× | 0.67× |
-| `fix-layout-balance-atomic` | text-wrap-balance | 0.76 / 1.30 | 0.75 / 1.27 | 1.17 / 2.12 | 1.39 / 2.38 | 1.91 / 3.02 | 0.54× | 0.65× | 1.45 / 2.17 | 1.51 / 1.99 | 2.07 / 2.72 | 2.28 / 2.75 | 4.10 / 5.37 | 0.66× | 0.70× |
-| `fix-layout-balance-floats` | text-wrap-balance | 0.49 / 0.78 | 0.49 / 0.82 | 0.79 / 1.26 | 0.89 / 1.33 | 1.21 / 1.81 | 0.55× | 0.62× | 0.92 / 1.43 | 0.94 / 1.42 | 1.34 / 1.81 | 1.49 / 1.94 | 2.25 / 3.35 | 0.63× | 0.69× |
-| `fix-layout-block-in-inline` | block-in-inline | 0.35 / 0.52 | 0.35 / 0.57 | 0.55 / 0.82 | 0.83 / 1.13 | 0.99 / 1.46 | 0.42× | 0.63× | 0.64 / 0.97 | 0.63 / 0.96 | 0.91 / 1.26 | 1.30 / 1.80 | 1.80 / 2.87 | 0.49× | 0.70× |
-| `fix-layout-block-in-inline-nested` | block-in-inline | 0.53 / 0.89 | 0.56 / 0.94 | 0.87 / 1.36 | 1.14 / 1.83 | 1.53 / 2.27 | 0.49× | 0.62× | 1.04 / 1.47 | 1.04 / 1.50 | 1.52 / 2.23 | 2.07 / 2.63 | 2.99 / 4.22 | 0.51× | 0.68× |
-| `fix-layout-block-in-inline-align` | block-in-inline | 0.41 / 0.54 | 0.43 / 0.63 | 0.67 / 1.04 | 0.98 / 1.43 | 1.26 / 1.78 | 0.44× | 0.61× | 0.74 / 1.04 | 0.74 / 1.20 | 1.10 / 1.54 | 1.62 / 2.06 | 2.40 / 3.33 | 0.46× | 0.67× |
-| `fix-layout-block-in-inline-node` | block-in-inline | 0.18 / 0.26 | 0.20 / 0.31 | 0.28 / 0.42 | 0.50 / 0.79 | 0.58 / 0.82 | 0.41× | 0.64× | 0.35 / 0.53 | 0.35 / 0.47 | 0.48 / 0.74 | 0.80 / 1.21 | 0.99 / 1.51 | 0.43× | 0.73× |
-| `fix-layout-float-paint-text` | float-paint-order | 0.31 / 0.46 | 0.32 / 0.48 | 0.49 / 0.76 | 0.63 / 0.91 | 0.81 / 1.15 | 0.51× | 0.63× | 0.62 / 0.94 | 0.63 / 0.94 | 0.92 / 1.37 | 1.11 / 1.65 | 1.41 / 1.78 | 0.56× | 0.68× |
-| `fix-layout-float-paint-layers` | float-paint-order | 0.47 / 0.65 | 0.53 / 0.74 | 0.77 / 1.13 | 1.03 / 1.43 | 1.41 / 1.94 | 0.52× | 0.62× | 0.74 / 1.05 | 0.75 / 1.07 | 1.11 / 1.63 | 1.55 / 1.91 | 2.09 / 3.02 | 0.48× | 0.66× |
-| `fix-layout-float-paint-nested` | float-paint-order | 0.52 / 0.70 | 0.53 / 0.78 | 0.96 / 1.10 | 1.12 / 1.39 | 1.15 / 1.81 | 0.48× | 0.54× | 0.67 / 1.03 | 0.66 / 1.04 | 0.99 / 1.26 | 1.26 / 1.71 | 1.78 / 2.33 | 0.52× | 0.68× |
-| `fix-layout-inline-relative` | inline-relative | 0.52 / 0.77 | 0.53 / 0.81 | 0.78 / 1.27 | 1.09 / 1.76 | 1.33 / 2.11 | 0.48× | 0.67× | 0.86 / 1.30 | 0.88 / 1.31 | 1.23 / 1.78 | 1.55 / 2.00 | 2.11 / 2.95 | 0.57× | 0.70× |
+| `colors-solid-bg` | colors | 0.17 / 0.28 | 0.21 / 0.87 | 0.29 / 0.44 | 0.34 / 0.55 | 0.43 / 0.73 | 0.61× | 0.61× | 0.20 / 0.32 | 0.19 / 0.36 | 0.32 / 0.44 | 0.82 / 1.19 | 1.31 / 1.57 | 0.23× | 0.64× |
+| `colors-hex` | colors | 1.41 / 2.34 | 1.59 / 2.47 | 2.44 / 3.82 | 2.32 / 4.29 | 4.25 / 7.14 | 0.69× | 0.58× | 2.12 / 2.71 | 1.94 / 3.26 | 3.26 / 3.66 | 4.36 / 4.55 | 8.40 / 8.68 | 0.45× | 0.65× |
+| `colors-functional` | colors | 1.22 / 1.39 | 1.23 / 1.48 | 1.88 / 2.24 | 1.95 / 3.35 | 2.99 / 3.56 | 0.63× | 0.65× | 2.01 / 2.15 | 1.82 / 2.20 | 3.01 / 3.39 | 3.95 / 4.08 | 7.80 / 8.18 | 0.46× | 0.67× |
+| `colors-named` | colors | 1.23 / 1.62 | 1.25 / 2.48 | 1.93 / 2.08 | 1.78 / 2.67 | 2.86 / 3.39 | 0.71× | 0.64× | 2.15 / 2.31 | 1.92 / 2.49 | 3.15 / 3.31 | 4.27 / 4.61 | 8.04 / 8.44 | 0.45× | 0.68× |
+| `colors-transparent-canvas` | colors | 0.31 / 0.43 | 0.32 / 0.62 | 0.48 / 0.56 | 0.51 / 0.71 | 0.75 / 0.83 | 0.62× | 0.64× | 0.44 / 0.50 | 0.42 / 0.50 | 0.67 / 0.76 | 0.91 / 1.00 | 1.46 / 1.66 | 0.46× | 0.66× |
+| `flex-row-column` | flex | 1.09 / 1.26 | 1.07 / 2.25 | 1.59 / 2.40 | 1.12 / 1.74 | 1.60 / 2.56 | 0.96× | 0.68× | 1.85 / 2.01 | 1.60 / 1.89 | 2.70 / 2.95 | 3.08 / 3.60 | 6.93 / 7.13 | 0.52× | 0.68× |
+| `flex-justify-align` | flex | 1.15 / 1.58 | 1.22 / 2.64 | 1.87 / 2.87 | 1.50 / 1.92 | 2.00 / 2.59 | 0.82× | 0.62× | 1.89 / 2.06 | 1.67 / 1.95 | 2.90 / 3.24 | 3.27 / 3.47 | 6.66 / 6.84 | 0.51× | 0.65× |
+| `flex-wrap-gap` | flex | 1.34 / 1.64 | 1.37 / 2.84 | 2.22 / 3.05 | 1.42 / 1.94 | 1.94 / 2.92 | 0.97× | 0.60× | 2.16 / 2.23 | 1.94 / 2.25 | 3.34 / 3.48 | 3.27 / 3.84 | 6.64 / 6.82 | 0.59× | 0.65× |
+| `flex-grow-shrink-basis` | flex | 0.85 / 1.24 | 0.86 / 2.52 | 1.23 / 1.92 | 1.05 / 1.88 | 1.42 / 2.67 | 0.82× | 0.69× | 1.44 / 1.74 | 1.28 / 1.60 | 2.20 / 2.57 | 2.83 / 3.02 | 5.77 / 6.20 | 0.45× | 0.66× |
+| `flex-nested-small` | flex | 0.21 / 0.32 | 0.22 / 0.46 | 0.34 / 0.46 | 0.37 / 0.71 | 0.49 / 0.74 | 0.59× | 0.62× | 0.33 / 0.35 | 0.31 / 0.39 | 0.51 / 0.53 | 0.79 / 0.88 | 1.22 / 1.27 | 0.39× | 0.64× |
+| `sizing-percent` | sizing | 0.82 / 3.71 | 0.84 / 2.33 | 1.18 / 2.47 | 1.02 / 1.75 | 1.37 / 1.52 | 0.82× | 0.70× | 1.42 / 1.53 | 1.19 / 1.52 | 2.06 / 2.26 | 3.43 / 3.64 | 6.80 / 7.38 | 0.35× | 0.69× |
+| `sizing-minmax` | sizing | 0.76 / 1.62 | 0.80 / 1.88 | 1.05 / 1.82 | 0.89 / 1.84 | 1.16 / 2.39 | 0.90× | 0.72× | 1.34 / 2.31 | 1.33 / 1.70 | 1.90 / 2.40 | 3.38 / 3.84 | 6.64 / 6.97 | 0.39× | 0.70× |
+| `sizing-aspect-ratio` | sizing | 0.86 / 1.90 | 0.89 / 1.95 | 1.23 / 2.71 | 0.94 / 1.78 | 1.28 / 2.03 | 0.94× | 0.70× | 1.58 / 1.82 | 1.36 / 1.72 | 2.23 / 2.46 | 3.32 / 4.13 | 6.83 / 7.08 | 0.41× | 0.71× |
+| `sizing-padding-margin` | sizing | 0.87 / 1.95 | 0.89 / 2.26 | 1.24 / 2.24 | 1.02 / 2.14 | 1.35 / 2.38 | 0.87× | 0.70× | 1.45 / 1.89 | 1.33 / 1.87 | 2.14 / 2.55 | 3.18 / 3.65 | 6.59 / 7.38 | 0.42× | 0.68× |
+| `sizing-auto-margin-center` | sizing | 0.16 / 0.21 | 0.18 / 0.57 | 0.27 / 0.43 | 0.27 / 0.49 | 0.36 / 0.56 | 0.66× | 0.61× | 0.24 / 0.26 | 0.23 / 0.28 | 0.38 / 0.40 | 0.60 / 0.67 | 0.99 / 1.11 | 0.38× | 0.63× |
+| `abs-inset` | absolute | 0.89 / 4.06 | 0.90 / 1.96 | 1.27 / 1.87 | 1.17 / 2.11 | 1.91 / 2.64 | 0.77× | 0.70× | 1.53 / 2.04 | 1.29 / 1.66 | 2.21 / 2.35 | 3.42 / 3.95 | 7.78 / 8.17 | 0.38× | 0.69× |
+| `abs-zorder` | absolute | 1.38 / 1.84 | 1.42 / 2.74 | 2.18 / 3.45 | 1.20 / 1.66 | 1.74 / 2.74 | 1.19× | 0.63× | 4.10 / 4.74 | 4.01 / 4.90 | 6.44 / 7.21 | 3.97 / 4.57 | 14.6 / 15.0 | 1.01× | 0.64× |
+| `abs-in-flow` | absolute | 0.23 / 0.28 | 0.24 / 0.35 | 0.38 / 0.42 | 0.42 / 0.59 | 0.56 / 0.65 | 0.56× | 0.61× | 0.37 / 0.41 | 0.34 / 0.43 | 0.58 / 0.62 | 0.94 / 1.23 | 1.43 / 1.52 | 0.37× | 0.64× |
+| `borders-uniform` | borders | 0.83 / 3.88 | 0.87 / 1.49 | 1.19 / 1.55 | 1.34 / 2.51 | 1.73 / 2.59 | 0.65× | 0.69× | 1.42 / 1.56 | 1.20 / 1.52 | 2.06 / 2.18 | 3.09 / 3.16 | 5.93 / 6.19 | 0.39× | 0.69× |
+| `borders-per-side` | borders | 0.89 / 3.92 | 0.92 / 1.92 | 1.33 / 2.93 | 1.20 / 2.01 | 1.52 / 2.24 | 0.77× | 0.66× | 1.63 / 1.79 | 1.39 / 1.86 | 2.36 / 2.58 | 3.02 / 3.26 | 6.33 / 6.74 | 0.46× | 0.69× |
+| `borders-with-radius` | borders | 0.51 / 0.57 | 0.52 / 0.61 | 0.84 / 0.92 | 0.58 / 0.75 | 0.95 / 1.34 | 0.90× | 0.61× | 0.74 / 1.12 | 0.73 / 1.11 | 1.16 / 1.79 | 1.13 / 1.27 | 1.87 / 2.79 | 0.64× | 0.64× |
+| `radius-uniform-percorner` | border-radius | 1.07 / 4.18 | 1.10 / 2.18 | 1.59 / 3.16 | 1.07 / 1.80 | 1.41 / 1.52 | 1.03× | 0.67× | 2.06 / 2.26 | 1.80 / 2.17 | 2.96 / 3.12 | 3.22 / 3.76 | 7.25 / 7.53 | 0.56× | 0.69× |
+| `radius-elliptical` | border-radius | 1.07 / 1.35 | 1.10 / 2.27 | 1.61 / 2.82 | 1.15 / 1.66 | 1.38 / 2.35 | 0.95× | 0.66× | 2.33 / 2.64 | 2.09 / 2.48 | 2.91 / 3.25 | 3.24 / 3.70 | 6.80 / 6.93 | 0.64× | 0.80× |
+| `radius-pill-circle` | border-radius | 1.09 / 4.80 | 1.07 / 1.98 | 1.57 / 2.35 | 1.06 / 2.36 | 1.49 / 2.32 | 1.01× | 0.69× | 1.82 / 2.18 | 1.70 / 1.96 | 2.59 / 2.75 | 2.85 / 3.26 | 6.02 / 6.23 | 0.59× | 0.70× |
+| `radius-small` | border-radius | 0.21 / 0.31 | 0.22 / 0.39 | 0.34 / 0.51 | 0.29 / 0.61 | 0.37 / 0.51 | 0.76× | 0.62× | 0.36 / 0.44 | 0.33 / 0.51 | 0.54 / 0.71 | 0.70 / 0.85 | 1.08 / 1.28 | 0.48× | 0.67× |
+| `lingrad-angles` | linear-gradient | 2.13 / 2.44 | 2.22 / 4.00 | 3.81 / 4.50 | 4.47 / 4.81 | 6.53 / 6.99 | 0.50× | 0.56× | 6.49 / 6.88 | 6.40 / 6.86 | 9.84 / 10.1 | 7.78 / 8.31 | 34.6 / 35.0 | 0.82× | 0.66× |
+| `lingrad-multistop` | linear-gradient | 1.87 / 2.28 | 1.94 / 3.68 | 3.10 / 3.77 | 4.71 / 4.83 | 6.19 / 6.48 | 0.41× | 0.60× | 6.38 / 6.56 | 6.21 / 7.06 | 10.3 / 11.3 | 6.79 / 7.35 | 24.2 / 25.8 | 0.91× | 0.62× |
+| `lingrad-alpha` | linear-gradient | 3.02 / 3.65 | 3.11 / 4.99 | 5.02 / 5.60 | 4.50 / 6.01 | 7.12 / 7.29 | 0.69× | 0.60× | 5.88 / 6.52 | 6.00 / 6.81 | 9.23 / 9.56 | 6.77 / 7.44 | 29.5 / 30.4 | 0.89× | 0.64× |
+| `lingrad-hero-small` | linear-gradient | 0.35 / 0.44 | 0.36 / 0.52 | 0.54 / 0.57 | 0.65 / 0.89 | 0.92 / 1.07 | 0.55× | 0.65× | 1.33 / 1.64 | 1.33 / 1.62 | 1.84 / 1.97 | 1.43 / 1.72 | 3.36 / 3.51 | 0.93× | 0.72× |
+| `radial-shapes` | radial-gradient | 1.97 / 2.36 | 1.99 / 3.53 | 3.30 / 4.47 | 6.30 / 6.94 | 7.97 / 8.31 | 0.32× | 0.60× | 12.4 / 13.0 | 12.2 / 13.0 | 17.5 / 18.3 | 10.4 / 10.9 | 36.4 / 38.2 | 1.18× | 0.71× |
+| `radial-at-position` | radial-gradient | 2.18 / 2.40 | 2.35 / 4.07 | 3.83 / 4.66 | 7.15 / 7.45 | 9.44 / 9.96 | 0.33× | 0.57× | 11.4 / 12.0 | 11.5 / 12.2 | 16.2 / 17.1 | 11.6 / 12.2 | 39.1 / 40.1 | 0.99× | 0.70× |
+| `radial-spotlight-small` | radial-gradient | 0.42 / 0.47 | 0.44 / 0.62 | 0.53 / 0.62 | 1.31 / 1.59 | 1.49 / 1.75 | 0.33× | 0.81× | 4.14 / 4.29 | 4.14 / 4.22 | 5.44 / 5.54 | 2.62 / 2.78 | 9.97 / 10.3 | 1.58× | 0.76× |
+| `shadow-offset-blur` | box-shadow | 2.54 / 2.73 | 2.64 / 4.43 | 4.76 / 5.23 | 5.52 / 6.52 | 8.50 / 9.08 | 0.48× | 0.53× | 7.88 / 8.44 | 7.78 / 8.36 | 13.3 / 13.7 | 7.84 / 8.32 | 29.3 / 29.9 | 0.99× | 0.59× |
+| `shadow-spread-multi` | box-shadow | 2.94 / 3.28 | 3.03 / 5.08 | 5.33 / 5.74 | 5.35 / 7.10 | 8.40 / 8.88 | 0.57× | 0.55× | 8.93 / 9.42 | 8.78 / 9.66 | 14.5 / 15.0 | 8.07 / 8.66 | 30.2 / 31.4 | 1.09× | 0.61× |
+| `shadow-inset` | box-shadow | 2.96 / 3.36 | 3.07 / 4.81 | 5.38 / 5.54 | 7.20 / 7.93 | 11.6 / 12.0 | 0.43× | 0.55× | 8.11 / 9.09 | 8.05 / 8.80 | 13.4 / 14.3 | 9.46 / 10.3 | 30.4 / 31.5 | 0.85× | 0.60× |
+| `shadow-small` | box-shadow | 0.47 / 0.65 | 0.46 / 0.60 | 0.86 / 1.02 | 1.02 / 1.44 | 1.56 / 1.79 | 0.45× | 0.54× | 0.72 / 0.80 | 0.76 / 0.84 | 1.21 / 1.31 | 1.55 / 1.59 | 2.37 / 3.27 | 0.49× | 0.60× |
+| `opacity-basic` | opacity | 2.26 / 2.98 | 2.29 / 4.16 | 3.63 / 4.19 | 3.09 / 3.41 | 6.72 / 7.28 | 0.74× | 0.62× | 3.27 / 3.37 | 3.10 / 3.70 | 5.02 / 5.62 | 5.36 / 5.62 | 13.0 / 13.2 | 0.58× | 0.65× |
+| `opacity-nested` | opacity | 1.62 / 1.85 | 1.52 / 3.14 | 2.47 / 3.53 | 4.06 / 4.32 | 9.49 / 10.3 | 0.37× | 0.66× | 2.42 / 2.71 | 2.12 / 2.96 | 3.56 / 3.85 | 6.11 / 6.32 | 14.1 / 14.3 | 0.35× | 0.68× |
+| `opacity-with-radius-shadow` | opacity | 0.70 / 0.74 | 0.69 / 0.81 | 1.43 / 1.63 | 1.88 / 2.21 | 3.72 / 3.78 | 0.37× | 0.49× | 1.02 / 1.11 | 1.00 / 1.21 | 1.86 / 1.93 | 2.43 / 2.67 | 4.76 / 4.82 | 0.41× | 0.55× |
+| `overflow-hidden-clip` | overflow | 0.99 / 3.84 | 0.98 / 1.68 | 1.36 / 1.90 | 1.78 / 2.77 | 2.31 / 2.93 | 0.55× | 0.72× | 1.76 / 1.99 | 1.57 / 1.85 | 2.46 / 2.60 | 3.59 / 3.87 | 6.96 / 7.10 | 0.44× | 0.72× |
+| `overflow-radius-clip` | overflow | 1.50 / 1.70 | 1.54 / 2.96 | 2.19 / 3.03 | 2.51 / 3.08 | 3.51 / 3.80 | 0.61× | 0.68× | 4.07 / 4.57 | 3.99 / 4.51 | 5.97 / 6.37 | 4.71 / 5.31 | 14.9 / 15.4 | 0.85× | 0.68× |
+| `overflow-nested` | overflow | 0.25 / 0.32 | 0.28 / 0.38 | 0.44 / 0.61 | 0.44 / 0.64 | 0.60 / 0.79 | 0.63× | 0.57× | 0.47 / 0.72 | 0.46 / 0.72 | 0.68 / 1.13 | 1.12 / 1.78 | 1.67 / 2.59 | 0.41× | 0.69× |
+| `transform-basic` | transform | 1.35 / 1.75 | 1.38 / 2.79 | 2.01 / 2.86 | 2.60 / 2.86 | 4.19 / 4.55 | 0.53× | 0.67× | 2.34 / 2.60 | 2.15 / 2.50 | 3.38 / 3.67 | 4.43 / 4.70 | 9.13 / 9.36 | 0.48× | 0.69× |
+| `transform-combined-origin` | transform | 1.27 / 1.72 | 1.30 / 2.18 | 1.86 / 2.31 | 2.49 / 3.40 | 3.72 / 4.31 | 0.52× | 0.68× | 2.28 / 2.58 | 2.29 / 2.69 | 3.29 / 3.78 | 4.41 / 4.75 | 9.37 / 9.71 | 0.52× | 0.69× |
+| `transform-text-small` | transform | 0.49 / 0.56 | 0.51 / 0.73 | 0.97 / 1.11 | 1.06 / 1.17 | 1.75 / 1.92 | 0.49× | 0.50× | 0.92 / 1.05 | 0.89 / 1.09 | 1.51 / 1.64 | 1.64 / 1.77 | 2.78 / 2.94 | 0.54× | 0.61× |
+| `text-single-sizes` | text-single-line | 1.02 / 4.13 | 1.00 / 2.14 | 1.30 / 1.96 | 1.46 / 2.43 | 1.98 / 2.51 | 0.68× | 0.78× | 2.35 / 2.88 | 2.19 / 2.81 | 3.30 / 3.50 | 3.51 / 3.77 | 7.03 / 7.29 | 0.62× | 0.71× |
+| `text-single-colors-small` | text-single-line | 0.24 / 0.30 | 0.25 / 0.38 | 0.38 / 0.48 | 0.60 / 0.95 | 0.81 / 0.92 | 0.42× | 0.62× | 0.57 / 0.59 | 0.54 / 0.65 | 0.81 / 0.87 | 1.19 / 1.31 | 1.75 / 1.96 | 0.45× | 0.71× |
+| `text-single-fonts` | text-single-line | 1.01 / 2.14 | 1.03 / 2.34 | 1.35 / 3.19 | 1.43 / 1.82 | 1.98 / 2.11 | 0.72× | 0.75× | 2.86 / 3.38 | 2.76 / 3.65 | 3.94 / 4.44 | 3.84 / 4.16 | 8.08 / 8.50 | 0.72× | 0.73× |
+| `text-paragraph-wrap` | text-paragraph | 1.39 / 1.52 | 1.41 / 2.97 | 2.00 / 2.72 | 2.11 / 2.38 | 3.11 / 3.35 | 0.67× | 0.69× | 3.24 / 3.75 | 3.06 / 3.50 | 4.67 / 5.41 | 4.35 / 4.66 | 8.62 / 9.70 | 0.70× | 0.69× |
+| `text-paragraph-lineheight` | text-paragraph | 1.58 / 2.00 | 1.64 / 3.22 | 2.25 / 2.73 | 2.43 / 2.66 | 3.60 / 4.02 | 0.68× | 0.70× | 3.51 / 3.77 | 3.33 / 3.90 | 4.90 / 5.26 | 4.61 / 4.76 | 9.11 / 9.53 | 0.72× | 0.72× |
+| `text-paragraph-letterspacing` | text-paragraph | 1.61 / 2.04 | 1.66 / 3.22 | 2.32 / 3.13 | 2.52 / 3.15 | 3.63 / 3.87 | 0.66× | 0.69× | 4.07 / 4.79 | 3.89 / 4.39 | 5.82 / 6.15 | 5.05 / 5.48 | 9.94 / 10.8 | 0.77× | 0.70× |
+| `text-paragraph-small` | text-paragraph | 0.32 / 0.40 | 0.33 / 0.58 | 0.47 / 0.51 | 0.58 / 0.70 | 0.77 / 0.89 | 0.57× | 0.68× | 0.79 / 0.88 | 0.78 / 1.00 | 1.10 / 1.25 | 1.29 / 1.45 | 1.97 / 2.43 | 0.60× | 0.72× |
+| `text-long-wrap` | text-paragraph | 1.18 / 1.90 | 1.53 / 2.37 | 1.86 / 3.13 | 1.71 / 2.44 | 2.20 / 2.57 | 0.90× | 0.64× | 2.67 / 2.83 | 2.51 / 2.75 | 3.74 / 4.08 | 3.93 / 4.48 | 10.1 / 10.4 | 0.64× | 0.71× |
+| `fonts-weights-italic` | fonts | 1.36 / 1.60 | 1.45 / 2.86 | 1.84 / 2.52 | 2.26 / 2.44 | 3.09 / 3.58 | 0.64× | 0.74× | 3.90 / 4.79 | 3.79 / 4.21 | 5.40 / 6.01 | 4.40 / 4.73 | 9.56 / 9.90 | 0.86× | 0.72× |
+| `fonts-mixed-inline` | fonts | 1.06 / 1.25 | 1.05 / 2.62 | 1.44 / 2.91 | 1.68 / 2.06 | 2.32 / 3.43 | 0.62× | 0.74× | 2.79 / 2.94 | 2.66 / 3.14 | 3.83 / 4.07 | 3.87 / 4.15 | 7.81 / 8.16 | 0.69× | 0.73× |
+| `text-vietnamese` | text-i18n | 1.14 / 1.30 | 1.24 / 2.26 | 1.54 / 2.72 | 1.78 / 2.56 | 2.42 / 2.79 | 0.70× | 0.74× | 2.84 / 3.00 | 2.71 / 3.12 | 3.85 / 4.12 | 3.80 / 4.10 | 7.79 / 8.21 | 0.71× | 0.74× |
+| `text-accented-latin` | text-i18n | 1.12 / 1.63 | 1.14 / 2.40 | 1.51 / 2.72 | 1.69 / 2.15 | 2.28 / 2.77 | 0.68× | 0.74× | 2.81 / 2.99 | 2.60 / 2.93 | 3.81 / 4.03 | 3.71 / 4.06 | 7.60 / 7.96 | 0.70× | 0.74× |
+| `text-ellipsis-nowrap` | text-truncation | 0.94 / 1.36 | 0.96 / 2.35 | 1.30 / 2.83 | 1.48 / 1.98 | 1.91 / 2.72 | 0.65× | 0.72× | 1.82 / 1.96 | 1.59 / 1.92 | 2.53 / 2.84 | 3.27 / 3.47 | 6.65 / 6.74 | 0.49× | 0.72× |
+| `text-lineclamp` | text-truncation | 1.51 / 1.69 | 1.59 / 2.61 | 2.27 / 3.63 | 2.22 / 2.57 | 3.35 / 3.84 | 0.72× | 0.67× | 2.63 / 3.28 | 2.39 / 2.88 | 3.90 / 4.28 | 4.07 / 4.51 | 8.18 / 8.80 | 0.59× | 0.67× |
+| `text-lineclamp-small` | text-truncation | 0.27 / 0.32 | 0.28 / 0.46 | 0.40 / 0.50 | 0.57 / 0.91 | 0.75 / 0.87 | 0.48× | 0.66× | 0.46 / 0.49 | 0.43 / 0.51 | 0.66 / 0.72 | 0.98 / 1.04 | 1.47 / 1.61 | 0.44× | 0.70× |
+| `img-png-fit` | images | 1.36 / 1.57 | 1.42 / 2.64 | 2.52 / 3.28 | 4.08 / 4.83 | 5.88 / 6.26 | 0.35× | 0.54× | 11.2 / 11.7 | 11.3 / 12.2 | 17.6 / 18.9 | 8.65 / 9.83 | 33.7 / 35.3 | 1.31× | 0.63× |
+| `img-jpeg-fit` | images | 1.37 / 1.57 | 1.45 / 1.83 | 2.47 / 3.07 | 11.9 / 13.2 | 18.7 / 19.4 | 0.12× | 0.56× | 18.7 / 19.3 | 18.6 / 19.7 | 27.5 / 28.1 | 17.9 / 19.0 | 51.5 / 56.5 | 1.04× | 0.68× |
+| `img-intrinsic-size` | images | 0.17 / 0.24 | 0.22 / 0.94 | 0.44 / 0.66 | 0.43 / 0.76 | 0.58 / 0.82 | 0.51× | 0.39× | 1.76 / 1.81 | 1.83 / 1.98 | 2.79 / 2.88 | 1.40 / 1.63 | 5.19 / 5.38 | 1.31× | 0.63× |
+| `img-radius-clip` | images | 2.32 / 2.75 | 2.39 / 2.94 | 4.22 / 4.30 | 4.71 / 5.93 | 7.24 / 7.54 | 0.51× | 0.55× | 14.6 / 15.3 | 14.7 / 15.2 | 22.4 / 22.6 | 9.53 / 10.3 | 34.1 / 34.3 | 1.54× | 0.65× |
+| `img-photo-bg` | images | 1.17 / 1.44 | 1.24 / 2.53 | 1.66 / 3.22 | 3.76 / 4.05 | 5.89 / 6.36 | 0.33× | 0.70× | 28.5 / 30.2 | 28.7 / 29.5 | 39.9 / 41.5 | 11.3 / 12.6 | 53.4 / 57.1 | 2.54× | 0.71× |
+| `grid-fixed-fr` | grid | 1.12 / 1.44 | 1.17 / 2.45 | 1.73 / 2.94 | 1.60 / 2.63 | 2.07 / 3.36 | 0.74× | 0.65× | 2.01 / 2.29 | 1.84 / 2.23 | 2.97 / 3.15 | 3.36 / 3.81 | 6.74 / 6.80 | 0.55× | 0.68× |
+| `grid-repeat-gap` | grid | 1.26 / 1.73 | 1.29 / 2.29 | 1.97 / 2.82 | 1.73 / 3.33 | 2.39 / 3.13 | 0.74× | 0.64× | 2.35 / 2.49 | 2.20 / 2.62 | 3.51 / 3.77 | 4.19 / 4.45 | 10.6 / 10.8 | 0.53× | 0.67× |
+| `grid-spans` | grid | 1.06 / 1.53 | 1.10 / 2.03 | 1.54 / 2.88 | 1.43 / 2.58 | 1.91 / 2.20 | 0.77× | 0.69× | 1.92 / 2.62 | 1.80 / 2.55 | 2.81 / 3.54 | 3.82 / 4.34 | 7.80 / 8.54 | 0.47× | 0.68× |
+| `grid-small-mixed` | grid | 0.34 / 0.43 | 0.36 / 0.63 | 0.59 / 0.69 | 0.68 / 0.97 | 0.93 / 1.19 | 0.52× | 0.57× | 0.61 / 0.75 | 0.57 / 0.66 | 0.93 / 1.03 | 1.20 / 1.30 | 1.78 / 2.01 | 0.47× | 0.65× |
+| `card-og` | og-card | 2.36 / 2.51 | 2.41 / 4.06 | 3.50 / 3.95 | 4.01 / 4.50 | 5.89 / 6.54 | 0.60× | 0.68× | 9.61 / 10.2 | 9.70 / 9.90 | 14.0 / 14.6 | 7.50 / 7.97 | 21.2 / 22.4 | 1.29× | 0.68× |
+| `card-og-small` | og-card | 1.06 / 1.10 | 1.06 / 1.41 | 1.68 / 1.77 | 2.05 / 2.28 | 2.89 / 2.97 | 0.52× | 0.63× | 3.86 / 4.03 | 3.86 / 4.23 | 5.71 / 5.83 | 3.48 / 3.62 | 8.15 / 8.48 | 1.11× | 0.68× |
+| `card-blog` | blog-card | 5.27 / 5.90 | 5.43 / 7.41 | 9.39 / 10.2 | 6.72 / 7.53 | 15.8 / 16.0 | 0.81× | 0.56× | 18.9 / 19.5 | 19.1 / 20.3 | 29.4 / 30.7 | 11.8 / 13.8 | 48.2 / 49.6 | 1.62× | 0.65× |
+| `card-flat-ui` | blog-card | 2.68 / 2.95 | 2.68 / 4.65 | 4.45 / 4.90 | 3.65 / 4.12 | 6.72 / 7.06 | 0.73× | 0.60× | 5.39 / 5.61 | 5.31 / 7.45 | 8.40 / 8.81 | 6.48 / 6.79 | 19.2 / 19.7 | 0.82× | 0.64× |
+| `stress-600-boxes` | stress | 5.47 / 7.15 | 5.90 / 7.02 | 8.83 / 9.79 | 7.06 / 8.50 | 9.02 / 9.48 | 0.84× | 0.62× | 7.41 / 7.67 | 7.30 / 7.61 | 11.9 / 12.2 | 8.81 / 9.38 | 15.2 / 15.4 | 0.83× | 0.62× |
+| `stress-200-labels` | stress | 5.18 / 5.70 | 5.42 / 7.43 | 8.56 / 9.39 | 10.5 / 11.5 | 14.8 / 15.1 | 0.51× | 0.60× | 9.23 / 10.0 | 9.26 / 9.52 | 14.1 / 15.1 | 12.9 / 13.6 | 22.5 / 23.5 | 0.72× | 0.65× |
+| `stress-3000x2000-card` | stress | 12.9 / 13.9 | 14.7 / 15.7 | 20.7 / 23.4 | 20.9 / 23.2 | 30.5 / 32.0 | 0.70× | 0.62× | 52.6 / 54.8 | 53.6 / 55.4 | 76.6 / 79.4 | 39.6 / 42.2 | 132 / 136 | 1.35× | 0.69× |
+| `fx-text-shadow` | text-shadow | 0.61 / 0.71 | 0.61 / 0.70 | 1.10 / 1.23 | 0.83 / 0.90 | 1.15 / 1.30 | 0.73× | 0.56× | 2.67 / 2.86 | 2.67 / 2.95 | 4.00 / 4.26 | 2.03 / 2.43 | 4.39 / 4.93 | 1.32× | 0.67× |
+| `gap-dashed-dotted-border` | known-gaps | 0.62 / 0.74 | 0.61 / 0.84 | 1.05 / 1.19 | 1.13 / 1.60 | 1.87 / 2.25 | 0.54× | 0.59× | 0.79 / 0.96 | 0.78 / 0.99 | 1.28 / 1.47 | 1.54 / 1.93 | 2.57 / 2.92 | 0.50× | 0.62× |
+| `fx-filter-blur-grayscale` | filter | 0.66 / 0.76 | 0.66 / 0.79 | 1.31 / 1.56 | 1.25 / 1.71 | 1.91 / 2.35 | 0.52× | 0.50× | 1.74 / 1.81 | 1.73 / 1.87 | 2.94 / 3.00 | 1.93 / 2.04 | 4.90 / 4.97 | 0.89× | 0.59× |
+| `gap-tailwind-tw` | known-gaps | 0.23 / 0.31 | 0.25 / 0.54 | 0.38 / 0.56 | 0.42 / 0.76 | 0.53 / 0.76 | 0.59× | 0.61× | 0.45 / 0.50 | 0.41 / 0.59 | 0.65 / 0.72 | 0.97 / 1.16 | 1.43 / 1.57 | 0.42× | 0.69× |
+| `gap-oklch-color` | known-gaps | 0.10 / 0.18 | 0.12 / 0.34 | 0.19 / 0.31 | 0.23 / 0.43 | 0.29 / 0.49 | 0.54× | 0.51× | 0.18 / 0.22 | 0.17 / 0.26 | 0.27 / 0.35 | 0.72 / 0.78 | 1.14 / 1.25 | 0.24× | 0.66× |
+| `gap-svg-image` | known-gaps | 0.15 / 0.26 | 0.17 / 0.37 | 0.29 / 0.47 | 0.29 / 0.51 | 0.42 / 0.61 | 0.59× | 0.50× | 0.37 / 0.46 | 0.34 / 0.59 | 0.57 / 0.66 | 0.73 / 1.17 | 1.17 / 1.39 | 0.47× | 0.64× |
+| `gap-inline-box-decoration` | known-gaps | 0.24 / 0.30 | 0.26 / 0.48 | 0.38 / 0.63 | 0.54 / 0.78 | 0.71 / 0.89 | 0.48× | 0.63× | 0.64 / 0.74 | 0.62 / 0.73 | 0.90 / 0.97 | 1.12 / 1.23 | 1.77 / 1.90 | 0.55× | 0.71× |
+| `gap-mix-blend-mode` | known-gaps | 0.28 / 0.33 | 0.29 / 0.43 | 0.45 / 0.57 | 0.50 / 0.63 | 0.85 / 0.95 | 0.58× | 0.62× | 0.52 / 0.60 | 0.48 / 0.60 | 0.77 / 0.84 | 0.99 / 1.10 | 1.65 / 1.75 | 0.48× | 0.67× |
+| `gap-clip-path` | known-gaps | 0.36 / 0.43 | 0.37 / 0.55 | 0.60 / 0.65 | 0.50 / 0.65 | 0.79 / 1.04 | 0.74× | 0.60× | 1.00 / 1.04 | 0.98 / 1.08 | 1.52 / 1.55 | 1.23 / 1.67 | 6.46 / 6.52 | 0.80× | 0.66× |
+| `gap-background-clip-text` | known-gaps | 0.27 / 0.34 | 0.30 / 0.37 | 0.41 / 0.51 | 1.30 / 1.44 | 1.90 / 2.22 | 0.23× | 0.66× | 1.01 / 1.04 | 0.99 / 1.17 | 1.47 / 1.55 | 1.98 / 2.29 | 5.30 / 5.37 | 0.50× | 0.69× |
+| `gap-text-wrap-balance` | known-gaps | 0.21 / 0.27 | 0.24 / 0.38 | 0.33 / 0.40 | 0.49 / 0.68 | 0.64 / 0.83 | 0.48× | 0.62× | 0.62 / 0.73 | 0.62 / 1.04 | 0.85 / 0.96 | 1.07 / 1.50 | 1.73 / 2.17 | 0.58× | 0.72× |
+| `pfx-aa-shapes` | aa-exact | 0.29 / 0.39 | 0.32 / 0.61 | 0.51 / 0.65 | 0.45 / 0.72 | 0.65 / 0.83 | 0.70× | 0.57× | 0.53 / 0.64 | 0.51 / 0.68 | 0.81 / 0.87 | 0.95 / 1.06 | 1.49 / 1.75 | 0.54× | 0.65× |
+| `pfx-aa-text` | aa-exact | 0.28 / 0.41 | 0.26 / 0.46 | 0.42 / 0.60 | 0.65 / 0.96 | 0.85 / 1.04 | 0.40× | 0.66× | 0.75 / 0.85 | 0.72 / 0.93 | 1.03 / 1.11 | 1.25 / 1.43 | 1.91 / 2.00 | 0.58× | 0.72× |
+| `pfx-border-dashed` | dashed-border | 0.86 / 0.91 | 0.87 / 0.94 | 1.41 / 1.50 | 1.36 / 1.66 | 2.48 / 2.63 | 0.63× | 0.61× | 1.07 / 1.13 | 1.07 / 1.20 | 1.70 / 1.90 | 1.88 / 2.02 | 3.29 / 3.44 | 0.57× | 0.63× |
+| `pfx-border-dotted` | dotted-border | 0.87 / 0.97 | 0.91 / 1.00 | 1.55 / 1.69 | 1.56 / 1.71 | 2.83 / 2.99 | 0.59× | 0.56× | 1.15 / 1.22 | 1.14 / 1.20 | 1.88 / 2.00 | 2.10 / 2.22 | 3.68 / 4.00 | 0.54× | 0.61× |
+| `pfx-border-double-3d` | double-3d-border | 0.30 / 0.40 | 0.32 / 0.53 | 0.55 / 0.66 | 0.52 / 0.81 | 0.74 / 0.92 | 0.61× | 0.55× | 0.51 / 0.54 | 0.48 / 0.58 | 0.78 / 0.85 | 0.98 / 1.17 | 1.46 / 1.59 | 0.49× | 0.65× |
+| `pfx-border-mixed` | mixed-border | 0.46 / 0.55 | 0.46 / 0.66 | 0.78 / 0.90 | 0.71 / 0.82 | 1.22 / 1.46 | 0.65× | 0.59× | 0.73 / 0.82 | 0.69 / 0.83 | 1.11 / 1.20 | 1.25 / 1.37 | 2.08 / 2.18 | 0.55× | 0.66× |
+| `pfx-outline` | outline | 0.53 / 0.59 | 0.55 / 0.69 | 0.90 / 0.97 | 1.02 / 1.17 | 1.70 / 1.91 | 0.54× | 0.59× | 0.80 / 0.84 | 0.79 / 0.95 | 1.23 / 1.34 | 1.59 / 2.09 | 2.66 / 3.27 | 0.50× | 0.65× |
+| `pfx-clip-path-shapes` | clip-path | 0.41 / 0.48 | 0.42 / 0.65 | 0.72 / 0.87 | 0.65 / 0.75 | 1.01 / 1.20 | 0.66× | 0.57× | 1.31 / 1.34 | 1.30 / 1.51 | 1.99 / 2.41 | 1.46 / 1.60 | 5.38 / 5.70 | 0.89× | 0.66× |
+| `pfx-mask-gradient` | mask | 0.71 / 0.97 | 0.73 / 0.93 | 1.20 / 1.57 | 1.06 / 1.43 | 1.64 / 1.93 | 0.69× | 0.59× | 1.55 / 1.68 | 1.53 / 1.74 | 2.30 / 2.48 | 1.92 / 2.11 | 6.30 / 7.25 | 0.79× | 0.67× |
+| `pfx-bg-clip-text` | bg-clip-text | 0.42 / 0.44 | 0.41 / 0.53 | 0.59 / 0.72 | 1.81 / 2.35 | 2.75 / 2.84 | 0.23× | 0.71× | 1.50 / 1.57 | 1.49 / 1.58 | 2.15 / 2.30 | 2.66 / 2.79 | 5.31 / 5.54 | 0.56× | 0.70× |
+| `pfx-mix-blend` | mix-blend | 0.77 / 0.85 | 0.77 / 0.86 | 1.32 / 1.45 | 1.11 / 1.25 | 1.92 / 2.22 | 0.69× | 0.58× | 2.70 / 2.75 | 2.72 / 2.89 | 4.12 / 4.51 | 2.15 / 2.20 | 7.59 / 8.57 | 1.27× | 0.66× |
+| `pfx-bg-blend` | bg-blend | 0.69 / 0.72 | 0.71 / 0.76 | 1.07 / 1.12 | 3.70 / 3.79 | 4.84 / 4.90 | 0.19× | 0.64× | 2.92 / 3.23 | 2.95 / 3.33 | 4.25 / 4.86 | 4.75 / 5.08 | 10.4 / 11.1 | 0.62× | 0.69× |
+| `pfx-drop-shadow` | drop-shadow | 0.79 / 0.95 | 0.78 / 1.06 | 1.29 / 1.66 | 1.09 / 1.45 | 1.65 / 1.89 | 0.71× | 0.61× | 2.21 / 2.39 | 2.17 / 2.40 | 3.44 / 3.81 | 1.88 / 2.04 | 6.89 / 7.56 | 1.15× | 0.64× |
+| `pfx-backdrop-filter` | backdrop-filter | 1.33 / 1.49 | 1.34 / 1.68 | 2.59 / 2.87 | 2.46 / 2.68 | 4.25 / 4.49 | 0.54× | 0.51× | 2.18 / 2.27 | 2.17 / 2.38 | 3.98 / 4.36 | 3.21 / 3.45 | 7.36 / 7.67 | 0.68× | 0.55× |
+| `pfx-text-stroke` | text-stroke | 0.83 / 0.89 | 0.83 / 0.95 | 1.33 / 1.52 | 0.75 / 0.90 | 0.98 / 1.18 | 1.12× | 0.62× | 1.28 / 1.39 | 1.29 / 1.51 | 1.99 / 2.40 | 1.41 / 1.69 | 2.30 / 2.63 | 0.91× | 0.64× |
+| `pfx-text-decoration` | text-decoration | 1.09 / 1.20 | 1.09 / 1.27 | 1.83 / 1.89 | 1.27 / 1.40 | 1.80 / 1.91 | 0.86× | 0.60× | 1.85 / 1.90 | 1.81 / 2.04 | 2.84 / 3.06 | 2.03 / 2.14 | 3.62 / 3.75 | 0.89× | 0.65× |
+| `pfx-visibility` | visibility | 0.16 / 0.24 | 0.17 / 0.31 | 0.26 / 0.38 | 0.38 / 0.61 | 0.48 / 0.63 | 0.47× | 0.59× | 0.26 / 0.29 | 0.23 / 0.30 | 0.38 / 0.45 | 0.84 / 0.92 | 1.26 / 1.38 | 0.28× | 0.69× |
+| `pfx-opacity-layers` | opacity | 1.04 / 1.07 | 1.04 / 1.18 | 2.23 / 2.37 | 1.83 / 1.99 | 3.05 / 3.42 | 0.57× | 0.46× | 2.29 / 2.44 | 2.25 / 2.44 | 4.07 / 4.18 | 2.75 / 2.83 | 7.05 / 7.18 | 0.82× | 0.56× |
+| `pfx-svg-background` | svg-image | 0.66 / 0.75 | 0.65 / 1.02 | 1.37 / 1.54 | 0.61 / 0.75 | 0.94 / 0.98 | 1.08× | 0.48× | 1.08 / 1.35 | 1.05 / 1.19 | 1.89 / 2.07 | 1.28 / 1.48 | 2.26 / 2.43 | 0.82× | 0.57× |
+| `pfx-inline-boxes-many` | inline-box | 1.27 / 1.34 | 1.28 / 1.39 | 2.09 / 2.18 | 1.93 / 2.03 | 2.84 / 2.93 | 0.66× | 0.61× | 2.43 / 2.47 | 2.40 / 2.52 | 3.75 / 3.87 | 2.88 / 3.11 | 5.32 / 5.47 | 0.83× | 0.65× |
+| `css-class-id` | css-stylesheet | 1.20 / 1.42 | 1.24 / 2.69 | 1.76 / 2.31 | 1.80 / 2.19 | 2.40 / 3.04 | 0.69× | 0.68× | 2.36 / 2.53 | 2.18 / 2.51 | 3.38 / 3.50 | 3.67 / 3.82 | 7.25 / 7.42 | 0.59× | 0.70× |
+| `css-nth-child` | css-stylesheet | 0.75 / 1.11 | 0.77 / 1.66 | 1.17 / 2.04 | 1.23 / 2.22 | 1.69 / 2.23 | 0.63× | 0.64× | 1.24 / 1.26 | 1.13 / 1.30 | 1.86 / 1.89 | 2.25 / 2.39 | 4.27 / 4.35 | 0.50× | 0.66× |
+| `css-media-layer` | css-stylesheet | 0.63 / 3.42 | 0.64 / 1.31 | 0.93 / 1.28 | 0.72 / 1.51 | 0.89 / 1.84 | 0.89× | 0.67× | 1.08 / 1.37 | 0.96 / 1.28 | 1.57 / 1.69 | 2.50 / 3.05 | 4.62 / 5.16 | 0.38× | 0.69× |
+| `css-important-var` | css-stylesheet | 0.49 / 0.81 | 0.52 / 1.18 | 0.75 / 1.21 | 0.80 / 1.89 | 1.06 / 1.78 | 0.66× | 0.66× | 0.80 / 0.89 | 0.74 / 1.01 | 1.20 / 1.33 | 2.28 / 2.63 | 3.47 / 4.06 | 0.33× | 0.67× |
+| `tw-card` | tailwind | 1.20 / 1.61 | 1.28 / 2.34 | 1.62 / 2.67 | 1.65 / 2.44 | 2.28 / 2.82 | 0.78× | 0.74× | 2.72 / 3.10 | 2.58 / 3.15 | 3.62 / 4.10 | 3.66 / 4.02 | 7.25 / 7.65 | 0.70× | 0.75× |
+| `tw-responsive` | tailwind | 0.61 / 1.28 | 0.62 / 1.13 | 0.83 / 1.37 | 0.66 / 1.85 | 0.82 / 1.53 | 0.94× | 0.73× | 0.93 / 1.04 | 0.81 / 0.98 | 1.30 / 1.40 | 2.21 / 2.38 | 3.61 / 3.76 | 0.36× | 0.71× |
+| `tw-structural` | tailwind | 0.64 / 1.08 | 0.66 / 1.12 | 0.94 / 1.27 | 0.69 / 1.34 | 0.89 / 1.58 | 0.95× | 0.68× | 0.94 / 1.10 | 0.85 / 1.08 | 1.42 / 1.60 | 1.96 / 2.19 | 3.15 / 3.27 | 0.44× | 0.66× |
+| `tw-arbitrary` | tailwind | 1.60 / 2.04 | 1.65 / 2.81 | 2.77 / 3.22 | 3.37 / 4.51 | 5.32 / 5.78 | 0.49× | 0.58× | 2.25 / 2.65 | 2.13 / 2.47 | 3.69 / 4.12 | 4.62 / 5.06 | 8.25 / 8.73 | 0.46× | 0.61× |
+| `html-article` | html | 0.88 / 1.24 | 0.92 / 4.06 | 1.28 / 1.82 | 1.32 / 2.09 | 1.72 / 2.14 | 0.70× | 0.69× | 1.75 / 2.20 | 1.61 / 2.20 | 2.44 / 2.92 | 2.89 / 3.41 | 5.56 / 6.01 | 0.56× | 0.72× |
+| `html-document` | html | 0.42 / 0.63 | 0.45 / 1.03 | 0.63 / 1.08 | 0.73 / 1.22 | 0.88 / 1.37 | 0.62× | 0.67× | 0.82 / 1.11 | 0.76 / 0.99 | 1.14 / 1.25 | 1.83 / 2.03 | 2.71 / 2.95 | 0.42× | 0.72× |
+| `html-flex-card` | html | 1.35 / 1.55 | 1.42 / 2.02 | 2.01 / 2.44 | 2.46 / 3.04 | 3.68 / 4.16 | 0.58× | 0.67× | 4.55 / 5.23 | 4.54 / 5.02 | 6.73 / 7.08 | 4.32 / 4.82 | 11.6 / 12.1 | 1.05× | 0.68× |
+| `html-inline` | html | 0.50 / 0.63 | 0.49 / 1.07 | 0.73 / 1.13 | 0.89 / 1.26 | 1.14 / 1.56 | 0.55× | 0.69× | 1.00 / 1.16 | 0.92 / 1.11 | 1.42 / 1.48 | 2.02 / 2.12 | 2.87 / 3.03 | 0.46× | 0.70× |
+| `pseudo-inline` | pseudo-elements | 0.31 / 0.44 | 0.38 / 1.11 | 0.53 / 0.80 | 0.74 / 1.25 | 1.04 / 1.37 | 0.52× | 0.59× | 0.76 / 0.86 | 0.70 / 0.83 | 1.09 / 1.21 | 1.42 / 1.60 | 2.57 / 2.68 | 0.49× | 0.70× |
+| `pseudo-block` | pseudo-elements | 0.54 / 0.76 | 0.53 / 1.24 | 0.81 / 1.12 | 0.85 / 1.41 | 1.11 / 1.67 | 0.63× | 0.67× | 0.88 / 1.01 | 0.77 / 0.93 | 1.28 / 1.41 | 1.75 / 1.92 | 2.87 / 3.15 | 0.44× | 0.69× |
+| `pseudo-attr` | pseudo-elements | 0.27 / 0.39 | 0.27 / 0.75 | 0.48 / 0.64 | 0.59 / 1.01 | 0.81 / 1.20 | 0.45× | 0.57× | 0.59 / 0.84 | 0.53 / 0.75 | 0.85 / 0.95 | 1.20 / 1.63 | 2.12 / 2.55 | 0.45× | 0.69× |
+| `pseudo-tw` | pseudo-elements | 0.38 / 0.77 | 0.41 / 1.51 | 0.66 / 0.95 | 0.60 / 1.04 | 0.84 / 0.98 | 0.69× | 0.57× | 0.72 / 0.85 | 0.64 / 0.78 | 1.03 / 1.14 | 1.23 / 1.49 | 2.32 / 2.41 | 0.52× | 0.70× |
+| `anim-opacity-t0` | animation | 0.10 / 0.16 | 0.11 / 0.23 | 0.18 / 0.27 | 0.22 / 0.39 | 0.26 / 0.37 | 0.49× | 0.55× | 0.15 / 0.20 | 0.14 / 0.22 | 0.23 / 0.29 | 0.42 / 0.58 | 0.63 / 0.75 | 0.34× | 0.68× |
+| `anim-opacity-t250` | animation | 0.12 / 0.18 | 0.14 / 0.23 | 0.21 / 0.28 | 0.29 / 0.50 | 0.43 / 0.52 | 0.48× | 0.58× | 0.17 / 0.20 | 0.16 / 0.22 | 0.26 / 0.30 | 0.54 / 0.64 | 0.87 / 0.94 | 0.30× | 0.67× |
+| `anim-opacity-t500` | animation | 0.12 / 0.17 | 0.14 / 0.23 | 0.21 / 0.27 | 0.28 / 0.47 | 0.42 / 0.54 | 0.48× | 0.57× | 0.17 / 0.21 | 0.16 / 0.24 | 0.26 / 0.29 | 0.55 / 0.73 | 0.87 / 1.04 | 0.29× | 0.67× |
+| `anim-opacity-t900` | animation | 0.12 / 0.18 | 0.14 / 0.23 | 0.21 / 0.30 | 0.28 / 0.48 | 0.42 / 0.54 | 0.50× | 0.57× | 0.17 / 0.22 | 0.16 / 0.26 | 0.26 / 0.29 | 0.55 / 0.65 | 0.87 / 0.99 | 0.29× | 0.66× |
+| `anim-opacity-t1500` | animation | 0.09 / 0.16 | 0.11 / 0.23 | 0.16 / 0.25 | 0.22 / 0.44 | 0.26 / 0.40 | 0.50× | 0.55× | 0.15 / 0.19 | 0.14 / 0.20 | 0.22 / 0.26 | 0.48 / 0.59 | 0.71 / 0.82 | 0.30× | 0.68× |
+| `anim-transform-t0` | animation | 0.13 / 0.21 | 0.15 / 0.26 | 0.24 / 0.32 | 0.24 / 0.36 | 0.29 / 0.38 | 0.62× | 0.57× | 0.22 / 0.33 | 0.21 / 0.34 | 0.35 / 0.48 | 0.52 / 0.64 | 0.75 / 0.87 | 0.41× | 0.64× |
+| `anim-transform-t200` | animation | 0.14 / 0.22 | 0.16 / 0.30 | 0.24 / 0.33 | 0.26 / 0.42 | 0.32 / 0.48 | 0.61× | 0.59× | 0.26 / 0.40 | 0.25 / 0.38 | 0.41 / 0.54 | 0.55 / 0.78 | 0.78 / 1.18 | 0.46× | 0.65× |
+| `anim-transform-t400` | animation | 0.15 / 0.19 | 0.15 / 0.25 | 0.24 / 0.30 | 0.25 / 0.37 | 0.30 / 0.40 | 0.63× | 0.62× | 0.25 / 0.30 | 0.24 / 0.31 | 0.40 / 0.42 | 0.52 / 0.63 | 0.74 / 0.84 | 0.46× | 0.64× |
+| `anim-transform-t600` | animation | 0.13 / 0.18 | 0.14 / 0.25 | 0.23 / 0.29 | 0.25 / 0.40 | 0.30 / 0.45 | 0.58× | 0.54× | 0.26 / 0.28 | 0.24 / 0.30 | 0.40 / 0.50 | 0.53 / 0.60 | 0.76 / 0.80 | 0.46× | 0.66× |
+| `anim-transform-t800` | animation | 0.12 / 0.19 | 0.12 / 0.24 | 0.21 / 0.27 | 0.23 / 0.38 | 0.29 / 0.37 | 0.54× | 0.56× | 0.22 / 0.24 | 0.21 / 0.28 | 0.34 / 0.39 | 0.51 / 0.62 | 0.75 / 0.82 | 0.40× | 0.65× |
+| `anim-color-t0` | animation | 0.18 / 0.24 | 0.18 / 0.25 | 0.28 / 0.35 | 0.40 / 0.55 | 0.49 / 0.59 | 0.45× | 0.64× | 0.28 / 0.36 | 0.25 / 0.36 | 0.42 / 0.46 | 0.68 / 0.79 | 0.96 / 1.05 | 0.37× | 0.68× |
+| `anim-color-t300` | animation | 0.16 / 0.24 | 0.17 / 0.26 | 0.27 / 0.31 | 0.39 / 0.51 | 0.48 / 0.57 | 0.45× | 0.61× | 0.28 / 0.30 | 0.25 / 0.33 | 0.42 / 0.49 | 0.69 / 0.86 | 0.95 / 1.05 | 0.37× | 0.67× |
+| `anim-color-t700` | animation | 0.17 / 0.22 | 0.18 / 0.24 | 0.27 / 0.36 | 0.38 / 0.46 | 0.48 / 0.58 | 0.46× | 0.62× | 0.28 / 0.30 | 0.25 / 0.32 | 0.42 / 0.44 | 0.68 / 0.75 | 0.96 / 1.04 | 0.37× | 0.68× |
+| `anim-color-t2000` | animation | 0.16 / 0.22 | 0.16 / 0.24 | 0.26 / 0.35 | 0.38 / 0.49 | 0.48 / 0.58 | 0.42× | 0.60× | 0.29 / 0.35 | 0.26 / 0.39 | 0.42 / 0.54 | 0.70 / 0.90 | 0.96 / 1.16 | 0.37× | 0.68× |
+| `anim-width-t0` | animation | 0.13 / 0.21 | 0.14 / 0.23 | 0.21 / 0.33 | 0.25 / 0.42 | 0.29 / 0.44 | 0.59× | 0.62× | 0.18 / 0.20 | 0.17 / 0.23 | 0.27 / 0.32 | 0.47 / 0.54 | 0.68 / 0.77 | 0.36× | 0.67× |
+| `anim-width-t100` | animation | 0.15 / 0.23 | 0.17 / 0.34 | 0.26 / 0.33 | 0.25 / 0.42 | 0.31 / 0.41 | 0.66× | 0.60× | 0.24 / 0.28 | 0.23 / 0.30 | 0.38 / 0.41 | 0.54 / 0.59 | 0.77 / 0.85 | 0.43× | 0.63× |
+| `anim-width-t500` | animation | 0.16 / 0.23 | 0.16 / 0.25 | 0.28 / 0.37 | 0.25 / 0.41 | 0.31 / 0.43 | 0.64× | 0.56× | 0.31 / 0.40 | 0.29 / 0.40 | 0.48 / 0.55 | 0.58 / 0.70 | 0.82 / 1.02 | 0.51× | 0.64× |
+| `anim-width-t999` | animation | 0.19 / 0.26 | 0.20 / 0.37 | 0.31 / 0.45 | 0.28 / 0.48 | 0.34 / 0.51 | 0.71× | 0.60× | 0.32 / 0.36 | 0.30 / 0.38 | 0.49 / 0.55 | 0.58 / 0.67 | 0.84 / 0.95 | 0.52× | 0.65× |
+| `anim-delay-fill-t0` | animation | 0.15 / 0.26 | 0.16 / 0.30 | 0.26 / 0.37 | 0.33 / 0.49 | 0.47 / 0.62 | 0.48× | 0.58× | 0.24 / 0.27 | 0.23 / 0.29 | 0.38 / 0.43 | 0.59 / 0.69 | 0.90 / 0.97 | 0.38× | 0.64× |
+| `anim-delay-fill-t750` | animation | 0.16 / 0.23 | 0.17 / 0.28 | 0.29 / 0.34 | 0.37 / 0.51 | 0.57 / 0.71 | 0.46× | 0.55× | 0.25 / 0.31 | 0.24 / 0.30 | 0.40 / 0.54 | 0.61 / 0.80 | 0.99 / 1.17 | 0.39× | 0.63× |
+| `anim-delay-fill-t2000` | animation | 0.13 / 0.23 | 0.14 / 0.24 | 0.23 / 0.31 | 0.26 / 0.39 | 0.33 / 0.44 | 0.56× | 0.56× | 0.23 / 0.29 | 0.22 / 0.33 | 0.36 / 0.42 | 0.55 / 0.68 | 0.79 / 1.06 | 0.40× | 0.64× |
+| `anim-alternate-t100` | animation | 0.14 / 0.19 | 0.16 / 0.23 | 0.22 / 0.29 | 0.33 / 0.52 | 0.45 / 0.64 | 0.49× | 0.64× | 0.18 / 0.25 | 0.17 / 0.25 | 0.27 / 0.30 | 0.59 / 0.72 | 0.90 / 1.02 | 0.29× | 0.67× |
+| `anim-alternate-t500` | animation | 0.11 / 0.16 | 0.12 / 0.19 | 0.19 / 0.25 | 0.29 / 0.41 | 0.41 / 0.53 | 0.40× | 0.58× | 0.18 / 0.20 | 0.17 / 0.22 | 0.26 / 0.28 | 0.56 / 0.62 | 0.86 / 0.96 | 0.30× | 0.69× |
+| `anim-alternate-t700` | animation | 0.13 / 0.17 | 0.15 / 0.29 | 0.21 / 0.29 | 0.31 / 0.51 | 0.44 / 0.56 | 0.46× | 0.63× | 0.17 / 0.22 | 0.17 / 0.23 | 0.25 / 0.31 | 0.56 / 0.70 | 0.87 / 1.01 | 0.30× | 0.69× |
+| `anim-alternate-t1100` | animation | 0.12 / 0.25 | 0.14 / 0.27 | 0.21 / 0.30 | 0.32 / 0.56 | 0.45 / 0.69 | 0.44× | 0.57× | 0.18 / 0.22 | 0.17 / 0.25 | 0.26 / 0.30 | 0.58 / 0.71 | 0.88 / 1.02 | 0.29× | 0.67× |
+| `anim-alternate-t1300` | animation | 0.10 / 0.16 | 0.11 / 0.21 | 0.18 / 0.24 | 0.22 / 0.35 | 0.26 / 0.40 | 0.48× | 0.56× | 0.16 / 0.21 | 0.16 / 0.23 | 0.24 / 0.27 | 0.46 / 0.55 | 0.68 / 0.80 | 0.34× | 0.67× |
+| `anim-steps-t0` | animation | 0.11 / 0.19 | 0.12 / 0.25 | 0.20 / 0.28 | 0.24 / 0.47 | 0.28 / 0.45 | 0.52× | 0.56× | 0.19 / 0.23 | 0.18 / 0.25 | 0.28 / 0.32 | 0.49 / 0.63 | 0.71 / 0.84 | 0.36× | 0.67× |
+| `anim-steps-t260` | animation | 0.12 / 0.18 | 0.13 / 0.21 | 0.21 / 0.28 | 0.25 / 0.43 | 0.29 / 0.39 | 0.53× | 0.58× | 0.18 / 0.21 | 0.17 / 0.23 | 0.28 / 0.32 | 0.48 / 0.56 | 0.70 / 0.76 | 0.36× | 0.66× |
+| `anim-steps-t500` | animation | 0.11 / 0.17 | 0.12 / 0.21 | 0.20 / 0.28 | 0.24 / 0.38 | 0.29 / 0.39 | 0.51× | 0.56× | 0.18 / 0.20 | 0.17 / 0.23 | 0.28 / 0.29 | 0.49 / 0.53 | 0.70 / 0.76 | 0.36× | 0.67× |
+| `anim-steps-t990` | animation | 0.11 / 0.19 | 0.12 / 0.20 | 0.20 / 0.28 | 0.23 / 0.49 | 0.27 / 0.40 | 0.51× | 0.58× | 0.19 / 0.23 | 0.18 / 0.25 | 0.28 / 0.31 | 0.49 / 0.60 | 0.70 / 0.82 | 0.36× | 0.66× |
+| `anim-two-anims-t0` | animation | 0.13 / 0.19 | 0.13 / 0.27 | 0.23 / 0.30 | 0.28 / 0.50 | 0.42 / 0.64 | 0.46× | 0.56× | 0.19 / 0.25 | 0.18 / 0.28 | 0.29 / 0.34 | 0.56 / 0.67 | 0.89 / 1.00 | 0.33× | 0.65× |
+| `anim-two-anims-t400` | animation | 0.16 / 0.23 | 0.18 / 0.27 | 0.27 / 0.33 | 0.43 / 0.52 | 0.70 / 0.83 | 0.42× | 0.59× | 0.24 / 0.26 | 0.22 / 0.32 | 0.35 / 0.41 | 0.71 / 0.82 | 1.17 / 1.43 | 0.31× | 0.68× |
+| `anim-two-anims-t600` | animation | 0.18 / 0.22 | 0.18 / 0.27 | 0.30 / 0.34 | 0.45 / 0.56 | 0.76 / 0.85 | 0.41× | 0.61× | 0.25 / 0.32 | 0.24 / 0.30 | 0.37 / 0.43 | 0.73 / 0.85 | 1.24 / 1.37 | 0.32× | 0.68× |
+| `anim-two-anims-t1200` | animation | 0.14 / 0.21 | 0.16 / 0.23 | 0.24 / 0.29 | 0.34 / 0.49 | 0.49 / 0.62 | 0.46× | 0.60× | 0.22 / 0.24 | 0.21 / 0.26 | 0.32 / 0.35 | 0.62 / 0.69 | 0.95 / 1.01 | 0.34× | 0.69× |
+| `anim-inherit-t0` | animation | 0.19 / 0.26 | 0.20 / 0.31 | 0.31 / 0.37 | 0.44 / 0.69 | 0.54 / 0.70 | 0.46× | 0.63× | 0.33 / 0.39 | 0.31 / 0.41 | 0.49 / 0.56 | 0.74 / 0.90 | 1.01 / 1.21 | 0.42× | 0.69× |
+| `anim-inherit-t500` | animation | 0.21 / 0.27 | 0.22 / 0.29 | 0.33 / 0.38 | 0.45 / 0.53 | 0.56 / 0.63 | 0.49× | 0.64× | 0.41 / 0.45 | 0.38 / 0.47 | 0.59 / 0.66 | 0.84 / 0.92 | 1.13 / 1.26 | 0.45× | 0.70× |
+| `anim-inherit-t1000` | animation | 0.20 / 0.27 | 0.19 / 0.30 | 0.31 / 0.39 | 0.46 / 0.56 | 0.59 / 0.71 | 0.41× | 0.64× | 0.50 / 0.59 | 0.47 / 0.58 | 0.69 / 0.79 | 0.99 / 1.08 | 1.36 / 1.48 | 0.47× | 0.73× |
+| `anim-tw-spin-t125` | animation | 0.14 / 0.18 | 0.15 / 0.23 | 0.22 / 0.29 | 0.32 / 0.47 | 0.45 / 0.58 | 0.47× | 0.63× | 0.20 / 0.24 | 0.19 / 0.28 | 0.29 / 0.34 | 0.59 / 0.68 | 0.90 / 1.07 | 0.32× | 0.69× |
+| `anim-tw-spin-t375` | animation | 0.13 / 0.20 | 0.13 / 0.23 | 0.21 / 0.28 | 0.32 / 0.54 | 0.45 / 0.60 | 0.41× | 0.61× | 0.20 / 0.25 | 0.19 / 0.28 | 0.29 / 0.32 | 0.59 / 0.66 | 0.89 / 0.99 | 0.32× | 0.69× |
+| `anim-tw-spin-t1600` | animation | 0.12 / 0.20 | 0.13 / 0.23 | 0.21 / 0.28 | 0.33 / 0.53 | 0.45 / 0.59 | 0.41× | 0.58× | 0.21 / 0.27 | 0.20 / 0.32 | 0.30 / 0.35 | 0.60 / 0.81 | 0.91 / 1.04 | 0.33× | 0.70× |
+| `anim-kf-option-t0` | animation | 0.11 / 0.17 | 0.12 / 0.22 | 0.18 / 0.28 | 0.28 / 0.48 | 0.36 / 0.57 | 0.42× | 0.59× | 0.17 / 0.20 | 0.15 / 0.24 | 0.24 / 0.27 | 0.50 / 0.58 | 0.74 / 0.87 | 0.31× | 0.70× |
+| `anim-kf-option-t500` | animation | 0.12 / 0.18 | 0.13 / 0.20 | 0.20 / 0.26 | 0.37 / 0.52 | 0.57 / 0.76 | 0.34× | 0.59× | 0.19 / 0.25 | 0.17 / 0.27 | 0.27 / 0.31 | 0.64 / 0.80 | 1.03 / 1.16 | 0.27× | 0.70× |
+| `layout2-table-auto` | table | 0.61 / 0.68 | 0.59 / 0.91 | 1.01 / 1.23 | 1.07 / 1.45 | 1.45 / 1.60 | 0.55× | 0.61× | 1.05 / 1.23 | 1.00 / 1.19 | 1.58 / 1.63 | 1.84 / 1.93 | 3.01 / 3.45 | 0.55× | 0.66× |
+| `layout2-table-spans` | table | 0.48 / 0.59 | 0.47 / 0.99 | 0.77 / 1.03 | 0.81 / 1.10 | 1.08 / 1.58 | 0.58× | 0.62× | 0.82 / 0.90 | 0.76 / 0.93 | 1.23 / 1.32 | 1.41 / 1.56 | 2.30 / 2.50 | 0.53× | 0.67× |
+| `layout2-table-fixed` | table | 0.49 / 0.58 | 0.51 / 0.64 | 0.80 / 0.96 | 1.03 / 1.21 | 1.38 / 1.56 | 0.49× | 0.62× | 0.94 / 1.01 | 0.90 / 1.09 | 1.38 / 1.45 | 1.76 / 2.02 | 2.65 / 2.98 | 0.51× | 0.68× |
+| `layout2-table-percent` | table | 0.34 / 0.37 | 0.33 / 0.46 | 0.54 / 0.68 | 0.68 / 1.05 | 0.86 / 0.99 | 0.48× | 0.63× | 0.53 / 0.67 | 0.48 / 0.60 | 0.78 / 0.89 | 1.09 / 1.30 | 1.63 / 1.76 | 0.44× | 0.68× |
+| `layout2-table-collapse-conflicts` | table | 0.51 / 0.60 | 0.53 / 0.79 | 0.89 / 1.01 | 1.02 / 1.32 | 1.40 / 1.55 | 0.52× | 0.58× | 0.88 / 1.09 | 0.81 / 0.95 | 1.35 / 1.38 | 1.69 / 1.91 | 2.57 / 2.67 | 0.48× | 0.65× |
+| `layout2-table-col-backgrounds` | table | 0.65 / 0.77 | 0.63 / 0.79 | 1.09 / 1.19 | 1.45 / 1.81 | 2.04 / 2.30 | 0.44× | 0.60× | 1.85 / 2.00 | 1.79 / 1.93 | 2.97 / 3.15 | 2.27 / 2.47 | 4.93 / 5.07 | 0.79× | 0.62× |
+| `layout2-table-empty-cells` | table | 0.42 / 0.50 | 0.42 / 0.65 | 0.73 / 0.92 | 0.95 / 1.17 | 1.30 / 1.50 | 0.45× | 0.58× | 0.62 / 0.68 | 0.56 / 0.69 | 0.97 / 1.01 | 1.40 / 1.55 | 2.09 / 2.41 | 0.40× | 0.64× |
+| `layout2-table-caption-bottom` | table | 0.58 / 0.72 | 0.57 / 0.70 | 1.03 / 1.28 | 1.17 / 1.46 | 1.63 / 1.83 | 0.49× | 0.56× | 0.95 / 1.04 | 0.89 / 1.01 | 1.49 / 1.59 | 1.79 / 1.86 | 2.83 / 3.15 | 0.50× | 0.64× |
+| `layout2-float-image` | float | 0.32 / 0.47 | 0.34 / 0.59 | 0.68 / 0.84 | 0.66 / 0.95 | 0.86 / 1.28 | 0.51× | 0.48× | 1.58 / 1.77 | 1.58 / 1.69 | 2.48 / 2.73 | 1.57 / 1.74 | 5.65 / 5.92 | 1.01× | 0.64× |
+| `layout2-float-clear` | float | 0.21 / 0.30 | 0.24 / 0.66 | 0.39 / 0.58 | 0.43 / 0.78 | 0.55 / 0.71 | 0.55× | 0.55× | 0.45 / 0.52 | 0.40 / 0.56 | 0.67 / 0.72 | 1.14 / 1.22 | 1.96 / 2.12 | 0.35× | 0.67× |
+| `layout2-float-bfc` | float | 0.20 / 0.29 | 0.22 / 0.43 | 0.39 / 0.63 | 0.48 / 0.83 | 0.66 / 0.91 | 0.46× | 0.50× | 0.39 / 0.43 | 0.36 / 0.43 | 0.63 / 0.66 | 0.99 / 1.14 | 1.57 / 1.63 | 0.36× | 0.62× |
+| `layout2-float-wrap` | float | 0.33 / 0.41 | 0.36 / 0.50 | 0.52 / 0.66 | 0.59 / 0.71 | 0.79 / 0.91 | 0.61× | 0.64× | 0.81 / 0.92 | 0.76 / 0.87 | 1.15 / 1.21 | 1.32 / 1.44 | 2.21 / 2.37 | 0.58× | 0.71× |
+| `layout2-ib-badges` | inline-block | 0.26 / 0.34 | 0.27 / 0.44 | 0.44 / 0.60 | 0.55 / 0.61 | 0.70 / 0.85 | 0.50× | 0.59× | 0.49 / 0.56 | 0.44 / 0.60 | 0.71 / 0.77 | 1.00 / 1.17 | 1.44 / 1.66 | 0.44× | 0.69× |
+| `layout2-ib-wrap` | inline-block | 0.36 / 0.50 | 0.35 / 0.49 | 0.63 / 0.95 | 0.63 / 0.78 | 0.85 / 1.01 | 0.56× | 0.57× | 0.70 / 0.82 | 0.65 / 0.88 | 1.07 / 1.28 | 1.27 / 1.43 | 2.10 / 2.36 | 0.52× | 0.66× |
+| `layout2-ib-valign` | inline-block | 0.27 / 0.34 | 0.31 / 0.44 | 0.48 / 0.58 | 0.56 / 0.63 | 0.73 / 0.84 | 0.56× | 0.58× | 1.51 / 1.58 | 1.52 / 1.60 | 2.30 / 2.39 | 1.47 / 1.57 | 3.23 / 3.42 | 1.03× | 0.66× |
+| `layout2-ib-json` | inline-block | 0.24 / 0.30 | 0.25 / 0.44 | 0.38 / 0.50 | 0.53 / 0.69 | 0.66 / 0.84 | 0.47× | 0.64× | 0.39 / 0.47 | 0.36 / 0.50 | 0.57 / 0.65 | 0.87 / 0.96 | 1.19 / 1.27 | 0.42× | 0.69× |
+| `layout2-grid-areas` | grid-areas | 0.38 / 0.56 | 0.41 / 0.70 | 0.71 / 0.98 | 0.65 / 1.09 | 0.90 / 1.35 | 0.63× | 0.54× | 0.78 / 0.87 | 0.71 / 0.85 | 1.19 / 1.25 | 1.42 / 1.52 | 2.29 / 2.61 | 0.50× | 0.66× |
+| `layout2-grid-named-lines` | grid-areas | 0.33 / 0.47 | 0.31 / 0.48 | 0.60 / 0.79 | 0.62 / 0.92 | 0.85 / 0.96 | 0.51× | 0.55× | 0.67 / 0.74 | 0.62 / 0.79 | 1.02 / 1.14 | 1.40 / 1.63 | 2.16 / 2.30 | 0.44× | 0.66× |
+| `layout2-grid-areas-auto` | grid-areas | 0.26 / 0.36 | 0.25 / 0.65 | 0.47 / 0.63 | 0.56 / 0.81 | 0.76 / 0.99 | 0.44× | 0.55× | 0.56 / 0.79 | 0.50 / 0.85 | 0.84 / 1.00 | 1.18 / 1.85 | 1.85 / 2.27 | 0.43× | 0.67× |
+| `layout3-float-left` | float-text | 0.36 / 0.45 | 0.38 / 0.79 | 0.58 / 0.79 | 0.61 / 0.98 | 0.83 / 1.00 | 0.62× | 0.62× | 0.83 / 0.90 | 0.79 / 0.88 | 1.20 / 1.36 | 1.32 / 1.41 | 2.18 / 2.40 | 0.60× | 0.69× |
+| `layout3-float-right` | float-text | 0.42 / 0.48 | 0.40 / 0.52 | 0.64 / 0.72 | 0.67 / 1.12 | 0.92 / 1.24 | 0.60× | 0.65× | 0.83 / 0.96 | 0.79 / 0.94 | 1.19 / 1.38 | 1.34 / 1.64 | 2.20 / 2.35 | 0.59× | 0.70× |
+| `layout3-float-stacked` | float-text | 0.49 / 0.80 | 0.51 / 0.88 | 0.78 / 1.08 | 0.80 / 1.17 | 1.12 / 1.60 | 0.64× | 0.63× | 1.20 / 1.30 | 1.18 / 1.39 | 1.72 / 1.92 | 1.66 / 1.82 | 3.01 / 3.20 | 0.71× | 0.70× |
+| `layout3-float-tall` | float-text | 0.57 / 0.69 | 0.59 / 1.11 | 0.90 / 1.07 | 0.94 / 1.18 | 1.33 / 1.52 | 0.63× | 0.64× | 1.47 / 1.51 | 1.43 / 1.54 | 2.11 / 2.18 | 1.89 / 1.96 | 3.46 / 3.55 | 0.76× | 0.70× |
+| `layout3-float-in-text` | float-text | 0.52 / 0.61 | 0.51 / 0.71 | 0.79 / 0.89 | 0.82 / 1.13 | 1.13 / 1.60 | 0.62× | 0.65× | 1.13 / 1.27 | 1.10 / 1.19 | 1.61 / 1.83 | 1.66 / 1.78 | 2.74 / 2.98 | 0.66× | 0.70× |
+| `layout3-float-rtl` | float-text | 0.67 / 0.87 | 0.67 / 0.78 | 1.02 / 1.49 | 1.03 / 1.32 | 1.45 / 1.63 | 0.65× | 0.66× | 1.54 / 1.64 | 1.51 / 1.60 | 2.21 / 2.29 | 1.88 / 2.02 | 3.57 / 3.81 | 0.80× | 0.70× |
+| `layout3-float-inline-box` | float-text | 0.38 / 0.47 | 0.38 / 0.79 | 0.61 / 0.80 | 0.65 / 0.88 | 0.88 / 1.13 | 0.58× | 0.62× | 0.89 / 1.03 | 0.84 / 0.98 | 1.27 / 1.39 | 1.43 / 1.74 | 2.33 / 2.79 | 0.59× | 0.70× |
+| `layout3-inline-badges` | inline-flow | 0.47 / 0.56 | 0.47 / 0.57 | 0.75 / 0.84 | 0.87 / 0.99 | 1.19 / 1.40 | 0.55× | 0.63× | 1.00 / 1.09 | 0.96 / 1.05 | 1.43 / 1.52 | 1.60 / 1.72 | 2.60 / 2.81 | 0.60× | 0.70× |
+| `layout3-inline-image` | inline-flow | 0.46 / 0.56 | 0.50 / 0.61 | 0.89 / 1.14 | 0.85 / 1.04 | 1.12 / 1.32 | 0.58× | 0.52× | 1.75 / 1.87 | 1.75 / 1.85 | 2.76 / 2.91 | 1.83 / 1.97 | 4.12 / 4.24 | 0.96× | 0.63× |
+| `layout3-inline-flex-chip` | inline-flow | 0.56 / 0.65 | 0.57 / 0.76 | 1.17 / 1.29 | 1.07 / 1.34 | 1.47 / 1.65 | 0.53× | 0.48× | 1.63 / 1.75 | 1.62 / 1.78 | 2.66 / 2.74 | 2.15 / 2.34 | 4.33 / 4.67 | 0.75× | 0.62× |
+| `layout3-inline-br` | inline-flow | 0.39 / 0.47 | 0.40 / 0.51 | 0.59 / 0.78 | 0.72 / 1.00 | 0.89 / 1.09 | 0.55× | 0.66× | 0.69 / 0.81 | 0.64 / 0.81 | 1.00 / 1.10 | 1.22 / 1.45 | 1.94 / 2.71 | 0.53× | 0.69× |
+| `layout3-inline-abs` | inline-flow | 0.37 / 0.49 | 0.36 / 0.59 | 0.57 / 0.72 | 0.65 / 0.97 | 0.86 / 1.13 | 0.56× | 0.65× | 0.72 / 0.78 | 0.67 / 0.91 | 1.02 / 1.19 | 1.15 / 1.49 | 1.85 / 2.14 | 0.58× | 0.71× |
+| `layout3-span-edges` | inline-box-model | 0.58 / 0.63 | 0.58 / 0.69 | 0.93 / 1.03 | 0.79 / 0.94 | 1.11 / 1.22 | 0.74× | 0.62× | 1.03 / 1.04 | 1.00 / 1.09 | 1.53 / 1.59 | 1.51 / 1.62 | 2.41 / 2.51 | 0.66× | 0.67× |
+| `layout3-span-nowrap` | inline-box-model | 0.48 / 0.68 | 0.49 / 0.67 | 0.75 / 0.86 | 0.85 / 1.04 | 1.10 / 1.24 | 0.57× | 0.65× | 0.99 / 1.18 | 0.94 / 1.27 | 1.42 / 1.64 | 1.54 / 1.78 | 2.45 / 2.86 | 0.61× | 0.70× |
+| `layout3-span-valign` | inline-box-model | 0.57 / 0.70 | 0.56 / 0.68 | 0.91 / 1.02 | 1.12 / 1.37 | 1.48 / 1.57 | 0.50× | 0.63× | 1.16 / 1.22 | 1.12 / 1.23 | 1.68 / 1.74 | 1.81 / 1.99 | 3.00 / 3.26 | 0.62× | 0.69× |
+| `layout3-card-all` | inline-box-model | 1.40 / 1.68 | 1.41 / 2.25 | 2.37 / 2.50 | 2.31 / 2.95 | 3.13 / 3.61 | 0.61× | 0.59× | 3.76 / 4.23 | 3.75 / 4.17 | 5.80 / 6.32 | 3.94 / 4.42 | 9.17 / 9.58 | 0.95× | 0.65× |
+| `fix-css-struct-text-nodes` | css-stylesheet | 0.57 / 0.70 | 0.54 / 1.03 | 0.86 / 1.17 | 1.06 / 1.72 | 1.37 / 1.64 | 0.51× | 0.66× | 0.85 / 0.96 | 0.78 / 0.90 | 1.27 / 1.44 | 1.93 / 2.30 | 3.08 / 3.22 | 0.41× | 0.67× |
+| `fix-css-blank-text-dropped` | css-stylesheet | 0.25 / 0.30 | 0.23 / 0.30 | 0.42 / 0.63 | 0.53 / 0.79 | 0.69 / 0.82 | 0.44× | 0.60× | 0.40 / 0.45 | 0.36 / 0.45 | 0.60 / 0.65 | 0.91 / 1.01 | 1.34 / 1.43 | 0.39× | 0.67× |
+| `fix-css-tw-structural-text` | tailwind | 0.52 / 0.64 | 0.51 / 0.63 | 0.82 / 0.97 | 0.86 / 1.51 | 1.21 / 1.53 | 0.59× | 0.64× | 0.79 / 0.82 | 0.72 / 0.87 | 1.16 / 1.19 | 1.44 / 1.52 | 2.26 / 2.40 | 0.50× | 0.68× |
+| `fix-css-playground-css-demo` | css-stylesheet | 0.78 / 1.12 | 0.77 / 1.47 | 1.14 / 1.65 | 1.21 / 2.27 | 1.59 / 1.97 | 0.63× | 0.68× | 1.47 / 1.62 | 1.36 / 1.53 | 2.12 / 2.32 | 2.49 / 2.56 | 4.64 / 4.82 | 0.55× | 0.69× |
+| `fix-css-transform-nested` | transform | 0.25 / 0.34 | 0.27 / 0.45 | 0.41 / 0.59 | 0.70 / 0.98 | 1.18 / 1.33 | 0.39× | 0.60× | 0.49 / 0.56 | 0.47 / 0.68 | 0.72 / 0.80 | 1.27 / 1.48 | 2.22 / 2.59 | 0.37× | 0.68× |
+| `fix-css-transform-abs-text` | transform | 0.35 / 0.47 | 0.36 / 0.68 | 0.55 / 0.76 | 0.82 / 1.14 | 1.31 / 1.75 | 0.45× | 0.63× | 0.58 / 0.78 | 0.54 / 0.76 | 0.84 / 1.04 | 1.32 / 1.56 | 2.31 / 2.58 | 0.41× | 0.70× |
+| `fix-css-image-rendering-pixelated` | images | 0.43 / 0.49 | 0.48 / 0.76 | 0.87 / 1.07 | 1.05 / 1.30 | 1.22 / 1.45 | 0.46× | 0.49× | 2.42 / 2.50 | 2.47 / 2.62 | 3.74 / 4.06 | 2.15 / 2.26 | 7.55 / 7.95 | 1.15× | 0.65× |
+| `fix-css-image-rendering-modes` | images | 0.95 / 1.38 | 1.03 / 1.45 | 1.94 / 2.11 | 2.18 / 3.38 | 2.72 / 2.99 | 0.47× | 0.49× | 5.08 / 5.78 | 5.09 / 5.34 | 8.08 / 8.42 | 4.17 / 4.63 | 15.3 / 15.7 | 1.22× | 0.63× |
+| `fix-css-tw-theme` | tailwind | 0.55 / 0.85 | 0.62 / 1.00 | 0.90 / 1.28 | 0.93 / 1.21 | 1.26 / 1.53 | 0.66× | 0.61× | 0.86 / 0.98 | 0.83 / 1.17 | 1.28 / 1.38 | 1.48 / 1.61 | 2.63 / 3.37 | 0.56× | 0.67× |
+| `fix-css-tw-theme-node-vars` | tailwind | 0.23 / 0.30 | 0.25 / 0.39 | 0.36 / 0.57 | 0.38 / 0.52 | 0.46 / 0.63 | 0.65× | 0.64× | 0.31 / 0.36 | 0.30 / 0.38 | 0.48 / 0.51 | 0.64 / 0.72 | 0.91 / 1.01 | 0.47× | 0.66× |
+| `fix-css-tw-animate` | tailwind | 0.43 / 0.48 | 0.42 / 0.57 | 0.68 / 0.73 | 0.62 / 0.81 | 1.03 / 1.20 | 0.67× | 0.63× | 0.56 / 0.60 | 0.54 / 0.60 | 0.85 / 0.92 | 0.95 / 1.10 | 1.56 / 1.64 | 0.57× | 0.66× |
+| `fix-css-cascade-layers-tw` | css-stylesheet | 0.16 / 0.24 | 0.16 / 0.27 | 0.27 / 0.44 | 0.24 / 0.38 | 0.29 / 0.41 | 0.69× | 0.62× | 0.23 / 0.31 | 0.22 / 0.31 | 0.34 / 0.44 | 0.54 / 0.63 | 0.75 / 0.91 | 0.40× | 0.67× |
+| `fix-css-anim-font-size-em-t0` | animation | 0.12 / 0.20 | 0.12 / 0.17 | 0.20 / 0.25 | 0.25 / 0.40 | 0.29 / 0.45 | 0.47× | 0.60× | 0.20 / 0.22 | 0.19 / 0.25 | 0.30 / 0.35 | 0.47 / 0.53 | 0.57 / 0.69 | 0.41× | 0.66× |
+| `fix-css-anim-font-size-em-t500` | animation | 0.12 / 0.17 | 0.12 / 0.22 | 0.20 / 0.26 | 0.25 / 0.39 | 0.30 / 0.42 | 0.48× | 0.59× | 0.21 / 0.33 | 0.20 / 0.28 | 0.31 / 0.38 | 0.51 / 0.66 | 0.61 / 0.78 | 0.39× | 0.68× |
+| `fix-text-overflow-string` | text-overflow | 0.38 / 0.47 | 0.36 / 0.50 | 0.56 / 0.83 | 0.91 / 1.04 | 1.17 / 1.53 | 0.39× | 0.68× | 0.68 / 0.73 | 0.64 / 0.79 | 0.96 / 0.99 | 1.46 / 1.58 | 2.12 / 2.31 | 0.44× | 0.70× |
+| `fix-text-overflow-string-fallback` | text-overflow | 0.28 / 0.34 | 0.28 / 0.35 | 0.41 / 0.50 | 0.75 / 0.95 | 0.92 / 1.18 | 0.37× | 0.69× | 0.65 / 0.86 | 0.65 / 0.78 | 0.90 / 1.01 | 1.32 / 1.50 | 1.86 / 2.11 | 0.49× | 0.73× |
+| `fix-text-overflow-string-rtl` | text-overflow | 0.26 / 0.31 | 0.24 / 0.33 | 0.39 / 0.44 | 0.67 / 0.79 | 0.87 / 0.97 | 0.36× | 0.67× | 0.50 / 0.58 | 0.48 / 0.62 | 0.69 / 0.81 | 1.09 / 1.29 | 1.60 / 1.93 | 0.44× | 0.73× |
+| `fix-text-line-clamp-marker` | text-overflow | 0.37 / 0.42 | 0.37 / 0.48 | 0.56 / 0.73 | 0.89 / 1.06 | 1.17 / 1.45 | 0.41× | 0.66× | 0.74 / 0.79 | 0.71 / 0.88 | 1.07 / 1.31 | 1.51 / 1.98 | 2.39 / 2.60 | 0.47× | 0.69× |
+| `fix-text-paint-order` | text-stroke | 0.77 / 0.96 | 0.80 / 1.20 | 1.32 / 1.75 | 0.67 / 1.07 | 0.92 / 1.26 | 1.20× | 0.58× | 1.40 / 1.56 | 1.39 / 1.55 | 2.14 / 2.35 | 1.39 / 1.51 | 2.48 / 2.66 | 1.00× | 0.65× |
+| `fix-text-small-caps` | font-variant | 0.26 / 0.36 | 0.25 / 0.50 | 0.41 / 0.55 | 0.65 / 0.85 | 0.83 / 1.02 | 0.38× | 0.62× | 0.80 / 0.86 | 0.78 / 0.97 | 1.12 / 1.23 | 1.36 / 1.44 | 2.14 / 2.24 | 0.57× | 0.71× |
+| `fix-text-all-small-caps` | font-variant | 0.36 / 0.49 | 0.38 / 0.54 | 0.55 / 0.69 | 0.83 / 1.16 | 1.08 / 1.33 | 0.46× | 0.65× | 1.01 / 1.08 | 0.98 / 1.09 | 1.41 / 1.46 | 1.65 / 1.81 | 2.86 / 3.11 | 0.59× | 0.72× |
+| `fix-text-petite-unicase-caps` | font-variant | 0.64 / 0.94 | 0.62 / 1.07 | 0.88 / 1.11 | 1.24 / 2.23 | 1.60 / 2.51 | 0.50× | 0.72× | 1.74 / 1.86 | 1.66 / 1.82 | 2.41 / 2.54 | 2.44 / 2.69 | 4.61 / 4.84 | 0.68× | 0.72× |
+| `fix-text-emoji-zwj` | emoji | 0.13 / 0.17 | 0.13 / 0.22 | 0.20 / 0.24 | 0.48 / 0.64 | 0.65 / 0.80 | 0.27× | 0.66× | 0.98 / 1.19 | 0.94 / 1.07 | 1.43 / 1.75 | 0.81 / 0.97 | 1.07 / 1.20 | 1.17× | 0.68× |
+| `fix-text-emoji-flags-skin` | emoji | 0.12 / 0.18 | 0.12 / 0.23 | 0.19 / 0.28 | 0.41 / 0.59 | 0.51 / 0.77 | 0.29× | 0.64× | 0.24 / 0.30 | 0.22 / 0.34 | 0.33 / 0.41 | 0.67 / 0.81 | 0.88 / 1.19 | 0.32× | 0.72× |
+| `fix-text-emoji-keycap-vs` | emoji | 0.12 / 0.19 | 0.12 / 0.18 | 0.19 / 0.22 | 0.39 / 0.48 | 0.49 / 0.76 | 0.31× | 0.64× | 0.29 / 0.31 | 0.26 / 0.35 | 0.40 / 0.43 | 0.69 / 0.76 | 0.89 / 1.02 | 0.38× | 0.72× |
+| `fix-text-emoji-spacing` | emoji | 0.13 / 0.21 | 0.14 / 0.26 | 0.21 / 0.34 | 0.52 / 0.81 | 0.70 / 0.99 | 0.26× | 0.64× | 1.06 / 1.44 | 1.06 / 1.37 | 1.52 / 1.73 | 0.91 / 1.05 | 1.15 / 1.67 | 1.17× | 0.70× |
+| `fix-text-emoji-wrap` | emoji | 0.12 / 0.20 | 0.13 / 0.21 | 0.19 / 0.26 | 0.48 / 0.65 | 0.64 / 0.85 | 0.26× | 0.64× | 0.43 / 0.61 | 0.41 / 0.53 | 0.62 / 0.71 | 0.74 / 0.99 | 0.98 / 1.19 | 0.55× | 0.70× |
+| `fix-layout-rtl-flex` | rtl | 0.35 / 0.43 | 0.37 / 0.51 | 0.65 / 0.75 | 0.61 / 0.78 | 0.77 / 0.84 | 0.61× | 0.54× | 0.52 / 0.58 | 0.48 / 0.56 | 0.85 / 0.88 | 1.06 / 1.19 | 1.51 / 1.59 | 0.45× | 0.61× |
+| `fix-layout-rtl-flex-wrap-abs` | rtl | 0.32 / 0.41 | 0.31 / 0.42 | 0.58 / 0.68 | 0.55 / 0.69 | 0.71 / 0.83 | 0.56× | 0.54× | 0.49 / 0.52 | 0.46 / 0.54 | 0.80 / 0.93 | 1.02 / 1.10 | 1.47 / 1.54 | 0.45× | 0.62× |
+| `fix-layout-rtl-grid-block` | rtl | 0.34 / 0.45 | 0.32 / 0.53 | 0.61 / 0.72 | 0.64 / 0.88 | 0.82 / 1.13 | 0.50× | 0.56× | 0.59 / 0.68 | 0.53 / 0.72 | 0.90 / 1.13 | 1.21 / 1.30 | 1.66 / 1.80 | 0.44× | 0.66× |
+| `fix-layout-rtl-table` | rtl | 0.72 / 0.79 | 0.69 / 0.95 | 1.21 / 1.33 | 1.67 / 1.90 | 2.28 / 2.56 | 0.41× | 0.59× | 1.13 / 1.21 | 1.09 / 1.26 | 1.77 / 1.82 | 2.33 / 2.39 | 3.60 / 3.71 | 0.47× | 0.64× |
+| `fix-layout-rtl-node-dir` | rtl | 0.06 / 0.11 | 0.07 / 0.15 | 0.10 / 0.16 | 0.17 / 0.31 | 0.18 / 0.29 | 0.45× | 0.60× | 0.11 / 0.13 | 0.11 / 0.14 | 0.16 / 0.18 | 0.30 / 0.38 | 0.35 / 0.43 | 0.38× | 0.71× |
+| `fix-layout-text-indent` | text-indent | 0.55 / 0.63 | 0.53 / 0.65 | 0.85 / 1.00 | 0.91 / 1.04 | 1.27 / 1.47 | 0.58× | 0.65× | 1.28 / 1.37 | 1.24 / 1.57 | 1.84 / 1.89 | 1.67 / 2.10 | 3.08 / 3.49 | 0.74× | 0.70× |
+| `fix-layout-text-indent-keywords` | text-indent | 0.67 / 0.80 | 0.64 / 0.78 | 1.03 / 1.19 | 1.08 / 1.24 | 1.53 / 1.68 | 0.60× | 0.65× | 1.44 / 1.48 | 1.40 / 1.49 | 2.05 / 2.09 | 1.97 / 2.03 | 3.34 / 3.51 | 0.71× | 0.70× |
+| `fix-layout-text-indent-sizing` | text-indent | 0.48 / 0.62 | 0.45 / 0.72 | 0.76 / 1.04 | 0.95 / 1.20 | 1.28 / 1.43 | 0.48× | 0.63× | 0.96 / 1.18 | 0.97 / 1.30 | 1.37 / 1.73 | 1.76 / 2.12 | 2.61 / 3.07 | 0.55× | 0.70× |
+| `fix-layout-text-indent-node` | text-indent | 0.29 / 0.39 | 0.29 / 0.51 | 0.43 / 0.56 | 0.63 / 0.89 | 0.78 / 0.99 | 0.45× | 0.67× | 0.56 / 0.63 | 0.53 / 0.61 | 0.79 / 0.89 | 1.07 / 1.17 | 1.44 / 1.69 | 0.50× | 0.71× |
+| `fix-layout-inline-rtl-box` | inline-bidi | 0.53 / 0.60 | 0.52 / 0.70 | 0.83 / 0.99 | 1.00 / 1.17 | 1.33 / 1.59 | 0.52× | 0.64× | 0.92 / 1.03 | 0.88 / 1.16 | 1.35 / 1.62 | 1.57 / 1.73 | 2.32 / 2.57 | 0.56× | 0.69× |
+| `fix-layout-inline-bidi-fragments` | inline-bidi | 0.46 / 0.48 | 0.44 / 0.51 | 0.73 / 0.90 | 0.95 / 1.11 | 1.27 / 1.51 | 0.46× | 0.63× | 0.79 / 0.89 | 0.74 / 0.86 | 1.17 / 1.26 | 1.51 / 1.62 | 2.10 / 2.28 | 0.49× | 0.68× |
+| `fix-layout-inline-bidi-wrap` | inline-bidi | 0.52 / 0.60 | 0.49 / 0.58 | 0.82 / 0.89 | 1.05 / 1.24 | 1.42 / 1.57 | 0.47× | 0.63× | 0.97 / 1.10 | 0.94 / 1.21 | 1.43 / 1.51 | 1.75 / 2.04 | 2.75 / 3.39 | 0.54× | 0.68× |
+| `fix-layout-balance-inline-boxes` | text-wrap-balance | 0.67 / 1.01 | 0.64 / 1.12 | 1.05 / 1.27 | 1.25 / 1.73 | 1.74 / 2.20 | 0.51× | 0.63× | 1.20 / 1.29 | 1.17 / 1.30 | 1.75 / 1.93 | 1.90 / 2.02 | 3.14 / 3.18 | 0.61× | 0.68× |
+| `fix-layout-balance-atomic` | text-wrap-balance | 0.76 / 0.81 | 0.72 / 0.87 | 1.15 / 1.31 | 1.34 / 1.48 | 1.84 / 2.03 | 0.53× | 0.66× | 1.40 / 1.67 | 1.41 / 1.53 | 2.02 / 2.24 | 2.08 / 2.46 | 3.31 / 3.73 | 0.68× | 0.70× |
+| `fix-layout-balance-floats` | text-wrap-balance | 0.48 / 0.59 | 0.46 / 0.74 | 0.75 / 0.83 | 0.85 / 1.17 | 1.17 / 1.50 | 0.54× | 0.64× | 0.91 / 1.03 | 0.87 / 1.02 | 1.32 / 1.57 | 1.45 / 1.68 | 2.20 / 2.49 | 0.60× | 0.69× |
+| `fix-layout-block-in-inline` | block-in-inline | 0.35 / 0.39 | 0.34 / 0.43 | 0.54 / 0.66 | 0.74 / 0.97 | 0.97 / 1.23 | 0.47× | 0.64× | 0.60 / 0.79 | 0.56 / 0.76 | 0.87 / 1.02 | 1.19 / 1.45 | 1.69 / 1.83 | 0.47× | 0.69× |
+| `fix-layout-block-in-inline-nested` | block-in-inline | 0.52 / 0.69 | 0.51 / 0.66 | 0.82 / 0.88 | 1.07 / 1.36 | 1.44 / 1.81 | 0.47× | 0.64× | 1.01 / 1.40 | 0.93 / 1.37 | 1.45 / 1.68 | 1.84 / 1.99 | 2.80 / 3.04 | 0.51× | 0.69× |
+| `fix-layout-block-in-inline-align` | block-in-inline | 0.40 / 0.44 | 0.37 / 0.54 | 0.64 / 0.88 | 0.91 / 1.18 | 1.21 / 1.42 | 0.41× | 0.62× | 0.72 / 0.81 | 0.68 / 0.96 | 1.07 / 1.19 | 1.50 / 1.78 | 2.29 / 2.51 | 0.45× | 0.67× |
+| `fix-layout-block-in-inline-node` | block-in-inline | 0.17 / 0.26 | 0.16 / 0.28 | 0.26 / 0.37 | 0.44 / 0.68 | 0.54 / 0.77 | 0.36× | 0.67× | 0.33 / 0.42 | 0.30 / 0.43 | 0.46 / 0.53 | 0.75 / 0.87 | 0.93 / 1.07 | 0.40× | 0.72× |
+| `fix-layout-float-paint-text` | float-paint-order | 0.31 / 0.39 | 0.32 / 0.47 | 0.48 / 0.66 | 0.62 / 0.82 | 0.78 / 1.02 | 0.51× | 0.64× | 0.62 / 0.68 | 0.59 / 0.71 | 0.88 / 0.95 | 1.06 / 1.14 | 1.36 / 1.46 | 0.55× | 0.70× |
+| `fix-layout-float-paint-layers` | float-paint-order | 0.40 / 0.49 | 0.38 / 0.51 | 0.65 / 0.78 | 0.81 / 1.00 | 1.12 / 1.25 | 0.47× | 0.62× | 0.70 / 0.85 | 0.67 / 0.80 | 1.05 / 1.20 | 1.30 / 1.45 | 1.86 / 2.12 | 0.51× | 0.67× |
+| `fix-layout-float-paint-nested` | float-paint-order | 0.37 / 0.45 | 0.36 / 0.46 | 0.58 / 0.68 | 0.75 / 1.01 | 0.99 / 1.26 | 0.48× | 0.63× | 0.67 / 0.82 | 0.63 / 0.86 | 0.96 / 1.08 | 1.22 / 1.55 | 1.72 / 1.89 | 0.52× | 0.69× |
+| `fix-layout-inline-relative` | inline-relative | 0.47 / 0.55 | 0.46 / 0.55 | 0.71 / 0.81 | 1.00 / 1.13 | 1.26 / 1.45 | 0.47× | 0.66× | 0.84 / 0.92 | 0.82 / 0.98 | 1.21 / 1.27 | 1.53 / 1.68 | 2.01 / 2.43 | 0.53× | 0.70× |
 
 median / p95 ms từng fixture (median qua các lượt của median và p95 mỗi lượt). Tỉ lệ: bm-native async / takumi-native async, bm-native sync / bm-wasm sync.
 <!-- /native-bench:per-fixture -->

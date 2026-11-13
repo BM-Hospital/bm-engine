@@ -24,31 +24,30 @@ trong [hướng dẫn PDF](pdf/index.md) và tài liệu stress 1, 10, 100, 500 
 nhiều lượt; khởi động lạnh, bộ nhớ, event loop, theo số trang và thông lượng: mỗi điểm chạy trong một tiến trình mới.
 
 <!-- pdf-bench:summary -->
-- **Thời gian render, bm-native so với takumi-pdf:** sync 0,30× [0,31× / 0,30× / 0,31×] (nhanh hơn ở 112/112, 0,12×–0,97×); async 0,32× [0,32× / 0,31× / 0,32×] (nhanh hơn ở 112/112, 0,12×–0,94×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
-- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,49× [0,50× / 0,49× / 0,49×] (nhanh hơn ở 107/112, 0,20×–1,36×). **bm-native vs bm-wasm (sync):** 0,62× [0,61× / 0,61× / 0,62×] (nhanh hơn ở 112/112, 0,38×–0,77×).
-- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 284 / 206 / 28 / lỗi; bm-wasm 108 / 89 / 14 / lỗi; takumi-pdf 29 / 46 / 75 / 83.
-- **Trùng byte:** bm-native == bm-wasm 113/114 tài liệu, cùng lỗi ở cả hai: 1.
-- **Bộ kiểm tra:** bm-native 104/113 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 101/113.
-- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 79, equivalent 30, different 3, close 1 (113 tài liệu, pdfium + mupdf).
-- **Nhiễu:** geomean tuyệt đối lệch giữa các lượt bm-native:sync 10,1 %, bm-native:async 10,2 %, bm-wasm:sync 10,2 %, bm-wasm:async 11,6 %, takumi-pdf:async 12,9 % ⚠; hãy đọc tỉ lệ (đo xen kẽ).
+- **Thời gian render, bm-native so với takumi-pdf:** sync 0,33× [0,33× / 0,34× / 0,34×] (nhanh hơn ở 112/112, 0,14×–0,91×); async 0,33× [0,33× / 0,33× / 0,33×] (nhanh hơn ở 112/112, 0,13×–0,92×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
+- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,54× [0,54× / 0,54× / 0,54×] (nhanh hơn ở 107/112, 0,23×–1,34×). **bm-native vs bm-wasm (sync):** 0,62× [0,62× / 0,63× / 0,62×] (nhanh hơn ở 112/112, 0,43×–0,75×).
+- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
+- **Trùng byte:** bm-native == bm-wasm 114/114 tài liệu.
+- **Bộ kiểm tra:** bm-native 105/114 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 114/114.
+- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 86, equivalent 27, different 1 (114 tài liệu, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 <!-- pdf-bench:speed -->
 | Biến thể | geomean ms | từng lượt | độ lệch |
 |:--|--:|--:|--:|
-| bm-native:sync | 1,08 | 1,05 / 1,16 / 1,15 | 10,1 % ⚠ |
-| bm-native:async | 1,13 | 1,09 / 1,20 / 1,21 | 10,2 % ⚠ |
-| bm-wasm:sync | 1,75 | 1,71 / 1,90 / 1,85 | 10,2 % ⚠ |
-| bm-wasm:async | 1,66 | 1,62 / 1,82 / 1,75 | 11,6 % ⚠ |
-| takumi-pdf:async | 3,56 | 3,40 / 3,89 / 3,79 | 12,9 % ⚠ |
+| bm-native:sync | 1,04 | 1,05 / 1,05 / 1,04 | 0,7 % |
+| bm-native:async | 1,03 | 1,04 / 1,05 / 1,04 | 0,3 % |
+| bm-wasm:sync | 1,67 | 1,68 / 1,68 / 1,68 | 0,4 % |
+| bm-wasm:async | 1,56 | 1,56 / 1,56 / 1,56 | 0,4 % |
+| takumi-pdf:async | 3,11 | 3,13 / 3,14 / 3,12 | 0,5 % |
 
 | Tỉ lệ (thời gian) | geomean | từng lượt | nhanh hơn | khoảng | độ lệch |
 |:--|--:|--:|--:|--:|--:|
-| bm-native:sync / takumi-pdf:async | 0,30× | 0,31× / 0,30× / 0,31× | 112/112 | 0,12×–0,97× | 3,0 % |
-| bm-native:async / takumi-pdf:async | 0,32× | 0,32× / 0,31× / 0,32× | 112/112 | 0,12×–0,94× | 4,1 % |
-| bm-wasm:sync / takumi-pdf:async | 0,49× | 0,50× / 0,49× / 0,49× | 107/112 | 0,20×–1,36× | 3,1 % |
-| bm-native:sync / bm-wasm:sync | 0,62× | 0,61× / 0,61× / 0,62× | 112/112 | 0,38×–0,77× | 1,8 % |
-| bm-native:async / bm-native:sync | 1,05× | 1,04× / 1,03× / 1,05× | 25/112 | 0,88×–1,39× | 2,1 % |
+| bm-native:sync / takumi-pdf:async | 0,33× | 0,33× / 0,34× / 0,34× | 112/112 | 0,14×–0,91× | 0,3 % |
+| bm-native:async / takumi-pdf:async | 0,33× | 0,33× / 0,33× / 0,33× | 112/112 | 0,13×–0,92× | 0,3 % |
+| bm-wasm:sync / takumi-pdf:async | 0,54× | 0,54× / 0,54× / 0,54× | 107/112 | 0,23×–1,34× | 0,2 % |
+| bm-native:sync / bm-wasm:sync | 0,62× | 0,62× / 0,63× / 0,62× | 112/112 | 0,43×–0,75× | 0,6 % |
+| bm-native:async / bm-native:sync | 0,99× | 1,00× / 0,99× / 1,00× | 68/112 | 0,91×–1,09× | 0,4 % |
 
 Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trước, đầu ra giữ trong bộ nhớ), 112 tài liệu, 3 lượt; các biến thể chạy xen kẽ, đổi thứ tự mỗi vòng.
 <!-- /pdf-bench:speed -->
@@ -56,32 +55,32 @@ Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trướ
 <!-- pdf-bench:scale -->
 | Trang | bm-native ms | trang/s | kích thước | RSS đỉnh | bm-wasm ms | trang/s | kích thước | RSS đỉnh | takumi-pdf ms | trang/s | kích thước | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 1 | 3,50 ms | 283,7 | 27 KiB | 60 MiB | 9,30 ms | 107,9 | 27 KiB | 85 MiB | 34,9 ms | 28,6 | 27 KiB | 111 MiB |
-| 10 | 48,5 ms | 206,3 | 99 KiB | 75 MiB | 112 ms | 89,0 | 99 KiB | 89 MiB | 219 ms | 45,6 | 58 KiB | 119 MiB |
-| 100 | 3.553 ms | 28,1 | 4.530 KiB | 571 MiB | 7.147 ms | 14,0 | 4.530 KiB | 669 MiB | 1.341 ms | 74,6 | 426 KiB | 135 MiB |
-| 500 | lỗi: bm-engine: out of memory |  |  | 2.433 MiB | lỗi: bm-engine: out of memory |  |  | 2.098 MiB | 6.015 ms | 83,1 | 2.186 KiB | 191 MiB |
+| 1 | 2,40 ms | 408,8 | 27 KiB | 53 MiB | 7,80 ms | 128,0 | 27 KiB | 81 MiB | 17,5 ms | 57,3 | 27 KiB | 106 MiB |
+| 10 | 17,9 ms | 558,9 | 58 KiB | 60 MiB | 32,7 ms | 306,0 | 58 KiB | 81 MiB | 99,8 ms | 100,2 | 58 KiB | 115 MiB |
+| 100 | 181 ms | 553,1 | 369 KiB | 114 MiB | 292 ms | 342,2 | 369 KiB | 126 MiB | 854 ms | 117,2 | 426 KiB | 127 MiB |
+| 500 | 993 ms | 503,6 | 1.772 KiB | 317 MiB | 1.693 ms | 295,3 | 1.772 KiB | 286 MiB | 4.534 ms | 110,3 | 2.186 KiB | 190 MiB |
 
-Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 7,33×, bm-wasm 6,36×, takumi-pdf 0,61×.
+Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 1,01×, bm-wasm 0,89×, takumi-pdf 0,86×.
 <!-- /pdf-bench:scale -->
 
 <!-- pdf-bench:equiv -->
 | Engine | PDF | sạch | lỗi | cảnh báo | bm-only | chung với takumi-pdf | veraPDF |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| bm-native | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
-| bm-wasm | 113 | 104 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-native | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
 | takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
 
-Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 101/113 tài liệu.
+Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 114/114 tài liệu.
 
 | Bộ raster | identical | equivalent | close | different |
 |:--|--:|--:|--:|--:|
-| pdfium | 73 | 35 | 2 | 3 |
-| mupdf | 69 | 39 | 2 | 3 |
-| tốt nhất trong các bộ raster | 79 | 30 | 1 | 3 |
+| pdfium | 78 | 35 | 0 | 1 |
+| mupdf | 78 | 34 | 1 | 1 |
+| tốt nhất trong các bộ raster | 86 | 27 | 0 | 1 |
 
-bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 113 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 114 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
 
-bm-native == bm-wasm từng byte: 113/114 (+1 cùng lỗi ở cả hai). Lỗi render: stress/500p bm-native: bm-engine: out of memory; stress/500p bm-wasm: bm-engine: out of memory.
+bm-native == bm-wasm từng byte: 114/114. Lỗi render: không có.
 <!-- /pdf-bench:equiv -->
 
 ## Addon native cho Node.js (giai đoạn 4)
@@ -94,30 +93,30 @@ nhóm, từng fixture, phương pháp, ghi nhận nhiễu) nằm trong [docs/BEN
 Phần còn lại của trang này là báo cáo bản wasm (bản build cuối; các giai đoạn trước được giữ làm lịch sử).
 
 <!-- native-bench:highlights -->
-- **bm-native so với bm-wasm (sync):** raw bằng 0.60× thời gian của wasm [0.60× / 0.59× / 0.60×] (nhanh hơn ở 250/250 fixture), PNG 0.68× [0.68× / 0.68× / 0.68×] (nhanh hơn ở 250/250).
-- **bm-native so với takumi-native, cùng async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm nhanh hơn ở 244/250, từng fixture 0.13×–1.21×), PNG 0.56× [0.56× / 0.58× / 0.56×] (bm nhanh hơn ở 227/250, từng fixture 0.23×–2.28×). Với API sync của bm: raw 0.50×, PNG 0.56×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
-- **Thời gian CPU mỗi ảnh (cùng async):** PNG 2.32 ms bm-native so với 3.81 ms takumi-native (1.47 so với 1.78 lõi bận trong một lần render); raw 1.42 so với 1.71 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.91 lõi với PNG).
-- **Hai bản build của chính takumi:** takumi-native tốn 0.75× thời gian của takumi-wasm với raw và 0.56× với PNG.
-- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 1810/1810 phép so trên 250 fixture (637 MB; 0 khác biệt).
-- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 33.4 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 3.70 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±16.7 %.
+- **bm-native so với bm-wasm (sync):** raw bằng 0.61× thời gian của wasm [0.62× / 0.61× / 0.61×] (nhanh hơn ở 250/250 fixture), PNG 0.67× [0.68× / 0.68× / 0.67×] (nhanh hơn ở 250/250).
+- **bm-native so với takumi-native, cùng async:** raw 0.55× [0.55× / 0.55× / 0.55×] (bm nhanh hơn ở 244/250, từng fixture 0.12×–1.20×), PNG 0.54× [0.55× / 0.55× / 0.54×] (bm nhanh hơn ở 227/250, từng fixture 0.23×–2.54×). Với API sync của bm: raw 0.53×, PNG 0.57×. Dưới 1× = bm-native tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ đó ở từng lượt.
+- **Thời gian CPU mỗi ảnh (cùng async):** PNG 1.98 ms bm-native so với 3.20 ms takumi-native (1.73 so với 1.98 lõi bận trong một lần render); raw 1.30 so với 1.41 ms. takumi-native chạy một phần của một lần render (các đoạn deflate PNG, blur, WebP, khung animation) trên thread pool rayon riêng; bm render một ảnh trên một thread (bm-native sync: 0.87 lõi với PNG).
+- **Hai bản build của chính takumi:** takumi-native tốn 0.72× thời gian của takumi-wasm với raw và 0.55× với PNG.
+- **Trùng byte:** bm-native và bm-wasm cho cùng byte ở 2626/2626 phép so trên 250 fixture (802 MB; 0 khác biệt).
+- **Nhiễu:** geomean tuyệt đối raw / PNG lệch tới 4.70 % giữa các lượt (tải của tiến trình khác thay đổi trong lúc chạy), còn tỉ lệ giữa các engine, đo xen kẽ trong từng lượt, lệch nhiều nhất 1.50 %. Hãy đọc tỉ lệ; coi số ms tuyệt đối là ±2.35 %.
 <!-- /native-bench:highlights -->
 
 <!-- native-bench:summary -->
 | Chỉ số | bm-native | bm-wasm | takumi-native | takumi-wasm |
 |:--|--:|--:|--:|--:|
-| raw RGBA, geomean ms — API sync | 0.51 ±15.5 % ⚠ | 0.85 ±16.1 % ⚠ | không có API sync | — |
-| raw RGBA, geomean ms — API async | 0.56 ±15.7 % ⚠ | — | 1.02 ±15.3 % ⚠ | 1.36 ±15.8 % ⚠ |
-| PNG, geomean ms — API sync | 1.05 ±14.6 % ⚠ | 1.56 ±15.0 % ⚠ | không có API sync | — |
-| PNG, geomean ms — API async | 1.06 ±16.7 % ⚠ | — | 1.89 ±14.5 % ⚠ | 3.36 ±15.8 % ⚠ |
-| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 1.42 (0.91 lõi) | 1.78 (0.77 lõi) | 3.81 (1.78 lõi) | 4.08 (0.86 lõi) |
+| raw RGBA, geomean ms — API sync | 0.45 ±2.15 % | 0.74 ±2.15 % | không có API sync | — |
+| raw RGBA, geomean ms — API async | 0.47 ±2.25 % | — | 0.86 ±2.10 % | 1.19 ±2.35 % |
+| PNG, geomean ms — API sync | 0.95 ±1.95 % | 1.41 ±1.55 % | không có API sync | — |
+| PNG, geomean ms — API async | 0.90 ±2.30 % | — | 1.66 ±1.55 % | 3.03 ±1.65 % |
+| Thời gian CPU mỗi lần render PNG, ms trung bình (số lõi dùng) | 1.00 (0.87 lõi) | 1.30 (0.76 lõi) | 3.20 (1.98 lõi) | 2.84 (0.81 lõi) |
 | Dung lượng PNG, geomean so với takumi | 0.80× | 0.80× | 1.00× | 1.00× |
-| Cold start so với Node rỗng, median / p95 ms | 31.3 / 69.2 | 99.9 / 138 | 50.9 / 97.5 | 238 / 304 |
-| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 94.7 → 96.0 | 132 → 156 | 102 → 139 | 140 → 176 |
-| RSS đỉnh, một PNG 4000×4000, MiB | 143 | 149 | 135 | 151 |
-| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 227 (sync) · 1.50 (async) | 455 (sync) · 473 (async) | 7.30 (async) | 819 (async) |
-| Event loop: như trên, animation 60 khung, ms | 476 (sync) · 1.20 (async) | 969 (sync) · 954 (async) | 21.6 (async) | 2 072 (async) |
-| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 312 (many K=4, UV 4) ⚠ | 233 (pool K=4) ⚠ | 270 (one, UV 8) ⚠ | 137 (pool K=8) ⚠ |
-| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 402 (many K=8, UV 8) ⚠ | 270 (pool K=8) ⚠ | 316 (one, UV 8) ⚠ | 180 (pool K=8) ⚠ |
+| Cold start so với Node rỗng, median / p95 ms | 21.8 / 45.5 | 75.5 / 93.0 | 46.2 / 69.2 | 185 / 249 |
+| RSS sau 1 → 10 lượt cả bộ fixture, MiB | 90.7 → 91.4 | 127 → 150 | 118 → 124 | 138 → 172 |
+| RSS đỉnh, một PNG 4000×4000, MiB | 140 | 146 | 133 | 148 |
+| Event loop: độ trễ lớn nhất của timer 1 ms, render nặng 2400×2400, ms | 211 (sync) · 1.20 (async) | 401 (sync) · 392 (async) | 13.4 (async) | 746 (async) |
+| Event loop: như trên, animation 60 khung, ms | 438 (sync) · 1.10 (async) | 848 (sync) · 873 (async) | 11.5 (async) | 1 848 (async) |
+| Thông lượng, og card PNG, 4 đồng thời, ảnh/s (cấu hình tốt nhất) | 372 (many K=8, UV 4) | 263 (pool K=4) | 298 (many K=2, UV 8) | 173 (pool K=8) |
+| Thông lượng, 8 đồng thời, ảnh/s (cấu hình tốt nhất) | 408 (many K=8, UV 8) | 291 (pool K=8) | 336 (one, UV 8) | 202 (pool K=8) |
 
 Geomean trên 250 fixture mà cả bốn engine đều render được; ± = nửa khoảng chênh giữa geomean của 3 lượt so với median của chúng; ⚠ = chênh quá 10 %. Cold start: median / p95 của 30 tiến trình mới trừ median của Node rỗng. Event loop, bộ nhớ và thông lượng là một lần đo; ở các dòng thông lượng ⚠ = tiến trình khác dùng trung bình hơn một lõi trong lúc đo.
 <!-- /native-bench:summary -->
@@ -150,10 +149,10 @@ Geomean trên 250 fixture mà cả bốn engine đều render được; ± = n�
 
 | Bản build | Thô | gzip -9 | brotli | so với takumi (4 234.9 KiB) |
 |:--|--:|--:|--:|:--|
-| `core` | 487.6 KiB | 228.4 KiB | 194.3 KiB | nhỏ hơn 8.7× |
-| `standard` | 934.4 KiB | 463.7 KiB | 398.0 KiB | nhỏ hơn 4.5× |
-| `full` | 1 141.5 KiB | 559.0 KiB | 469.8 KiB | nhỏ hơn 3.7× |
-| Add-on WOFF | 84.2 KiB | 67.7 KiB | 65.5 KiB | — |
+| `core` | 489.6 KiB | 229.5 KiB | 195.3 KiB | nhỏ hơn 8.7× |
+| `standard` | 936.5 KiB | 465.1 KiB | 398.6 KiB | nhỏ hơn 4.5× |
+| `full` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB | nhỏ hơn 3.7× |
+| Add-on WOFF | 84.4 KiB | 67.8 KiB | 65.5 KiB | — |
 | giai đoạn 1 (một bản duy nhất) | 320.9 KiB | 147.1 KiB | 126.5 KiB | nhỏ hơn 13.2× |
 
 Kích thước giai đoạn 2 là 428.5 / 849.6 / 1 070.0 KiB (nhỏ hơn 9.9× / 5.0× / 4.0×) và giai đoạn 3 là 454.5 / 877.5 / 1 099.8 KiB; công việc định dạng inline thêm khoảng 26–30 KB cho mỗi profile, các bản sửa sau đó thêm khoảng 33–56 KB nữa.

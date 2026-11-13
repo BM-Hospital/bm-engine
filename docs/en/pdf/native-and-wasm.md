@@ -56,8 +56,8 @@ from one run to the next, which makes PDFs easy to cache and to compare in tests
 
 ## The `pdf` profile and its size
 
-`bm_engine.pdf.wasm` is `full` plus the PDF writer: 1 555.8 KiB raw, 761.6 KiB with gzip -9 and
-625.1 KiB with brotli -11, about 0.4 MB more than `bm_engine.wasm` (`full`: 1 141.5 / 559.0 / 469.8 KiB). The PDF code is compiled only into this binary and into the native addon, and so are the paged
+`bm_engine.pdf.wasm` is `full` plus the PDF writer: 1 675.2 KiB raw, 810.0 KiB with gzip -9 and
+660.2 KiB with brotli -11, about 0.5 MB more than `bm_engine.wasm` (`full`: 1 143.6 / 560.0 / 470.8 KiB). The PDF code is compiled only into this binary and into the native addon, and so are the paged
 layout and the CSS paged-media properties it needs. (The native addon is the `full` feature set plus PDF
 output; `bm-engine` itself never exposes the PDF writer.) [Profiles and size](../profiles-and-size.md) has the
 exact numbers for every binary. Build it yourself with `npm run build:pdf`
@@ -102,34 +102,33 @@ are compared byte for byte on every corpus document, and every PDF goes through 
 (`node bench/pdf/validate.mjs`) and a visual comparison with takumi-pdf (`node bench/pdf/visual.mjs`).
 
 <!-- pdf-bench:summary -->
-- **Render time, bm-native vs takumi-pdf:** sync 0.30× [0.31× / 0.30× / 0.31×] (faster on 112/112, 0.12×–0.97×); async 0.32× [0.32× / 0.31× / 0.32×] (faster on 112/112, 0.12×–0.94×). Below 1× = bm takes less time; in brackets the same ratio per pass.
-- **bm-wasm vs takumi-pdf (both wasm):** 0.49× [0.50× / 0.49× / 0.49×] (faster on 107/112, 0.20×–1.36×). **bm-native vs bm-wasm (sync):** 0.62× [0.61× / 0.61× / 0.62×] (faster on 112/112, 0.38×–0.77×).
-- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 284 / 206 / 28 / error; bm-wasm 108 / 89 / 14 / error; takumi-pdf 29 / 46 / 75 / 83.
-- **Identity:** bm-native == bm-wasm 113/114 documents, same error on both: 1.
-- **Validators:** bm-native 104/113 PDFs without any error or warning (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 101/113.
-- **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 79, equivalent 30, different 3, close 1 (113 documents, pdfium + mupdf).
-- **Noise:** absolute geomeans moved between passes by bm-native:sync 10.1 %, bm-native:async 10.2 %, bm-wasm:sync 10.2 %, bm-wasm:async 11.6 %, takumi-pdf:async 12.9 % ⚠; read the ratios (measured interleaved).
+- **Render time, bm-native vs takumi-pdf:** sync 0.33× [0.33× / 0.34× / 0.34×] (faster on 112/112, 0.14×–0.91×); async 0.33× [0.33× / 0.33× / 0.33×] (faster on 112/112, 0.13×–0.92×). Below 1× = bm takes less time; in brackets the same ratio per pass.
+- **bm-wasm vs takumi-pdf (both wasm):** 0.54× [0.54× / 0.54× / 0.54×] (faster on 107/112, 0.23×–1.34×). **bm-native vs bm-wasm (sync):** 0.62× [0.62× / 0.63× / 0.62×] (faster on 112/112, 0.43×–0.75×).
+- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
+- **Identity:** bm-native == bm-wasm 114/114 documents.
+- **Validators:** bm-native 105/114 PDFs without any error or warning (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 114/114.
+- **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 86, equivalent 27, different 1 (114 documents, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 <!-- pdf-bench:cold -->
 | Engine | wall median ms | p95 | over empty Node | import | font | first PDF | peak RSS |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| empty Node.js | 55.9 | 88.6 | — | — | — | — | 45 MiB |
-| bm-native | 67.7 | 106 | 11.8 | 6.80 | 0.36 | 3.10 | 50 MiB |
-| bm-wasm | 162 | 209 | 106 | 9.90 | 2.56 | 58.7 | 74 MiB |
-| takumi-pdf | 268 | 296 | 213 | 42.4 | 3.49 | 128 | 76 MiB |
+| empty Node.js | 43.7 | 50.8 | — | — | — | — | 43 MiB |
+| bm-native | 52.7 | 57.1 | 8.90 | 4.90 | 0.34 | 3.20 | 48 MiB |
+| bm-wasm | 136 | 145 | 92.3 | 8.50 | 2.40 | 54.6 | 73 MiB |
+| takumi-pdf | 213 | 233 | 169 | 35.8 | 3.12 | 110 | 75 MiB |
 
-30 runs per engine, interleaved: spawn Node -> import -> register Inter Regular -> one-page A4 invoice -> exit. CPU busy meanwhile 52 %.
+30 runs per engine, interleaved: spawn Node -> import -> register Inter Regular -> one-page A4 invoice -> exit. CPU busy meanwhile 24.3 %.
 <!-- /pdf-bench:cold -->
 
 <!-- pdf-bench:eventloop -->
 | Engine | API | render ms | max timer delay | p99 | ticks |
 |:--|--:|--:|--:|--:|--:|
-| bm-native | sync | 3,899 | 3,899 ms | 3,899 ms | 1 |
-| bm-native | async | 3,765 | 15.9 ms | 1.40 ms | 3681 |
-| bm-wasm | sync | 10,694 | 10,694 ms | 10,694 ms | 1 |
-| bm-wasm | async | 10,366 | 10,366 ms | 10,366 ms | 1 |
-| takumi-pdf | async | 1,511 | 1,511 ms | 1,511 ms | 1 |
+| bm-native | sync | 180 | 180 ms | 180 ms | 1 |
+| bm-native | async | 197 | 1.50 ms | 1.10 ms | 198 |
+| bm-wasm | sync | 373 | 374 ms | 374 ms | 1 |
+| bm-wasm | async | 376 | 376 ms | 376 ms | 1 |
+| takumi-pdf | async | 1,135 | 1,135 ms | 1,135 ms | 1 |
 
 One 100-page render while a 1 ms interval timer runs; a delay close to the render time means the event loop was blocked for the whole render.
 <!-- /pdf-bench:eventloop -->
@@ -137,25 +136,25 @@ One 100-page render while a 1 ms interval timer runs; a delay close to the rende
 <!-- pdf-bench:throughput -->
 | Configuration | N=1 | N=2 | N=4 | N=8 |
 |:--|--:|--:|--:|--:|
-| bm-native seq uv=4 | 464 |  |  |  |
-| bm-wasm seq | 277 |  |  |  |
-| takumi-pdf seq | 129 |  |  |  |
-| bm-native many k=1 uv=4 | 521 | 529 | 473 | 513 |
-| bm-native many k=2 uv=4 | 503 | 976 | 925 | 738 |
-| bm-native many k=4 uv=4 | 347 | 722 | 1,299 | 1,370 |
-| bm-native many k=8 uv=4 | 430 | 827 | 1,380 | 1,495 |
-| bm-native many k=1 uv=8 | 477 | 492 | 460 | 492 |
-| bm-native many k=2 uv=8 | 485 | 798 | 941 | 914 |
-| bm-native many k=4 uv=8 | 474 | 888 | 1,523 | 1,639 |
-| bm-native many k=8 uv=8 | 513 | 951 | 1,684 | 2,295 |
-| bm-wasm pool k=1 | 308 | 314 | 314 | 321 |
-| bm-wasm pool k=2 | 297 | 620 | 638 | 630 |
-| bm-wasm pool k=4 | 308 | 618 | 981 | 981 |
-| bm-wasm pool k=8 | 321 | 576 | 719 | 1,154 |
-| takumi-pdf pool k=1 | 107 | 129 | 127 | 139 |
-| takumi-pdf pool k=2 | 122 | 293 | 283 | 297 |
-| takumi-pdf pool k=4 | 123 | 282 | 404 | 497 |
-| takumi-pdf pool k=8 | 129 | 288 | 510 | 635 |
+| bm-native seq uv=4 | 502 |  |  |  |
+| bm-wasm seq | 315 |  |  |  |
+| takumi-pdf seq | 146 |  |  |  |
+| bm-native many k=1 uv=4 | 502 | 525 | 529 | 519 |
+| bm-native many k=2 uv=4 | 501 | 1,031 | 1,032 | 1,016 |
+| bm-native many k=4 uv=4 | 493 | 1,009 | 1,943 | 1,888 |
+| bm-native many k=8 uv=4 | 510 | 1,022 | 1,914 | 1,884 |
+| bm-native many k=1 uv=8 | 486 | 522 | 531 | 527 |
+| bm-native many k=2 uv=8 | 495 | 1,025 | 1,028 | 1,002 |
+| bm-native many k=4 uv=8 | 499 | 1,021 | 1,858 | 1,980 |
+| bm-native many k=8 uv=8 | 514 | 1,040 | 1,930 | 2,373 |
+| bm-wasm pool k=1 | 303 | 322 | 321 | 325 |
+| bm-wasm pool k=2 | 304 | 626 | 631 | 629 |
+| bm-wasm pool k=4 | 293 | 625 | 1,171 | 1,199 |
+| bm-wasm pool k=8 | 306 | 624 | 1,182 | 1,416 |
+| takumi-pdf pool k=1 | 143 | 167 | 175 | 178 |
+| takumi-pdf pool k=2 | 145 | 326 | 344 | 350 |
+| takumi-pdf pool k=4 | 146 | 308 | 637 | 655 |
+| takumi-pdf pool k=8 | 146 | 313 | 642 | 739 |
 
 PDFs per second, docs/invoice (one-page A4 invoice, HTML + footer), closed loop: N clients each with one request in flight; 2000 ms per point, 8 logical CPUs. seq = one client on the sync API (takumi-pdf: awaited render), many = N clients on K bm-native renderers (async API on the libuv pool, UV_THREADPOOL_SIZE = uv), pool = worker_threads pool of K workers each with its own engine.
 <!-- /pdf-bench:throughput -->

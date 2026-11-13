@@ -1,8 +1,8 @@
 {
   "package": "bm-engine",
   "version": "0.1.0",
-  "date": "2026-11-13T03:58:30.527Z",
-  "git": "c0bf6e5-dirty",
+  "date": "2026-11-13T04:17:29.681Z",
+  "git": "1cc4dd4-dirty",
   "zig": "0.17.1",
   "files": {
     "core": {

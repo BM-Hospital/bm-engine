@@ -77,7 +77,7 @@ Hàm `render(jsx, options)` cấp cao nhất của `takumi-js` tương ứng v�
 | Hạng mục | takumi 2.20 | bm-engine 0.1.0 |
 |:--|:--|:--|
 | Package / định dạng module | `@takumi-rs/wasm` (ESM + CJS), `@takumi-rs/core` (native N-API) | `bm-engine`, chỉ ESM (CommonJS qua `require(esm)`), chỉ WebAssembly — không có binding native |
-| Binary | một file wasm 4.2 MB | ba profile (487.6 KiB – 1.11 MiB), một profile `pdf` (khoảng 1.5 MB) + add-on WOFF; `features` cho biết bản đang nạp |
+| Binary | một file wasm 4.2 MB | ba profile (489.6 KiB – 1.12 MiB), một profile `pdf` (khoảng 1.6 MB) + add-on WOFF; `features` cho biết bản đang nạp |
 | Import của wasm | glue wasm-bindgen | không có |
 | API đồng bộ | các phương thức của wrapper đều async | mọi phương thức có bản `*Sync`; bản async resolve ngay |
 | `registerFont` | trả về `Promise<RegisteredFamily[]>` (wrapper) | trả về `RegisteredFamily[]` đồng bộ với byte / `{ data: bytes }`; chỉ trả `Promise` với URL và dữ liệu lười |

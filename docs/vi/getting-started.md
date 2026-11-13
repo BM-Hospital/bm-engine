@@ -226,7 +226,7 @@ export default {
 Những gì đã kiểm thử: `initSync(new WebAssembly.Module(bytes))` đã chạy trong Node, và bài test package
 resolve các điểm vào với `node --conditions=workerd` rồi khởi tạo chúng từ một `WebAssembly.Module`;
 đoạn mã trên **chưa** được chạy dưới wrangler / workerd. Kích thước nén của từng profile (gzip -9: core
-200 KiB, standard 463.7 KiB, full 559.0 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
+200 KiB, standard 465.1 KiB, full 560.0 KiB) là con số tính vào giới hạn kích thước script Workers theo gói
 của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`.
 
 - **Bun**: điều kiện `node` được áp dụng, nên `import { Renderer } from "bm-engine"` thử addon native và
@@ -237,9 +237,9 @@ của bạn. Add-on WOFF dùng tương tự: `import woff from "bm-engine/woff.w
 
 | Profile | wasm thô / brotli | Chọn khi |
 |:--|:--|:--|
-| `core` | 487.6 / 194.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
-| `standard` | 934.4 / 398.0 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
-| `full` | 1 141.5 / 469.8 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
+| `core` | 489.6 / 195.3 KiB | Đầu vào là cây node với `style` inline, font TTF tĩnh và ảnh PNG/JPEG (ảnh OG điển hình). |
+| `standard` | 936.5 / 398.6 KiB | Bạn cần stylesheet (`css`), Tailwind (`tw`), đầu vào HTML, ảnh SVG, WOFF2, font biến thiên hoặc CFF, hiệu ứng (clip-path, mask, blend mode, backdrop-filter), màu hiện đại, bảng hoặc float. |
+| `full` | 1 143.6 / 470.8 KiB | Bạn cần thêm bidi / chữ phức tạp (Ả Rập, Hebrew, Ấn Độ, Thái), emoji màu, CSS animation / `renderAnimation`, `renderSvg`, ảnh vào WebP lossy hoặc ảnh động, hoặc xuất ICO. |
 
 Chi tiết, kể cả việc profile nhỏ xử lý ra sao với đầu vào nó không hỗ trợ, nằm ở
 [Profile và kích thước](profiles-and-size.md). Lúc chạy, `features` cho biết binary đang nạp có gì:

@@ -16,7 +16,7 @@ Tài liệu: [docs/vi](docs/vi/README.md) (trên GitHub: `https://github.com/OWN
 Đo so với `@takumi-rs/wasm` 2.20.0 trên 250 fixture dùng chung (Node 26, i3-10100; chi tiết ở
 [docs/vi/benchmark.md](docs/vi/benchmark.md)):
 
-- **Nhỏ**: wasm `core` 487.6 KiB, `standard` 934.4 KiB, `full` 1 141.5 KiB (brotli 194 / 398 / 470 KiB),
+- **Nhỏ**: wasm `core` 489.6 KiB, `standard` 936.5 KiB, `full` 1 143.6 KiB (brotli 194 / 398 / 470 KiB),
   so với 4 234.9 KiB của takumi — nhỏ hơn 8.7× / 4.5× / 3.7×. Module **không có import nào** (không
   WASI, không glue wasm-bindgen) và wrapper JS không có dependency.
 - **Đầu ra giống nhau**: 81 fixture trùng từng byte, 169 fixture tương đương (SSIM ≥ 0.99, chỉ khác ở
@@ -121,9 +121,9 @@ khi đã cài (cùng byte, nhanh hơn, async chạy ngoài main thread), nếu k
 
 | Profile | Import | wasm (thô / brotli) | Thêm |
 |:--|:--|--:|:--|
-| `core` | `bm-engine/core` | 487.6 / 194.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
-| `standard` | `bm-engine/standard` | 934.4 / 398.0 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
-| `full` | `bm-engine` (Node), `bm-engine/full` | 1 141.5 / 469.8 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
+| `core` | `bm-engine/core` | 489.6 / 195.3 KiB | cây node + style inline, `var()` / `calc()`, layout block / inline / flex / grid / absolute, font TTF tĩnh với shaping OpenType, mọi kiểu viền, gradient, đổ bóng, filter, transform 2D, ảnh vào PNG / JPEG, xuất PNG / JPEG / WebP / raw |
+| `standard` | `bm-engine/standard` | 936.5 / 398.6 KiB | + stylesheet và selector, Tailwind, đầu vào HTML, ảnh SVG, WOFF / WOFF2, font biến thiên và CFF, clip-path / mask / blend mode / backdrop-filter, oklch / lab / color-mix, bảng, float, ảnh vào WebP / GIF, `text-wrap: balance` |
+| `full` | `bm-engine` (Node), `bm-engine/full` | 1 143.6 / 470.8 KiB | + bidi và chữ phức tạp, emoji màu, CSS animation và `renderAnimation`, `renderSvg`, WebP lossy và ảnh động, xuất ICO |
 | `pdf` | `bm-engine/pdf` | khoảng 1.5 MB thô | `full` + đầu ra PDF: phân trang, header / footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có thẻ, PDF/A. Xem [Đầu ra PDF](docs/vi/pdf/index.md) |
 
 Một add-on 84 KiB (`bm-engine/woff`) giúp `core` đọc được WOFF / WOFF2. `features` cho biết binary đang
