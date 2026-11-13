@@ -1,30 +1,30 @@
 {
   "package": "bm-engine",
   "version": "0.1.0",
-  "date": "2026-11-13T02:08:30.812Z",
-  "git": "5cbb579-dirty",
+  "date": "2026-11-13T03:33:22.853Z",
+  "git": "4069461-dirty",
   "zig": "0.17.1",
   "files": {
     "core": {
       "file": "js/bm_engine.core.wasm",
-      "bytes": 500835,
-      "sha256": "39a52d1f0bdbeb4d7788e229e45930950a0d4db59f037852ca60773cfb77360a",
+      "bytes": 501398,
+      "sha256": "96a43cc819df7da511d4812a3390a5f1ba2a82efc40a58de71e5bb4bba435b02",
       "profile": "core",
       "features": "0x0",
       "custom": false
     },
     "standard": {
       "file": "js/bm_engine.standard.wasm",
-      "bytes": 958447,
-      "sha256": "79f809c5a31f99d5d700d35696937a2447833dd5f2f0e15be763408ede89a9b1",
+      "bytes": 958997,
+      "sha256": "31c3fc01636ad9fe565bd1deb0366b855c0a62f62d3d362abbf7cedf5aa7472a",
       "profile": "standard",
       "features": "0x1fff",
       "custom": false
     },
     "full": {
       "file": "js/bm_engine.wasm",
-      "bytes": 1170550,
-      "sha256": "1261681a6da999b96ffa6f7654d81c86d4e4a8849a1d748ed671c914375cdeab",
+      "bytes": 1171107,
+      "sha256": "a7e1528586ac24e5848af664fbcd8490f1fba814513f537761ea116663b15e32",
       "profile": "full",
       "features": "0x3ffff",
       "custom": false
@@ -36,8 +36,8 @@
     },
     "pdf": {
       "file": "js/bm_engine.pdf.wasm",
-      "bytes": 1703397,
-      "sha256": "4db25ea7def8018fe53a4b4f0994ea985260195f355ab3a037663ca5fc4e91fc",
+      "bytes": 1715324,
+      "sha256": "7c226a3ff68773420d45515d01c657bda0796694e0c8c105393c13e41d47748b",
       "profile": "pdf",
       "features": "0x7ffff",
       "custom": false
