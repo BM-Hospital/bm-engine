@@ -136,6 +136,8 @@ const Queued = struct {
     in_repeat: bool,
     tphase: Emitter.Phase,
     whole: bool,
+    /// [interactive] the place of its links in the page's link order (`interactive.Collector.reserve`)
+    lgroup: u32 = none,
 };
 /// A positioned / stacking box lifted to the end of its stacking context (`liftOf`), with what
 /// the walk was in where it met it.
@@ -380,6 +382,8 @@ pub const Emitter = struct {
             .in_repeat = e.in_repeat,
             .tphase = e.tphase,
             .whole = whole,
+            // [interactive] takumi collects links in tree order: content painted later keeps its place
+            .lgroup = if (e.links) |lk| (if (list == &e.content_q) lk.reserve() else none) else none,
         });
     }
 
@@ -416,7 +420,9 @@ pub const Emitter = struct {
         const saved_float = e.float_now;
         const saved_now = e.queue_now;
         const saved_defer = e.defer_on;
+        const saved_group = if (e.links) |lk| lk.enter(it.lgroup) else none;
         defer {
+            if (e.links) |lk| lk.leave(saved_group);
             e.s.popTo(depth0);
             e.clips.items.len = saved_clips;
             e.tf = saved_tf;

@@ -190,10 +190,39 @@ pub fn unsupported(a: Allocator, filters: []const style.Filter) ?[]const u8 {
             s.appendSlice(a, "px)") catch return "blur()";
             return s.items;
         },
-        .drop_shadow => return "drop-shadow()",
+        .drop_shadow => |sh| return dropShadowCss(a, sh) catch "drop-shadow()",
         else => {},
     };
     return null;
+}
+
+/// `drop-shadow(...)` as takumi's `ToCss` writes it (`TextShadow::to_css`: `x y [blur] [color]`,
+/// the blur left out when zero, the colour as `rgb(r, g, b)` / `rgba(r, g, b, a)` with six decimals).
+fn dropShadowCss(a: Allocator, sh: style.Shadow) ![]const u8 {
+    var s: std.ArrayList(u8) = .empty;
+    try s.appendSlice(a, "drop-shadow(");
+    try render.writeNum(a, &s, sh.x);
+    try s.appendSlice(a, "px ");
+    try render.writeNum(a, &s, sh.y);
+    try s.appendSlice(a, "px");
+    if (sh.blur != 0) {
+        try s.append(a, ' ');
+        try render.writeNum(a, &s, sh.blur);
+        try s.appendSlice(a, "px");
+    }
+    switch (sh.color) {
+        .current => {},
+        .rgba => |c| {
+            var buf: [64]u8 = undefined;
+            const txt = if (c.a == 255)
+                std.fmt.bufPrint(&buf, " rgb({d}, {d}, {d})", .{ c.r, c.g, c.b }) catch unreachable
+            else
+                std.fmt.bufPrint(&buf, " rgba({d}, {d}, {d}, {d:.6})", .{ c.r, c.g, c.b, @as(f32, @floatFromInt(c.a)) / 255.0 }) catch unreachable;
+            try s.appendSlice(a, txt);
+        },
+    }
+    try s.append(a, ')');
+    return s.items;
 }
 
 /// krilla `fill_from_rgba(rgba, opacity)`.
