@@ -1206,6 +1206,10 @@ pub fn TreeWith(comptime cfg: Config) type {
                             if (self.paged.page_h > 0 and self.nodes.items[e.node].style.position == .fixed) {
                                 vw = @trunc(self.paged.page_w);
                                 vh = @trunc(self.paged.page_h);
+                            } else if (self.paged.page_h > 0 and !(vh > 0 and std.math.isFinite(vh))) {
+                                // (an absolute box: the initial containing block is the first page's area,
+                                // takumi `PagedLayout::page_space` / Blink's page area)
+                                vh = self.paged.page_h;
                             }
                         }
                         area = .{ -off[0], -off[1], orElse(vw, l.w), orElse(vh, l.h) };

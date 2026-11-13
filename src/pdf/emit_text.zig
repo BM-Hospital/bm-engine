@@ -1091,7 +1091,10 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     // the box's fragments (one per page it reaches), each with its part of the box and the
     // glyphs of its lines; those this page's window meets each open a region
     const pg = e.f.paginated() orelse return .{ .shows = true };
-    const box_top = y - l.border.top - l.padding.top;
+    // (the fragments of the layout box: a translated box's are where its layout box is, `dy`
+    // above where they paint)
+    const dy = e.plain_dy;
+    const box_top = y - dy - l.border.top - l.padding.top;
     const box_bottom = box_top + l.h;
     // (only the pages the box reaches: a scan of every page made each box cost the page count)
     const p0: usize = pg.pageAt(box_top);
@@ -1108,12 +1111,12 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     var out: TextRegions = .{ .shows = true };
     for (pg.pages[p0..p1], p0..) |p, i| {
         if (i == here or box_bottom <= p.top or box_top >= p.top + p.height) continue;
-        var lo = @max(box_top, p.top);
-        var hi = @min(box_bottom, p.top + p.height);
+        var lo = @max(box_top, p.top) + dy;
+        var hi = @min(box_bottom, p.top + p.height) + dy;
         if (tl_in) |tl| {
             var it: render.RunIter = .{ .tl = tl };
             while (it.next()) |r| {
-                if (pg.pageAt(y + r.baseline) != i) continue;
+                if (pg.pageAt(y - dy + r.baseline) != i) continue;
                 const g = &tl.glyphs[r.g0];
                 const fnt = e.f.r.fonts.font(g.face);
                 const sc = g.size / @as(f32, @floatFromInt(@max(1, fnt.unitsPerEm())));

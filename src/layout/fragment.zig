@@ -39,9 +39,14 @@
 //!    (`Options.start`: page 0 then holds what earlier pages showed and ends exactly at the start, page 1
 //!    starts with it at `Options.start_top`; `Pages.starts` says where each page's content starts; the
 //!    caller, src/pdf/paged.zig, chains the layouts);
-//!  * `box-decoration-break: clone` is only carried in `Breaks` (the boxes are sliced, not grown by the
-//!    cloned decorations); a cell that spans rows is not fragmented; anonymous table rows / cells keep
-//!    their `TableGeom`; `position: relative` offsets take part in the break positions.
+//!  * a cell that spans rows is not fragmented; anonymous table rows / cells keep their `TableGeom`;
+//!    `position: relative` offsets take part in the break positions.
+//! takumi-pdf 0.20.0 behaviours ported here: `box-decoration-break: clone` breaks the content above
+//! the repeated block-end decorations and resumes it below the block-start ones (`clonePg`);
+//! monolithic content overflowing the page carries its overflow over only through a box that ends
+//! with it (`overflowStays`), and adds no page unless on the root's last page (`extentOf`); content
+//! transformed past the end adds pages (`Options.extent_fn`); middle / bottom aligned cells of a
+//! row the page end cuts start at their top (`cellRealign`).
 const std = @import("std");
 const sty = @import("style.zig");
 const tr = @import("tree.zig");
@@ -84,6 +89,10 @@ pub const Options = struct {
     start_top: ?f32 = null,
     /// Fill `Pages.starts`.
     record_starts: bool = false,
+    /// How far down the boxes paint once transformed (called with `ctx` once the breaks are applied),
+    /// null when no box is transformed or relatively offset: takumi (`PagedLayout::overflow_end`,
+    /// `moves_boxes`) then measures the boxes of every page, else only those of the root's last page.
+    extent_fn: ?*const fn (ctx: *anyopaque) ?f32 = null,
 };
 
 /// Where a page's content starts in the main flow: before the in-flow box `node` (a forced break
@@ -314,6 +323,8 @@ const State = struct {
     pushed: bool = false,
     /// broke in its block-end space (`Kind.span`): the next page resumes inside no content of it
     spanned: bool = false,
+    /// a table cell's content moved by this (up) when its row breaks on this page (`cellRealign`)
+    realign: f32 = 0,
 };
 const Item = struct {
     node: u32,
@@ -751,6 +762,44 @@ fn Engine(comptime T: type) type {
             return reach;
         }
 
+        /// Monolithic content without line boxes (a replaced element, a `line-clamp` box).
+        fn monoLeaf(e: *Self, n: u32) bool {
+            return switch (e.kindOf(n)) {
+                .mono => true,
+                .text => e.linesOf(n).len == 0,
+                else => false,
+            };
+        }
+        /// Whether the in-flow content before item `i` reaches past the page end `pg_end` and is left
+        /// behind there: what follows starts at the next page's start, not below that content.
+        /// takumi (Blink's `ReserveSpaceForMonolithicOverflow`, applied in `ComputeChildData`) carries
+        /// the overflow onto the next page only through a box that ends with it on its last line or its
+        /// last in-flow child, monolithic, and then ends: its container places the box's next-page
+        /// fragment that far down. Monolithic content overflowing right in this container (the root
+        /// too: takumi's page area does not apply the root's overflow), a box whose block-end padding
+        /// or border moves on, or overflow deeper than one box down move nothing.
+        fn overflowStays(e: *Self, sq: *const Seq, i: u32, top: f32, pg_end: f32) bool {
+            var p = i;
+            while (p > 0 and !sq.items[p - 1].flow) p -= 1;
+            if (p == 0) return false;
+            const c = sq.items[p - 1].node;
+            const ct = e.itemTop(sq, p - 1, top);
+            const cl = e.lay(c);
+            if (!(ct + cl.h > pg_end + eps)) return false;
+            if (e.monoLeaf(c)) return true;
+            if (e.kindOf(c) != .block) return false;
+            if (cl.padding.bottom + cl.border.bottom > 0) return true;
+            const ns = e.t.nodes.items;
+            var last: u32 = no_node;
+            var ch = ns[c].first_child;
+            while (ch != no_node) : (ch = ns[ch].next_sibling) {
+                if (e.inFlow(ch)) last = ch;
+            }
+            if (last == no_node) return false;
+            const ll = e.lay(last);
+            return !(e.monoLeaf(last) and ct + ll.y + ll.h > pg_end + eps);
+        }
+
         fn lazyShift(e: *Self, sq_i: u32, from_in: u32, d: f32) Error!void {
             const sq = &e.seqs.items[sq_i];
             const from: u32 = @min(from_in, @as(u32, @intCast(sq.items.len)));
@@ -821,6 +870,20 @@ fn Engine(comptime T: type) type {
             return out;
         }
 
+        /// The page window of the content of `n`: with `box-decoration-break: clone` every fragment
+        /// repeats the block-start and block-end border and padding, so the content breaks above the
+        /// block-end ones and resumes below the block-start ones (takumi `fragmentainer_capacity(true)`
+        /// / `cloned_block_start_decoration`).
+        fn clonePg(e: *Self, n: u32, pg: Pg) Pg {
+            if (!e.style(n).breaks.clone) return pg;
+            const l = e.lay(n);
+            const t = l.border.top + l.padding.top;
+            const b = l.padding.bottom + l.border.bottom;
+            const s = if (e.st[n].started) pg.start + t else pg.start;
+            if (!(pg.end - b > s + 1)) return pg;
+            return .{ .start = s, .end = pg.end - b, .next = pg.next + t };
+        }
+
         // ------------------------------------------------------------------------------------ probe
 
         fn setBreak(e: *Self, n: u32, kind: Kind, arg: u32, forced: bool, appeal: Appeal, known_fit: bool, bottom: f32, pg_end: f32) Error!R {
@@ -879,6 +942,8 @@ fn Engine(comptime T: type) type {
                 info = e.tableInfo(n, &e.seqs.items[sq_i]);
                 pg = e.tablePg(n, &info, pg_in);
             }
+            // (the content's window: `box-decoration-break: clone` keeps the decorations on every page)
+            const cpg = e.clonePg(n, pg);
             // Blink's MustStayInCurrentFragmentainer
             var requires = requires_in or (known_fit and !stt.started);
             var opp = false;
@@ -915,11 +980,11 @@ fn Engine(comptime T: type) type {
                 }
                 const band_top = e.bandTop(sq, i, j, top);
                 // pushed below monolithic content of an earlier page: as if after a perfect breakpoint
-                if (resumed and !stt.child_inside and !stt.forced_resume and band_top > pg.start + eps) opp = true;
+                if (resumed and !stt.child_inside and !stt.forced_resume and band_top > cpg.start + eps) opp = true;
                 // Blink's flex columns and grids: anything before the first item / row (padding, its own
                 // margin, an alignment offset) separates it from the start of its container
                 if (first_sep and !stt.started and i == 0 and band_top > top + eps) opp = true;
-                var bpg = pg;
+                var bpg = cpg;
                 // (the repeated footer itself is placed in the space reserved for it)
                 if (k == .table and it0.node == info.ftr and info.ftr_block > 0) bpg.end = @max(pg.end, pg_in.end);
                 const single = j == i + 1;
@@ -1012,7 +1077,8 @@ fn Engine(comptime T: type) type {
                     bottom -= sl.trim;
                 }
             }
-            if (bottom <= pg.end + eps) {
+            // (a table whose footer was placed fits the page, not the rows' window short of the footer)
+            if (bottom <= (if (k == .table) pg_in.end else pg.end) + eps) {
                 var r: R = .{ .end = bottom, .first = first_bb orelse .auto, .last = prev_after };
                 if (early.has and !known_fit) {
                     sl.kind = early.kind;
@@ -1027,9 +1093,14 @@ fn Engine(comptime T: type) type {
             // below its content that is a perfect break; inside its block-end padding / border it goes
             // back to an earlier breakpoint, or is a last resort
             if (bottom > flow_end + inset_b + eps) return try e.setBreak(n, .span, 0, false, .perfect, false, bottom0, pg.end);
+            // content that overflows the page unbroken (monolithic) and nothing after it: the box ends
+            // here (takumi's `is_at_block_end` with monolithic overflow), its container goes on
+            if (k == .block and inset_b <= eps and n != e.t.root) return .{ .end = bottom, .first = first_bb orelse .auto, .last = prev_after };
             if (early.has) return try e.useEarly(n, early, false, bottom0, pg.end);
             // (the block-end padding / border alone does not fit: Blink breaks before it)
-            const push_end = inset_b > 0 and bottom - inset_b <= pg.end + eps and !e.heightDefinite(n) and e.style(n).display != .table_cell;
+            // (also when content overflowing the page unbroken (monolithic) ends there: takumi moves the
+            // block-end padding / border to the next page and what follows comes after it)
+            const push_end = inset_b > 0 and (bottom - inset_b <= pg.end + eps or k == .block) and !e.heightDefinite(n) and e.style(n).display != .table_cell;
             return try e.setBreak(n, .span, @intFromBool(push_end), false, .last_resort, false, bottom0, pg.end);
         }
 
@@ -1049,12 +1120,25 @@ fn Engine(comptime T: type) type {
                     agg.mend = @max(agg.mend, ct + cl.h + @max(cl.margin.bottom, 0));
                     continue;
                 }
+                // (a middle / bottom aligned cell of a row the page end cuts aligns in its fragment)
+                const ra = e.cellRealign(c, ct, pg.end);
+                e.st[c].realign = ra;
+                if (ra != 0) e.shiftKids(c, ra);
                 const rc = try e.probe(c, ct, pg, requires);
+                if (ra != 0) e.shiftKids(c, -ra);
                 const cb = e.style(c).breaks;
                 agg.first = join(agg.first, join(rc.first, cb.before));
                 agg.last = join(agg.last, join(rc.last, cb.after));
                 var end = rc.end;
-                if (rc.brk and !rc.par) {
+                const sep0 = ct > band_top + eps;
+                if (rc.brk and !rc.par and !rc.forced and sep0 and ct > pg.start + eps and e.breaksAtStart(c)) {
+                    // it breaks before all its content and sits lower than its row: the break before
+                    // it is as good as one before a monolithic item (Blink's flex / grid items are
+                    // parallel flows, whose block-start breakpoint is a class A one)
+                    e.slot[c] = .{ .stamp = e.stamp, .kind = .push, .brk = true };
+                    agg.brk = true;
+                    end = pg.end;
+                } else if (rc.brk and !rc.par) {
                     agg.brk = true;
                     agg.forced = agg.forced or rc.forced;
                     agg.appeal = worse(agg.appeal, rc.appeal);
@@ -1075,6 +1159,73 @@ fn Engine(comptime T: type) type {
             }
             if (agg.forced) agg.appeal = .perfect;
             return agg;
+        }
+
+        /// How far the content of the table cell `c` (border-box block start `ct`) moves when its row
+        /// breaks at `pg_end` (0: not at all): a `vertical-align: middle` / `bottom` cell of a row
+        /// the page end cuts starts its content at its top (takumi-pdf 0.20.0, probes
+        /// pagination.table.rows: its fragment's free space is none, `table_cell_content_offset`).
+        fn cellRealign(e: *Self, c: u32, ct: f32, pg_end: f32) f32 {
+            if (!tables_on) return 0;
+            const cs = e.style(c);
+            if (cs.display != .table_cell or e.st[c].started) return 0;
+            if (cs.vertical_align != .middle and cs.vertical_align != .bottom) return 0;
+            const l = e.lay(c);
+            if (!(ct + l.h > pg_end + eps)) return 0;
+            var lo: f32 = std.math.inf(f32);
+            var hi: f32 = ninf;
+            const ns = e.t.nodes.items;
+            var ch = ns[c].first_child;
+            while (ch != no_node) : (ch = ns[ch].next_sibling) {
+                if (!e.inFlow(ch)) continue;
+                const kl = e.lay(ch);
+                lo = @min(lo, kl.y - @max(kl.margin.top, 0));
+                hi = @max(hi, kl.y + kl.h + @max(kl.margin.bottom, 0));
+            }
+            if (!(hi > ninf)) return 0;
+            const inset_t = l.border.top + l.padding.top;
+            const off = lo - inset_t;
+            if (!(off > eps)) return 0;
+            return -off;
+        }
+        /// The break the probe chose inside `n` comes before any of its content (its first line, its
+        /// first in-flow child, down the chain).
+        fn breaksAtStart(e: *Self, n: u32) bool {
+            var cur = n;
+            var guard: u32 = 0;
+            while (guard < tr.max_depth + 8) : (guard += 1) {
+                const sl = e.slot[cur];
+                if (sl.stamp != e.stamp or !sl.brk or e.st[cur].started) return false;
+                switch (sl.kind) {
+                    .line => {
+                        const lines = e.linesOf(cur);
+                        return sl.arg <= nthLine(lines, 0, 0);
+                    },
+                    .before, .inside => {
+                        const sq_i = e.st[cur].seq;
+                        if (sq_i == no_node) return false;
+                        const sq = &e.seqs.items[sq_i];
+                        if (sl.arg >= sq.items.len) return false;
+                        var p: u32 = 0;
+                        while (p < sl.arg) : (p += 1) {
+                            if (sq.items[p].flow) return false;
+                        }
+                        if (sl.kind == .before) return true;
+                        if (bandEnd(sq, sl.arg) != sl.arg + 1) return false;
+                        cur = sq.items[sl.arg].node;
+                    },
+                    else => return false,
+                }
+            }
+            return false;
+        }
+        fn shiftKids(e: *Self, c: u32, d: f32) void {
+            const ns = e.t.nodes.items;
+            var ch = ns[c].first_child;
+            while (ch != no_node) : (ch = ns[ch].next_sibling) {
+                if (ns[ch].style.display == .none) continue;
+                e.lay(ch).y += d;
+            }
         }
 
         /// Index of the line that has `count` non-empty lines of `lines[from..]` before it.
@@ -1110,6 +1261,8 @@ fn Engine(comptime T: type) type {
             var brk_line: u32 = no_node;
             var brk_appeal: Appeal = .perfect;
             var last_bottom: f32 = top + l.border.top + l.padding.top;
+            // (the lines' window: `box-decoration-break: clone`)
+            const lpg = e.clonePg(n, pg);
             // (`Options.start`: page 0 ends right before one of these lines)
             const cut_line: u32 = if (e.opts.start) |s| (if (e.start_h != null and e.page == 0 and s.node == n and s.line != no_node) s.line else no_node) else no_node;
             var i = start;
@@ -1120,9 +1273,9 @@ fn Engine(comptime T: type) type {
                 const empty = !(lb - lt > 0);
                 var appeal_before: Appeal = if (opp) .perfect else .last_resort;
                 var mp: bool = undefined;
-                if (pg.end - lt < -eps) {
+                if (lpg.end - lt < -eps) {
                     mp = false;
-                } else if (lt <= pg.start + eps or lb <= pg.end + eps) {
+                } else if (lt <= lpg.start + eps or lb <= lpg.end + eps) {
                     mp = true;
                 } else mp = appeal_before == .last_resort and requires;
                 if (!mp) {
@@ -1238,7 +1391,8 @@ fn Engine(comptime T: type) type {
                     if (sl.arg == 0) return 0;
                     // the block-end padding and border start the next page
                     const l = e.lay(n);
-                    const g = @max(pg.next - (top + l.h - l.padding.bottom - l.border.bottom), 0);
+                    // (above the content's end when that overflows the page: the box ends shorter)
+                    const g = pg.next - (top + l.h - l.padding.bottom - l.border.bottom);
                     l.h += g;
                     return g;
                 },
@@ -1273,6 +1427,29 @@ fn Engine(comptime T: type) type {
                     // at most where it ends exactly at the page end, i.e. the start of its reserved space)
                     try e.reps.append(e.a, .{ .node = info.ftr, .page = e.page, .y = @min(e.cutY(n, top, pg.end) + info.spacing, pg.end) });
             }
+            if (e.style(n).breaks.clone) {
+                const cp = e.clonePg(n, pg);
+                next += cp.next - pg.next;
+                pg = cp;
+            }
+            if (tables_on and k == .group) {
+                // the cells spanning rows that the break cuts align their content at their top too
+                const sq = &e.seqs.items[sq_i];
+                const lim = if (sl.kind == .inside) i + 1 else i;
+                // (from the row this page resumed at: one cutting an earlier page end was aligned then)
+                var p: u32 = if (stt.started) @min(stt.@"resume", lim) else 0;
+                while (p < lim) : (p += 1) {
+                    const r = sq.items[p].node;
+                    const rt = e.itemTop(sq, p, top);
+                    const ns = e.t.nodes.items;
+                    var c = ns[r].first_child;
+                    while (c != no_node) : (c = ns[c].next_sibling) {
+                        if (ns[c].style.display != .table_cell or !(e.lay(c).h > e.lay(r).h + eps)) continue;
+                        const ra = e.cellRealign(c, rt + e.lay(c).y, pg_in.end);
+                        if (ra != 0) e.shiftKids(c, ra);
+                    }
+                }
+            }
             var d: f32 = 0;
             if (sl.kind == .before) {
                 const sq = &e.seqs.items[sq_i];
@@ -1293,15 +1470,33 @@ fn Engine(comptime T: type) type {
                 const ns = e.style(n);
                 if (k == .bands and ns.display == .flex and (ns.flex_direction == .column or ns.flex_direction == .column_reverse)) gap = 0;
                 var target = @max(@max(next, reach), band_top - gap);
+                // (content that overflows the page and is left behind: what follows starts the next page)
+                const stays = k == .block and e.overflowStays(sq, i, top, pg_in.end);
+                if (stays) target = next;
                 if (sl.forced and !sl.trunc and sq.items[i].flow) {
                     // (a flex container keeps the row gap before an item resumed after a forced break:
                     // takumi / Blink's flex fragmentation offsets it from the break by its unfragmented offset)
                     var fgap: f32 = 0;
                     if (k == .bands and i > 0 and e.style(n).display == .flex) fgap = @max(tr.resolveLp(e.style(n).gap[1], 0), 0);
-                    target = @max(next, reach) + @max(e.lay(sq.items[i].node).margin.top, 0) + fgap;
+                    target = (if (stays) next else @max(next, reach)) + @max(e.lay(sq.items[i].node).margin.top, 0) + fgap;
                 }
                 d = target - band_top;
                 try e.lazyShift(sq_i, i, d);
+                if (sl.forced and !sl.trunc and k == .block and sq.items[i].flow and i + 1 < sq.items.len and sq.items[i + 1].flow) {
+                    // an empty box the margins collapsed through: after the forced break before it the
+                    // margins of the box after it no longer collapse with those above, it keeps its
+                    // block-start margin below the empty box (Blink: the margin strut restarts at the break)
+                    const el = e.lay(sq.items[i].node);
+                    const nl = e.lay(sq.items[i + 1].node);
+                    if (el.h == 0) {
+                        const want = @max(@max(el.margin.bottom, 0), @max(nl.margin.top, 0));
+                        const extra = want - (nl.y - el.y);
+                        if (extra > eps) {
+                            try e.lazyShift(sq_i, i + 1, extra);
+                            d += extra;
+                        }
+                    }
+                }
                 stt.child_inside = false;
                 stt.forced_resume = sl.forced and !sl.trunc;
             } else {
@@ -1343,6 +1538,10 @@ fn Engine(comptime T: type) type {
                 const c = sq.items[k].node;
                 const ct = e.itemTop(sq, k, top);
                 const cst = &e.st[c];
+                if (cst.realign != 0 and !cst.done) {
+                    e.shiftKids(c, cst.realign);
+                    cst.realign = 0;
+                }
                 cst.full = ct + e.lay(c).h >= old_bottom - eps;
                 if (!cst.done) {
                     const cs = e.slot[c];
@@ -1402,7 +1601,8 @@ fn Engine(comptime T: type) type {
             return g;
         }
 
-        noinline fn applyText(e: *Self, n: u32, top: f32, pg: Pg, k: u32) Error!f32 {
+        noinline fn applyText(e: *Self, n: u32, top: f32, pg_in: Pg, k: u32) Error!f32 {
+            const pg = e.clonePg(n, pg_in);
             const stt = &e.st[n];
             const l = e.lay(n);
             const lines = e.linesOf(n);
@@ -1512,6 +1712,14 @@ fn Engine(comptime T: type) type {
             };
             try e.tops.append(e.a, 0);
             try e.need(0);
+            // (a fixed box keeps where it was laid out against the first page, whatever moves its
+            // parent: takumi lays each out on its own against the page area, `FixedTemplate`)
+            var fixed_at: std.AutoHashMapUnmanaged(u32, f32) = .empty;
+            defer fixed_at.deinit(e.a);
+            for (ns, 0..) |*nd, k| {
+                if (nd.style.position != .fixed or nd.style.display == .none or k == root) continue;
+                try fixed_at.put(e.a, @intCast(k), e.absTopOf(@intCast(k)));
+            }
 
             // 1. the main flow, 2. the flows it left behind, 3. floats and out-of-flow boxes (document order)
             try e.runFlow(root);
@@ -1531,6 +1739,13 @@ fn Engine(comptime T: type) type {
                     if (s.display != .none) {
                         if (s.position == .fixed) {
                             try e.fixed.append(e.a, cur);
+                            // where it was laid out, or, with no block offsets (its static position),
+                            // at the top of the page area (takumi-pdf 0.20.0: alone in its page's
+                            // layout it starts the page; probe pagination.fixed)
+                            if (fixed_at.get(cur)) |y0| {
+                                const want = if (s.inset.top == .auto and s.inset.bottom == .auto) @max(e.lay(cur).margin.top, 0) + e.shift else y0;
+                                e.lay(cur).y += want - e.absTopOf(cur);
+                            }
                             // (laid out against the first page: not moved by `Options.start_top`)
                             e.lay(cur).y -= e.shift;
                             descend = false;
@@ -1558,7 +1773,24 @@ fn Engine(comptime T: type) type {
 
             // the pages: down to the block end of everything that paints
             var extent: f32 = 0;
-            try e.extentOf(root, &extent);
+            const moved: ?f32 = if (e.opts.extent_fn) |f| f(e.opts.ctx) else null;
+            if (moved) |v| {
+                extent = v;
+                try e.extentOf(root, &extent, ninf);
+            } else {
+                // (takumi measures the boxes of the page the root ends on: monolithic content that a
+                // page before left overflowing adds no page)
+                // (the top of the last page known that starts above the root's end; no page is added)
+                const rl = e.lay(root);
+                const y_end = @max(rl.y + rl.h - eps, rl.y);
+                var lo: usize = 0;
+                var hi: usize = e.tops.items.len - 2;
+                while (lo < hi) {
+                    const mid = lo + (hi - lo + 1) / 2;
+                    if (e.tops.items[mid] <= y_end) lo = mid else hi = mid - 1;
+                }
+                try e.extentOf(root, &extent, e.tops.items[lo]);
+            }
             var count: u32 = 1;
             while (true) {
                 try e.need(count - 1);
@@ -1599,7 +1831,9 @@ fn Engine(comptime T: type) type {
         }
 
         /// Block end of everything painted in the subtree of `root` (clipped content and fixed boxes aside).
-        fn extentOf(e: *Self, root: u32, extent: *f32) Error!void {
+        /// Monolithic content (one fragment) that starts above `last_top` (the top of the page the root
+        /// ends on) counts for nothing.
+        fn extentOf(e: *Self, root: u32, extent: *f32, last_top: f32) Error!void {
             const ns = e.t.nodes.items;
             const stack = try e.a.alloc(f32, tr.max_depth + 8);
             defer e.a.free(stack);
@@ -1610,7 +1844,8 @@ fn Engine(comptime T: type) type {
                 const s = &ns[cur].style;
                 const l = e.lay(cur);
                 var descend = false;
-                if (s.display != .none and (s.position != .fixed or cur == root)) {
+                const early_mono = cur != root and base + l.y < last_top - eps and e.monoLeaf(cur);
+                if (s.display != .none and (s.position != .fixed or cur == root) and !early_mono) {
                     const y = base + l.y;
                     extent.* = @max(extent.*, y + l.h);
                     descend = !ns[cur].measured and (!clipsY(s) or cur == root) and ns[cur].first_child != no_node and sp < stack.len;
