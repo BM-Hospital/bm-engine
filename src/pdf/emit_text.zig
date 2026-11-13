@@ -746,6 +746,37 @@ fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32
     try border.paintBorder(&e.d, cs, &g);
 }
 
+/// The next run of `it` that is visible and shown on this page (the runs a shadow pass paints).
+fn nextShadowed(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, it: *render.RunIter) ?render.RunIter.Run {
+    while (it.next()) |r| {
+        if (runStyle(e, n, &tl.glyphs[r.g0]).visibility != .visible) continue;
+        if (!runOnPage(e, tl, x, y, r).shows) continue;
+        return r;
+    }
+    return null;
+}
+
+/// Whether two runs cast the same painted shadows (takumi `painted_text_shadows`: the
+/// non-transparent ones, colours resolved).
+fn sameShadows(a: *const CS, b: *const CS) bool {
+    if (a == b) return true;
+    var i: usize = 0;
+    var j: usize = 0;
+    while (true) {
+        while (i < a.text_shadow.len and a.resolveColor(a.text_shadow[i].color).a == 0) i += 1;
+        while (j < b.text_shadow.len and b.resolveColor(b.text_shadow[j].color).a == 0) j += 1;
+        if (i == a.text_shadow.len or j == b.text_shadow.len) return i == a.text_shadow.len and j == b.text_shadow.len;
+        const p = a.text_shadow[i];
+        const q = b.text_shadow[j];
+        if (p.x != q.x or p.y != q.y or p.blur != q.blur) return false;
+        const pc = a.resolveColor(p.color);
+        const qc = b.resolveColor(q.color);
+        if (pc.r != qc.r or pc.g != qc.g or pc.b != qc.b or pc.a != qc.a) return false;
+        i += 1;
+        j += 1;
+    }
+}
+
 /// A text node's paragraph at content origin (`x`, `y`) laid out at width `cw`: inline boxes,
 /// text shadows, then per run: underline / overline, glyphs (fill + stroke), line-through. Only
 /// the runs this page shows (pagination).
@@ -782,30 +813,40 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
         if (hasLine(pcs)) block_deco = pcs;
     }
 
-    // text shadows, last listed first, under all of the text
-    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) {
-        var si = n.cs.text_shadow.len;
+    // text shadows, under all of the text: each run casts its own style's shadows (an inline
+    // element's `text-shadow` too); neighbouring runs casting the same shadows share each shadow
+    // pass, last listed first (takumi `InlineLines::paint`: `chunk_by` `painted_text_shadows`)
+    var bi: render.RunIter = .{ .tl = tl };
+    while (true) {
+        var after_first = bi;
+        const first = nextShadowed(e, n, tl, x, y, &after_first) orelse break;
+        const fcs = runStyle(e, n, &tl.glyphs[first.g0]);
+        // the batch: the runs up to the first whose shadows differ
+        var end = after_first;
+        while (true) {
+            var peek = end;
+            const r = nextShadowed(e, n, tl, x, y, &peek) orelse break;
+            if (!sameShadows(fcs, runStyle(e, n, &tl.glyphs[r.g0]))) break;
+            end = peek;
+        }
+        var si = fcs.text_shadow.len;
         while (si > 0) {
             si -= 1;
-            const sh = n.cs.text_shadow[si];
-            const col = n.cs.resolveColor(sh.color);
+            const sh = fcs.text_shadow[si];
+            const col = fcs.resolveColor(sh.color);
             if (col.a == 0) continue;
-            var it: render.RunIter = .{ .tl = tl };
-            while (it.next()) |r| {
+            var it = bi;
+            while (it.gi != end.gi or it.line != end.line or it.seg != end.seg) {
+                const r = nextShadowed(e, n, tl, x, y, &it) orelse break;
                 const rcs = runStyle(e, n, &tl.glyphs[r.g0]);
-                if (rcs.visibility != .visible) continue;
                 const on = runOnPage(e, tl, x, y, r);
-                if (!on.shows) continue;
                 const run: RunSeg = .{ .g0 = r.g0, .g1 = r.g1, .x0 = r.x0, .x1 = r.x1, .baseline = r.baseline, .rcs = rcs };
                 const pass: ShadowPass = .{ .dx = sh.x, .dy = sh.y, .blur = sh.blur, .color = col };
                 // the run's decorations cast the shadow too (takumi's text painter under `begin_shadow`)
-                var decos: [2]*const CS = undefined;
-                const nd = decosOf(n, rcs, block_deco, &decos);
-                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, &run, decos[0..nd], false);
-                try glyphPass(e, n, tl, x, y, &run, .{ .shadow = pass, .owned = on.owned });
-                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, &run, decos[0..nd], true);
+                try paintRun(e, n, tl, x, y, &run, block_deco, pass, on.owned);
             }
         }
+        bi = end;
     }
 
     var it: render.RunIter = .{ .tl = tl };
@@ -815,12 +856,26 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
         if (rcs.visibility != .visible) continue;
         const on = runOnPage(e, tl, x, y, r);
         if (!on.shows) continue;
-        var decos: [2]*const CS = undefined;
-        const nd = decosOf(n, rcs, block_deco, &decos);
-        if (nd > 0) try paintRunDecos(e, null, tl, x, y, &run, decos[0..nd], false);
-        try glyphPass(e, n, tl, x, y, &run, .{ .owned = on.owned });
-        if (nd > 0) try paintRunDecos(e, null, tl, x, y, &run, decos[0..nd], true);
+        try paintRun(e, n, tl, x, y, &run, block_deco, null, on.owned);
     }
+}
+
+/// One run (or its shadow pass): underline / overline, glyphs, line-through, inside an opacity
+/// group when the run's inline element is translucent (takumi `PaintedRun::paint` under
+/// `with_opacity(brush.opacity)`: an inline element establishes no stacking context, so its
+/// `opacity` applies to each of its runs; `SizedFontStyle::brush` takes it from the run's own
+/// style when that is `display: inline`).
+fn paintRun(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, run: *const RunSeg, block_deco: ?*const CS, sh: ?ShadowPass, owned: bool) Error!void {
+    const rcs = run.rcs;
+    const opacity: f32 = if (rcs != n.cs and rcs.display == .@"inline") std.math.clamp(rcs.opacity, 0, 1) else 1;
+    if (!(opacity > 0)) return;
+    if (opacity < 1) e.d.beginLayer(opacity);
+    defer if (opacity < 1) e.d.endLayer();
+    var decos: [2]*const CS = undefined;
+    const nd = decosOf(n, rcs, block_deco, &decos);
+    if (nd > 0) try paintRunDecos(e, sh, tl, x, y, run, decos[0..nd], false);
+    try glyphPass(e, n, tl, x, y, run, .{ .shadow = sh, .owned = owned });
+    if (nd > 0) try paintRunDecos(e, sh, tl, x, y, run, decos[0..nd], true);
 }
 
 /// takumi `SymbolMarker::paint` (Blink's `PaintSymbol`): the shape of a symbol marker whose box
