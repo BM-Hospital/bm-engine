@@ -452,6 +452,14 @@ fn paintDecoLine(e: *Emitter, sh: ?ShadowPass, kind: DecoKind, st: style.compute
     }
 }
 
+/// Where a run's decorations end (takumi: the run's origin plus its advance, unsnapped): its last
+/// glyph's pen position when the text engine kept it, else the start of what follows it.
+fn runRight(tl: *const font.TextLayout, run: *const RunSeg) f32 {
+    if (run.g1 == 0 or run.g1 > tl.glyphs.len) return run.x1;
+    const end = tl.glyphs[run.g1 - 1].x_end;
+    return if (std.math.isFinite(end) and end >= run.x0) end else run.x1;
+}
+
 /// The spans of `left`..`right` the skip-ink `cuts` leave (takumi `remaining_spans`).
 fn piecesOf(cuts: []const Span, left: f32, right: f32, out: *[33]Span) usize {
     var np: usize = 0;
@@ -487,7 +495,7 @@ fn paintRunDecos(e: *Emitter, sh: ?ShadowPass, tl: *const font.TextLayout, x: f3
         const box_top = y + run.baseline - dm.ascent;
         const off = if (dcs.text_underline_offset) |o| o else 0;
         const lx0 = x + run.x0;
-        const lx1 = x + run.x1;
+        const lx1 = x + runRight(tl, run);
         if (after) {
             if (dl.line_through) try paintDecoLine(e, sh, .line_through, dcs.text_decoration_style, col, lx0, lx1, text_top + 2 * dm.ascent / 3 - thickness / 2, thickness, &.{});
             continue;
@@ -865,31 +873,10 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
 
     const block_deco = blockDecoOf(e, n);
 
-    // text shadows, last listed first, under all of the text
-    if (n.cs.text_shadow.len > 0 and n.cs.visibility == .visible) {
-        var si = n.cs.text_shadow.len;
-        while (si > 0) {
-            si -= 1;
-            const sh = n.cs.text_shadow[si];
-            const col = n.cs.resolveColor(sh.color);
-            if (col.a == 0) continue;
-            var it: render.RunIter = .{ .tl = tl };
-            while (it.next()) |r| {
-                const rcs = runStyle(e, n, &tl.glyphs[r.g0]);
-                if (rcs.visibility != .visible) continue;
-                const on = runOnPage(e, tl, x, y, r);
-                if (!on.shows) continue;
-                const run: RunSeg = .{ .g0 = r.g0, .g1 = r.g1, .x0 = r.x0, .x1 = r.x1, .baseline = r.baseline, .rcs = rcs };
-                const pass: ShadowPass = .{ .dx = sh.x, .dy = sh.y, .blur = sh.blur, .color = col };
-                // the run's decorations cast the shadow too (takumi's text painter under `begin_shadow`)
-                var decos: [max_decos]*const CS = undefined;
-                const nd = decosOf(e, n, tl.glyphs[r.g0].user, rcs, block_deco, &decos);
-                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, &run, decos[0..nd], false);
-                try glyphPass(e, n, tl, x, y, &run, .{ .shadow = pass, .owned = on.owned });
-                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, &run, decos[0..nd], true);
-            }
-        }
-    }
+    // text shadows under all of the text: each run casts its own style's (`text-shadow` is
+    // inherited, a span may set its own); neighbouring runs casting the same list share each
+    // shadow pass, last listed first (takumi `InlineLines::paint`)
+    try paintShadows(e, n, tl, x, y, block_deco);
 
     var it: render.RunIter = .{ .tl = tl };
     while (it.next()) |r| {
@@ -898,12 +885,68 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
         if (rcs.visibility != .visible) continue;
         const on = runOnPage(e, tl, x, y, r);
         if (!on.shows) continue;
+        // (an inline span's `opacity`: its runs in a group of their own, takumi `with_opacity`)
+        const op = runOpacity(e, n, tl.glyphs[r.g0].user, rcs);
+        if (!(op > 0)) continue;
+        if (op < 1) e.s.pushOpacity(op);
         var decos: [max_decos]*const CS = undefined;
         const nd = decosOf(e, n, tl.glyphs[r.g0].user, rcs, block_deco, &decos);
         if (nd > 0) try paintRunDecos(e, null, tl, x, y, &run, decos[0..nd], false);
         try glyphPass(e, n, tl, x, y, &run, .{ .owned = on.owned });
         if (nd > 0) try paintRunDecos(e, null, tl, x, y, &run, decos[0..nd], true);
+        if (op < 1) e.s.pop();
     }
+}
+
+fn paintShadows(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y: f32, block_deco: ?*const CS) Error!void {
+    const Painted = struct { run: RunSeg, owned: bool };
+    var runs: std.ArrayList(Painted) = .empty;
+    var any = false;
+    var it: render.RunIter = .{ .tl = tl };
+    while (it.next()) |r| {
+        const rcs = runStyle(e, n, &tl.glyphs[r.g0]);
+        if (rcs.visibility != .visible) continue;
+        const on = runOnPage(e, tl, x, y, r);
+        if (!on.shows) continue;
+        if (rcs.text_shadow.len > 0) any = true;
+        try runs.append(e.a, .{ .run = .{ .g0 = r.g0, .g1 = r.g1, .x0 = r.x0, .x1 = r.x1, .baseline = r.baseline, .rcs = rcs }, .owned = on.owned });
+    }
+    if (!any) return;
+    var b0: usize = 0;
+    while (b0 < runs.items.len) {
+        const shadows = runs.items[b0].run.rcs.text_shadow;
+        var b1 = b0 + 1;
+        while (b1 < runs.items.len and sameShadows(runs.items[b1].run.rcs.text_shadow, shadows)) b1 += 1;
+        defer b0 = b1;
+        var si = shadows.len;
+        while (si > 0) {
+            si -= 1;
+            const sh = shadows[si];
+            for (runs.items[b0..b1]) |*pr| {
+                const run = &pr.run;
+                const col = run.rcs.resolveColor(sh.color);
+                if (col.a == 0) continue;
+                const pass: ShadowPass = .{ .dx = sh.x, .dy = sh.y, .blur = sh.blur, .color = col };
+                const op = runOpacity(e, n, tl.glyphs[run.g0].user, run.rcs);
+                if (!(op > 0)) continue;
+                if (op < 1) e.s.pushOpacity(op);
+                // the run's decorations cast the shadow too (takumi's text painter under `begin_shadow`)
+                var decos: [max_decos]*const CS = undefined;
+                const nd = decosOf(e, n, tl.glyphs[run.g0].user, run.rcs, block_deco, &decos);
+                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, run, decos[0..nd], false);
+                try glyphPass(e, n, tl, x, y, run, .{ .shadow = pass, .owned = pr.owned });
+                if (nd > 0) try paintRunDecos(e, pass, tl, x, y, run, decos[0..nd], true);
+                if (op < 1) e.s.pop();
+            }
+        }
+    }
+}
+
+fn sameShadows(a: anytype, b: @TypeOf(a)) bool {
+    if (a.len != b.len) return false;
+    if (a.ptr == b.ptr) return true;
+    for (a, b) |x, y| if (!std.meta.eql(x, y)) return false;
+    return true;
 }
 
 /// takumi `SymbolMarker::paint` (Blink's `PaintSymbol`): the shape of a symbol marker whose box
@@ -1072,6 +1115,21 @@ fn decosOf(e: *const Emitter, n: *const Node, user: u32, rcs: *const CS, block_d
         nd += 1;
     }
     return nd;
+}
+
+/// The opacity a run paints with (takumi `SizedFontStyle::brush`): its inline element's, the
+/// innermost inline box around it or its own style; 1 for a block's own text.
+fn runOpacity(e: *const Emitter, n: *const Node, user: u32, rcs: *const CS) f32 {
+    const f = e.f;
+    if (user < f.run_box.items.len) {
+        const b = f.run_box.items[user];
+        if (b != none and b >= n.box_base and b < f.inline_boxes.items.len) {
+            const bcs = f.inline_boxes.items[b].cs;
+            return if (bcs.display == .@"inline") bcs.opacity else 1;
+        }
+    }
+    if (rcs != n.cs and rcs.display == .@"inline") return rcs.opacity;
+    return 1;
 }
 
 fn hasDeco(list: []const *const CS, cs: *const CS) bool {

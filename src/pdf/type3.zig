@@ -237,6 +237,44 @@ const Builder = struct {
         }
         return out;
     }
+    const Normalized = struct { stops: []const color.ColorStop, range: ?[2]f32 = null };
+
+    /// skrifa's colour-line normalisation (krilla draws COLR glyphs through skrifa): stops that do
+    /// not run from 0 to 1 are rescaled to, and the gradient's geometry moved to, the first and
+    /// the last stop; a padded line whose stops all sit at one offset gets a last stop one further.
+    /// Null: nothing to draw (one offset, not padded).
+    fn normalized(b: *Builder, in: []const color.ColorStop, extend: color.Extend) ?Normalized {
+        if (in.len == 0) return .{ .stops = in };
+        const first = in[0].offset;
+        var last = in[in.len - 1].offset;
+        var range = last - first;
+        var line = in;
+        if (range == 0) {
+            if (extend != .pad) return null;
+            const ext = b.a.alloc(color.ColorStop, in.len + 1) catch {
+                b.fail();
+                return null;
+            };
+            @memcpy(ext[0..in.len], in);
+            ext[in.len] = in[in.len - 1];
+            ext[in.len].offset += 1;
+            line = ext;
+            last += 1;
+            range = 1;
+        }
+        if (range == 1 and first == 0) return .{ .stops = line };
+        const out = b.a.alloc(color.ColorStop, line.len) catch {
+            b.fail();
+            return null;
+        };
+        const scale = 1 / range;
+        for (line, out) |st, *o| {
+            o.* = st;
+            o.offset = (st.offset - first) * scale;
+        }
+        return .{ .stops = out, .range = .{ first, last } };
+    }
+
     fn spread(e: color.Extend) sf.Spread {
         return switch (e) {
             .pad => .pad,
@@ -250,16 +288,41 @@ const Builder = struct {
         const f: sf.Fill = switch (brush.*) {
             .solid => |c| .{ .paint = .{ .color = .{ c.r, c.g, c.b } }, .opacity = @as(f32, @floatFromInt(c.a)) / 255.0 },
             .linear => |g| blk: {
-                const st = b.stops(g.stops) orelse return b.fail();
-                const p1 = color.linearEnd(g.p0, g.p1, g.p2);
-                break :blk .{ .paint = .{ .linear = .{ .x1 = g.p0.x, .y1 = g.p0.y, .x2 = p1.x, .y2 = p1.y, .transform = t, .spread = spread(g.extend), .stops = st } } };
+                var p0 = g.p0;
+                var p1 = color.linearEnd(g.p0, g.p1, g.p2);
+                const n = b.normalized(g.stops, g.extend) orelse return;
+                if (n.range) |r| {
+                    const d: color.Point = .{ .x = p1.x - p0.x, .y = p1.y - p0.y };
+                    p1 = .{ .x = p0.x + d.x * r[1], .y = p0.y + d.y * r[1] };
+                    p0 = .{ .x = p0.x + d.x * r[0], .y = p0.y + d.y * r[0] };
+                }
+                const st = b.stops(n.stops) orelse return b.fail();
+                break :blk .{ .paint = .{ .linear = .{ .x1 = p0.x, .y1 = p0.y, .x2 = p1.x, .y2 = p1.y, .transform = t, .spread = spread(g.extend), .stops = st } } };
             },
             .radial => |g| blk: {
-                const st = b.stops(g.stops) orelse return b.fail();
-                break :blk .{ .paint = .{ .radial = .{ .fx = g.c0.x, .fy = g.c0.y, .fr = g.r0, .cx = g.c1.x, .cy = g.c1.y, .cr = g.r1, .transform = t, .spread = spread(g.extend), .stops = st } } };
+                var c0 = g.c0;
+                var c1 = g.c1;
+                var r0 = g.r0;
+                var r1 = g.r1;
+                const n = b.normalized(g.stops, g.extend) orelse return;
+                if (n.range) |r| {
+                    c0 = .{ .x = g.c0.x + (g.c1.x - g.c0.x) * r[0], .y = g.c0.y + (g.c1.y - g.c0.y) * r[0] };
+                    c1 = .{ .x = g.c0.x + (g.c1.x - g.c0.x) * r[1], .y = g.c0.y + (g.c1.y - g.c0.y) * r[1] };
+                    r0 = @max(g.r0 + (g.r1 - g.r0) * r[0], 0);
+                    r1 = @max(g.r0 + (g.r1 - g.r0) * r[1], 0);
+                }
+                const st = b.stops(n.stops) orelse return b.fail();
+                break :blk .{ .paint = .{ .radial = .{ .fx = c0.x, .fy = c0.y, .fr = r0, .cx = c1.x, .cy = c1.y, .cr = r1, .transform = t, .spread = spread(g.extend), .stops = st } } };
             },
-            .sweep => |g| blk: {
-                const st = b.stops(g.stops) orelse return b.fail();
+            .sweep => |g0| blk: {
+                var g = g0;
+                const n = b.normalized(g0.stops, g0.extend) orelse return;
+                if (n.range) |r| {
+                    const sweep = g0.end_angle - g0.start_angle;
+                    g.start_angle = g0.start_angle + sweep * r[0];
+                    g.end_angle = g0.start_angle + sweep * r[1];
+                }
+                const st = b.stops(n.stops) orelse return b.fail();
                 // krilla sweeps the other way: y flipped
                 break :blk .{ .paint = .{ .sweep = .{ .cx = g.c.x, .cy = -g.c.y, .start = g.start_angle, .end = g.end_angle, .transform = t.pre(Tf.scale(1, -1)), .spread = spread(g.extend), .stops = st } } };
             },
