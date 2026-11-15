@@ -2,16 +2,16 @@
 
 [English](../en/profiles-and-size.md) · [Tiếng Việt](profiles-and-size.md)
 
-Chọn profile để chỉ tải những tính năng cần dùng. Các số đo bên dưới là sau `wasm-opt -Oz`; KiB = 1024 byte.
+Chọn profile để chỉ tải những tính năng cần dùng. Các số đo bên dưới là sau `wasm-opt -Oz` (`pdf`: build theo tốc độ, xem bên dưới); KiB = 1024 byte.
 
 ## Kích thước
 
 | Bản build | Gốc | gzip -9 | brotli (q11)  |
 |:--|--:|--:|--: |
-| `core` — `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB | 195.3 KiB  |
-| `standard` — `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB | 398.6 KiB  |
-| `full` — `bm_engine.wasm` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB  |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 1 675.2 KiB | 810.0 KiB | 660.2 KiB  |
+| `core` — `bm_engine.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
+| `standard` — `bm_engine.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
+| `full` — `bm_engine.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 3 187.8 KiB | 1 311.8 KiB | 1 015.7 KiB  |
 | Add-on WOFF — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB  |
 
 Lớp bọc JavaScript chỉ vài KiB ESM không phụ thuộc gì và giống nhau cho mọi profile. Các binary không
@@ -77,7 +77,7 @@ Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-13 vớ
 
 `bm_engine.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
 các thuộc tính CSS paged-media ([Đầu ra PDF](pdf/index.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-engine/pdf` trên Node.js (addon là
-tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó thêm khoảng 0.5 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
+tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó được build theo tốc độ thay vì kích thước (Zig `ReleaseFast` + `wasm-opt -O3`): tạo PDF thường là việc chạy hàng loạt, và cách build này làm các lần render đã nóng nhanh hơn 20-27 % với khoảng 1.3 MB wasm nhiều hơn. Mã lớn hơn cũng tốn thêm khoảng 30-45 MB bộ nhớ tiến trình (mã V8 biên dịch) và lần render đầu tiên sau khi tải chậm hơn (khoảng 100 ms thay vì 60 ms cho một hoá đơn một trang). Nó không nằm trong bảng bên dưới vì `pdf` không phải
 tính năng của `core`, `standard` hay `full`.
 
 ## Chi phí biên của từng tính năng

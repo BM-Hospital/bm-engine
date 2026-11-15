@@ -56,8 +56,8 @@ cũng giống nhau giữa các lần chạy, giúp PDF dễ cache và dễ so s�
 
 ## Profile `pdf` và kích thước
 
-`bm_engine.pdf.wasm` là `full` cộng bộ ghi PDF: 1 675.2 KiB thô, 810.0 KiB với gzip -9 và
-660.2 KiB với brotli -11, nhiều hơn `bm_engine.wasm` (`full`: 1 143.6 / 560.0 / 470.8 KiB) khoảng 0.5 MB. Mã PDF chỉ được biên dịch vào binary này và vào addon native, cùng với phần dàn trang theo trang giấy và các thuộc
+`bm_engine.pdf.wasm` là `full` cộng bộ ghi PDF: 3 187.8 KiB thô, 1 311.8 KiB với gzip -9 và
+1 015.7 KiB với brotli -11 (`bm_engine.wasm`, `full`: 1 272.7 / 631.5 / 529.1 KiB). Nó được build theo tốc độ (Zig `ReleaseFast` + `wasm-opt -O3`): các lần render đã nóng nhanh hơn 20-27 %, đổi lại khoảng 1.3 MB wasm và 30-45 MB bộ nhớ tiến trình nhiều hơn. Mã PDF chỉ được biên dịch vào binary này và vào addon native, cùng với phần dàn trang theo trang giấy và các thuộc
 tính CSS paged-media mà nó cần. (Addon native là tập tính năng `full` cộng đầu ra PDF; bản thân `bm-engine` không
 bao giờ cung cấp bộ ghi PDF.) [Profile và kích thước](../profiles-and-size.md) có số liệu chính xác cho mọi binary. Tự build
 bằng `npm run build:pdf` (`node scripts/build.mjs --profile=pdf`) hoặc `zig build -Dprofile=pdf`
