@@ -1,33 +1,48 @@
 // Release checks and the ordered publish of the nine npm packages (bm-engine + 8 bm-engine-<platform>).
 //
+//   npm run release -- 0.1.1       the whole release in one command:
+//                                  1. sets the version in the 9 package.json files + package-lock.json
+//                                     (npm-platform-packages.mjs --set-version)
+//                                  2. rebuilds the wasm of every profile + js/build-manifest.json (npm run build)
+//                                  3. commits "Release 0.1.1"
+//                                  4. builds the native addon for the 8 targets and the npm/<platform>/ folders
+//                                  5. runs every check (release:check below)
+//                                  6. publishes the 8 platform packages FIRST and bm-engine LAST (bm-engine's
+//                                     optionalDependencies must exist when users install it)
+//                                  7. tags v0.1.1 and pushes the commit and the tag
+//                                  Without a version (or with the current one) steps 1-3 are skipped. Packages
+//                                  already on the registry at this version are skipped, so a release interrupted
+//                                  half-way (expired OTP, network) is finished by running the same command again.
+//                                  Options: --otp=<code>, --tag=<dist-tag>, --skip-checks.
+//   npm run release:dry -- 0.1.1   the same with `npm publish --dry-run`: no commit, tag or push, and the version
+//                                  bump + rebuilt wasm are reverted at the end
 //   npm run release:check          every check a release needs (also what `prepublishOnly` runs):
 //                                  version sync + wasm manifest, Zig unit tests, PDF tests, native addon tests
 //                                  and the packed-install scenarios (scripts/pack-test.mjs)
-//   npm run release -- [--otp=123456] [--dry-run] [--skip-checks]
-//                                  builds the native addon for the 8 targets and the npm/<platform>/ folders,
-//                                  runs release:check, then publishes the platform packages FIRST and bm-engine
-//                                  LAST (bm-engine's optionalDependencies must exist when users install it).
-//                                  Packages already on the registry at this version are skipped, so a release
-//                                  interrupted half-way (expired OTP, network) can be re-run as is.
-//
-// The wasm binaries are not rebuilt here: they are committed and `npm run verify` checks them against
-// js/build-manifest.json. Rebuild them with `npm run build` when the Zig sources changed.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
-const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+const argv = process.argv.slice(2);
+const args = Object.fromEntries(argv.map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
+const wanted = argv.find((a) => !a.startsWith("--"));
+if (wanted && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(wanted)) {
+  console.error(`release: "${wanted}" is not a version (x.y.z or x.y.z-pre.n)`);
+  process.exit(1);
+}
+const readPkg = () => JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+let pkg = readPkg();
 const platforms = Object.keys(pkg.optionalDependencies).map((n) => n.slice("bm-engine-".length));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const dry = !!args["dry-run"];
 
-function run(cmd, argv, opts = {}) {
-  console.log(`\n> ${[cmd, ...argv].join(" ")}`);
-  const r = spawnSync(cmd, argv, { cwd: root, stdio: "inherit", shell: process.platform === "win32", ...opts });
+function run(cmd, cmdArgs, opts = {}) {
+  console.log(`\n> ${[cmd, ...cmdArgs].join(" ")}`);
+  const r = spawnSync(cmd, cmdArgs, { cwd: root, stdio: "inherit", shell: process.platform === "win32" && cmd === npm, ...opts });
   if (r.status !== 0) {
-    console.error(`\nrelease: \`${[cmd, ...argv].join(" ")}\` failed (exit ${r.status ?? r.signal}); nothing more was published.`);
+    console.error(`\nrelease: \`${[cmd, ...cmdArgs].join(" ")}\` failed (exit ${r.status ?? r.signal}); stopped here.`);
     process.exit(1);
   }
 }
@@ -63,7 +78,21 @@ if (dirty && !args["allow-dirty"]) {
 }
 const who = spawnSync(npm, ["whoami"], { cwd: root, encoding: "utf8", shell: process.platform === "win32" });
 if (who.status !== 0) { console.error("release: not logged in to npm; run `npm login` first"); process.exit(1); }
-console.log(`release: bm-engine ${pkg.version} as npm user ${who.stdout.trim()}${args["dry-run"] ? " (dry run)" : ""}`);
+
+/** Files the version bump and the wasm rebuild touch (restored after a dry run). */
+const BUMPED = ["package.json", "package-lock.json", "npm", "js"];
+const bumped = !!wanted && wanted !== pkg.version;
+if (bumped) {
+  console.log(`release: ${pkg.version} -> ${wanted}`);
+  run(process.execPath, ["scripts/npm-platform-packages.mjs", "--set-version", wanted]);
+  npmRun("build"); // wasm of every profile + js/build-manifest.json with the new version
+  pkg = readPkg();
+  if (!dry) {
+    run("git", ["add", "--", ...BUMPED]);
+    run("git", ["commit", "-m", `Release ${pkg.version}`]);
+  }
+}
+console.log(`release: bm-engine ${pkg.version} as npm user ${who.stdout.trim()}${dry ? " (dry run)" : ""}`);
 
 npmRun("build:native"); // 8 targets -> native/dist/, structurally verified
 npmRun("build:npm");    // native/dist -> npm/<platform>/ (checked against native/dist/manifest.json)
@@ -72,13 +101,21 @@ for (const p of platforms) {
 }
 if (!args["skip-checks"]) checks();
 
-const extra = [...(args.otp ? [`--otp=${args.otp}`] : []), ...(args["dry-run"] ? ["--dry-run"] : []), ...(args.tag ? [`--tag=${args.tag}`] : [])];
+const extra = [...(args.otp ? [`--otp=${args.otp}`] : []), ...(dry ? ["--dry-run"] : []), ...(args.tag ? [`--tag=${args.tag}`] : [])];
 for (const p of platforms) {
   const name = `bm-engine-${p}`;
-  if (!args["dry-run"] && published(name)) { console.log(`\nrelease: ${name}@${pkg.version} is already published, skipped`); continue; }
+  if (!dry && published(name)) { console.log(`\nrelease: ${name}@${pkg.version} is already published, skipped`); continue; }
   run(npm, ["publish", `./npm/${p}`, "--access", "public", ...extra]);
 }
-if (!args["dry-run"] && published("bm-engine")) { console.log(`\nrelease: bm-engine@${pkg.version} is already published`); process.exit(0); }
-run(npm, ["publish", "--access", "public", ...extra], { env: { ...process.env, BM_RELEASE_CHECKED: pkg.version } });
-console.log(`\nrelease: published bm-engine ${pkg.version} and its ${platforms.length} platform packages${args["dry-run"] ? " (dry run)" : ""}.` +
-  `\nNext: git tag v${pkg.version} && git push origin v${pkg.version}`);
+if (!dry && published("bm-engine")) console.log(`\nrelease: bm-engine@${pkg.version} is already published, skipped`);
+else run(npm, ["publish", "--access", "public", ...extra], { env: { ...process.env, BM_RELEASE_CHECKED: pkg.version } });
+
+if (dry) {
+  if (bumped) run("git", ["checkout", "--", ...BUMPED]);
+  console.log(`\nrelease: dry run of bm-engine ${pkg.version} passed${bumped ? "; the version bump and the rebuilt wasm were reverted" : ""}.`);
+  process.exit(0);
+}
+const tag = `v${pkg.version}`;
+if (spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], { cwd: root }).status !== 0) run("git", ["tag", tag]);
+run("git", ["push", "origin", "HEAD", tag]);
+console.log(`\nrelease: published bm-engine ${pkg.version} and its ${platforms.length} platform packages; pushed the commit and ${tag}.`);

@@ -31,19 +31,23 @@ design is in [docs/NATIVE.md](../NATIVE.md), the user-facing behaviour in
 
 ## Release procedure
 
-**Short route.** After setting the version (step 1) and committing:
+**Short route: one command.** With the code committed:
 
 ```sh
-npm run release:check   # every check: verify, zig tests, PDF tests, native tests, pack test (~15 min)
-npm run release:dry     # builds native + npm/<platform>/, runs the checks, `npm publish --dry-run` for all 9
-npm run release         # the same, then publishes the 8 platform packages first and bm-engine last
+npm run release:dry -- 0.1.1   # rehearsal: everything below with `npm publish --dry-run`, then reverted
+npm run release -- 0.1.1       # the real release
 ```
 
-`npm run release` (scripts/publish.mjs) refuses to run with uncommitted changes or without `npm login`,
-skips packages already published at this version (so an interrupted release can simply be re-run), and
-passes `--otp=<code>` / `--tag=<tag>` through (`npm run release -- --tag=next`). Without `--otp`, npm asks
-for a one-time password (or opens the browser) at each publish. `prepublishOnly` runs the same checks, so a
-plain `npm publish` of bm-engine cannot skip them. The steps below are what the script does, one by one.
+`npm run release -- <version>` (scripts/publish.mjs) sets the version everywhere, rebuilds the wasm and its
+manifest (`npm run build`), commits "Release <version>", builds the native addon for the 8 targets and the
+`npm/<platform>/` folders, runs every check (`npm run release:check`: verify, Zig tests, PDF tests, native
+tests, pack test), publishes the 8 platform packages first and bm-engine last, then tags `v<version>` and
+pushes the commit and the tag. It refuses to start with uncommitted changes or without `npm login`. Packages
+already published at that version are skipped, so an interrupted release (expired OTP, network) is finished
+by running the same command again. Options: `--otp=<code>`, `--tag=<dist-tag>` (e.g. `next`),
+`--skip-checks`. Without `--otp`, npm asks for a one-time password (or opens the browser) at each publish.
+`prepublishOnly` runs the same checks, so a plain `npm publish` of bm-engine cannot skip them. The steps
+below are what the script does, one by one.
 
 ### 1. Set the version (one command)
 

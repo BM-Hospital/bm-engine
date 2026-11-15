@@ -31,19 +31,22 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
 
 ## Quy trình release
 
-**Cách ngắn.** Sau khi đặt version (bước 1) và commit:
+**Cách ngắn: một lệnh.** Khi code đã commit:
 
 ```sh
-npm run release:check   # mọi kiểm tra: verify, test zig, test PDF, test native, pack test (~15 phút)
-npm run release:dry     # build native + npm/<platform>/, chạy kiểm tra, `npm publish --dry-run` cả 9 gói
-npm run release         # như trên, rồi publish 8 platform package trước và bm-engine sau cùng
+npm run release:dry -- 0.1.1   # chạy thử: mọi bước bên dưới với `npm publish --dry-run`, rồi hoàn tác
+npm run release -- 0.1.1       # release thật
 ```
 
-`npm run release` (scripts/publish.mjs) từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`,
-bỏ qua các gói đã publish ở version này (nên một lần release bị ngắt giữa chừng chỉ cần chạy lại), và
-chuyển tiếp `--otp=<mã>` / `--tag=<tag>` (`npm run release -- --tag=next`). Không có `--otp` thì npm hỏi
-mã OTP (hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên một lệnh
-`npm publish` trực tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
+`npm run release -- <version>` (scripts/publish.mjs) đặt version ở mọi nơi, build lại wasm và manifest
+(`npm run build`), commit "Release <version>", build addon native cho 8 nền tảng và các thư mục
+`npm/<platform>/`, chạy mọi kiểm tra (`npm run release:check`: verify, test Zig, test PDF, test native,
+pack test), publish 8 platform package trước và bm-engine sau cùng, rồi gắn tag `v<version>` và push commit
+cùng tag. Script từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`. Gói nào đã publish ở
+version đó thì bỏ qua, nên một lần release bị ngắt (OTP hết hạn, mạng) chỉ cần chạy lại đúng lệnh đó. Tuỳ
+chọn: `--otp=<mã>`, `--tag=<dist-tag>` (ví dụ `next`), `--skip-checks`. Không có `--otp` thì npm hỏi mã OTP
+(hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên `npm publish` trực
+tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
 
 ### 1. Đặt version (một lệnh)
 
