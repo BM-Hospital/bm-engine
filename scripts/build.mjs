@@ -1,5 +1,6 @@
 // Release build of every profile: `zig build -Dprofile=<p>` (optimize=small) + `wasm-opt -Oz`, plus the
-// packaging manifest.
+// packaging manifest. The pdf profile is built for speed instead (optimize=fast + `wasm-opt -O3`): PDF
+// generation is a batch workload where 25-35% throughput is worth the extra ~1.3 MB of wasm.
 //
 //   node scripts/build.mjs                    core + standard + full + pdf + the WOFF add-on
 //   node scripts/build.mjs --profile=core     one profile only (core | standard | full | pdf)
@@ -159,9 +160,11 @@ for (const p of profiles) if (!ALL.includes(p)) throw new Error(`unknown profile
 
 const wasmOpt = [path.join(root, "node_modules", "binaryen", "bin", "wasm-opt"), path.join(root, "bench", "node_modules", "binaryen", "bin", "wasm-opt")].find(existsSync);
 if (!wasmOpt) console.warn("wasm-opt not found (run `npm i --ignore-scripts` in the repository root); shipping unoptimised binaries");
-function optimise(file) {
+/** Per-profile optimisation: size everywhere except pdf (see the header). */
+const SPEED = new Set(["pdf"]);
+function optimise(file, level = "-Oz") {
   if (!wasmOpt) return;
-  execFileSync(process.execPath, [wasmOpt, file, "-Oz", "--enable-simd", "--enable-bulk-memory", "--enable-sign-ext",
+  execFileSync(process.execPath, [wasmOpt, file, level, "--enable-simd", "--enable-bulk-memory", "--enable-sign-ext",
     "--enable-nontrapping-float-to-int", "--enable-mutable-globals", "-o", file], { cwd: root, stdio: "inherit" });
 }
 const sizes = (b) => ({
@@ -175,10 +178,11 @@ const built = [];
 for (const p of profiles) {
   // full builds into zig-out (the default prefix every tool reads); the others into their own prefix
   const prefix = p === "full" ? path.join(root, "zig-out") : path.join(root, "zig-out", "profiles", p);
-  execFileSync(zig, ["build", `-Dprofile=${p}`, "-p", prefix, ...extra], { cwd: root, stdio: "inherit" });
+  const speed = SPEED.has(p) && !extra.some((a) => a.startsWith("-Dwasm-optimize"));
+  execFileSync(zig, ["build", `-Dprofile=${p}`, ...(speed ? ["-Dwasm-optimize=fast"] : []), "-p", prefix, ...extra], { cwd: root, stdio: "inherit" });
   const out = path.join(prefix, "bin", "bm_engine.wasm");
   const zigBytes = statSync(out).size;
-  optimise(out);
+  optimise(out, speed ? "-O3" : "-Oz");
   const dest = path.join(root, "js", FILES[p]);
   copyFileSync(out, dest);
   built.push(p);
@@ -206,7 +210,7 @@ const takumiPath = path.join(root, "bench", "node_modules", "@takumi-rs", "wasm"
 if (existsSync(takumiPath)) rows["takumi-wasm 2.20"] = { file: "bench/node_modules/@takumi-rs/wasm/pkg/takumi_wasm_bg.wasm", zig: null, ...sizes(readFileSync(takumiPath)) };
 
 const kib = (n) => (n == null ? "-" : (n / 1024).toFixed(1));
-console.log("\n| build | zig .small KiB | wasm-opt -Oz KiB | gzip -9 KiB | brotli KiB |\n|:--|--:|--:|--:|--:|");
+console.log("\n| build (pdf: fast + -O3) | zig KiB | wasm-opt KiB | gzip -9 KiB | brotli KiB |\n|:--|--:|--:|--:|--:|");
 for (const [k, r] of Object.entries(rows)) console.log(`| ${k} | ${kib(r.zig)} | ${kib(r.raw)} | ${kib(r.gzip9)} | ${kib(r.brotli)} |`);
 const outDir = path.join(root, "bench", "out");
 mkdirSync(outDir, { recursive: true });
