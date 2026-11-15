@@ -1462,6 +1462,9 @@ pub fn writeNum(a: Allocator, out: *std.ArrayList(u8), v_in: f32) Error!void {
 
 // ------------------------------------------------------------------------------------------------
 
+/// The last few distinct computed styles made under one parent style (`Frame.shareStyle`).
+const StyleShare = struct { recent: [8]*const CS = undefined, n: usize = 0, next: usize = 0 };
+
 pub const Frame = struct {
     r: *Renderer,
     a: Allocator,
@@ -1515,6 +1518,14 @@ pub const Frame = struct {
     tw_theme: bool = false,
     /// Computed style of the root element once styled (`--breakpoint-*` lookups).
     tw_root_cs: ?*const CS = null,
+    /// The last distinct computed styles made under each parent style (`shareStyle`): an element
+    /// whose style comes out equal to one of them takes the same one.
+    style_share: std.AutoHashMapUnmanaged(usize, StyleShare) = .empty,
+    /// The style of an anonymous line container by its block's style (`openAnonBox`): it only
+    /// inherits, so one per block style.
+    anon_styles: std.AutoHashMapUnmanaged(usize, *const CS) = .empty,
+    /// The style `styleElement` computes into before `shareStyle` keeps or drops it.
+    style_tmp: ?*CS = null,
     /// (PDF frames) the CSS counters while the tree is styled (src/pdf/css_counters.zig)
     css_counters: if (config.enable_pdf) ?*CssCounters else void = if (config.enable_pdf) null else {},
     // (the paged-layout state, PDF feature only, is `tree.paged`: `layout.fragment.PagedState`. A field here,
@@ -1901,14 +1912,31 @@ pub const Frame = struct {
 
     // ---- style pass: every element's style exactly once, top-down
 
-    fn styleTree(f: *Frame, i: u32, parent_cs: ?*const CS, depth: u32) Error!void {
-        if (depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
-        try f.styleElement(i, parent_cs);
-        const cs = f.dom.at(i).cs;
-        if (parent_cs == null) f.tw_root_cs = cs;
-        var c = f.dom.at(i).first;
-        while (c != none) : (c = f.dom.at(c).next) try f.styleTree(c, cs, depth + 1);
-        if (comptime config.enable_pdf) if (f.css_counters) |cx| try f.leaveCounters(cx, i);
+    /// Styles element `root` and its subtree (parents before children, siblings in order; the CSS
+    /// counters of an element are left after its subtree). A loop over an explicit stack: wasm-opt
+    /// inlines `styleElement` into its only caller whatever Zig says, and a recursion carrying
+    /// that frame ran out of the engine's stack before `max_node_depth`.
+    fn styleTree(f: *Frame, root: u32, parent_cs: ?*const CS, depth0: u32) Error!void {
+        const Step = struct { i: u32, depth: u32, leave: bool };
+        var stack: std.ArrayList(Step) = .empty;
+        defer stack.deinit(f.a);
+        try stack.append(f.a, .{ .i = root, .depth = depth0, .leave = false });
+        while (stack.pop()) |st| {
+            if (st.leave) {
+                if (comptime config.enable_pdf) if (f.css_counters) |cx| try f.leaveCounters(cx, st.i);
+                continue;
+            }
+            if (st.depth >= max_node_depth) return f.fail("node tree is nested too deeply", "");
+            const pcs = if (st.i == root) parent_cs else f.dom.at(f.dom.at(st.i).parent).cs;
+            try f.styleElement(st.i, pcs);
+            if (pcs == null) f.tw_root_cs = f.dom.at(st.i).cs;
+            try stack.append(f.a, .{ .i = st.i, .depth = st.depth, .leave = true });
+            // (children pushed last to first, so they come off the stack in order)
+            const mark = stack.items.len;
+            var c = f.dom.at(st.i).first;
+            while (c != none) : (c = f.dom.at(c).next) try stack.append(f.a, .{ .i = c, .depth = st.depth + 1, .leave = false });
+            std.mem.reverse(Step, stack.items[mark..]);
+        }
     }
 
     /// (PDF frames) The CSS counters of the frame, created on first use (takumi-pdf numbers `counter()`
@@ -2027,7 +2055,11 @@ pub const Frame = struct {
         const el = f.dom.at(i);
         var diag: style.Diagnostics = .{};
         if (comptime !config.enable_tw) if (el.tw.len > 0) return f.fail("Tailwind (`tw`) is not supported by this build", "");
-        const cs = try a.create(CS);
+        // (computed into the frame's reused scratch style, kept only when no element under the
+        // same parent style has the same one: `shareStyle`; not on the stack, which deep trees
+        // need for the recursion)
+        if (f.style_tmp == null) f.style_tmp = try a.create(CS);
+        const cs = f.style_tmp.?;
         const has_tw = config.enable_tw and el.tw.len > 0;
         const from_html = config.enable_html and (el.preset == .text or el.style == .text or el.pres.len > 0);
         const general = !el.run and (f.css_on or has_tw or from_html or el.dir != .none);
@@ -2057,7 +2089,7 @@ pub const Frame = struct {
                 try f.textOnly(cs, &diag);
             }
         }
-        el.cs = cs;
+        el.cs = try f.shareStyle(i, cs, parent_cs);
         if (comptime config.enable_pdf) if (!el.run) if (f.cssCounters()) |cx| try cx.enter(cs.counter_reset, cs.counter_increment, cs.counter_set, css_counters_mod.listItemOf(&f.dom, i, cs.display == .list_item));
         if (el.run or el.kind == .image) return;
         if (comptime config.enable_css or config.enable_tw) {
@@ -2066,11 +2098,40 @@ pub const Frame = struct {
             if (el.kind == .text and (el.before != none or el.after != none)) {
                 // the element's own text moves into an anonymous box between the generated ones
                 const own = try a.create(CS);
-                own.* = style.compute(a, &f.ctx, cs, null, null, &diag) catch |e| return f.styleFail(e, &diag);
+                own.* = style.compute(a, &f.ctx, el.cs, null, null, &diag) catch |e| return f.styleFail(e, &diag);
                 try f.pseudos.append(a, .{ .cs = own, .text = el.text });
                 el.own = @intCast(f.pseudos.items.len - 1);
             }
         }
+    }
+
+    /// The style element `i` keeps for the computed style `cs` (built on the stack): a sibling's
+    /// equal one (same parent style, every field equal, slices by their address) when there is
+    /// one, else a copy in the frame, remembered for the next siblings. A long document repeats a
+    /// few styles thousands of times (table cells, list items, text runs), and each takes 2 KiB.
+    /// Styles are never written once assigned. Left alone: images and elements with an `href`,
+    /// which other passes find by their style's address (interactive.zig `hrefMap`, svg_out.zig
+    /// `imageSrcOf`).
+    fn shareStyle(f: *Frame, i: u32, cs: *const CS, parent_cs: ?*const CS) Error!*const CS {
+        const el = f.dom.at(i);
+        if (el.kind == .image or (!el.run and f.dom.attr(i, "href") != null)) return f.keepStyle(cs);
+        const slot = try f.style_share.getOrPut(f.a, if (parent_cs) |p| @intFromPtr(p) else 0);
+        if (!slot.found_existing) slot.value_ptr.* = .{};
+        const sh = slot.value_ptr;
+        for (sh.recent[0..sh.n]) |cand| {
+            if (std.meta.eql(cand.*, cs.*)) return cand;
+        }
+        const kept = try f.keepStyle(cs);
+        sh.recent[sh.next] = kept;
+        sh.next = (sh.next + 1) % sh.recent.len;
+        if (sh.n < sh.recent.len) sh.n += 1;
+        return kept;
+    }
+
+    fn keepStyle(f: *Frame, cs: *const CS) Error!*const CS {
+        const kept = try f.a.create(CS);
+        kept.* = cs.*;
+        return kept;
     }
 
     /// Replaces `cs` by the style of an anonymous inline box inheriting from it.
@@ -2737,10 +2798,17 @@ pub const Frame = struct {
     /// Anonymous inline formatting context node of block `parent` (style `cs`). Out of line: the
     /// computed style temporary must not sit in the recursive frame of `buildInlineRun`.
     noinline fn openAnonBox(f: *Frame, cs: *const CS, parent: u32) Error!u32 {
-        var diag: style.Diagnostics = .{};
-        const rcs = try f.a.create(CS);
-        rcs.* = style.compute(f.a, &f.ctx, cs, null, null, &diag) catch |e| return f.styleFail(e, &diag);
-        return f.addNode(.{ .kind = .anon_box, .cs = rcs, .parent = parent, .box_base = f.box_base });
+        const slot = try f.anon_styles.getOrPut(f.a, @intFromPtr(cs));
+        if (!slot.found_existing) {
+            var diag: style.Diagnostics = .{};
+            const rcs = try f.a.create(CS);
+            rcs.* = style.compute(f.a, &f.ctx, cs, null, null, &diag) catch |e| {
+                _ = f.anon_styles.remove(@intFromPtr(cs));
+                return f.styleFail(e, &diag);
+            };
+            slot.value_ptr.* = rcs;
+        }
+        return f.addNode(.{ .kind = .anon_box, .cs = slot.value_ptr.*, .parent = parent, .box_base = f.box_base });
     }
 
     /// The collected runs (a run of children with line content, see `hasLineContent`) as a paragraph leaf.
