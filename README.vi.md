@@ -41,16 +41,11 @@ Chuẩn bị file font ở đường dẫn trong ví dụ trước khi chạy. T
 - [Tạo PDF](docs/vi/pdf/index.md)
 - [Chọn đầu ra](docs/vi/outputs-compared.md)
 - [Profile và kích thước](docs/vi/profiles-and-size.md)
-- [Benchmark so sánh với Takumi](docs/vi/benchmark.md)
+- [Benchmark](docs/vi/benchmark.md)
 - [Xử lý sự cố](docs/vi/troubleshooting.md)
 
 ## Giấy phép và ghi công
 
 bm-engine được cấp phép theo [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
-
-bm-engine là sản phẩm phái sinh của **takumi** do Kane Wang phát triển (MIT OR Apache-2.0): phần lớn mã
-được chuyển ngữ từ mã Rust của takumi (layout, vẽ, chữ, CSS, Tailwind, HTML, SVG, animation, codec), và
-hành vi của nó được kiểm chứng bằng chính đầu ra của takumi. Mọi công lao thiết kế bộ render thuộc về dự
-án takumi. Bản thân takumi đi theo Blink của Chromium và Skia; bm-engine còn port thuật toán và dữ liệu
-từ tiny-skia, HarfBuzz, libwebp, libjpeg, Unicode / ICU, Brotli và các dự án khác. Xem [NOTICE](NOTICE)
-và [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) để biết phần ghi công.
+Mã và dữ liệu bên thứ ba mà bm-engine dựa vào được ghi công trong [NOTICE](NOTICE) và
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

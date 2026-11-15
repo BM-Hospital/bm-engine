@@ -31,6 +31,20 @@ design is in [docs/NATIVE.md](../NATIVE.md), the user-facing behaviour in
 
 ## Release procedure
 
+**Short route.** After setting the version (step 1) and committing:
+
+```sh
+npm run release:check   # every check: verify, zig tests, PDF tests, native tests, pack test (~15 min)
+npm run release:dry     # builds native + npm/<platform>/, runs the checks, `npm publish --dry-run` for all 9
+npm run release         # the same, then publishes the 8 platform packages first and bm-engine last
+```
+
+`npm run release` (scripts/publish.mjs) refuses to run with uncommitted changes or without `npm login`,
+skips packages already published at this version (so an interrupted release can simply be re-run), and
+passes `--otp=<code>` / `--tag=<tag>` through (`npm run release -- --tag=next`). Without `--otp`, npm asks
+for a one-time password (or opens the browser) at each publish. `prepublishOnly` runs the same checks, so a
+plain `npm publish` of bm-engine cannot skip them. The steps below are what the script does, one by one.
+
 ### 1. Set the version (one command)
 
 ```sh
@@ -94,7 +108,7 @@ npm publish ./npm/linux-arm64-musl --access public
 npm publish ./npm/darwin-x64 --access public
 npm publish ./npm/darwin-arm64 --access public
 npm view bm-engine-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
-npm publish --access public                     # bm-engine itself (prepublishOnly re-runs verify + test:pack)
+npm publish --access public                     # bm-engine itself (prepublishOnly runs npm run release:check)
 ```
 
 `--access public` is already in each `publishConfig`, it is repeated for clarity.

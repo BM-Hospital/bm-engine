@@ -31,6 +31,20 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
 
 ## Quy trình release
 
+**Cách ngắn.** Sau khi đặt version (bước 1) và commit:
+
+```sh
+npm run release:check   # mọi kiểm tra: verify, test zig, test PDF, test native, pack test (~15 phút)
+npm run release:dry     # build native + npm/<platform>/, chạy kiểm tra, `npm publish --dry-run` cả 9 gói
+npm run release         # như trên, rồi publish 8 platform package trước và bm-engine sau cùng
+```
+
+`npm run release` (scripts/publish.mjs) từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`,
+bỏ qua các gói đã publish ở version này (nên một lần release bị ngắt giữa chừng chỉ cần chạy lại), và
+chuyển tiếp `--otp=<mã>` / `--tag=<tag>` (`npm run release -- --tag=next`). Không có `--otp` thì npm hỏi
+mã OTP (hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên một lệnh
+`npm publish` trực tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
+
 ### 1. Đặt version (một lệnh)
 
 ```sh
@@ -95,7 +109,7 @@ npm publish ./npm/linux-arm64-musl --access public
 npm publish ./npm/darwin-x64 --access public
 npm publish ./npm/darwin-arm64 --access public
 npm view bm-engine-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
-npm publish --access public                     # bm-engine itself (prepublishOnly re-runs verify + test:pack)
+npm publish --access public                     # bm-engine itself (prepublishOnly runs npm run release:check)
 ```
 
 `--access public` đã có sẵn trong `publishConfig` của mỗi package, nó được lặp lại cho rõ.

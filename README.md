@@ -41,16 +41,11 @@ Provide the font file at the example path before running it. Reuse the renderer 
 - [PDF](docs/en/pdf/index.md)
 - [Choose an output](docs/en/outputs-compared.md)
 - [Profiles and size](docs/en/profiles-and-size.md)
-- [Benchmark against Takumi](docs/en/benchmark.md)
+- [Benchmark](docs/en/benchmark.md)
 - [Troubleshooting](docs/en/troubleshooting.md)
 
 ## License and attribution
 
 bm-engine is licensed under the [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
-
-bm-engine is a derivative work of **takumi** by Kane Wang (MIT OR Apache-2.0): large parts are
-transliterations of takumi's Rust code (layout, painting, text, CSS, Tailwind, HTML, SVG, animation,
-codecs), and its behaviour was verified against takumi's own output. All credit for the design of the
-renderer goes to the takumi project. takumi in turn follows Chromium's Blink and Skia; bm-engine also
-ports algorithms and data from tiny-skia, HarfBuzz, libwebp, libjpeg, Unicode / ICU, Brotli and others.
-See [NOTICE](NOTICE) and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the attributions.
+Third-party code and data it builds on are credited in [NOTICE](NOTICE) and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
