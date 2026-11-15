@@ -266,7 +266,7 @@ noinline fn contrib(t: anytype, g: *G, it: *Item, a: usize, k: usize) Error!f32 
 
 /// Minimum contribution (§11.5): the content-based automatic minimum, or the specified minimum.
 fn minContrib(t: anytype, g: *G, it: *Item, a: usize, allow_auto: bool) Error!f32 {
-    const cs = &t.nodes.items[it.node].style;
+    const cs = t.nodes.items[it.node].style;
     if (cs.size[a] != .px) {
         switch (cs.min_size[a]) {
             .px => |v| return v + it.margin[a],
@@ -618,7 +618,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     const g = try t.scratch.create(t.alloc, G);
     g.in = in_.*;
     const in = &g.in;
-    const s = &t.nodes.items[node].style;
+    const s = t.nodes.items[node].style;
     t.sbox(&g.box, s, in);
     const box = &g.box;
     in.known = tr.styledKnown(in, box);
@@ -711,7 +711,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
 
 /// Explicit grid (with auto-repeat expansion), item placement, track allocation.
 noinline fn place(t: anytype, g: *G, node: u32) Error!void {
-    const s = &t.nodes.items[node].style;
+    const s = t.nodes.items[node].style;
     const box = &g.box;
     const in = &g.in;
     const pb = box.pb;
@@ -748,7 +748,7 @@ noinline fn place(t: anytype, g: *G, node: u32) Error!void {
     const lo = &g.lo;
     {
         for (ids, items) |ch, *it| {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             it.* = .{
                 .node = ch,
                 .p = .{ resolvePlace(cs.grid_column, explicit[0]), resolvePlace(cs.grid_row, explicit[1]) },
@@ -846,7 +846,7 @@ noinline fn place(t: anytype, g: *G, node: u32) Error!void {
 /// Inline sizes of the items inside their (sized) column areas.
 noinline fn itemWidths(t: anytype, g: *G, s: *const st.Style) Error!void {
     for (g.items) |*it| {
-        const cs = &t.nodes.items[it.node].style;
+        const cs = t.nodes.items[it.node].style;
         const area = areaOf(g.tracks[0], g.gap[0], it.p[0].start, it.end(0));
         it.area_w = area[1];
         t.rbox(&g.cb, cs, .{ area[1], NONE });
@@ -867,7 +867,7 @@ noinline fn layoutItems(t: anytype, g: *G, node: u32, s: *const st.Style) Error!
     const box = &g.box;
     g.content = .{ 0, 0 };
     for (g.items) |*it| {
-        const cs = &t.nodes.items[it.node].style;
+        const cs = t.nodes.items[it.node].style;
         const ax = areaOf(g.tracks[0], g.gap[0], it.p[0].start, it.end(0));
         const ay = areaOf(g.tracks[1], g.gap[1], it.p[1].start, it.end(1));
         g.area = .{ ax[1], ay[1] };
@@ -921,7 +921,7 @@ noinline fn layoutItems(t: anytype, g: *G, node: u32, s: *const st.Style) Error!
         g.pad_area = .{ box.border[0], box.border[1], g.size[0] - box.border[0] - box.border[2], g.size[1] - box.border[1] - box.border[3] };
         var ch = t.firstChild(node);
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display == .none) {
                 t.hide(ch);
                 continue;

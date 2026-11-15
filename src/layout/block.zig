@@ -84,13 +84,13 @@ fn inFlow(s: *const st.Style) bool {
 /// Static test for a box whose own margins collapse through it: an empty auto-height block.
 fn selfCollapsing(t: anytype, node: u32) bool {
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     if (n.measured or s.display != .block or s.flow_root or s.overflow_x != .visible or s.overflow_y != .visible) return false;
     if (s.border.top > 0 or s.border.bottom > 0 or tr.resolveLp(s.padding.top, 0) > 0 or tr.resolveLp(s.padding.bottom, 0) > 0) return false;
     if (orElse(tr.resolveDim(s.size[1], 0), 0) > 0 or orElse(tr.resolveDim(s.min_size[1], 0), 0) > 0 or s.aspect_ratio != null) return false;
     var k = n.first_child;
     while (k != no_node) : (k = t.nextSibling(k)) {
-        if (inFlow(&t.nodes.items[k].style)) return false;
+        if (inFlow(t.nodes.items[k].style)) return false;
     }
     return true;
 }
@@ -104,12 +104,12 @@ fn topSetEst(t: anytype, ch: u32, own: f32) MarginSet {
     var guard: u32 = 0;
     while (guard < tr.max_depth) : (guard += 1) {
         const n = &t.nodes.items[cur];
-        const s = &n.style;
+        const s = n.style;
         if (n.measured or n.child_count == 0 or s.display != .block or s.float != .none or s.flow_root or s.position.isOut() or
             s.overflow_x != .visible or s.overflow_y != .visible or s.border.top > 0 or tr.resolveLp(s.padding.top, 0) > 0) break;
         var k = n.first_child;
         while (k != no_node) : (k = t.nextSibling(k)) {
-            const ks = &t.nodes.items[k].style;
+            const ks = t.nodes.items[k].style;
             if (!inFlow(ks)) continue;
             set = set.with(orElse(tr.resolveDim(ks.margin.top, 0), 0));
             if (ks.clear != .none or !selfCollapsing(t, k)) break;
@@ -128,7 +128,7 @@ pub noinline fn placeFloat(t: anytype, ch: u32, rq: *const FloatReq, content: *[
     const mark = t.scratch.mark();
     defer t.scratch.release(mark);
     const c = try t.scratch.create(t.alloc, FloatS);
-    const cs = &t.nodes.items[ch].style;
+    const cs = t.nodes.items[ch].style;
     const inner_w = rq.parent[0];
     t.rbox(&c.cb, cs, rq.parent);
     const cb = &c.cb;
@@ -244,7 +244,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.in = in_.*;
     const in = &c.in;
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     t.sbox(&c.box, s, in);
     const box = &c.box;
     c.known = tr.styledKnown(in, box);
@@ -269,7 +269,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
         var float_w: f32 = 0;
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display == .none or cs.position.isOut()) continue;
             const side = (comptime @TypeOf(t.*).config.floats) and cs.float != .none and avail_w != tr.MINC;
             t.rbox(&c.cb, cs, .{ NONE, inner_h });
@@ -337,7 +337,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     if (in.layout) {
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display != .none and cs.position.isOut()) n_abs += 1;
         }
         if (n_abs > 0) abs = try t.scratch.alloc(t.alloc, AbsItem, n_abs);
@@ -357,7 +357,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
 
     var ch = n.first_child;
     while (ch != no_node) : (ch = t.nextSibling(ch)) {
-        const cs = &t.nodes.items[ch].style;
+        const cs = t.nodes.items[ch].style;
         if (cs.display == .none) {
             if (in.layout) t.hide(ch);
             continue;

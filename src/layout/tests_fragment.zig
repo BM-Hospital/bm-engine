@@ -1772,7 +1772,9 @@ const Gen = struct {
                 1 => _ = g.d.text(parent, g.rnd.intRangeAtMost(u16, 1, 14), .{ .mt = mt, .mb = mb, .avoid = avoid, .before = before, .after = after, .widows = g.rnd.intRangeAtMost(u8, 1, 3), .orphans = g.rnd.intRangeAtMost(u8, 1, 3) }),
                 2 => {
                     const img = g.d.image(parent, @floatFromInt(g.rnd.intRangeAtMost(u32, 10, 160)));
-                    g.d.t.nodes.items[img].style.margin.bottom = .{ .px = mb };
+                    var st = g.d.t.style(img).*;
+                    st.margin.bottom = .{ .px = mb };
+                    g.d.t.setStyle(img, st) catch unreachable;
                 },
                 3, 4 => g.kids(g.d.add(parent, .{ .mt = mt, .mb = mb, .pt = if (kind == 4) 8 else 0, .pb = if (kind == 4) 6 else 0, .avoid = avoid and kind == 3, .before = before }), depth + 1),
                 5 => g.kids(g.d.add(parent, .{ .display = .flex, .column = true, .mb = mb, .after = after }), depth + 1),
@@ -1789,7 +1791,7 @@ const Gen = struct {
 fn checkTree(d: *Doc, n: Id, top: f32, page_h: f32) !void {
     const ns = d.t.nodes.items;
     const l = d.t.layout(n);
-    const s = &ns[n].style;
+    const s = ns[n].style;
     const P = struct {
         fn of(y: f32, ph: f32) i64 {
             return @intFromFloat(@floor((y + 0.01) / ph));

@@ -164,7 +164,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.cross_floor = false;
     c.in = in_.*;
     const in = &c.in;
-    const s = &t.nodes.items[node].style;
+    const s = t.nodes.items[node].style;
     t.sbox(&c.box, s, in);
     const box = &c.box;
     in.known = tr.styledKnown(in, box);
@@ -191,7 +191,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
                 var mw: f32 = 0;
                 var ch = t.firstChild(node);
                 while (ch != no_node) : (ch = t.nextSibling(ch)) {
-                    const cs = &t.nodes.items[ch].style;
+                    const cs = t.nodes.items[ch].style;
                     if (cs.display == .none or cs.position.isOut()) continue;
                     c.ci = .{ .parent = .{ NONE, ph }, .avail = .{ if (wrapping) MINC else a0, MAXC } };
                     const cw = try t.measureChild(ch, &c.ci, 0);
@@ -258,7 +258,7 @@ fn impl(t: anytype, c: *S, phase_a: bool, layout: bool) Error!f32 {
 /// Derived container values and step 1 (generate flex items).
 noinline fn setup(t: anytype, c: *S) Error!void {
     const node = c.node;
-    const s = &t.nodes.items[node].style;
+    const s = t.nodes.items[node].style;
     const box = &c.box;
     const in = &c.in;
     const known = in.known;
@@ -297,7 +297,7 @@ noinline fn setup(t: anytype, c: *S) Error!void {
     c.items = try t.scratch.alloc(t.alloc, Item, count);
     c.lines = try t.scratch.alloc(t.alloc, Line, @max(count, 1));
     for (ids, c.items) |ch, *it| {
-        const cs = &t.nodes.items[ch].style;
+        const cs = t.nodes.items[ch].style;
         it.node = ch;
         t.rbox(&it.box, cs, pct);
         var al = cs.align_self orelse c.align_items;
@@ -327,7 +327,7 @@ noinline fn baseSizes(t: anytype, c: *S) Error!void {
     const m: usize = c.m;
     const x: usize = c.x;
     for (c.items) |*it| {
-        const cs = &t.nodes.items[it.node].style;
+        const cs = t.nodes.items[it.node].style;
         const b = &it.box;
         const cmargin_x = b.marginSum(x);
         // available cross space for the child, clamped by its min/max
@@ -388,7 +388,7 @@ noinline fn baseSizes(t: anytype, c: *S) Error!void {
 /// 4. Main size of a row container whose inline size is not known: intrinsic sizes (Blink's
 ///    ComputeMinMaxSizeOfRowContainer), then fit-content against the available space.
 noinline fn rowIntrinsic(t: anytype, c: *S) Error!void {
-    const s = &t.nodes.items[c.node].style;
+    const s = t.nodes.items[c.node].style;
     const need_min = c.avail[0] != MAXC;
     const need_max = c.avail[0] != MINC;
     var sum_min: f32 = 0;
@@ -428,7 +428,7 @@ noinline fn collectLines(t: anytype, c: *S) void {
             // intrinsic block size of a wrapping column: its columns still break against the styled height
             var own: Box = undefined;
             // (a column parent measures its items without block constraints: percentages stay unresolved)
-            t.rbox(&own, &t.nodes.items[c.node].style, .{ c.in.parent[0], if (c.in.flex_main) NONE else c.in.parent[1] });
+            t.rbox(&own, t.nodes.items[c.node].style, .{ c.in.parent[0], if (c.in.flex_main) NONE else c.in.parent[1] });
             wrap_at = orElse(maxO(orElse(clampO(own.size[1], own.min[1], own.max[1]), own.max[1]) - c.box.pb[1], 0), MAXC);
         }
         var start: usize = 0;
@@ -711,7 +711,7 @@ noinline fn alignItems(t: anytype, c: *S) void {
                 } else b.margin[x + 2] = f;
                 continue;
             }
-            const cs = &t.nodes.items[it.node].style;
+            const cs = t.nodes.items[it.node].style;
             if (free < 0 and (if (cs.align_self != null) cs.safe.align_self else c.safe.align_items)) continue;
             it.off_cross = switch (it.al) {
                 .start => 0,
@@ -783,14 +783,14 @@ noinline fn finalPass(t: anytype, c: *S) Error!void {
     // Absolutely positioned and hidden children
     if (c.items.len != t.nodes.items[node].child_count) {
         const box = &c.box;
-        const s = &t.nodes.items[node].style;
+        const s = t.nodes.items[node].style;
         c.area = .{
             box.border[0],                             box.border[1],
             c.size[0] - box.border[0] - box.border[2], c.size[1] - box.border[1] - box.border[3],
         };
         var ch = t.firstChild(node);
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display == .none) {
                 t.hide(ch);
                 continue;

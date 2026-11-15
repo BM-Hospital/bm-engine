@@ -474,7 +474,7 @@ fn Engine(comptime T: type) type {
             return &e.t.layouts.items[n];
         }
         inline fn style(e: *Self, n: u32) *const sty.Style {
-            return &e.t.nodes.items[n].style;
+            return e.t.nodes.items[n].style;
         }
 
         // ------------------------------------------------------------------------------------ pages
@@ -539,7 +539,7 @@ fn Engine(comptime T: type) type {
 
         fn kindOf(e: *Self, n: u32) K {
             const nd = &e.t.nodes.items[n];
-            const s = &nd.style;
+            const s = nd.style;
             if (s.breaks.monolithic) return .mono;
             if (nd.measured or s.display == .inline_row) return .text;
             return switch (s.display) {
@@ -835,7 +835,7 @@ fn Engine(comptime T: type) type {
             var bottom_abs = false;
             var ch = ns[n].first_child;
             while (ch != no_node) : (ch = ns[ch].next_sibling) {
-                const cs = &ns[ch].style;
+                const cs = ns[ch].style;
                 if (cs.display == .none) continue;
                 if (cs.position.isOut()) {
                     if (cs.position != .absolute) continue;
@@ -1777,7 +1777,7 @@ fn Engine(comptime T: type) type {
                 const ns = e.t.nodes.items;
                 var ch = ns[n].first_child;
                 while (ch != no_node) : (ch = ns[ch].next_sibling) {
-                    const cs = &ns[ch].style;
+                    const cs = ns[ch].style;
                     if (cs.display != .none and cs.position == .absolute and cs.inset.top == .auto and cs.inset.bottom != .auto) e.lay(ch).y += g;
                 }
             }
@@ -1917,7 +1917,7 @@ fn Engine(comptime T: type) type {
             if (ns[root].first_child != no_node and !ns[root].measured and ns[root].style.display != .none) {
                 var cur = ns[root].first_child;
                 walk: while (true) {
-                    const s = &ns[cur].style;
+                    const s = ns[cur].style;
                     const pk = e.kindOf(ns[cur].parent);
                     const is_abs = s.position == .absolute;
                     const is_float = floats_on and !is_abs and s.float != .none and (pk == .block or pk == .text);
@@ -2038,7 +2038,7 @@ fn Engine(comptime T: type) type {
             var base: f32 = 0;
             var cur = root;
             while (true) {
-                const s = &ns[cur].style;
+                const s = ns[cur].style;
                 const l = e.lay(cur);
                 var descend = false;
                 const early_mono = cur != root and base + l.y < last_top - eps and e.monoLeaf(cur);

@@ -828,15 +828,29 @@ const css_blob = blk: {
 /// `textarea[wrap=off]`, ... This is the cheapest entry point (no per-declaration pointer tables in the binary).
 pub fn presetCss(tag: []const u8) []const u8 {
     const b = css_blob;
-    var i: usize = 0;
-    while (i < b.len) {
-        const ke = std.mem.indexOfScalarPos(u8, b, i, 0) orelse break;
-        const ce = std.mem.indexOfScalarPos(u8, b, ke + 1, 0) orelse break;
-        if (std.mem.eql(u8, b[i..ke], tag)) return b[ke + 1 .. ce];
-        i = ce + 1;
+    // (per row: key offset / length and css length into the blob, the css right after the key's
+    // terminator; a look-up compares lengths first instead of scanning the blob for terminators)
+    for (css_rows) |r| {
+        if (r.key_len != tag.len) continue;
+        const k = b[r.at..][0..r.key_len];
+        if (std.mem.eql(u8, k, tag)) return b[r.at + r.key_len + 1 ..][0..r.css_len];
     }
     return "";
 }
+
+const CssRow = struct { at: u16, key_len: u8, css_len: u16 };
+const css_rows = blk: {
+    @setEvalBranchQuota(100_000);
+    var rows: [preset_data.rows.len]CssRow = undefined;
+    var at: usize = 0;
+    for (preset_data.rows, 0..) |r, i| {
+        rows[i] = .{ .at = at, .key_len = r[0].len, .css_len = r[1].len };
+        at += r[0].len + 1 + r[1].len + 1;
+    }
+    std.debug.assert(at == css_blob.len);
+    const final = rows;
+    break :blk final;
+};
 
 const decl_table = blk: {
     var e: [preset_data.rows.len]PresetEntry = undefined;

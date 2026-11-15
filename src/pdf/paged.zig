@@ -434,7 +434,7 @@ fn cellOverflow(a: Allocator, f: *const Frame, pages: []const layout.fragment.Pa
     var tail: f32 = 0;
     var c = t.nodes.items[row].first_child;
     while (c != rt.none) : (c = t.nodes.items[c].next_sibling) {
-        const s = &t.nodes.items[c].style;
+        const s = t.nodes.items[c].style;
         if (s.display == .none or s.position.isOut()) continue;
         if (t.nodes.items[c].measured) continue;
         const cl = t.layout(c);
@@ -443,7 +443,7 @@ fn cellOverflow(a: Allocator, f: *const Frame, pages: []const layout.fragment.Pa
         var content_end = cell_top + cl.border.top + cl.padding.top;
         var k = t.nodes.items[c].first_child;
         while (k != rt.none) : (k = t.nodes.items[k].next_sibling) {
-            const ks = &t.nodes.items[k].style;
+            const ks = t.nodes.items[k].style;
             if (ks.display == .none or ks.position.isOut()) continue;
             const kl = t.layout(k);
             content_end = @max(content_end, cell_top + kl.y + kl.h + kl.margin.bottom);

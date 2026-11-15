@@ -158,7 +158,8 @@ const Cell = struct {
     eff: u32 = 1,
     /// used border: left, top, right, bottom
     border: [4]f32 = .{ 0, 0, 0, 0 },
-    orig: st.Edges(f32) = .all(0),
+    /// (collapsing table) the node's own style while it is laid out with `S.used_style`
+    orig: *const st.Style = undefined,
     valign: st.VerticalAlign = .baseline,
     has_content: bool = true,
     pct_dep: bool = false,
@@ -271,6 +272,8 @@ const S = struct {
     is_table: bool,
     fixed: bool,
     collapse: bool,
+    /// (collapsing table) the style of the cell being laid out, with its used border
+    used_style: st.Style = undefined,
     did_layout: bool,
     has_collapsed: bool,
     dry: bool,
@@ -333,7 +336,7 @@ noinline fn scratchBytes(t: anytype, bytes: usize) Error![*]align(16) u8 {
     return @ptrCast(s.ptr);
 }
 inline fn styleOf(t: anytype, n: u32) *const st.Style {
-    return &t.nodes.items[n].style;
+    return t.nodes.items[n].style;
 }
 fn isTableAlgo(d: st.Display) bool {
     return switch (d) {
@@ -1645,11 +1648,14 @@ noinline fn cellCompute(t: anytype, c: *S, i: usize, direct: bool) Error!void {
     const cell = &c.cells[i];
     const node = cell.node;
     if (c.collapse) {
-        cell.orig = t.nodes.items[node].style.border;
-        t.nodes.items[node].style.border = tr.toEdges(cell.border);
+        // (the node's style is shared: the cell is laid out with a copy holding its used border)
+        cell.orig = t.nodes.items[node].style;
+        c.used_style = cell.orig.*;
+        c.used_style.border = tr.toEdges(cell.border);
+        t.nodes.items[node].style = &c.used_style;
     }
     defer if (c.collapse) {
-        t.nodes.items[node].style.border = cell.orig;
+        t.nodes.items[node].style = cell.orig;
     };
     const n = &t.nodes.items[node];
     if (direct and n.child_count != 0 and !n.measured) {

@@ -148,7 +148,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out, in_flo
     c.org = t.bfc_org;
     const in = &c.in;
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     t.sbox(&c.box, s, in);
     const box = &c.box;
     c.known = tr.styledKnown(in, box);
@@ -185,7 +185,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out, in_flo
         count = 0;
         ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display == .none) {
                 if (in.layout) t.hide(ch);
                 continue;
@@ -258,7 +258,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out, in_flo
                     it.x = 0;
                     it.y = 0;
                 }
-                const cs = &t.nodes.items[it.node].style;
+                const cs = t.nodes.items[it.node].style;
                 const l = &t.layouts.items[it.node];
                 l.x = c.inset[0] + it.x + it.margin[0] + orElse(t.dim(cs.inset.left, c.parent[0]), -orElse(t.dim(cs.inset.right, c.parent[0]), 0));
                 l.y = c.inset[1] + it.y + it.margin[1] + orElse(t.dim(cs.inset.top, c.parent[1]), -orElse(t.dim(cs.inset.bottom, c.parent[1]), 0));
@@ -286,7 +286,7 @@ noinline fn sizeItems(t: anytype, c: *S, items: []tr.InlineItem, full: bool) Err
     for (items) |*it| {
         const ch = it.node;
         const cn = &t.nodes.items[ch];
-        const cs = &cn.style;
+        const cs = cn.style;
         switch (it.kind) {
             .out_of_flow => {},
             .float => if (!full) {
@@ -327,7 +327,7 @@ noinline fn sizeItems(t: anytype, c: *S, items: []tr.InlineItem, full: bool) Err
 /// its height (NaN = auto) in `c.ckh`.
 noinline fn itemWidth(t: anytype, c: *S, ch: u32) Error!f32 {
     const cn = &t.nodes.items[ch];
-    t.rbox(&c.cb, &cn.style, c.parent);
+    t.rbox(&c.cb, cn.style, c.parent);
     const cb = &c.cb;
     // (percentage margins resolve against the containing block width, as in CSS / Chrome; takumi takes
     // their percentage part as 0)

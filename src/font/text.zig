@@ -874,7 +874,8 @@ pub const Paragraph = struct {
         errdefer alloc.free(b.run_box);
         defer b.open_tmp.deinit(tmp);
         try b.prepareBoxes(runs);
-        try b.glyphs.ensureTotalCapacity(alloc, n_chars);
+        // (exact: the list is handed over as is, and a bump arena keeps all its capacity)
+        try b.glyphs.ensureTotalCapacityPrecise(alloc, n_chars);
         try b.buf.list.ensureTotalCapacity(tmp, @min(n_chars, 256));
         try b.build(feat, runs);
         if (b.cx) moveBreaks(b.glyphs.items);
@@ -2530,7 +2531,7 @@ pub const Paragraph = struct {
         const frags = &acc.frags;
         const segs = &acc.segs;
         if (!flow) try lines.ensureTotalCapacityPrecise(alloc, size.line_count);
-        try out.ensureTotalCapacity(alloc, self.glyphs.len + (if (flow) 8 else @as(usize, size.line_count) * (@max(self.ell.len(), self.clamp_ell.len()) + 1)));
+        try out.ensureTotalCapacityPrecise(alloc, self.glyphs.len + (if (flow) 8 else @as(usize, size.line_count) * (@max(self.ell.len(), self.clamp_ell.len()) + 1)));
         const cplx = flow and self.complex;
         if (flow) {
             cx_.?.frags = if (cplx) frags else null;
@@ -4044,7 +4045,7 @@ const Builder = struct {
     fn shapeOut(b: *Builder, comptime complex: bool, style: TextStyle, features: []const shp.FeatureSetting, size: f32, metric: u16) !void {
         const f = b.fonts.font(b.seg_face);
         const rtl = b.seg_level & 1 != 0;
-        try shp.shape(complex, b.cache, f, &b.buf, .{
+        try shp.shapeCached(complex, b.cache, f, &b.buf, .{
             .script = b.seg_script,
             .rtl = rtl,
             .lang = b.opts.lang,

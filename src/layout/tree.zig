@@ -238,7 +238,8 @@ pub const Options = struct {
 };
 
 const Node = struct {
-    style: Style,
+    /// shared between nodes with equal styles (`internStyle`): never written through
+    style: *const Style,
     parent: u32 = no_node,
     first_child: u32 = no_node,
     last_child: u32 = no_node,
@@ -502,6 +503,13 @@ pub fn TreeWith(comptime cfg: Config) type {
 
         alloc: std.mem.Allocator,
         nodes: std.ArrayList(Node) = .empty,
+        /// the styles added last (`internStyle`): siblings of a generated document mostly repeat
+        /// them, and a node keeps a pointer to one instead of a copy of its own
+        style_recent: [8]*const Style = undefined,
+        style_n: u8 = 0,
+        style_next: u8 = 0,
+        /// every stored style (freed by `deinit`)
+        styles: std.ArrayList(*Style) = .empty,
         layouts: std.ArrayList(Layout) = .empty,
         caches: std.ArrayList(Cache) = .empty,
         scratch: Scratch = .{},
@@ -540,6 +548,8 @@ pub fn TreeWith(comptime cfg: Config) type {
         }
 
         pub fn deinit(self: *Self) void {
+            for (self.styles.items) |sp| self.alloc.destroy(sp);
+            self.styles.deinit(self.alloc);
             self.nodes.deinit(self.alloc);
             self.layouts.deinit(self.alloc);
             self.caches.deinit(self.alloc);
@@ -570,7 +580,7 @@ pub fn TreeWith(comptime cfg: Config) type {
         pub fn addNode(self: *Self, s: Style) !NodeId {
             const id: u32 = @intCast(self.nodes.items.len);
             if (id == no_node) return error.OutOfMemory;
-            try self.nodes.append(self.alloc, .{ .style = s, .pct = stylePct(&s), .plain = stylePlain(&s), .ratio = s.aspect_ratio != null });
+            try self.nodes.append(self.alloc, .{ .style = try self.internStyle(&s), .pct = stylePct(&s), .plain = stylePlain(&s), .ratio = s.aspect_ratio != null });
             if (s.float != .none or s.clear != .none) self.float_seen = true;
             errdefer self.nodes.items.len -= 1;
             try self.layouts.append(self.alloc, .{});
@@ -589,7 +599,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             while (n[up].parent != no_node) up = n[up].parent;
             if (up == child) return error.InvalidNode;
             n[child].parent = parent;
-            n[child].style.mirror_out = mirrors(&n[parent].style);
+            try self.setMirrorOut(child, mirrors(n[parent].style));
             n[child].next_sibling = no_node;
             if (n[parent].last_child == no_node) n[parent].first_child = child else n[n[parent].last_child].next_sibling = child;
             n[parent].last_child = child;
@@ -609,16 +619,40 @@ pub fn TreeWith(comptime cfg: Config) type {
 
         /// Style of `node` (the default style for an unknown id).
         pub fn style(self: *const Self, node: NodeId) *const Style {
-            return if (node < self.nodes.items.len) &self.nodes.items[node].style else &default_style;
+            return if (node < self.nodes.items.len) self.nodes.items[node].style else &default_style;
         }
 
-        pub fn setStyle(self: *Self, node: NodeId, s: Style) void {
+        /// A stored copy of `s`: one of the recently stored styles when equal to it, else a new one.
+        pub fn internStyle(self: *Self, s: *const Style) error{OutOfMemory}!*const Style {
+            for (self.style_recent[0..self.style_n]) |cand| {
+                if (std.meta.eql(cand.*, s.*)) return cand;
+            }
+            try self.styles.ensureUnusedCapacity(self.alloc, 1);
+            const kept = try self.alloc.create(Style);
+            kept.* = s.*;
+            self.styles.appendAssumeCapacity(kept);
+            self.style_recent[self.style_next] = kept;
+            self.style_next = @intCast((self.style_next + 1) % self.style_recent.len);
+            if (self.style_n < self.style_recent.len) self.style_n += 1;
+            return kept;
+        }
+
+        /// Sets the engine-owned `Style.mirror_out` of `node`.
+        fn setMirrorOut(self: *Self, node: NodeId, mo: bool) error{OutOfMemory}!void {
+            const n = &self.nodes.items[node];
+            if (n.style.mirror_out == mo) return;
+            var cp = n.style.*;
+            cp.mirror_out = mo;
+            n.style = try self.internStyle(&cp);
+        }
+
+        pub fn setStyle(self: *Self, node: NodeId, s_in: Style) error{OutOfMemory}!void {
             if (node >= self.nodes.items.len) return;
-            const mo = self.nodes.items[node].style.mirror_out;
-            self.nodes.items[node].style = s;
-            self.nodes.items[node].style.mirror_out = mo;
+            var s = s_in;
+            s.mirror_out = self.nodes.items[node].style.mirror_out;
+            self.nodes.items[node].style = try self.internStyle(&s);
             var ch = self.nodes.items[node].first_child;
-            while (ch != no_node) : (ch = self.nodes.items[ch].next_sibling) self.nodes.items[ch].style.mirror_out = mirrors(&s);
+            while (ch != no_node) : (ch = self.nodes.items[ch].next_sibling) try self.setMirrorOut(ch, mirrors(&s));
             self.nodes.items[node].pct = stylePct(&s);
             self.nodes.items[node].plain = stylePlain(&s);
             self.nodes.items[node].ratio = s.aspect_ratio != null;
@@ -689,7 +723,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                 .max_content => MAXC,
             };
             const parent: [2]f32 = .{ defOrNone(av[0]), defOrNone(av[1]) };
-            const s = &self.nodes.items[root].style;
+            const s = self.nodes.items[root].style;
             if (s.display == .none) {
                 self.hide(root);
                 return;
@@ -719,7 +753,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             var count: usize = 0;
             var ch = ns[node].first_child;
             while (ch != no_node) : (ch = ns[ch].next_sibling) {
-                const cs = &ns[ch].style;
+                const cs = ns[ch].style;
                 if (cs.display != .none and !cs.position.isOut()) count += 1;
             }
             const buf = try self.scratch.alloc(self.alloc, u32, count * 2);
@@ -728,7 +762,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             var i: usize = 0;
             ch = ns[node].first_child;
             while (ch != no_node) : (ch = ns[ch].next_sibling) {
-                const cs = &ns[ch].style;
+                const cs = ns[ch].style;
                 if (cs.display == .none or cs.position.isOut()) continue;
                 a[i] = ch;
                 i += 1;
@@ -897,7 +931,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                 .margin = toEdges(b.margin),
                 .baseline = out.baseline,
             };
-            if (mirrors(&self.nodes.items[node].style)) {
+            if (mirrors(self.nodes.items[node].style)) {
                 // (the box was resolved in the node's mirrored space)
                 const l = &self.layouts.items[node];
                 std.mem.swap(f32, &l.padding.left, &l.padding.right);
@@ -912,7 +946,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             const ns = self.nodes.items;
             var ch = ns[node].first_child;
             while (ch != no_node) : (ch = ns[ch].next_sibling) {
-                const cs = &ns[ch].style;
+                const cs = ns[ch].style;
                 if (cs.display == .none) continue;
                 if (cs.position.isOut()) {
                     const pi = ns[ch].pending;
@@ -935,7 +969,7 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// Grow `content` (extent from the container's border-box origin) by a laid-out child.
         pub fn accumContent(self: *const Self, content: *[2]f32, child: u32) void {
             const l = &self.layouts.items[child];
-            const s = &self.nodes.items[child].style;
+            const s = self.nodes.items[child].style;
             const ex = if (s.overflow_x == .visible) @max(l.w, l.content_w) else l.w;
             const ey = if (s.overflow_y == .visible) @max(l.h, l.content_h) else l.h;
             content[0] = @max(content[0], l.x + ex);
@@ -1043,7 +1077,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             // space and on its position in it, which are not part of the cache key; so does inline content
             // (its lines are shortened by the floats)
             const in_floats = cfg.floats and self.has_floats and in.collapse and self.bfc != null and
-                !block.isRoot(&n.style, in) and (n.float_sub or self.float_rects.items.len > self.bfc.?.start);
+                !block.isRoot(n.style, in) and (n.float_sub or self.float_rects.items.len > self.bfc.?.start);
             const ictx = cfg.inline_fn and in_floats and n.style.is_inline_content and (n.measured or algo == .inline_row) and has(in.known[0]);
             const fctx = ictx or (in_floats and !leaf and algo == .block);
             const as_flow = cfg.inline_fn and self.inline_fn != null and (ictx or (algo == .inline_row and !n.measured));
@@ -1080,7 +1114,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                 .inline_row => if (cfg.inline_row and !cfg.inline_fn) try inline_row.compute(self, node, in, out) else try block.compute(self, node, in, out),
                 .none => out.* = .{ .size = .{ 0, 0 } },
             }
-            if (in.layout and n.style.rtl and !leaf and !as_flow and mirrors(&self.nodes.items[node].style)) self.flipChildren(node, out.size[0]);
+            if (in.layout and n.style.rtl and !leaf and !as_flow and mirrors(self.nodes.items[node].style)) self.flipChildren(node, out.size[0]);
 
             if (fctx) return;
             var e: *Entry = &c.final;
@@ -1101,7 +1135,7 @@ pub fn TreeWith(comptime cfg: Config) type {
 
         noinline fn computeLeaf(self: *Self, node: u32, in: *const In, out: *Out) void {
             const n = &self.nodes.items[node];
-            const s = &n.style;
+            const s = n.style;
             var b: Box = undefined;
             self.sbox(&b, s, in);
             var size = in.known;
@@ -1184,7 +1218,7 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// child's containing block (`position: static`): it is then resolved against the nearest positioned
         /// ancestor (or the viewport) once the whole tree has been laid out.
         pub fn placeAbsolute(self: *Self, container: u32, child: u32, area: *const [4]f32, sp: *const Static) Error!void {
-            const mir = mirrors(&self.nodes.items[container].style);
+            const mir = mirrors(self.nodes.items[container].style);
             if (self.nodes.items[container].style.position != .static and self.nodes.items[child].style.position != .fixed) return self.layoutAbsolute(child, area, sp, mir);
             self.hide(child);
             self.nodes.items[child].pending = @intCast(self.pending.items.len);
@@ -1241,7 +1275,7 @@ pub fn TreeWith(comptime cfg: Config) type {
             const mark = self.scratch.mark();
             defer self.scratch.release(mark);
             const c = try self.scratch.create(self.alloc, AbsState);
-            const s = &self.nodes.items[child].style;
+            const s = self.nodes.items[child].style;
             c.cb = .{ area[2], area[3] };
             const cb = &c.cb;
             self.rbox(&c.b, s, cb.*);

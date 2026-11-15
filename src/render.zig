@@ -247,6 +247,7 @@ pub const Renderer = struct {
     pub fn create(gpa: Allocator) ?*Renderer {
         const self = gpa.create(Renderer) catch return null;
         self.* = .{ .gpa = gpa, .arena = bump.Bump.init(gpa), .scratch = bump.Bump.init(gpa), .rast = raster.Rasterizer.init(gpa), .shape_cache = font.ShapeCache.init(gpa) };
+        self.shape_cache.keep_results = true;
         self.rast.levels16 = true;
         self.scratch.idle_limit = 255;
         return self;
@@ -1462,6 +1463,26 @@ pub fn writeNum(a: Allocator, out: *std.ArrayList(u8), v_in: f32) Error!void {
 
 // ------------------------------------------------------------------------------------------------
 
+/// Hash map contexts of the per-frame caches: the default (Wyhash) multiplies 128-bit numbers,
+/// emulated on wasm32.
+const AddrContext = struct {
+    pub fn hash(_: AddrContext, k: usize) u64 {
+        const h = @as(u64, k) *% 0x9E3779B97F4A7C15;
+        return h ^ (h >> 29);
+    }
+    pub fn eql(_: AddrContext, a: usize, b: usize) bool {
+        return a == b;
+    }
+};
+const TextContext = struct {
+    pub fn hash(_: TextContext, k: []const u8) u64 {
+        return std.hash.XxHash64.hash(0, k);
+    }
+    pub fn eql(_: TextContext, a: []const u8, b: []const u8) bool {
+        return std.mem.eql(u8, a, b);
+    }
+};
+
 /// The last few distinct computed styles made under one parent style (`Frame.shareStyle`).
 const StyleShare = struct { recent: [8]*const CS = undefined, n: usize = 0, next: usize = 0 };
 
@@ -1520,12 +1541,14 @@ pub const Frame = struct {
     tw_root_cs: ?*const CS = null,
     /// The last distinct computed styles made under each parent style (`shareStyle`): an element
     /// whose style comes out equal to one of them takes the same one.
-    style_share: std.AutoHashMapUnmanaged(usize, StyleShare) = .empty,
+    style_share: std.HashMapUnmanaged(usize, StyleShare, AddrContext, std.hash_map.default_max_load_percentage) = .empty,
     /// The style of an anonymous line container by its block's style (`openAnonBox`): it only
     /// inherits, so one per block style.
-    anon_styles: std.AutoHashMapUnmanaged(usize, *const CS) = .empty,
+    anon_styles: std.HashMapUnmanaged(usize, *const CS, AddrContext, std.hash_map.default_max_load_percentage) = .empty,
     /// The style `styleElement` computes into before `shareStyle` keeps or drops it.
     style_tmp: ?*CS = null,
+    /// parsed inline `style` attributes by text (`parseInline`)
+    inline_decls: std.HashMapUnmanaged([]const u8, []const style.Declaration, TextContext, std.hash_map.default_max_load_percentage) = .empty,
     /// (PDF frames) the CSS counters while the tree is styled (src/pdf/css_counters.zig)
     css_counters: if (config.enable_pdf) ?*CssCounters else void = if (config.enable_pdf) null else {},
     // (the paged-layout state, PDF feature only, is `tree.paged`: `layout.fragment.PagedState`. A field here,
@@ -1887,7 +1910,10 @@ pub const Frame = struct {
     fn hasThemeVar(text: []const u8) bool {
         const prefixes = [_][]const u8{ "color-", "spacing", "radius-", "text-", "font-", "tracking-", "leading-", "aspect-", "container-", "animate-", "breakpoint-" };
         var k: usize = 0;
-        while (std.mem.indexOfPos(u8, text, k, "--")) |p| {
+        // (each "--" in order: a scan for '-', then the next byte checked)
+        while (std.mem.indexOfScalarPos(u8, text, k, '-')) |p| {
+            k = p + 1;
+            if (p + 1 >= text.len or text[p + 1] != '-') continue;
             k = p + 2;
             for (prefixes) |pr| if (std.mem.startsWith(u8, text[k..], pr)) return true;
         }
@@ -1990,8 +2016,19 @@ pub const Frame = struct {
             .none => .{ .decls = &.{} },
             .json => |v| .{ .decls = style.jsonDecls(f.a, v, diag) catch |e| return f.styleFail(e, diag) },
             // CSS-text sources only come from HTML input
-            .text => |t| if (comptime config.enable_html) .{ .decls = try parseBlock(f.a, t), .lenient = true } else .{ .decls = &.{} },
+            .text => |t| if (comptime config.enable_html) .{ .decls = try f.parseInline(t), .lenient = true } else .{ .decls = &.{} },
         };
+    }
+
+    /// `parseBlock` of an inline `style` attribute, once per distinct text (generated documents
+    /// repeat the same attribute on every row / cell: one parse and one declaration list for all).
+    fn parseInline(f: *Frame, t: []const u8) Error![]const style.Declaration {
+        const slot = try f.inline_decls.getOrPut(f.a, t);
+        if (!slot.found_existing) {
+            errdefer _ = f.inline_decls.remove(t);
+            slot.value_ptr.* = try parseBlock(f.a, t);
+        }
+        return slot.value_ptr.*;
     }
 
     /// Cascade layers of element `i`: preset (UA) < presentation hints < tw utilities < stylesheet

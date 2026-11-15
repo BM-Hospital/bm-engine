@@ -145,8 +145,10 @@ pub const FontContainer = struct {
     cid: fe.CidFont,
     cid_ref: ?Ref = null,
     t3: std.ArrayList(Type3Font) = .empty,
-    /// gid -> routed to the CID font (true) or Type3 (false); filled by `addGlyph`
-    route: std.AutoHashMapUnmanaged(u16, bool) = .empty,
+    /// gid -> routed to the CID font (true) or Type3 (false); filled by `addGlyph` (looked up
+    /// for every drawn glyph, never iterated: a multiplicative hash, not the default Wyhash,
+    /// whose 128-bit multiplies are emulated on wasm32)
+    route: std.HashMapUnmanaged(u16, bool, GidContext, std.hash_map.default_max_load_percentage) = .empty,
     /// (gid, colour) -> Type3 font index + code
     t3_cache: std.AutoHashMapUnmanaged(u64, Added) = .empty,
 
@@ -162,6 +164,16 @@ pub const FontContainer = struct {
         c.cid = try fe.CidFont.init(a, &c.font, face_index);
         return c;
     }
+
+    const GidContext = struct {
+        pub fn hash(_: GidContext, k: u16) u64 {
+            const h = @as(u64, k) *% 0x9E3779B97F4A7C15;
+            return h ^ (h >> 29);
+        }
+        pub fn eql(_: GidContext, a: u16, b: u16) bool {
+            return a == b;
+        }
+    };
 
     fn colorKey(g: ColoredGlyph) u64 {
         return (@as(u64, g.gid) << 24) | (@as(u64, g.color[0]) << 16) | (@as(u64, g.color[1]) << 8) | g.color[2];

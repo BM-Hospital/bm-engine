@@ -265,7 +265,7 @@ test "inline row: boxes on one line, strut, vertical-align, baseline of the row"
     // without `strut_middle` the middle of the strut is used: (16 - 5) / 2 above the baseline
     var s = t.style(root).*;
     s.strut_middle = null;
-    t.setStyle(root, s);
+    try t.setStyle(root, s);
     try run(&t, root);
     try expectRect(&t, c, 30, 5.5, 30, 10);
 }
@@ -287,12 +287,12 @@ test "inline row: wrapping, margins, text-align, justify" {
 
     var s = t.style(root).*;
     s.text_align = .center;
-    t.setStyle(root, s);
+    try t.setStyle(root, s);
     try run(&t, root);
     try expectRect(&t, k[0], 5, 0, 30, 10);
     try expectRect(&t, k[4], 50, 10, 30, 10);
     s.text_align = .end;
-    t.setStyle(root, s);
+    try t.setStyle(root, s);
     try run(&t, root);
     try expectRect(&t, k[2], 70, 0, 30, 10);
     try expectRect(&t, k[3], 40, 10, 30, 10);
@@ -337,7 +337,7 @@ test "inline row: measured text leaves mixed with boxes" {
     // wraps inside the line width and is one box
     var s = t.style(root).*;
     s.size[0] = px(100);
-    t.setStyle(root, s);
+    try t.setStyle(root, s);
     try t.compute(root, vp400, &ctx, TextCtx.measure, .{ .baseline = TextCtx.baseline });
     try expectRect(&t, a, 0, 0, 50, 30);
     // 2 words per line -> 80 x 30, first baseline 8: ascent 8, descent 22

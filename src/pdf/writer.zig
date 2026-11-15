@@ -988,8 +988,12 @@ pub const Doc = struct {
             while (idx < n_struct) {
                 const stream_num = num;
                 num += 1;
+                // (the header gives each body's offset: their lengths are known without writing
+                // them, so a compressed stream takes the header and then the bodies one by one
+                // instead of a copy of them all)
                 var hdr: std.ArrayList(u8) = .empty;
-                var bodies: std.ArrayList(u8) = .empty;
+                var sel: std.ArrayList(u32) = .empty;
+                var body_len: usize = 0;
                 var count: usize = 0;
                 var seen: usize = 0;
                 for (order) |oi| {
@@ -1004,11 +1008,10 @@ pub const Doc = struct {
                     var t: [24]u8 = undefined;
                     try hdr.appendSlice(a, fmtInt(&t, n));
                     try hdr.append(a, ' ');
-                    try hdr.appendSlice(a, fmtInt(&t, @intCast(bodies.items.len)));
+                    try hdr.appendSlice(a, fmtInt(&t, @intCast(body_len)));
                     try hdr.append(a, ' ');
-                    var bw: Out = .{ .a = a, .o = &bodies };
-                    try d.emitBody(ob, map, &bw);
-                    try bodies.append(a, '\n');
+                    try sel.append(a, oi);
+                    body_len += try d.bodyLen(ob, map) + 1;
                     rows[n] = .{ .v = (@as(u64, stream_num) << 16) | @as(u64, count), .packed_ = true };
                     count += 1;
                     seen += 1;
@@ -1016,8 +1019,7 @@ pub const Doc = struct {
                 first_obj += count;
                 idx += count;
                 const first = hdr.items.len;
-                try hdr.appendSlice(a, bodies.items);
-                const e = d.encode(hdr.items, .content);
+                const e = try d.encodeObjStm(hdr.items, sel.items, map, first + body_len);
                 if (d.b.failed) return error.OutOfMemory;
                 rows[stream_num].v = out.items.len - start;
                 var hb = Buf.init(a);
@@ -1195,6 +1197,56 @@ pub const Doc = struct {
         try w.raw("startxref\n");
         try w.int(xref_off);
         try w.raw("\n%%EOF");
+    }
+
+    /// The length `emitBody` writes for `ob`.
+    fn bodyLen(d: *Doc, ob: Obj, map: []const u32) Error!usize {
+        var len: usize = ob.end - ob.start;
+        for (d.b.patches.items[ob.plo..ob.phi]) |p| {
+            const n = if (p.ref < map.len) map[p.ref] else 0;
+            if (n == 0) return error.DanglingRef;
+            var t: [24]u8 = undefined;
+            // (the one-byte placeholder becomes "n 0 R")
+            len = len - 1 + fmtInt(&t, n).len + 4;
+        }
+        return len;
+    }
+
+    /// An object stream's data (`hdr`, then the bodies of objects `sel`, each followed by a
+    /// newline; `total` bytes in all) encoded as `encode(.., .content)` would encode it, the bodies
+    /// streamed into the compressor rather than gathered first.
+    fn encodeObjStm(d: *Doc, hdr: []const u8, sel: []const u32, map: []const u32, total: usize) Error!Encoded {
+        const a = d.a;
+        var body: std.ArrayList(u8) = .empty;
+        if (!d.compress) {
+            var all: std.ArrayList(u8) = .empty;
+            try all.ensureTotalCapacityPrecise(a, total);
+            all.appendSliceAssumeCapacity(hdr);
+            var bw: Out = .{ .a = a, .o = &all };
+            for (sel) |oi| {
+                try d.emitBody(d.objs.items[oi], map, &bw);
+                try all.append(a, '\n');
+            }
+            return d.encode(all.items, .content);
+        }
+        // (`compressed`: the compressor's tables in `scratch` when there is one, the output then
+        // copied into `a`)
+        const sa = if (d.scratch) |s| s.allocator() else a;
+        defer if (d.scratch) |s| s.reset();
+        var s = try deflate.Stream.init(sa, .{ .level = d.level, .size_hint = total }, total / 2 + 64, 0, true);
+        errdefer s.deinit();
+        try s.write(hdr);
+        for (sel) |oi| {
+            // (in `a`, not after the compressor's output in `sa`, which then grows in place)
+            body.clearRetainingCapacity();
+            var bw: Out = .{ .a = a, .o = &body };
+            try d.emitBody(d.objs.items[oi], map, &bw);
+            try body.append(a, '\n');
+            try s.write(body.items);
+        }
+        try s.finish();
+        const z = try s.takeOutput();
+        return .{ .data = if (d.scratch != null) try a.dupe(u8, z) else z, .flate = true };
     }
 
     fn emitBody(d: *Doc, ob: Obj, map: []const u32, w: *Out) Error!void {
