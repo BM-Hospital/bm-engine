@@ -511,7 +511,7 @@ const twPng = renderer.renderSync(twChart, { width: 360, height: 200 });
 
 ::: warning Tên gradient của Tailwind v4
 Utility gradient là `bg-linear-to-t` (Tailwind v4). Tên cũ của v3 là `bg-gradient-to-t` không nằm trong
-tập con được hỗ trợ và bị bỏ qua **trong im lặng** — các cột sẽ đơn giản là vô hình. takumi cũng vậy.
+tập con được hỗ trợ và bị bỏ qua **trong im lặng** — các cột sẽ đơn giản là vô hình.
 :::
 
 ## Mẹo

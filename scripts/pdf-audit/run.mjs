@@ -14,6 +14,7 @@ import { bmMod, outDir, refMod, refVersion, runProbes } from "./lib.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
+for (const arg of argv) if (arg.startsWith('--') && !['--json', '--quiet', '--strict'].includes(arg)) throw new Error(`Unknown PDF audit option: ${arg}`);
 const filter = argv.filter((a) => !a.startsWith("--"));
 const quiet = argv.includes("--quiet");
 
@@ -21,6 +22,7 @@ for (const f of readdirSync(here).filter((n) => n.endsWith(".probe.mjs")).sort()
 
 console.log(`bm-engine/pdf backend: ${bmMod.backend}; reference: ${refMod ? "takumi-pdf " + refVersion : "not installed (set TAKUMI_PDF_REF): comparisons are unverified"}`);
 const rows = await runProbes(filter);
+if (rows.length === 0) throw new Error(`No PDF audit probes matched: ${filter.join(", ") || "(all)"}`);
 let fail = 0; let pass = 0; let unverified = 0;
 for (const r of rows) {
   if (r.status === "FAIL") fail++; else if (r.status === "UNVERIFIED") unverified++; else pass++;
@@ -31,4 +33,4 @@ for (const r of rows) {
 writeFileSync(path.join(outDir, "results.json"), JSON.stringify({ backend: bmMod.backend, reference: refVersion, rows }, null, 1));
 if (argv.includes("--json")) console.log(JSON.stringify(rows));
 console.log(`\n${rows.length} probes: ${pass} pass, ${fail} fail, ${unverified} unverified (no reference)`);
-process.exit(fail ? 1 : 0);
+process.exit(fail || (argv.includes('--strict') && (!process.env.TAKUMI_PDF_REF_ENTRY || !refMod || unverified)) ? 1 : 0);

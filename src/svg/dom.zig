@@ -65,7 +65,7 @@ pub const Tag = enum(u8) {
     textnode,
 
     pub fn fromName(name: []const u8) Tag {
-        return @enumFromInt(lookup(&tag_names, name) orelse 0);
+        return @fromBackingInt(@intCast(lookup(&tag_names, name) orelse 0));
     }
 
     pub fn isShape(t: Tag) bool {
@@ -76,7 +76,7 @@ pub const Tag = enum(u8) {
     }
 
     pub fn isFilterPrimitive(t: Tag) bool {
-        return @intFromEnum(t) >= @intFromEnum(Tag.feGaussianBlur) and @intFromEnum(t) <= @intFromEnum(Tag.feSpecularLighting);
+        return @backingInt(t) >= @backingInt(Tag.feGaussianBlur) and @backingInt(t) <= @backingInt(Tag.feSpecularLighting);
     }
 };
 
@@ -104,6 +104,8 @@ pub const Prop = enum(u8) {
     font_family,
     font_weight,
     text_anchor,
+    text_decoration,
+    text_decoration_line,
     color_interpolation_filters,
     // ---- not inherited ----
     opacity,
@@ -132,11 +134,11 @@ pub const Prop = enum(u8) {
         var buf: [32]u8 = undefined;
         for (name, 0..) |c, i| buf[i] = if (c == '-') '_' else std.ascii.toLower(c);
         const n = buf[0..name.len];
-        return @enumFromInt(lookup(&prop_names, n) orelse return null);
+        return @fromBackingInt(@intCast(lookup(&prop_names, n) orelse return null));
     }
 
     pub fn inherited(p: Prop) bool {
-        return @intFromEnum(p) < @intFromEnum(Prop.opacity);
+        return @backingInt(p) < @backingInt(Prop.opacity);
     }
 };
 

@@ -42,6 +42,7 @@ pub fn parsePaint(s_in: []const u8) ?SPaint {
     return .{ .kind = .color, .color = c };
 }
 
+pub const DecorationPaint = struct { fill: SPaint, stroke: SPaint, color: Color, fill_opacity: f32, stroke_opacity: f32, stroke_width: num.Length };
 pub const Style = struct {
     fill: SPaint = .{ .kind = .color },
     stroke: SPaint = .{ .kind = .none },
@@ -66,6 +67,8 @@ pub const Style = struct {
     font_family: []const u8 = "",
     font_weight: []const u8 = "",
     text_anchor: []const u8 = "",
+    /// Decoration paint belongs to its declaring element, even when a child changes fill.
+    decorations: [3]?DecorationPaint = @splat(null),
     linear_rgb_filters: bool = true,
 
     /// Applies the inherited properties declared on `n` (unknown / invalid values are ignored,
@@ -77,6 +80,13 @@ pub const Style = struct {
             if (std.mem.eql(u8, v, "inherit")) continue;
             st.applyOne(d.prop, v);
         }
+        for (n.decls) |d| if (d.prop == .text_decoration or d.prop == .text_decoration_line) {
+            var words = std.mem.tokenizeAny(u8, d.value, " \t\r\n");
+            while (words.next()) |word| {
+                const index: usize = if (std.mem.eql(u8, word, "overline")) 0 else if (std.mem.eql(u8, word, "underline")) 1 else if (std.mem.eql(u8, word, "line-through")) 2 else continue;
+                st.decorations[index] = .{ .fill = st.fill, .stroke = st.stroke, .color = st.color, .fill_opacity = st.fill_opacity, .stroke_opacity = st.stroke_opacity, .stroke_width = st.stroke_width };
+            }
+        };
     }
 
     fn applyOne(st: *Style, p: dom.Prop, v: []const u8) void {

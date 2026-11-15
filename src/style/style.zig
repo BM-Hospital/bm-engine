@@ -860,6 +860,31 @@ test "property table lookup" {
     for (std.enums.values(props.Prop)) |p| try T.expectEqual(p, props.lookup(@tagName(p)).?);
 }
 
+test "motion paths share distance wrapping, anchors and ray geometry across backends" {
+    var t = TestCx.init();
+    defer t.deinit();
+    const motion = @import("motion_path.zig");
+    const s = try t.style(null,
+        \\{"offsetPath":"path('M0 0 L100 0 L100 100 Z')","offsetDistance":"125px","offsetRotate":"reverse 10deg","offsetAnchor":"0% 0%"}
+    );
+    const point = motion.sample(&s, 20, 10).?;
+    try T.expectApproxEqAbs(@as(f32, 100), point.x, 0.001);
+    try T.expectApproxEqAbs(@as(f32, 25), point.y, 0.001);
+    try T.expectEqual(computed.OffsetRotate{ .mode = .reverse, .angle = 10 }, s.offset_rotate);
+    var r = try t.one("offset", "ray(90deg sides at 20px 30px) 50% / 0% 0%");
+    const ray = motion.sample(&r, 20, 10).?;
+    try T.expectApproxEqAbs(@as(f32, 610), ray.x, 0.001);
+    try T.expectApproxEqAbs(@as(f32, 30), ray.y, 0.001);
+    r = try t.style(null,
+        \\{"offsetPath":"path('M0 0 L100 0')","offsetDistance":"200%"}
+    );
+    try T.expectApproxEqAbs(@as(f32, 100), motion.sample(&r, 20, 10).?.x, 0.001);
+    _ = try t.one("offset", "0% 0% circle(20px at 30px 40px) auto 20deg 10px / 50%");
+    try t.bad("offsetAnchor", "left top");
+    try t.bad("offsetPath", "ray(sides)");
+    try t.bad("offsetRotate", "auto reverse");
+}
+
 test "initial values" {
     const ctx: Context = .{ .dpr = 2, .viewport_w = 100, .viewport_h = 100, .root_font_size = 32 };
     const s = initial(&ctx);
@@ -943,8 +968,9 @@ test "font-size: em uses parent, keywords, relative" {
     try T.expectEqual(@as(f32, 20), c2.font_size);
     try expectLP(c2.width.lp, 20, 0);
     const kws = [_]struct { []const u8, f32 }{
-        .{ "xx-small", 18 }, .{ "x-small", 20 }, .{ "small", 26 }, .{ "medium", 32 }, .{ "large", 36 },
-        .{ "x-large", 48 },  .{ "xx-large", 64 }, .{ "xxx-large", 96 }, .{ "1rem", 32 }, .{ "larger", 48 }, .{ "smaller", 40.0 / 1.2 },
+        .{ "xx-small", 18 },        .{ "x-small", 20 },  .{ "small", 26 },     .{ "medium", 32 }, .{ "large", 36 },
+        .{ "x-large", 48 },         .{ "xx-large", 64 }, .{ "xxx-large", 96 }, .{ "1rem", 32 },   .{ "larger", 48 },
+        .{ "smaller", 40.0 / 1.2 },
     };
     for (kws) |k| {
         const members = try t.a().alloc(json.Member, 1);
@@ -1028,11 +1054,11 @@ test "display / position / box keywords" {
     var t = TestCx.init();
     defer t.deinit();
     const cases = [_]struct { []const u8, Display }{
-        .{ "none", .none },               .{ "flex", .flex },             .{ "inline-flex", .inline_flex },
-        .{ "grid", .grid },               .{ "inline-grid", .inline_grid }, .{ "block", .block },
-        .{ "inline", .@"inline" },        .{ "inline-block", .inline_block }, .{ "contents", .contents },
-        .{ "flow-root", .flow_root },     .{ "FLEX", .flex },             .{ "table", .table },
-        .{ "list-item", .list_item },     .{ "-webkit-box", .webkit_box }, .{ "table-cell", .table_cell },
+        .{ "none", .none },                 .{ "flex", .flex },                             .{ "inline-flex", .inline_flex },
+        .{ "grid", .grid },                 .{ "inline-grid", .inline_grid },               .{ "block", .block },
+        .{ "inline", .@"inline" },          .{ "inline-block", .inline_block },             .{ "contents", .contents },
+        .{ "flow-root", .flow_root },       .{ "FLEX", .flex },                             .{ "table", .table },
+        .{ "list-item", .list_item },       .{ "-webkit-box", .webkit_box },                .{ "table-cell", .table_cell },
         .{ "inline-table", .inline_table }, .{ "table-header-group", .table_header_group }, .{ "-webkit-inline-box", .webkit_inline_box },
     };
     for (cases) |cs| try T.expectEqual(cs[1], (try t.one("display", cs[0])).display);
@@ -1450,7 +1476,10 @@ test "opacity / filter / blend / object / image-rendering" {
     try T.expect(s.filter[8].hue_rotate == 90 and s.filter[9].drop_shadow.blur == 3);
     try T.expectEqual(@as(usize, 0), (try t.one("filter", "none")).filter.len);
     try T.expectEqual(@as(f32, 0), (try t.one("filter", "blur(-1px)")).filter[0].blur);
-    try t.bad("filter", "url(#f)");
+    try T.expectEqual(@as(usize, 0), (try t.one("filter", "url(#f)")).filter.len);
+    const url_then_grayscale = try t.one("filter", "url(#f) grayscale(1)");
+    try T.expectEqual(@as(usize, 1), url_then_grayscale.filter.len);
+    try T.expect(url_then_grayscale.filter[0].grayscale == 1);
     try t.bad("filter", "brightness(-1)");
     try t.bad("filter", "blur(1px, 2px)");
     try T.expect((try t.one("mixBlendMode", "color-dodge")).mix_blend_mode == .color_dodge);
@@ -1598,8 +1627,8 @@ test "text properties" {
     try T.expect((try t.one("tabSize", "20px")).tab_size.px == 20);
     // white-space
     const ws = [_]struct { []const u8, computed.WhiteSpaceCollapse, computed.TextWrapMode }{
-        .{ "normal", .collapse, .wrap },         .{ "nowrap", .collapse, .nowrap },     .{ "pre", .preserve, .nowrap },
-        .{ "pre-wrap", .preserve, .wrap },       .{ "pre-line", .preserve_breaks, .wrap }, .{ "break-spaces", .break_spaces, .wrap },
+        .{ "normal", .collapse, .wrap },            .{ "nowrap", .collapse, .nowrap },        .{ "pre", .preserve, .nowrap },
+        .{ "pre-wrap", .preserve, .wrap },          .{ "pre-line", .preserve_breaks, .wrap }, .{ "break-spaces", .break_spaces, .wrap },
         .{ "preserve nowrap", .preserve, .nowrap },
     };
     for (ws) |w| {
@@ -1662,8 +1691,8 @@ test "parseDeclarationBlock" {
         \\ /* c: d; */ width : 10px !important; content: "x\";y" ; bad ; :novalue; height:/*:*/5px ! IMPORTANT;font-family: 'a;b'
     );
     const want = [_]struct { []const u8, []const u8, bool }{
-        .{ "color", "red", false },          .{ "background", "url(\"a;b.png\") no-repeat", false },
-        .{ "--x", "{ a; b }", false },       .{ "width", "10px", true },
+        .{ "color", "red", false },           .{ "background", "url(\"a;b.png\") no-repeat", false },
+        .{ "--x", "{ a; b }", false },        .{ "width", "10px", true },
         .{ "content", "\"x\\\";y\"", false }, .{ "height", "5px", true },
         .{ "font-family", "'a;b'", false },
     };
@@ -1966,6 +1995,8 @@ test "text and font extras" {
     try T.expect(s.text_decoration_skip_ink == .none and s.text_underline_offset.? == 2);
     try T.expect(s.text_underline_position.under and s.text_underline_position.left);
     try T.expect(s.webkit_text_fill_color.?.rgba.a == 0 and s.paint_order == .stroke);
+    try T.expect((try t.one("paintOrder", "markers stroke")).paint_order == .stroke);
+    try T.expect((try t.one("paintOrder", "markers")).paint_order == .fill);
     try T.expect(s.text_align_last == .justify and s.hyphens == .auto and s.line_break == .strict and s.font_stretch == 75);
     try T.expectEqual(@as(usize, 3), s.font_feature_settings.len);
     try T.expect(std.mem.eql(u8, &s.font_feature_settings[0].tag, "liga") and s.font_feature_settings[0].value == 0 and s.font_feature_settings[1].value == 1 and s.font_feature_settings[2].value == 3);
@@ -2093,21 +2124,22 @@ test "fuzz: parsers never crash" {
     var prng = std.Random.DefaultPrng.init(0x5eed);
     const rnd = prng.random();
     const seeds = [_][]const u8{
-        "calc(100% - (2 * 3px))", "linear-gradient(45deg, red 10%, 30%, blue 50% 60%)", "rgb(1 2 3 / 50%)",
-        "repeat(auto-fill, minmax(10px, 1fr)) [a b]", "inset 1px 2px 3px 4px red, 0 0 #fff", "url(\"a(b)\") center / cover no-repeat",
-        "italic bold 12px/1.5 'Inter', sans-serif", "radial-gradient(circle at 10% 20%, red, blue)",
-        "conic-gradient(from 10deg at center, red 0 10%, blue)", "translate(1px, 2%) rotate(1turn) matrix(1,2,3,4,5,6)",
-        "1 / span 2", "min(1px, max(2px, clamp(1px, 2px, 3px)))", "hsl(120deg 100% 25% / .5)", "drop-shadow(1px 1px red) blur(2px)",
-        "right 10px bottom 20%", "1px 2px 3px 4px / 5px", "#0f08", "((((((((", "\"unterminated", "/* comment",
-        "var(--a, var(--b, 1px)) var(--c)", "[a b] 1fr [c] repeat(2, [d] 10px)", "\"a a\" 10px \". b\" / 1fr 2fr", "2 foo / span bar",
-        "auto-flow dense 10px / 1fr", "inset(1px 2% round 3px / 4px)", "polygon(evenodd, 0 0, 100% 0, 50% 100%)", "circle(closest-side at 10% 20%)",
-        "path(\"M0 0 L1 1\") content-box", "url(m.png) center / contain no-repeat luminance, none", "spin 1s steps(3, jump-both) infinite alternate",
-        "linear(0, 0.5 20% 40%, 1)", "cubic-bezier(0.1, 2, 0.3, -1)", "\"liga\" off, \"ss01\" 2", "small-caps tabular-nums no-contextual",
-        "min(100%, calc(50% + 10px), max(2em, 3ch))", "clamp(1lh, 10%, 2rlh)", "fit-content(10%)", "oklch(0.7 0.1 200 / 50%)",
-        "color-mix(in oklab, red 30%, blue)", "lab(50 20 -30)", "linear-gradient(in oklch longer hue, red, lab(50 20 30))",
-        "color-mix(in oklch longer hue, red 20%, lab(50 1 2))", "lch(none none none / none)", "color(xyz-d50 1e30 -1e30 0)",
-        "linear-gradient(in hsl decreasing hue 45deg, oklch(0.5 0.2 250), 30%, red)", "radial-gradient(circle at 1px 2px in lab, red, blue)",
-        "light-dark(red, blue)",
+        "calc(100% - (2 * 3px))",                                                     "linear-gradient(45deg, red 10%, 30%, blue 50% 60%)",   "rgb(1 2 3 / 50%)",
+        "repeat(auto-fill, minmax(10px, 1fr)) [a b]",                                 "inset 1px 2px 3px 4px red, 0 0 #fff",                  "url(\"a(b)\") center / cover no-repeat",
+        "italic bold 12px/1.5 'Inter', sans-serif",                                   "radial-gradient(circle at 10% 20%, red, blue)",        "conic-gradient(from 10deg at center, red 0 10%, blue)",
+        "translate(1px, 2%) rotate(1turn) matrix(1,2,3,4,5,6)",                       "1 / span 2",                                           "min(1px, max(2px, clamp(1px, 2px, 3px)))",
+        "hsl(120deg 100% 25% / .5)",                                                  "drop-shadow(1px 1px red) blur(2px)",                   "right 10px bottom 20%",
+        "1px 2px 3px 4px / 5px",                                                      "#0f08",                                                "((((((((",
+        "\"unterminated",                                                             "/* comment",                                           "var(--a, var(--b, 1px)) var(--c)",
+        "[a b] 1fr [c] repeat(2, [d] 10px)",                                          "\"a a\" 10px \". b\" / 1fr 2fr",                       "2 foo / span bar",
+        "auto-flow dense 10px / 1fr",                                                 "inset(1px 2% round 3px / 4px)",                        "polygon(evenodd, 0 0, 100% 0, 50% 100%)",
+        "circle(closest-side at 10% 20%)",                                            "path(\"M0 0 L1 1\") content-box",                      "url(m.png) center / contain no-repeat luminance, none",
+        "spin 1s steps(3, jump-both) infinite alternate",                             "linear(0, 0.5 20% 40%, 1)",                            "cubic-bezier(0.1, 2, 0.3, -1)",
+        "\"liga\" off, \"ss01\" 2",                                                   "small-caps tabular-nums no-contextual",                "min(100%, calc(50% + 10px), max(2em, 3ch))",
+        "clamp(1lh, 10%, 2rlh)",                                                      "fit-content(10%)",                                     "oklch(0.7 0.1 200 / 50%)",
+        "color-mix(in oklab, red 30%, blue)",                                         "lab(50 20 -30)",                                       "linear-gradient(in oklch longer hue, red, lab(50 20 30))",
+        "color-mix(in oklch longer hue, red 20%, lab(50 1 2))",                       "lch(none none none / none)",                           "color(xyz-d50 1e30 -1e30 0)",
+        "linear-gradient(in hsl decreasing hue 45deg, oklch(0.5 0.2 250), 30%, red)", "radial-gradient(circle at 1px 2px in lab, red, blue)", "light-dark(red, blue)",
     };
     const alphabet = "()[],/*+- .%#\"'0123456789pxemrdgaucltnbi!\\";
     var buf: [96]u8 = undefined;

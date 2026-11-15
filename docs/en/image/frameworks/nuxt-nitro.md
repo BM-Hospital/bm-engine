@@ -5,8 +5,7 @@
 Nuxt's server side is Nitro, and Nitro routes are [h3](https://h3.dev) event handlers. An h3 handler may
 return a Web `Response`, so a bm-engine route is the [universal pattern](./index.md#the-universal-pattern)
 inside `defineEventHandler`. This page covers Nuxt `server/routes`, standalone Nitro, and what changes on
-edge presets. There is no Nuxt module for bm-engine (takumi's integration goes through Nuxt OG Image,
-which does not know bm-engine).
+edge presets. There is no Nuxt module for bm-engine.
 
 ::: info Verification status
 Verified: the handler below ran under **h3 2.0.8** (`new H3().get(...)`, requested through `app.fetch`)
@@ -106,7 +105,7 @@ useSeoMeta({
 });
 ```
 
-Nuxt OG Image's `.takumi.vue` templates do not apply: bm-engine does not render Vue components. Build
+bm-engine does not render Vue components. Build
 the node tree in the server route (or render a Vue component to an HTML string with Vue's server
 renderer and pass the string — HTML input needs the `standard` or `full` profile; see
 [HTML and Tailwind](../html-and-tailwind.md); not tested with Vue).

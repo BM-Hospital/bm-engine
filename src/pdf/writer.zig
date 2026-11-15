@@ -22,6 +22,7 @@
 //! (the per-render bump arena); stream data passed to `beginStream` is referenced, not copied,
 //! and must stay alive until `finish`.
 const std = @import("std");
+const builtin = @import("builtin");
 const deflate = @import("../codec/deflate.zig");
 const Bump = @import("../bump.zig").Bump;
 
@@ -67,15 +68,39 @@ const pow10 = blk: {
     break :blk t;
 };
 
+/// "00" .. "99".
+const digit_pairs: [200]u8 = blk: {
+    var t: [200]u8 = undefined;
+    for (0..100) |i| {
+        t[2 * i] = '0' + @as(u8, @intCast(i / 10));
+        t[2 * i + 1] = '0' + @as(u8, @intCast(i % 10));
+    }
+    break :blk t;
+};
+
 fn fmtU64(out: []u8, v: u64) usize {
     var tmp: [20]u8 = undefined;
     var k: usize = tmp.len;
     var w = v;
-    while (true) {
+    // (64-bit divisions only above u32; then two digits per step)
+    while (w > std.math.maxInt(u32)) {
         k -= 1;
         tmp[k] = @intCast('0' + w % 10);
         w /= 10;
-        if (w == 0) break;
+    }
+    var x: u32 = @intCast(w);
+    while (x >= 100) {
+        const r = x % 100;
+        x /= 100;
+        k -= 2;
+        tmp[k..][0..2].* = digit_pairs[2 * r ..][0..2].*;
+    }
+    if (x >= 10) {
+        k -= 2;
+        tmp[k..][0..2].* = digit_pairs[2 * x ..][0..2].*;
+    } else {
+        k -= 1;
+        tmp[k] = @intCast('0' + x);
     }
     @memcpy(out[0 .. tmp.len - k], tmp[k..]);
     return tmp.len - k;
@@ -95,7 +120,30 @@ pub fn fmtInt(out: *[24]u8, v: i64) []const u8 {
 /// pdf-writer `push_float` for an f32: integral values in i32 range as integers, everything else
 /// as the shortest decimal that round-trips to the same f32 (ryu; values between 2^31 and 1e12
 /// get ryu's `.0`). Never uses exponent notation. Non-finite values are written as `0`.
+/// (Content streams repeat the same numbers, e.g. a glyph outline drawn for its fill, stroke and
+/// shadows: single-threaded builds (wasm) keep the text of recent values in a small cache keyed by
+/// the bits. The native addon renders on several threads and has no thread-local storage.)
 pub fn fmtReal(out: *[48]u8, v: f32) []const u8 {
+    if (!builtin.single_threaded) return fmtRealUncached(out, v);
+    const bits: u32 = @bitCast(v);
+    const slot = &real_cache[(bits *% 0x9E37_79B1) >> (32 - real_cache_bits)];
+    if (slot.len != 0 and slot.bits == bits) {
+        @memcpy(out[0..slot.len], slot.text[0..slot.len]);
+        return out[0..slot.len];
+    }
+    const t = fmtRealUncached(out, v);
+    if (t.len <= slot.text.len) {
+        slot.* = .{ .bits = bits, .len = @intCast(t.len) };
+        @memcpy(slot.text[0..t.len], t);
+    }
+    return t;
+}
+
+const real_cache_bits = 11;
+const RealText = struct { bits: u32 = 0, len: u8 = 0, text: [19]u8 = undefined };
+var real_cache: [1 << real_cache_bits]RealText = @splat(.{});
+
+fn fmtRealUncached(out: *[48]u8, v: f32) []const u8 {
     if (!std.math.isFinite(v)) return "0";
     const av = @abs(v);
     var n: usize = 0;
@@ -574,7 +622,12 @@ pub const Options = struct {
     /// Compress content streams (krilla `compress_content_streams`) and object streams. Turn off
     /// for readable output in tests / debugging.
     compress: bool = true,
-    level: deflate.Level = .default,
+    /// Content streams (operators and numbers, the bulk of what a document compresses): greedy
+    /// matching (`text` = `fast`'s parse, `default`'s zlib header) takes 27 % less time than lazy
+    /// `default` (half on outline-heavy text) for 2 % more bytes, about what krilla's miniz level 6
+    /// gives up against zlib 6. Other streams (font programs, images, object and xref streams:
+    /// binary, compressed once) use `default`.
+    level: deflate.Level = .text,
 };
 
 /// Document Info dictionary (written in this order; krilla `serialize_document_info`).
@@ -757,7 +810,7 @@ pub const Doc = struct {
             break :blk data;
         } };
         if (!want or (data.len == 0 and mode == .auto)) return .{ .data = data };
-        const z = d.compressed(data) catch {
+        const z = d.compressed(data, if (mode == .content) d.level else .default) catch {
             d.b.failed = true;
             return .{ .data = data };
         };
@@ -766,10 +819,10 @@ pub const Doc = struct {
     }
 
     /// `data` zlib-compressed into `a` (the compressor's tables in `scratch` when there is one).
-    fn compressed(d: *Doc, data: []const u8) error{OutOfMemory}![]u8 {
-        const s = d.scratch orelse return deflate.compress(d.a, data, d.level);
+    fn compressed(d: *Doc, data: []const u8, level: deflate.Level) error{OutOfMemory}![]u8 {
+        const s = d.scratch orelse return deflate.compressEx(d.a, data, .{ .level = level, .size_hint = data.len });
         defer s.reset();
-        return d.a.dupe(u8, try deflate.compress(s.allocator(), data, d.level));
+        return d.a.dupe(u8, try deflate.compressEx(s.allocator(), data, .{ .level = level, .size_hint = data.len }));
     }
 
     /// Dedup cache for higher layers (krilla `cached_mappings`): content hash -> object ref.
@@ -935,8 +988,12 @@ pub const Doc = struct {
             while (idx < n_struct) {
                 const stream_num = num;
                 num += 1;
+                // (the header gives each body's offset: their lengths are known without writing
+                // them, so a compressed stream takes the header and then the bodies one by one
+                // instead of a copy of them all)
                 var hdr: std.ArrayList(u8) = .empty;
-                var bodies: std.ArrayList(u8) = .empty;
+                var sel: std.ArrayList(u32) = .empty;
+                var body_len: usize = 0;
                 var count: usize = 0;
                 var seen: usize = 0;
                 for (order) |oi| {
@@ -951,11 +1008,10 @@ pub const Doc = struct {
                     var t: [24]u8 = undefined;
                     try hdr.appendSlice(a, fmtInt(&t, n));
                     try hdr.append(a, ' ');
-                    try hdr.appendSlice(a, fmtInt(&t, @intCast(bodies.items.len)));
+                    try hdr.appendSlice(a, fmtInt(&t, @intCast(body_len)));
                     try hdr.append(a, ' ');
-                    var bw: Out = .{ .a = a, .o = &bodies };
-                    try d.emitBody(ob, map, &bw);
-                    try bodies.append(a, '\n');
+                    try sel.append(a, oi);
+                    body_len += try d.bodyLen(ob, map) + 1;
                     rows[n] = .{ .v = (@as(u64, stream_num) << 16) | @as(u64, count), .packed_ = true };
                     count += 1;
                     seen += 1;
@@ -963,8 +1019,7 @@ pub const Doc = struct {
                 first_obj += count;
                 idx += count;
                 const first = hdr.items.len;
-                try hdr.appendSlice(a, bodies.items);
-                const e = d.encode(hdr.items, .content);
+                const e = try d.encodeObjStm(hdr.items, sel.items, map, first + body_len);
                 if (d.b.failed) return error.OutOfMemory;
                 rows[stream_num].v = out.items.len - start;
                 var hb = Buf.init(a);
@@ -1109,7 +1164,7 @@ pub const Doc = struct {
                 row[1 + width] = @intCast(f3 >> 8);
                 row[2 + width] = @truncate(f3);
             }
-            const z = deflate.compress(a, data, d.level) catch return error.OutOfMemory;
+            const z = deflate.compressEx(a, data, .{ .level = .default, .size_hint = data.len }) catch return error.OutOfMemory;
             try w.objHead(xref_num);
             try w.raw("<</Length ");
             try w.int(z.len);
@@ -1142,6 +1197,56 @@ pub const Doc = struct {
         try w.raw("startxref\n");
         try w.int(xref_off);
         try w.raw("\n%%EOF");
+    }
+
+    /// The length `emitBody` writes for `ob`.
+    fn bodyLen(d: *Doc, ob: Obj, map: []const u32) Error!usize {
+        var len: usize = ob.end - ob.start;
+        for (d.b.patches.items[ob.plo..ob.phi]) |p| {
+            const n = if (p.ref < map.len) map[p.ref] else 0;
+            if (n == 0) return error.DanglingRef;
+            var t: [24]u8 = undefined;
+            // (the one-byte placeholder becomes "n 0 R")
+            len = len - 1 + fmtInt(&t, n).len + 4;
+        }
+        return len;
+    }
+
+    /// An object stream's data (`hdr`, then the bodies of objects `sel`, each followed by a
+    /// newline; `total` bytes in all) encoded as `encode(.., .content)` would encode it, the bodies
+    /// streamed into the compressor rather than gathered first.
+    fn encodeObjStm(d: *Doc, hdr: []const u8, sel: []const u32, map: []const u32, total: usize) Error!Encoded {
+        const a = d.a;
+        var body: std.ArrayList(u8) = .empty;
+        if (!d.compress) {
+            var all: std.ArrayList(u8) = .empty;
+            try all.ensureTotalCapacityPrecise(a, total);
+            all.appendSliceAssumeCapacity(hdr);
+            var bw: Out = .{ .a = a, .o = &all };
+            for (sel) |oi| {
+                try d.emitBody(d.objs.items[oi], map, &bw);
+                try all.append(a, '\n');
+            }
+            return d.encode(all.items, .content);
+        }
+        // (`compressed`: the compressor's tables in `scratch` when there is one, the output then
+        // copied into `a`)
+        const sa = if (d.scratch) |s| s.allocator() else a;
+        defer if (d.scratch) |s| s.reset();
+        var s = try deflate.Stream.init(sa, .{ .level = d.level, .size_hint = total }, total / 2 + 64, 0, true);
+        errdefer s.deinit();
+        try s.write(hdr);
+        for (sel) |oi| {
+            // (in `a`, not after the compressor's output in `sa`, which then grows in place)
+            body.clearRetainingCapacity();
+            var bw: Out = .{ .a = a, .o = &body };
+            try d.emitBody(d.objs.items[oi], map, &bw);
+            try body.append(a, '\n');
+            try s.write(body.items);
+        }
+        try s.finish();
+        const z = try s.takeOutput();
+        return .{ .data = if (d.scratch != null) try a.dupe(u8, z) else z, .flate = true };
     }
 
     fn emitBody(d: *Doc, ob: Obj, map: []const u32, w: *Out) Error!void {
@@ -1407,6 +1512,24 @@ test "real formatting matches pdf-writer" {
     try expectReal(0.0000015, "0.0000015");
     try expectReal(1.0e10, "10000000000.0");
     try expectReal(std.math.nan(f32), "0");
+}
+
+test "real formatting: the per-thread cache returns what the formatter writes" {
+    var prng = std.Random.DefaultPrng.init(0x5eed);
+    const rnd = prng.random();
+    var a: [48]u8 = undefined;
+    var b: [48]u8 = undefined;
+    for (0..20000) |i| {
+        // (a small pool of values so most lookups hit, colliding slots included)
+        const v: f32 = if (i % 3 == 0) @bitCast(rnd.int(u32)) else @as(f32, @floatFromInt(rnd.uintLessThan(u32, 5000))) / 64.0 - 30.0;
+        try testing.expectEqualStrings(fmtRealUncached(&b, v), fmtReal(&a, v));
+        try testing.expectEqualStrings(fmtRealUncached(&b, v), fmtReal(&a, v));
+    }
+    var c: [24]u8 = undefined;
+    for ([_]u64{ 0, 9, 10, 99, 100, 101, 4294967295, 4294967296, 18446744073709551615 }) |v| {
+        var d: [24]u8 = undefined;
+        try testing.expectEqualStrings(try std.fmt.bufPrint(&d, "{d}", .{v}), c[0..fmtU64(&c, v)]);
+    }
 }
 
 test "names, strings, text strings, dates" {

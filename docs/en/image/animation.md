@@ -2,7 +2,7 @@
 
 [English](animation.md) · [Tiếng Việt](../../vi/image/animation.md)
 
-bm-engine renders CSS animations the way takumi does: it does not run a clock, it **samples** the
+bm-engine renders CSS animations by **sampling** the
 `@keyframes` timeline at a point in time you choose. One call gives you one frame at `timeMs`; another
 samples a list of scenes at a fixed frame rate and encodes them as an animated WebP, APNG or GIF. This
 page shows both, how to define keyframes (stylesheet text, rule objects, HTML `<style>`), the timing
@@ -54,13 +54,12 @@ Two animations run on the same element here: `slide` moves it, `tint` changes it
 
 ### Keyframes as data
 
-When values come from your application, pass the keyframes as a takumi rule object instead of building
+When values come from your application, pass the keyframes as a rule object instead of building
 CSS text: `{ keyframes: name, steps: [{ offset, style }] }`, where `offset` is `"from"`, `"to"` or a
 percentage such as `"50%"`, and `style` uses the same camelCase keys as inline styles.
 
 <!-- @example animation#rule-object -->
 ```js
-// Keyframes as data instead of CSS text (takumi rule object):
 const pulse = renderer.renderSync(
   { type: "container", style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
     children: [{ type: "container", style: { width: 40, height: 40, borderRadius: 8, backgroundColor: "#16a34a", animation: "pop 1s ease-out" } }] },
@@ -76,13 +75,12 @@ const pulse = renderer.renderSync(
 
 ![Frame at 500 ms of the rule-object animation](/img/guide/animation-rule-object.png)
 
-The deprecated top-level `keyframes` option (`{ name: { from: {...}, to: {...} } }`) also still works,
-as in takumi.
+The deprecated top-level `keyframes` option (`{ name: { from: {...}, to: {...} } }`) also still works.
 
 ### Built-in names and Tailwind
 
-`spin`, `ping`, `pulse` and `bounce` (Tailwind's keyframes) work without a `@keyframes` rule, as in
-takumi: `animation: "spin 1s linear infinite"` rotates the element. The Tailwind utilities work too:
+`spin`, `ping`, `pulse` and `bounce` (Tailwind's keyframes) work without a `@keyframes` rule. For example,
+`animation: "spin 1s linear infinite"` rotates the element. The Tailwind utilities work too:
 `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`, `animate-none`, arbitrary values such
 as `animate-[spin_1s_linear_infinite]`, and your own names from `--animate-*` variables in `@theme` (with
 their `@keyframes` inside the `@theme` block or anywhere in `css`):
@@ -226,7 +224,7 @@ const slides = renderer.renderAnimationSync({
 
 ### Frame schedule
 
-The schedule is the same as takumi's: with `total` = the sum of `durationMs`, there are
+With `total` = the sum of `durationMs`, there are
 `ceil(total × fps / 1000)` frames; frame *i* starts at `floor(i × 1000 / fps)` ms and lasts until the
 next one starts (zero-length frames are dropped). A frame shows the scene active at its start time,
 sampled at that scene's local time.
@@ -311,7 +309,7 @@ console.log(probe("move 1s steps(4)", 300));                   // 25
 The printed values match the comments: 25, 0, 100, 60, 0 and 25.
 
 ::: warning `animation-play-state` is ignored
-`paused` animations are sampled anyway, as in takumi: a sampled render has no notion of "paused".
+`paused` animations are sampled anyway: a sampled render has no notion of "paused".
 :::
 
 ## What can be animated
@@ -412,10 +410,7 @@ are capped at 512 MiB in total.
 
 ## Cost
 
-An animation costs roughly one full render per frame plus the encoder: 2 s at 25 fps is 50 layouts and
-50 rasterisations. In the benchmark, the 42 animation fixtures (small single frames at `timeMs`)
-render raw in 0.16 ms vs takumi's 0.25 ms (geometric mean, phase-2 run), and frame counts and delays of
-`renderAnimation` are identical to takumi. To keep animations cheap:
+Animation cost grows with frame count, canvas size and effects. To keep animations cheap:
 
 - keep the canvas small — work and memory grow with `width × height × frames`;
 - use the lowest `fps` that looks smooth (12–25 is plenty for most UI motion);

@@ -6,12 +6,7 @@ TanStack Start server routes define HTTP handlers that receive a Web `Request` a
 An Open Graph endpoint is therefore the [universal pattern](./index.md#the-universal-pattern) placed
 under `server.handlers`.
 
-::: info Verification status
-Verified: the `GET({ request })` handler object below was called on Node 26.13 and returned a
-1200 × 630 PNG (`docs/examples/frameworks/check-frameworks.mjs`). **Not verified inside a real TanStack
-Start app**: the route-definition API (`createFileRoute(...)({ server: { handlers } })`) follows takumi's
-TanStack Start guide and changes between TanStack Start releases — check the version you use.
-:::
+The route below is an integration template. Verify the route-definition API against the TanStack Start version in your application; it has not been tested in a complete framework build here.
 
 ## A server route
 
@@ -58,13 +53,7 @@ export const Route = createFileRoute("/posts/$slug")({
 TanStack Start projects already compile JSX with React's automatic runtime, which produces React
 elements, not bm-engine nodes. Options:
 
-- build node objects directly (as above), or with [`h()`](./index.md#node-trees-without-jsx) called as a
-  function;
-- put the card in a separate file with a `/** @jsxRuntime classic */ /** @jsx h */` pragma so that
-  file's JSX calls `h` (supported by esbuild and TypeScript; Vite's React plugin may override the
-  runtime — not tested here);
-- convert React elements with takumi's `fromJsx()` from `@takumi-rs/helpers` (see the
-  [migration guide](../migration/from-takumi.md#jsx)).
+- Render React components to an HTML string on the server, then pass that string to bm-engine.
 
 ## Deployment targets (expected configuration)
 

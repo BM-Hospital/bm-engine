@@ -19,8 +19,11 @@ const Error = render.Error;
 /// Whether `text` holds a `page` declaration (`page` as a whole word, then `:`; not `@page`,
 /// `page-break-*` or `--page`).
 pub fn declaresPage(text: []const u8) bool {
+    // (each "page" in order: a scan for its first letter, then the rest compared)
     var at: usize = 0;
-    while (std.mem.indexOfPos(u8, text, at, "page")) |i| {
+    while (std.mem.indexOfScalarPos(u8, text, at, 'p')) |i| {
+        at = i + 1;
+        if (text.len - i < 4 or !std.mem.eql(u8, text[i + 1 .. i + 4], "age")) continue;
         at = i + 4;
         if (i > 0) {
             const c = text[i - 1];

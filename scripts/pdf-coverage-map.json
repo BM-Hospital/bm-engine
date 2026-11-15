@@ -1,0 +1,4220 @@
+{
+  "revision": "ff9a5d411310c8cdd1ac76a4f106c123d309e0a4",
+  "meaning": "Static Rust and JavaScript test declarations, not runtime cases or code coverage. No pending adapter counts as executed coverage.",
+  "goldenAdapters": [
+    {
+      "name": "box-chrome",
+      "runner": "node scripts/pdf-compare.mjs --strict box-chrome"
+    },
+    {
+      "name": "gradients",
+      "runner": "node scripts/pdf-compare.mjs --strict gradients"
+    },
+    {
+      "name": "repeating-gradients",
+      "runner": "node scripts/pdf-compare.mjs --strict repeating-gradients"
+    },
+    {
+      "name": "box-shadows",
+      "runner": "node scripts/pdf-compare.mjs --strict box-shadows"
+    },
+    {
+      "name": "blend-opacity",
+      "runner": "node scripts/pdf-compare.mjs --strict blend-opacity"
+    },
+    {
+      "name": "overflow-clip",
+      "runner": "node scripts/pdf-compare.mjs --strict overflow-clip"
+    },
+    {
+      "name": "transformed-overflow-clip",
+      "runner": "node scripts/pdf-compare.mjs --strict transformed-overflow-clip"
+    },
+    {
+      "name": "clip-path-shapes",
+      "runner": "node scripts/pdf-compare.mjs --strict clip-path-shapes"
+    },
+    {
+      "name": "mask-image",
+      "runner": "node scripts/pdf-compare.mjs --strict mask-image"
+    },
+    {
+      "name": "color-filters",
+      "runner": "node scripts/pdf-compare.mjs --strict color-filters"
+    },
+    {
+      "name": "outlines",
+      "runner": "node scripts/pdf-compare.mjs --strict outlines"
+    },
+    {
+      "name": "background-boxes",
+      "runner": "node scripts/pdf-compare.mjs --strict background-boxes"
+    },
+    {
+      "name": "background-placement",
+      "runner": "node scripts/pdf-compare.mjs --strict background-placement"
+    },
+    {
+      "name": "url-layers",
+      "runner": "node scripts/pdf-compare.mjs --strict url-layers"
+    },
+    {
+      "name": "edge-degenerate",
+      "runner": "node scripts/pdf-compare.mjs --strict edge-degenerate"
+    },
+    {
+      "name": "image-object-fit",
+      "runner": "node scripts/pdf-compare.mjs --strict image-object-fit"
+    },
+    {
+      "name": "encoded-bitmaps",
+      "runner": "node scripts/pdf-compare.mjs --strict encoded-bitmaps"
+    },
+    {
+      "name": "png-streams",
+      "runner": "node scripts/pdf-compare.mjs --strict png-streams"
+    },
+    {
+      "name": "border-mixed-sides",
+      "runner": "node scripts/pdf-compare.mjs --strict border-mixed-sides"
+    },
+    {
+      "name": "inline-span-background",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-background"
+    },
+    {
+      "name": "inline-span-border",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-border"
+    },
+    {
+      "name": "inline-images",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-images"
+    },
+    {
+      "name": "inline-image-decorations",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-image-decorations"
+    },
+    {
+      "name": "page-background",
+      "runner": "node scripts/pdf-compare.mjs --strict page-background"
+    },
+    {
+      "name": "svg-background-image",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-background-image"
+    },
+    {
+      "name": "collapsed-table",
+      "runner": "node scripts/pdf-compare.mjs --strict collapsed-table"
+    },
+    {
+      "name": "text-decorations",
+      "runner": "node scripts/pdf-compare.mjs --strict text-decorations"
+    },
+    {
+      "name": "text-decoration-styles",
+      "runner": "node scripts/pdf-compare.mjs --strict text-decoration-styles"
+    },
+    {
+      "name": "svg-vector-image",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-vector-image"
+    },
+    {
+      "name": "text-basic",
+      "runner": "node scripts/pdf-compare.mjs --strict text-basic"
+    },
+    {
+      "name": "text-ligatures",
+      "runner": "node scripts/pdf-compare.mjs --strict text-ligatures"
+    },
+    {
+      "name": "text-decoration-shadow",
+      "runner": "node scripts/pdf-compare.mjs --strict text-decoration-shadow"
+    },
+    {
+      "name": "text-shadow-stroke",
+      "runner": "node scripts/pdf-compare.mjs --strict text-shadow-stroke"
+    },
+    {
+      "name": "color-glyph-text-shadow",
+      "runner": "node scripts/pdf-compare.mjs --strict color-glyph-text-shadow"
+    },
+    {
+      "name": "bitmap-glyph-text-shadow",
+      "runner": "node scripts/pdf-compare.mjs --strict bitmap-glyph-text-shadow"
+    },
+    {
+      "name": "text-stroke-paint-order",
+      "runner": "node scripts/pdf-compare.mjs --strict text-stroke-paint-order"
+    },
+    {
+      "name": "cluster-closing-on-a-mark",
+      "runner": "node scripts/pdf-compare.mjs --strict cluster-closing-on-a-mark"
+    },
+    {
+      "name": "font-weights",
+      "runner": "node scripts/pdf-compare.mjs --strict font-weights"
+    },
+    {
+      "name": "certificate",
+      "runner": "node scripts/pdf-compare.mjs --strict certificate"
+    },
+    {
+      "name": "paged-lines",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-lines"
+    },
+    {
+      "name": "paged-page-ranges",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-page-ranges"
+    },
+    {
+      "name": "paged-table",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-table"
+    },
+    {
+      "name": "paged-breaks",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-breaks"
+    },
+    {
+      "name": "paged-widows-orphans",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-widows-orphans"
+    },
+    {
+      "name": "paged-narrow",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-narrow"
+    },
+    {
+      "name": "paged-landscape",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-landscape"
+    },
+    {
+      "name": "legacy-page-break",
+      "runner": "node scripts/pdf-compare.mjs --strict legacy-page-break"
+    },
+    {
+      "name": "text-shadow-page-cut",
+      "runner": "node scripts/pdf-compare.mjs --strict text-shadow-page-cut"
+    },
+    {
+      "name": "fixed-repeats-per-page",
+      "runner": "node scripts/pdf-compare.mjs --strict fixed-repeats-per-page"
+    },
+    {
+      "name": "invoice",
+      "runner": "node scripts/pdf-compare.mjs --strict invoice"
+    },
+    {
+      "name": "report-links-outline",
+      "runner": "node scripts/pdf-compare.mjs --strict report-links-outline"
+    },
+    {
+      "name": "paged-footer",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-footer"
+    },
+    {
+      "name": "paged-band-remeasure",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-band-remeasure"
+    },
+    {
+      "name": "paged-header-footer",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-header-footer"
+    },
+    {
+      "name": "auto-margin-bands",
+      "runner": "node scripts/pdf-compare.mjs --strict auto-margin-bands"
+    },
+    {
+      "name": "page-rules",
+      "runner": "node scripts/pdf-compare.mjs --strict page-rules"
+    },
+    {
+      "name": "paged-target-counters",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-target-counters"
+    },
+    {
+      "name": "content-page-counters",
+      "runner": "node scripts/pdf-compare.mjs --strict content-page-counters"
+    },
+    {
+      "name": "fixed-page-counters",
+      "runner": "node scripts/pdf-compare.mjs --strict fixed-page-counters"
+    },
+    {
+      "name": "stream-total-pages-band",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-total-pages-band"
+    },
+    {
+      "name": "stream-content-counters",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-content-counters"
+    },
+    {
+      "name": "stream-page-ranges-middle",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-page-ranges-middle"
+    },
+    {
+      "name": "at-page-first-left-right",
+      "runner": "node scripts/pdf-compare.mjs --strict at-page-first-left-right"
+    },
+    {
+      "name": "at-page-root-element",
+      "runner": "node scripts/pdf-compare.mjs --strict at-page-root-element"
+    },
+    {
+      "name": "named-pages",
+      "runner": "node scripts/pdf-compare.mjs --strict named-pages"
+    },
+    {
+      "name": "stream-forward-link",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-forward-link"
+    },
+    {
+      "name": "stream-tagged-outline",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-tagged-outline"
+    },
+    {
+      "name": "invoice-pdfa-3b-attachment",
+      "runner": "node scripts/pdf-compare.mjs --strict invoice-pdfa-3b-attachment"
+    },
+    {
+      "name": "font-formats-pdfa-2b",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-2b"
+    },
+    {
+      "name": "font-formats-pdfa-2u",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-2u"
+    },
+    {
+      "name": "font-formats-pdfa-2a",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-2a"
+    },
+    {
+      "name": "font-formats-pdfa-3b",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-3b"
+    },
+    {
+      "name": "font-formats-pdfa-3u",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-3u"
+    },
+    {
+      "name": "font-formats-pdfa-3a",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-3a"
+    },
+    {
+      "name": "font-formats-pdfa-4",
+      "runner": "node scripts/pdf-compare.mjs --strict font-formats-pdfa-4"
+    },
+    {
+      "name": "invoice-pdfa-2b",
+      "runner": "node scripts/pdf-compare.mjs --strict invoice-pdfa-2b"
+    },
+    {
+      "name": "invoice-pdfa-4",
+      "runner": "node scripts/pdf-compare.mjs --strict invoice-pdfa-4"
+    },
+    {
+      "name": "invoice-pdfa-4f-attachment",
+      "runner": "node scripts/pdf-compare.mjs --strict invoice-pdfa-4f-attachment"
+    },
+    {
+      "name": "report-tagged-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict report-tagged-ua1"
+    },
+    {
+      "name": "report-tagged-a2a",
+      "runner": "node scripts/pdf-compare.mjs --strict report-tagged-a2a"
+    },
+    {
+      "name": "list-tagged-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict list-tagged-ua1"
+    },
+    {
+      "name": "inline-block-tagged",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-block-tagged"
+    },
+    {
+      "name": "structure-types-a4",
+      "runner": "node scripts/pdf-compare.mjs --strict structure-types-a4"
+    },
+    {
+      "name": "table-tagged-ua2",
+      "runner": "node scripts/pdf-compare.mjs --strict table-tagged-ua2"
+    },
+    {
+      "name": "report-tagged-ua2",
+      "runner": "node scripts/pdf-compare.mjs --strict report-tagged-ua2"
+    },
+    {
+      "name": "borders-tagged-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict borders-tagged-ua1"
+    },
+    {
+      "name": "decorative-image-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict decorative-image-ua1"
+    },
+    {
+      "name": "inline-box-lang-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-box-lang-ua1"
+    },
+    {
+      "name": "heading-levels-ua1",
+      "runner": "node scripts/pdf-compare.mjs --strict heading-levels-ua1"
+    },
+    {
+      "name": "media-print",
+      "runner": "node scripts/pdf-compare.mjs --strict media-print"
+    },
+    {
+      "name": "inline-span-background-image",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-background-image"
+    },
+    {
+      "name": "inline-span-background-clip-text-nested",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-background-clip-text-nested"
+    },
+    {
+      "name": "inline-span-background-clip-text-decoration",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-background-clip-text-decoration"
+    },
+    {
+      "name": "background-clip-text-descendants",
+      "runner": "node scripts/pdf-compare.mjs --strict background-clip-text-descendants"
+    },
+    {
+      "name": "background-clip-text-reach",
+      "runner": "node scripts/pdf-compare.mjs --strict background-clip-text-reach"
+    },
+    {
+      "name": "inline-span-box-decoration-break-clone",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-span-box-decoration-break-clone"
+    },
+    {
+      "name": "sided-avoid-page-breaks",
+      "runner": "node scripts/pdf-compare.mjs --strict sided-avoid-page-breaks"
+    },
+    {
+      "name": "avoid-break-out-of-flow-overflow",
+      "runner": "node scripts/pdf-compare.mjs --strict avoid-break-out-of-flow-overflow"
+    },
+    {
+      "name": "img-without-source-past-page",
+      "runner": "node scripts/pdf-compare.mjs --strict img-without-source-past-page"
+    },
+    {
+      "name": "flex-item-margin-past-page",
+      "runner": "node scripts/pdf-compare.mjs --strict flex-item-margin-past-page"
+    },
+    {
+      "name": "flex-item-child-break-after",
+      "runner": "node scripts/pdf-compare.mjs --strict flex-item-child-break-after"
+    },
+    {
+      "name": "flex-item-table-row-break-after",
+      "runner": "node scripts/pdf-compare.mjs --strict flex-item-table-row-break-after"
+    },
+    {
+      "name": "floated-flex-item-break-after",
+      "runner": "node scripts/pdf-compare.mjs --strict floated-flex-item-break-after"
+    },
+    {
+      "name": "break-after-with-running-absolute",
+      "runner": "node scripts/pdf-compare.mjs --strict break-after-with-running-absolute"
+    },
+    {
+      "name": "paged-offpage-clips",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-offpage-clips"
+    },
+    {
+      "name": "paged-nested-flex-forced-break",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-nested-flex-forced-break"
+    },
+    {
+      "name": "svg-singular-gradient-transform",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-singular-gradient-transform"
+    },
+    {
+      "name": "svg-filters-masks-and-patterns",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-filters-masks-and-patterns"
+    },
+    {
+      "name": "svg-embedded-png",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-embedded-png"
+    },
+    {
+      "name": "svg-with-color-filter",
+      "runner": "node scripts/pdf-compare.mjs --strict svg-with-color-filter"
+    },
+    {
+      "name": "inline-outlines",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-outlines"
+    },
+    {
+      "name": "inline-zero-sized-parents",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-zero-sized-parents"
+    },
+    {
+      "name": "background-clip-border-area-gaps",
+      "runner": "node scripts/pdf-compare.mjs --strict background-clip-border-area-gaps"
+    },
+    {
+      "name": "paged-clone-decorations",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-clone-decorations"
+    },
+    {
+      "name": "paged-transforms",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-transforms"
+    },
+    {
+      "name": "paged-overflow-clip-stitched",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-overflow-clip-stitched"
+    },
+    {
+      "name": "paged-rounded-clip-stitched",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-rounded-clip-stitched"
+    },
+    {
+      "name": "paged-transform-past-the-last-page",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-transform-past-the-last-page"
+    },
+    {
+      "name": "paged-monolithic-overflow",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-monolithic-overflow"
+    },
+    {
+      "name": "paged-clipped-overflow",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-clipped-overflow"
+    },
+    {
+      "name": "paged-images",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-images"
+    },
+    {
+      "name": "list-marker-pagination",
+      "runner": "node scripts/pdf-compare.mjs --strict list-marker-pagination"
+    },
+    {
+      "name": "outline-over-content",
+      "runner": "node scripts/pdf-compare.mjs --strict outline-over-content"
+    },
+    {
+      "name": "outline-under-transform",
+      "runner": "node scripts/pdf-compare.mjs --strict outline-under-transform"
+    },
+    {
+      "name": "inline-containers",
+      "runner": "node scripts/pdf-compare.mjs --strict inline-containers"
+    },
+    {
+      "name": "font-variation-settings",
+      "runner": "node scripts/pdf-compare.mjs --strict font-variation-settings"
+    },
+    {
+      "name": "font-optical-sizing",
+      "runner": "node scripts/pdf-compare.mjs --strict font-optical-sizing"
+    },
+    {
+      "name": "page-sized-boxes",
+      "runner": "node scripts/pdf-compare.mjs --strict page-sized-boxes"
+    },
+    {
+      "name": "page-area-viewport-units",
+      "runner": "node scripts/pdf-compare.mjs --strict page-area-viewport-units"
+    },
+    {
+      "name": "stream-transform-three-pages-back",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-transform-three-pages-back"
+    },
+    {
+      "name": "stream-relative-body-bottom",
+      "runner": "node scripts/pdf-compare.mjs --strict stream-relative-body-bottom"
+    },
+    {
+      "name": "paged-rotated-text",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-rotated-text"
+    },
+    {
+      "name": "paged-clipped-line",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-clipped-line"
+    },
+    {
+      "name": "paged-clipped-line-at-page-edge",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-clipped-line-at-page-edge"
+    },
+    {
+      "name": "paged-translated-text-past-the-end",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-translated-text-past-the-end"
+    },
+    {
+      "name": "paged-translated-text-across-pages",
+      "runner": "node scripts/pdf-compare.mjs --strict paged-translated-text-across-pages"
+    }
+  ],
+  "featureAudits": [
+    {
+      "feature": "SVG-in-OpenType glyph painting",
+      "status": "not-applicable",
+      "reason": "Pinned public PDF API falls back to outlines. SerializeSettings.render_svg_glyph_fn defaults to None; the PDF emitter does not replace it.",
+      "source": "takumi-pdf/src/krilla/serialize.rs:156",
+      "adapter": "node scripts/pdf-audit/run.mjs --strict fonts.svg-opentype-outline-fallback",
+      "evidence": "Valid SVG-table font with conspicuous alternate paint; reference and bm emit outline curves, with no SVG rectangle paint and matching extraction."
+    }
+  ],
+  "cases": [
+    {
+      "id": "takumi-pdf/src/counters.rs:473:digit_styles_spell_the_number_in_their_own_script",
+      "source": "takumi-pdf/src/counters.rs",
+      "line": 473,
+      "name": "digit_styles_spell_the_number_in_their_own_script",
+      "sourceSha256": "f84b32808ed0bc7eae6303fa125c5ba5f2bc109380ff1aa15eab08b286448ab3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/counters.rs:483:alphabet_styles_carry_past_their_last_letter",
+      "source": "takumi-pdf/src/counters.rs",
+      "line": 483,
+      "name": "alphabet_styles_carry_past_their_last_letter",
+      "sourceSha256": "f84b32808ed0bc7eae6303fa125c5ba5f2bc109380ff1aa15eab08b286448ab3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/counters.rs:493:unknown_styles_count_in_decimal",
+      "source": "takumi-pdf/src/counters.rs",
+      "line": 493,
+      "name": "unknown_styles_count_in_decimal",
+      "sourceSha256": "f84b32808ed0bc7eae6303fa125c5ba5f2bc109380ff1aa15eab08b286448ab3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/filter.rs:71:each_function_clamps_before_the_next_one_runs",
+      "source": "takumi-pdf/src/filter.rs",
+      "line": 71,
+      "name": "each_function_clamps_before_the_next_one_runs",
+      "sourceSha256": "8445149a655e07b292e3bd8e4db5f1dca470933368d9469971fac83616f13069",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/filter.rs:85:an_ancestor_filter_runs_after_the_element_own",
+      "source": "takumi-pdf/src/filter.rs",
+      "line": 85,
+      "name": "an_ancestor_filter_runs_after_the_element_own",
+      "sourceSha256": "8445149a655e07b292e3bd8e4db5f1dca470933368d9469971fac83616f13069",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/filter.rs:102:hue_rotate_reads_its_angle_in_degrees",
+      "source": "takumi-pdf/src/filter.rs",
+      "line": 102,
+      "name": "hue_rotate_reads_its_angle_in_degrees",
+      "sourceSha256": "8445149a655e07b292e3bd8e4db5f1dca470933368d9469971fac83616f13069",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/filter.rs:110:invert_clamps_its_amount",
+      "source": "takumi-pdf/src/filter.rs",
+      "line": 110,
+      "name": "invert_clamps_its_amount",
+      "sourceSha256": "8445149a655e07b292e3bd8e4db5f1dca470933368d9469971fac83616f13069",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/glyph.rs:284:overlapping_spans_share_one_range",
+      "source": "takumi-pdf/src/glyph.rs",
+      "line": 284,
+      "name": "overlapping_spans_share_one_range",
+      "sourceSha256": "3696d94c1b34f5938b5210b2ed41ca30b806ea1b962bc94a76218f041f8ef5da",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/glyph.rs:293:disjoint_spans_stay_apart",
+      "source": "takumi-pdf/src/glyph.rs",
+      "line": 293,
+      "name": "disjoint_spans_stay_apart",
+      "sourceSha256": "3696d94c1b34f5938b5210b2ed41ca30b806ea1b962bc94a76218f041f8ef5da",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:115:invalid_combination_1",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 115,
+      "name": "invalid_combination_1",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:130:invalid_combination_2",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 130,
+      "name": "invalid_combination_2",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:142:invalid_combination_3",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 142,
+      "name": "invalid_combination_3",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:159:multi_validator_pdf_a3b_pdf_ua1",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 159,
+      "name": "multi_validator_pdf_a3b_pdf_ua1",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:174:multi_validator_pdfa2a_pdfua1",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 174,
+      "name": "multi_validator_pdfa2a_pdfua1",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:185:empty_validators",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 185,
+      "name": "empty_validators",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/configure/mod.rs:192:default_config",
+      "source": "takumi-pdf/src/krilla/configure/mod.rs",
+      "line": 192,
+      "name": "default_config",
+      "sourceSha256": "9e3dfb39c4f0f8d6dcaa97a43c05a54559eac915c794419226587473184d0249",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/content.rs:1512:a_rectangle_with_repeated_corners_collapses_to_one_operator",
+      "source": "takumi-pdf/src/krilla/content.rs",
+      "line": 1512,
+      "name": "a_rectangle_with_repeated_corners_collapses_to_one_operator",
+      "sourceSha256": "0f7d96f0b73a22d01503f941201eedb7bc5e509e6ca6fa8c8bc1b43fca4eb880",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/content.rs:1529:a_rectangle_traced_the_other_way_stays_a_path",
+      "source": "takumi-pdf/src/krilla/content.rs",
+      "line": 1529,
+      "name": "a_rectangle_traced_the_other_way_stays_a_path",
+      "sourceSha256": "0f7d96f0b73a22d01503f941201eedb7bc5e509e6ca6fa8c8bc1b43fca4eb880",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/content.rs:1545:an_open_path_keeps_its_closing_edge",
+      "source": "takumi-pdf/src/krilla/content.rs",
+      "line": 1545,
+      "name": "an_open_path_keeps_its_closing_edge",
+      "sourceSha256": "0f7d96f0b73a22d01503f941201eedb7bc5e509e6ca6fa8c8bc1b43fca4eb880",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/error.rs:162:krilla_error_implements_error",
+      "source": "takumi-pdf/src/krilla/error.rs",
+      "line": 162,
+      "name": "krilla_error_implements_error",
+      "sourceSha256": "1af43551c00ea16d6840442fcada81a03a487009426c69152ade3974feed8d4e",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/graphics/image/mod.rs:874:invalid_png_image",
+      "source": "takumi-pdf/src/krilla/graphics/image/mod.rs",
+      "line": 874,
+      "name": "invalid_png_image",
+      "sourceSha256": "d55d790985c0b2348a80e245b27ca866e1e31a12afea54a6c9866fc1d3de9a41",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/graphics/image/mod.rs:880:invalid_jpeg_image",
+      "source": "takumi-pdf/src/krilla/graphics/image/mod.rs",
+      "line": 880,
+      "name": "invalid_jpeg_image",
+      "sourceSha256": "d55d790985c0b2348a80e245b27ca866e1e31a12afea54a6c9866fc1d3de9a41",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interactive/destination.rs:189:named_duplicate_rejected",
+      "source": "takumi-pdf/src/krilla/interactive/destination.rs",
+      "line": 189,
+      "name": "named_duplicate_rejected",
+      "sourceSha256": "6c2b7f9c0fd9420f4446ffa9935132f033858e576614f7df63f659f004dd3efb",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interactive/destination.rs:208:named_duplicate_same_location_allowed",
+      "source": "takumi-pdf/src/krilla/interactive/destination.rs",
+      "line": 208,
+      "name": "named_duplicate_same_location_allowed",
+      "sourceSha256": "6c2b7f9c0fd9420f4446ffa9935132f033858e576614f7df63f659f004dd3efb",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interactive/destination.rs:229:named_duplicate_annotation_rejected",
+      "source": "takumi-pdf/src/krilla/interactive/destination.rs",
+      "line": 229,
+      "name": "named_duplicate_annotation_rejected",
+      "sourceSha256": "6c2b7f9c0fd9420f4446ffa9935132f033858e576614f7df63f659f004dd3efb",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interactive/destination.rs:270:named_duplicate_manual_then_annotation_rejected",
+      "source": "takumi-pdf/src/krilla/interactive/destination.rs",
+      "line": 270,
+      "name": "named_duplicate_manual_then_annotation_rejected",
+      "sourceSha256": "6c2b7f9c0fd9420f4446ffa9935132f033858e576614f7df63f659f004dd3efb",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/embed.rs:210:valid_mime_types",
+      "source": "takumi-pdf/src/krilla/interchange/embed.rs",
+      "line": 210,
+      "name": "valid_mime_types",
+      "sourceSha256": "0fd962d79e2e61311043f08591aacf9f9d10df205be8edf8facf51a8a014a011",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/embed.rs:229:invalid_mime_types",
+      "source": "takumi-pdf/src/krilla/interchange/embed.rs",
+      "line": 229,
+      "name": "invalid_mime_types",
+      "sourceSha256": "0fd962d79e2e61311043f08591aacf9f9d10df205be8edf8facf51a8a014a011",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs:602:display_empty_tag_tree",
+      "source": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs",
+      "line": 602,
+      "name": "display_empty_tag_tree",
+      "sourceSha256": "f3ed01fbd26bd4b6689d099aa4f9cc302bcf7372a3b3abb655563aa5bbf2c1f5",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs:607:display_tag_tree",
+      "source": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs",
+      "line": 607,
+      "name": "display_tag_tree",
+      "sourceSha256": "f3ed01fbd26bd4b6689d099aa4f9cc302bcf7372a3b3abb655563aa5bbf2c1f5",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs:689:display_sides_mutliline",
+      "source": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs",
+      "line": 689,
+      "name": "display_sides_mutliline",
+      "sourceSha256": "f3ed01fbd26bd4b6689d099aa4f9cc302bcf7372a3b3abb655563aa5bbf2c1f5",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs:716:display_heading_with_children",
+      "source": "takumi-pdf/src/krilla/interchange/tagging/fmt.rs",
+      "line": 716,
+      "name": "display_heading_with_children",
+      "sourceSha256": "f3ed01fbd26bd4b6689d099aa4f9cc302bcf7372a3b3abb655563aa5bbf2c1f5",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/object_stream.rs:183:packs_past_one_stream_capacity",
+      "source": "takumi-pdf/src/krilla/object_stream.rs",
+      "line": 183,
+      "name": "packs_past_one_stream_capacity",
+      "sourceSha256": "c428bb3cb10c3f4d8b6f9191382ef6366610bdfa99403b10e40339e8cee95978",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/krilla/text/type3.rs:490:type3_more_than_256_glyphs",
+      "source": "takumi-pdf/src/krilla/text/type3.rs",
+      "line": 490,
+      "name": "type3_more_than_256_glyphs",
+      "sourceSha256": "3fe5896c31db4eeddb81f6832cf98421f93c0916f64a6035cd69f9e667e4d03d",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:531:page_selection_maps_kept_pages_to_output_order",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 531,
+      "name": "page_selection_maps_kept_pages_to_output_order",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:552:page_selection_without_ranges_keeps_every_page",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 552,
+      "name": "page_selection_without_ranges_keeps_every_page",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:559:page_selection_rejects_invalid_and_out_of_bounds_ranges",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 559,
+      "name": "page_selection_rejects_invalid_and_out_of_bounds_ranges",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:587:presets_match_css_page_keywords",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 587,
+      "name": "presets_match_css_page_keywords",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:629:auto_margin_takes_the_band_it_holds",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 629,
+      "name": "auto_margin_takes_the_band_it_holds",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/lib.rs:660:a_page_under_an_inch_keeps_no_margin_on_that_axis",
+      "source": "takumi-pdf/src/lib.rs",
+      "line": 660,
+      "name": "a_page_under_an_inch_keeps_no_margin_on_that_axis",
+      "sourceSha256": "73b302f3415462050ed724b78baf19810f80d09c958329b5ede41a9fcc1876cd",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/memory_tests.rs:111:a_total_pages_document_keeps_live_bytes_flat_through_both_passes",
+      "source": "takumi-pdf/src/memory_tests.rs",
+      "line": 111,
+      "name": "a_total_pages_document_keeps_live_bytes_flat_through_both_passes",
+      "sourceSha256": "f3294e4e2d0726115870840e3d4f2f783a3e5807323c25863ef66efa02c3e1ad",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1153:a_margin_percentage_takes_the_page_size_on_its_own_axis",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1153,
+      "name": "a_margin_percentage_takes_the_page_size_on_its_own_axis",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1172:an_rtl_root_makes_the_first_page_a_left_page",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1172,
+      "name": "an_rtl_root_makes_the_first_page_a_left_page",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1184:em_and_var_read_the_root_and_vw_the_page_before_size",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1184,
+      "name": "em_and_var_read_the_root_and_vw_the_page_before_size",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1194:an_auto_margin_in_an_at_page_rule_is_zero",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1194,
+      "name": "an_auto_margin_in_an_at_page_rule_is_zero",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1208:a_page_limit_from_layout_reads_as_too_many_pages",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1208,
+      "name": "a_page_limit_from_layout_reads_as_too_many_pages",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/options.rs:1216:error_messages_read_as_sentences",
+      "source": "takumi-pdf/src/options.rs",
+      "line": 1216,
+      "name": "error_messages_read_as_sentences",
+      "sourceSha256": "e29f1a3894736ba85dedb361f0d4545e6c45b74c15df98e7f1d37af1f56d9207",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/page_kinds.rs:149:pages_after_the_first_alternate_left_and_right",
+      "source": "takumi-pdf/src/page_kinds.rs",
+      "line": 149,
+      "name": "pages_after_the_first_alternate_left_and_right",
+      "sourceSha256": "453f431ccfdfd34fa5d50ae53a47c4845ea90b4e8821f42db0ba30aeec5a562a",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/page_kinds.rs:173:a_page_of_a_name_without_values_takes_the_unnamed_ones",
+      "source": "takumi-pdf/src/page_kinds.rs",
+      "line": 173,
+      "name": "a_page_of_a_name_without_values_takes_the_unnamed_ones",
+      "sourceSha256": "453f431ccfdfd34fa5d50ae53a47c4845ea90b4e8821f42db0ba30aeec5a562a",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/page_kinds.rs:191:values_with_one_key_share_one_mapping",
+      "source": "takumi-pdf/src/page_kinds.rs",
+      "line": 191,
+      "name": "values_with_one_key_share_one_mapping",
+      "sourceSha256": "453f431ccfdfd34fa5d50ae53a47c4845ea90b4e8821f42db0ba30aeec5a562a",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/pagination.rs:469:page_summaries_add_up_to_the_summary_of_the_whole_scene",
+      "source": "takumi-pdf/src/pagination.rs",
+      "line": 469,
+      "name": "page_summaries_add_up_to_the_summary_of_the_whole_scene",
+      "sourceSha256": "83b22ccc1b9897380d1c690c487a40234096c66e3038e0d9ccea508bcede8fd5",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/pagination.rs:535:first_left_and_right_frames_size_their_own_pages",
+      "source": "takumi-pdf/src/pagination.rs",
+      "line": 535,
+      "name": "first_left_and_right_frames_size_their_own_pages",
+      "sourceSha256": "83b22ccc1b9897380d1c690c487a40234096c66e3038e0d9ccea508bcede8fd5",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/shadow.rs:78:a_blurred_shadow_has_an_opaque_core",
+      "source": "takumi-pdf/src/shadow.rs",
+      "line": 78,
+      "name": "a_blurred_shadow_has_an_opaque_core",
+      "sourceSha256": "eb3d7859efaa15337f9c0b88b6871e896d4b75ac509c01b73a55c928ec2654e4",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/shadow.rs:87:coverage_follows_the_gaussian_edge",
+      "source": "takumi-pdf/src/shadow.rs",
+      "line": 87,
+      "name": "coverage_follows_the_gaussian_edge",
+      "sourceSha256": "eb3d7859efaa15337f9c0b88b6871e896d4b75ac509c01b73a55c928ec2654e4",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:137:a_plain_long_document_draws_its_first_page_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 137,
+      "name": "a_plain_long_document_draws_its_first_page_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:152:headings_and_ids_are_summarized_as_pages_draw",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 152,
+      "name": "headings_and_ids_are_summarized_as_pages_draw",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:170:dropped_pages_draw_nothing_and_still_count",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 170,
+      "name": "dropped_pages_draw_nothing_and_still_count",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:191:a_total_pages_band_draws_its_first_page_before_the_second_pass_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 191,
+      "name": "a_total_pages_band_draws_its_first_page_before_the_second_pass_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:217:a_page_number_band_draws_its_first_page_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 217,
+      "name": "a_page_number_band_draws_its_first_page_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:237:a_band_that_grows_with_the_page_count_settles_before_the_pages_draw",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 237,
+      "name": "a_band_that_grows_with_the_page_count_settles_before_the_pages_draw",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:268:a_band_that_grows_under_a_fixed_margin_does_not_count_the_pages_again",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 268,
+      "name": "a_band_that_grows_under_a_fixed_margin_does_not_count_the_pages_again",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:299:a_link_to_a_later_page_draws_its_first_page_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 299,
+      "name": "a_link_to_a_later_page_draws_its_first_page_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:312:a_link_to_an_earlier_page_draws_its_first_page_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 312,
+      "name": "a_link_to_an_earlier_page_draws_its_first_page_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:325:a_link_to_a_dropped_page_loses_its_annotation",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 325,
+      "name": "a_link_to_a_dropped_page_loses_its_annotation",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:356:a_tagged_document_with_an_outline_and_links_draws_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 356,
+      "name": "a_tagged_document_with_an_outline_and_links_draws_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:376:a_link_beside_a_total_pages_band_and_target_counters_draws_before_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 376,
+      "name": "a_link_beside_a_total_pages_band_and_target_counters_draws_before_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:400:content_counters_draw_their_first_page_before_the_last_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 400,
+      "name": "content_counters_draw_their_first_page_before_the_last_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:427:counters_that_move_the_page_count_are_numbered_again_before_the_pages_draw",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 427,
+      "name": "counters_that_move_the_page_count_are_numbered_again_before_the_pages_draw",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:437:counters_that_never_settle_lay_out_to_the_end",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 437,
+      "name": "counters_that_never_settle_lay_out_to_the_end",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:447:a_transform_that_paints_pages_back_holds_every_page_until_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 447,
+      "name": "a_transform_that_paints_pages_back_holds_every_page_until_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:458:a_child_held_to_the_bottom_of_a_relative_root_holds_every_page_until_layout_ends",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 458,
+      "name": "a_child_held_to_the_bottom_of_a_relative_root_holds_every_page_until_layout_ends",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:471:a_long_document_of_every_kind_of_box_draws_like_after_layout",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 471,
+      "name": "a_long_document_of_every_kind_of_box_draws_like_after_layout",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:501:a_long_document_with_a_fixed_box_draws_like_after_layout",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 501,
+      "name": "a_long_document_with_a_fixed_box_draws_like_after_layout",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:518:an_absolute_box_found_on_a_later_page_holds_the_pages_of_its_containing_block_until_then",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 518,
+      "name": "an_absolute_box_found_on_a_later_page_holds_the_pages_of_its_containing_block_until_then",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/streaming_tests.rs:551:an_invalid_page_range_fails_before_any_page_is_laid_out",
+      "source": "takumi-pdf/src/streaming_tests.rs",
+      "line": 551,
+      "name": "an_invalid_page_range_fails_before_any_page_is_laid_out",
+      "sourceSha256": "f797e543d4e1e27285e91e553192d436ec297023cc061034bf39d121819efb87",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:407:u24",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 407,
+      "name": "u24",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:428:size1_roundtrip",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 428,
+      "name": "size1_roundtrip",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:448:size2_roundtrip",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 448,
+      "name": "size2_roundtrip",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:468:size3_roundtrip",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 468,
+      "name": "size3_roundtrip",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:490:size5_roundtrip",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 490,
+      "name": "size5_roundtrip",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:510:parse_float",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 510,
+      "name": "parse_float",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:518:float_roundtrip",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 518,
+      "name": "float_roundtrip",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/number.rs:534:fixed",
+      "source": "takumi-pdf/src/subsetter/cff/number.rs",
+      "line": 534,
+      "name": "fixed",
+      "sourceSha256": "b6bed4125ebcf267882fd4bc8cf14ecb80c5310486cd6d35c6cd71984c4facd1",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/cff/remapper.rs:88:test_remap_1",
+      "source": "takumi-pdf/src/subsetter/cff/remapper.rs",
+      "line": 88,
+      "name": "test_remap_1",
+      "sourceSha256": "0b32599f227532c6bcd02096e9ce648e854bb96946ecf5cf9a8849d87eda5e9a",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/mod.rs:653:malformed_cff_returns_error",
+      "source": "takumi-pdf/src/subsetter/mod.rs",
+      "line": 653,
+      "name": "malformed_cff_returns_error",
+      "sourceSha256": "2be69cbc5e14c6b26f666a46f3bd83ac3cd81ccce6de3dc5ead4b65d34891bf9",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/mod.rs:672:table_record_with_invalid_bounds_returns_none",
+      "source": "takumi-pdf/src/subsetter/mod.rs",
+      "line": 672,
+      "name": "table_record_with_invalid_bounds_returns_none",
+      "sourceSha256": "2be69cbc5e14c6b26f666a46f3bd83ac3cd81ccce6de3dc5ead4b65d34891bf9",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/src/subsetter/name.rs:167:parse_respects_storage_offset",
+      "source": "takumi-pdf/src/subsetter/name.rs",
+      "line": 167,
+      "name": "parse_respects_storage_offset",
+      "sourceSha256": "28f42da8d3834e0fc3322f0200dedd6619d34a9cb32af8896110998c77f16720",
+      "status": "internal-review",
+      "adapters": [],
+      "reason": "Rust implementation internals differ; review observable invariants before declaring N/A."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:157:text_basic",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 157,
+      "name": "text_basic",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-basic"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:178:media_print_applies_to_pdf_output",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 178,
+      "name": "media_print_applies_to_pdf_output",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict media-print"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:227:text_ligatures",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 227,
+      "name": "text_ligatures",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-ligatures"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:247:inline_span_background",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 247,
+      "name": "inline_span_background",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-background"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:271:inline_span_background_image",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 271,
+      "name": "inline_span_background_image",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-background-image"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:315:inline_span_background_clip_text_nested",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 315,
+      "name": "inline_span_background_clip_text_nested",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-background-clip-text-nested"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:333:inline_span_background_clip_text_decoration",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 333,
+      "name": "inline_span_background_clip_text_decoration",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-background-clip-text-decoration"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:354:background_clip_text_descendants",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 354,
+      "name": "background_clip_text_descendants",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict background-clip-text-descendants"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:378:background_clip_text_reach",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 378,
+      "name": "background_clip_text_reach",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict background-clip-text-reach"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:401:inline_span_box_decoration_break_clone",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 401,
+      "name": "inline_span_box_decoration_break_clone",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-box-decoration-break-clone"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:417:inline_span_border",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 417,
+      "name": "inline_span_border",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-span-border"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:438:paged_lines",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 438,
+      "name": "paged_lines",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-lines"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:457:paged_footer_counters",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 457,
+      "name": "paged_footer_counters",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-footer"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:488:paged_page_ranges",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 488,
+      "name": "paged_page_ranges",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-page-ranges"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:537:page_ranges_drop_destinations_to_dropped_pages",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 537,
+      "name": "page_ranges_drop_destinations_to_dropped_pages",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:584:page_ranges_selecting_no_page_reject_the_render",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 584,
+      "name": "page_ranges_selecting_no_page_reject_the_render",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:605:paged_table",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 605,
+      "name": "paged_table",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-table"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:638:legacy_page_break_properties_split_the_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 638,
+      "name": "legacy_page_break_properties_split_the_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict legacy-page-break"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:670:sided_and_page_avoiding_breaks_split_the_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 670,
+      "name": "sided_and_page_avoiding_breaks_split_the_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict sided-avoid-page-breaks"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:702:an_absolute_box_past_the_page_leaves_an_avoiding_box_in_place",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 702,
+      "name": "an_absolute_box_past_the_page_leaves_an_avoiding_box_in_place",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict avoid-break-out-of-flow-overflow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:732:an_img_without_a_source_moves_to_the_next_page_whole",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 732,
+      "name": "an_img_without_a_source_moves_to_the_next_page_whole",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict img-without-source-past-page"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:755:a_flex_row_whose_item_margin_runs_past_the_page_moves_to_the_next",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 755,
+      "name": "a_flex_row_whose_item_margin_runs_past_the_page_moves_to_the_next",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict flex-item-margin-past-page"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:780:a_forced_break_after_a_flex_items_last_child_breaks_after_the_container",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 780,
+      "name": "a_forced_break_after_a_flex_items_last_child_breaks_after_the_container",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict flex-item-child-break-after"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:809:a_forced_break_after_a_table_row_in_a_flex_item_breaks_after_the_container",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 809,
+      "name": "a_forced_break_after_a_table_row_in_a_flex_item_breaks_after_the_container",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict flex-item-table-row-break-after"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:836:a_floated_flex_item_breaks_after_as_any_other_item",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 836,
+      "name": "a_floated_flex_item_breaks_after_as_any_other_item",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict floated-flex-item-break-after"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:861:a_forced_break_after_a_box_whose_absolute_child_runs_on_applies_once",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 861,
+      "name": "a_forced_break_after_a_box_whose_absolute_child_runs_on_applies_once",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict break-after-with-running-absolute"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:889:a_collapsing_table_paints_one_border_per_line",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 889,
+      "name": "a_collapsing_table_paints_one_border_per_line",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict collapsed-table"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:927:mixed_border_sides_keep_their_styles",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 927,
+      "name": "mixed_border_sides_keep_their_styles",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict border-mixed-sides"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:949:a_table_header_repeats_on_every_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 949,
+      "name": "a_table_header_repeats_on_every_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:992:content_beside_a_table_does_not_replay_with_its_header",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 992,
+      "name": "content_beside_a_table_does_not_replay_with_its_header",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1035:a_tagged_rowspan_stays_in_its_row_group",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1035,
+      "name": "a_tagged_rowspan_stays_in_its_row_group",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1060:a_header_rowspan_stays_in_its_row_group",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1060,
+      "name": "a_header_rowspan_stays_in_its_row_group",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1098:a_top_caption_does_not_repeat_with_the_header",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1098,
+      "name": "a_top_caption_does_not_repeat_with_the_header",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1140:a_repeated_table_header_replays_as_an_artifact",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1140,
+      "name": "a_repeated_table_header_replays_as_an_artifact",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1181:an_image_in_a_repeated_table_header_is_tagged_once",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1181,
+      "name": "an_image_in_a_repeated_table_header_is_tagged_once",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1232:band_measures_with_the_real_page_count",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1232,
+      "name": "band_measures_with_the_real_page_count",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-band-remeasure"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1258:paged_widow_orphan_control",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1258,
+      "name": "paged_widow_orphan_control",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-widows-orphans"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1329:a_page_skips_the_clips_of_other_pages",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1329,
+      "name": "a_page_skips_the_clips_of_other_pages",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-offpage-clips"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1358:a_long_paragraph_starts_on_the_first_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1358,
+      "name": "a_long_paragraph_starts_on_the_first_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1383:paged_breaks",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1383,
+      "name": "paged_breaks",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-breaks"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1415:break_after_a_padded_box_cuts_once",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1415,
+      "name": "break_after_a_padded_box_cuts_once",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1451:a_forced_break_on_a_node_that_opens_a_page_adds_no_empty_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1451,
+      "name": "a_forced_break_on_a_node_that_opens_a_page_adds_no_empty_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1516:a_forced_break_in_a_nested_flex_row_moves_the_row",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1516,
+      "name": "a_forced_break_in_a_nested_flex_row_moves_the_row",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-nested-flex-forced-break"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1553:forced_breaks_beside_spacing_break_as_blink_separates_them",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1553,
+      "name": "forced_breaks_beside_spacing_break_as_blink_separates_them",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1595:trailing_padding_past_the_page_end_goes_to_the_next_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1595,
+      "name": "trailing_padding_past_the_page_end_goes_to_the_next_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1663:paged_target_counters",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1663,
+      "name": "paged_target_counters",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-target-counters"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1709:target_counters_settle_after_they_move_their_own_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1709,
+      "name": "target_counters_settle_after_they_move_their_own_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1741:a_fractional_column_paints_the_lines_layout_reserved",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1741,
+      "name": "a_fractional_column_paints_the_lines_layout_reserved",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1781:an_inline_page_counter_follows_the_flow_that_precedes_it",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1781,
+      "name": "an_inline_page_counter_follows_the_flow_that_precedes_it",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1824:a_repeated_table_header_does_not_move_the_counters_after_it",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1824,
+      "name": "a_repeated_table_header_does_not_move_the_counters_after_it",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1855:a_page_counter_renumbers_the_target_it_moves",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1855,
+      "name": "a_page_counter_renumbers_the_target_it_moves",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1881:target_counter_in_a_band_drops_its_placeholder",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1881,
+      "name": "target_counter_in_a_band_drops_its_placeholder",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1915:target_counter_without_a_target_renders_empty",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1915,
+      "name": "target_counter_without_a_target_renders_empty",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1951:image_object_fit",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1951,
+      "name": "image_object_fit",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict image-object-fit"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:1997:svg_vector_image",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 1997,
+      "name": "svg_vector_image",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-vector-image"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2036:svg_singular_gradient_transform",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2036,
+      "name": "svg_singular_gradient_transform",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-singular-gradient-transform"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2064:svg_filters_masks_and_patterns",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2064,
+      "name": "svg_filters_masks_and_patterns",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-filters-masks-and-patterns"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2134:svg_embedded_png",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2134,
+      "name": "svg_embedded_png",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-embedded-png"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2165:svg_embedded_jpeg_passes_through",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2165,
+      "name": "svg_embedded_jpeg_passes_through",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2189:svg_with_color_filter",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2189,
+      "name": "svg_with_color_filter",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-with-color-filter"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2223:svg_color_filter_leaves_masks_alone",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2223,
+      "name": "svg_color_filter_leaves_masks_alone",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2249:svg_background_image",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2249,
+      "name": "svg_background_image",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict svg-background-image"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2275:box_chrome",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2275,
+      "name": "box_chrome",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict box-chrome"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2291:gradients",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2291,
+      "name": "gradients",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict gradients"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2311:mask_image",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2311,
+      "name": "mask_image",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict mask-image"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2355:color_filters",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2355,
+      "name": "color_filters",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict color-filters"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2451:a_gradient_axis_is_measured_in_page_units",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2451,
+      "name": "a_gradient_axis_is_measured_in_page_units",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2479:a_radial_gradient_is_centred_in_page_units",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2479,
+      "name": "a_radial_gradient_is_centred_in_page_units",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2515:a_conic_gradient_is_placed_in_page_units",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2515,
+      "name": "a_conic_gradient_is_placed_in_page_units",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2538:box_shadows",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2538,
+      "name": "box_shadows",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict box-shadows"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2577:clip_path_shapes",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2577,
+      "name": "clip_path_shapes",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict clip-path-shapes"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2780:outlines",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2780,
+      "name": "outlines",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict outlines"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2822:inline_outlines",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2822,
+      "name": "inline_outlines",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-outlines"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2848:inline_zero_sized_parents",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2848,
+      "name": "inline_zero_sized_parents",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-zero-sized-parents"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2876:text_decoration_styles",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2876,
+      "name": "text_decoration_styles",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-decoration-styles"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2904:background_boxes",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2904,
+      "name": "background_boxes",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict background-boxes"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2940:text_shadow_stays_on_its_line_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2940,
+      "name": "text_shadow_stays_on_its_line_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-shadow-page-cut"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2979:text_decoration_shadow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2979,
+      "name": "text_decoration_shadow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-decoration-shadow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:2994:background_clip_border_area_gaps",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 2994,
+      "name": "background_clip_border_area_gaps",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict background-clip-border-area-gaps"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3012:color_glyph_text_shadow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3012,
+      "name": "color_glyph_text_shadow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict color-glyph-text-shadow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3038:bitmap_glyph_text_shadow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3038,
+      "name": "bitmap_glyph_text_shadow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict bitmap-glyph-text-shadow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3065:text_stroke_paint_order",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3065,
+      "name": "text_stroke_paint_order",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-stroke-paint-order"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3094:text_shadow_and_stroke",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3094,
+      "name": "text_shadow_and_stroke",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-shadow-stroke"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3173:url_layers",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3173,
+      "name": "url_layers",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict url-layers"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3221:background_placement",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3221,
+      "name": "background_placement",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict background-placement"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3272:paged_clone_decorations",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3272,
+      "name": "paged_clone_decorations",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-clone-decorations"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3307:paged_transforms",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3307,
+      "name": "paged_transforms",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-transforms"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3333:paged_overflow_clip_spans_the_stitched_box",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3333,
+      "name": "paged_overflow_clip_spans_the_stitched_box",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-overflow-clip-stitched"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3360:paged_rounded_clip_waits_for_the_whole_box",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3360,
+      "name": "paged_rounded_clip_waits_for_the_whole_box",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-rounded-clip-stitched"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3387:content_moved_past_the_last_page_adds_pages",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3387,
+      "name": "content_moved_past_the_last_page_adds_pages",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-transform-past-the-last-page"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3478:paged_monolithic_overflow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3478,
+      "name": "paged_monolithic_overflow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-monolithic-overflow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3509:paged_clipped_overflow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3509,
+      "name": "paged_clipped_overflow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-clipped-overflow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3541:an_overflowing_inline_block_emits_its_text_once",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3541,
+      "name": "an_overflowing_inline_block_emits_its_text_once",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3573:a_glyph_taller_than_a_page_runs_on_as_outlines",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3573,
+      "name": "a_glyph_taller_than_a_page_runs_on_as_outlines",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3607:paged_header_footer",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3607,
+      "name": "paged_header_footer",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-header-footer"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3652:auto_margin_bands",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3652,
+      "name": "auto_margin_bands",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict auto-margin-bands"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3692:blend_opacity_isolation",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3692,
+      "name": "blend_opacity_isolation",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict blend-opacity"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3715:a_link_target_without_meaning_still_gets_an_element",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3715,
+      "name": "a_link_target_without_meaning_still_gets_an_element",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3766:a_clipped_away_line_reaches_no_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3766,
+      "name": "a_clipped_away_line_reaches_no_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3799:overflow_clipping",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3799,
+      "name": "overflow_clipping",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict overflow-clip"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3821:transformed_overflow_clip",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3821,
+      "name": "transformed_overflow_clip",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict transformed-overflow-clip"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3841:repeating_gradients",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3841,
+      "name": "repeating_gradients",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict repeating-gradients"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3860:text_decorations",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3860,
+      "name": "text_decorations",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict text-decorations"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3882:paged_images",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3882,
+      "name": "paged_images",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-images"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3923:edge_degenerate",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3923,
+      "name": "edge_degenerate",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict edge-degenerate"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3962:paged_narrow",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3962,
+      "name": "paged_narrow",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-narrow"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3979:paged_landscape",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3979,
+      "name": "paged_landscape",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict paged-landscape"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:3990:invoice",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 3990,
+      "name": "invoice",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict invoice"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4004:archival_standards",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4004,
+      "name": "archival_standards",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict invoice-pdfa-2b",
+        "node scripts/pdf-compare.mjs --strict invoice-pdfa-4"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4050:invalid_xmp_schema_rejects",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4050,
+      "name": "invalid_xmp_schema_rejects",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4074:uncovered_character_stops_the_render",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4074,
+      "name": "uncovered_character_stops_the_render",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4106:uncovered_character_renders_under_an_uncovered_text_policy",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4106,
+      "name": "uncovered_character_renders_under_an_uncovered_text_policy",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4141:a_forbidden_placeholder_names_the_standard",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4141,
+      "name": "a_forbidden_placeholder_names_the_standard",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4188:an_uncovered_mark_survives_in_the_text_layer",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4188,
+      "name": "an_uncovered_mark_survives_in_the_text_layer",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4227:attachments",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4227,
+      "name": "attachments",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict invoice-pdfa-3b-attachment",
+        "node scripts/pdf-compare.mjs --strict invoice-pdfa-4f-attachment"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4400:list_marker_pagination",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4400,
+      "name": "list_marker_pagination",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict list-marker-pagination"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4445:inline_box_pagination",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4445,
+      "name": "inline_box_pagination",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4481:an_uppercase_list_item_renders_tagged",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4481,
+      "name": "an_uppercase_list_item_renders_tagged",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4516:a_programmatic_list_item_reads_its_marker_first",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4516,
+      "name": "a_programmatic_list_item_reads_its_marker_first",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4545:a_float_breaks_only_when_it_does_not_fit_its_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4545,
+      "name": "a_float_breaks_only_when_it_does_not_fit_its_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "verified",
+      "adapters": [
+        "node scripts/pdf-audit/run.mjs --strict pagination.float.source-fit-split"
+      ],
+      "reason": "Mapped and verified against pinned revision ff9a5d4: exact 65px fit and 120px split assertions; raster-box measurement allows only 0.75 CSS px for PDF coordinate quantization."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4576:at_page_rules_read_the_root_element",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4576,
+      "name": "at_page_rules_read_the_root_element",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict at-page-root-element"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4632:tagged_standards",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4632,
+      "name": "tagged_standards",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict report-tagged-ua1",
+        "node scripts/pdf-compare.mjs --strict list-tagged-ua1",
+        "node scripts/pdf-compare.mjs --strict report-tagged-a2a"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4712:tagged_inline_block_subtree",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4712,
+      "name": "tagged_inline_block_subtree",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-block-tagged"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4741:structure_types_pdf20",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4741,
+      "name": "structure_types_pdf20",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict structure-types-a4"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4813:table_structure_tags",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4813,
+      "name": "table_structure_tags",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict table-tagged-ua2"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4871:a_link_on_a_table_row_or_row_group_joins_the_structure_tree",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4871,
+      "name": "a_link_on_a_table_row_or_row_group_joins_the_structure_tree",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4933:tagged_ua2",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4933,
+      "name": "tagged_ua2",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict report-tagged-ua2"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:4988:tagged_borders_are_artifacts",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 4988,
+      "name": "tagged_borders_are_artifacts",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict borders-tagged-ua1"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5043:tagged_ua2_needs_lang",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5043,
+      "name": "tagged_ua2_needs_lang",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5078:inline_images",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5078,
+      "name": "inline_images",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-images"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5118:inline_image_decorations_in_a_tagged_document",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5118,
+      "name": "inline_image_decorations_in_a_tagged_document",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-image-decorations"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5149:a_rounded_image_is_clipped_to_its_corner_curve",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5149,
+      "name": "a_rounded_image_is_clipped_to_its_corner_curve",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5185:outline_over_content",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5185,
+      "name": "outline_over_content",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict outline-over-content"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5207:outline_under_transform",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5207,
+      "name": "outline_under_transform",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict outline-under-transform"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5233:inline_containers",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5233,
+      "name": "inline_containers",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-containers"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5267:decorative_image_artifact",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5267,
+      "name": "decorative_image_artifact",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict decorative-image-ua1"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5302:certificate",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5302,
+      "name": "certificate",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict certificate"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5316:report_links_outline",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5316,
+      "name": "report_links_outline",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict report-links-outline"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5360:measure_band_at_page_width",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5360,
+      "name": "measure_band_at_page_width",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5385:measure_reports_content_width",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5385,
+      "name": "measure_reports_content_width",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5420:measure_blockifies_the_root_node",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5420,
+      "name": "measure_blockifies_the_root_node",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5441:measure_encloses_a_float_in_the_root_node",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5441,
+      "name": "measure_encloses_a_float_in_the_root_node",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5461:measure_viewport_and_missing_viewport",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5461,
+      "name": "measure_viewport_and_missing_viewport",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5501:font_format_standards",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5501,
+      "name": "font_format_standards",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5595:inline_box_language",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5595,
+      "name": "inline_box_language",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict inline-box-lang-ua1"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5641:heading_levels_and_orphan_list_item",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5641,
+      "name": "heading_levels_and_orphan_list_item",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict heading-levels-ua1"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5713:font_weights",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5713,
+      "name": "font_weights",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict font-weights"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5803:font_variation_settings",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5803,
+      "name": "font_variation_settings",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict font-variation-settings"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5826:font_optical_sizing",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5826,
+      "name": "font_optical_sizing",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict font-optical-sizing"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5857:cid_default_width_is_an_integer",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5857,
+      "name": "cid_default_width_is_an_integer",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:5919:counter_style_needs_a_covering_font",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 5919,
+      "name": "counter_style_needs_a_covering_font",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6014:a_ranged_subset_keeps_a_latin_run_whole",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6014,
+      "name": "a_ranged_subset_keeps_a_latin_run_whole",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6053:a_cluster_closing_on_a_mark_spans_its_base",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6053,
+      "name": "a_cluster_closing_on_a_mark_spans_its_base",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict cluster-closing-on-a-mark"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6102:a_clustered_glyph_maps_to_its_own_character",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6102,
+      "name": "a_clustered_glyph_maps_to_its_own_character",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6134:a_glyph_without_a_codepoint_maps_to_the_rest_of_its_cluster",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6134,
+      "name": "a_glyph_without_a_codepoint_maps_to_the_rest_of_its_cluster",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6171:encoded_bitmaps_embed_their_own_bytes",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6171,
+      "name": "encoded_bitmaps_embed_their_own_bytes",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict encoded-bitmaps"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6220:opaque_pngs_embed_their_own_streams",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6220,
+      "name": "opaque_pngs_embed_their_own_streams",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict png-streams"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6274:the_producer_carries_the_crate_version",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6274,
+      "name": "the_producer_carries_the_crate_version",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6304:an_unsupported_filter_stops_the_render",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6304,
+      "name": "an_unsupported_filter_stops_the_render",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6325:an_undecodable_image_stops_the_render",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6325,
+      "name": "an_undecodable_image_stops_the_render",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6360:a_fixed_box_fills_its_page_counters",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6360,
+      "name": "a_fixed_box_fills_its_page_counters",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict fixed-page-counters"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6413:a_page_counter_in_the_content_names_its_own_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6413,
+      "name": "a_page_counter_in_the_content_names_its_own_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict content-page-counters"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6441:a_fixed_box_repeats_on_every_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6441,
+      "name": "a_fixed_box_repeats_on_every_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict fixed-repeats-per-page"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6557:the_paper_paints_under_a_repeated_box",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6557,
+      "name": "the_paper_paints_under_a_repeated_box",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict page-background"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6593:scaled_overflow_clip_keeps_what_it_shows",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6593,
+      "name": "scaled_overflow_clip_keeps_what_it_shows",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6618:paged_inline_span_background_paints_once",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6618,
+      "name": "paged_inline_span_background_paints_once",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6668:a_box_as_tall_as_the_window_fills_exactly_one_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6668,
+      "name": "a_box_as_tall_as_the_window_fills_exactly_one_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict page-sized-boxes"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6702:viewport_units_in_paged_content_take_the_page_area",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6702,
+      "name": "viewport_units_in_paged_content_take_the_page_area",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict page-area-viewport-units"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6767:page_rules_override_the_bands_per_page",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6767,
+      "name": "page_rules_override_the_bands_per_page",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict page-rules"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6813:page_rules_pick_first_then_last_then_parity_then_the_document",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6813,
+      "name": "page_rules_pick_first_then_last_then_parity_then_the_document",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6854:a_table_taller_than_one_grid_keeps_every_row",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6854,
+      "name": "a_table_taller_than_one_grid_keeps_every_row",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6893:persian_zero_width_non_joiners_keep_their_own_glyph",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6893,
+      "name": "persian_zero_width_non_joiners_keep_their_own_glyph",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:6934:synthesized_italic_leans_right_about_the_baseline",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 6934,
+      "name": "synthesized_italic_leans_right_about_the_baseline",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7041:stream_forward_link",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7041,
+      "name": "stream_forward_link",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-forward-link"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7073:stream_total_pages_band",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7073,
+      "name": "stream_total_pages_band",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-total-pages-band"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7105:stream_content_counters",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7105,
+      "name": "stream_content_counters",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-content-counters"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7122:stream_page_ranges_drop_middle_pages",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7122,
+      "name": "stream_page_ranges_drop_middle_pages",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-page-ranges-middle"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7151:stream_tagged_outline",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7151,
+      "name": "stream_tagged_outline",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-tagged-outline"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7173:stream_transform_paints_three_pages_back",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7173,
+      "name": "stream_transform_paints_three_pages_back",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-transform-three-pages-back"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7198:stream_relative_body_with_bottom_child",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7198,
+      "name": "stream_relative_body_with_bottom_child",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict stream-relative-body-bottom"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7235:at_page_rules_size_and_margin_the_first_left_and_right_pages",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7235,
+      "name": "at_page_rules_size_and_margin_the_first_left_and_right_pages",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict at-page-first-left-right"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7287:named_pages_take_the_page_rules_of_their_name",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7287,
+      "name": "named_pages_take_the_page_rules_of_their_name",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "golden-adapter",
+      "adapters": [
+        "node scripts/pdf-compare.mjs --strict named-pages"
+      ],
+      "reason": "Golden adapters cover rendered output; Rust-specific assertions still require review."
+    },
+    {
+      "id": "takumi-pdf/tests/pdf_fixtures.rs:7354:paged_lines_under_a_transform_or_a_clip",
+      "source": "takumi-pdf/tests/pdf_fixtures.rs",
+      "line": 7354,
+      "name": "paged_lines_under_a_transform_or_a_clip",
+      "sourceSha256": "8cdd8ad0c7efbc0f21305bb99e13ed595399102a57049f6a254c2008ce302ee3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "No case-level adapter verified yet; do not count as executed coverage."
+    },
+    {
+      "id": "takumi-pdf/tests/window_scenes.rs:134:html_fixtures_paint_from_their_windows",
+      "source": "takumi-pdf/tests/window_scenes.rs",
+      "line": 134,
+      "name": "html_fixtures_paint_from_their_windows",
+      "sourceSha256": "d64a6428fede0ed5fc51f9df26acb76c4edb778bfe563dc6826f6c4a4bdb30b2",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    },
+    {
+      "id": "takumi-pdf/tests/window_scenes.rs:155:positioned_box_of_a_parent_on_every_page_paints_from_its_page",
+      "source": "takumi-pdf/tests/window_scenes.rs",
+      "line": 155,
+      "name": "positioned_box_of_a_parent_on_every_page_paints_from_its_page",
+      "sourceSha256": "d64a6428fede0ed5fc51f9df26acb76c4edb778bfe563dc6826f6c4a4bdb30b2",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Continuation/window/live-memory assertions need dedicated Zig adapters (plan 16–21)."
+    }
+  ],
+  "javascriptCases": [
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:94:hands a deprecated ranges loader to the backend as written",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 94,
+      "name": "hands a deprecated ranges loader to the backend as written",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:104:a pre-aborted signal rejects before resources resolve",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 104,
+      "name": "a pre-aborted signal rejects before resources resolve",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:112:a signal aborted during resolution rejects after resources resolve",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 112,
+      "name": "a signal aborted during resolution rejects after resources resolve",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:132:fonts, images and fontFamilies reach resolveResources",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 132,
+      "name": "fonts, images and fontFamilies reach resolveResources",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:148:fonts accepts a promise of the list",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 148,
+      "name": "fonts accepts a promise of the list",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:158:the characters the backend reads drive font subsetting",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 158,
+      "name": "the characters the backend reads drive font subsetting",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:170:every method forwards resolved resources to its inner call",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 170,
+      "name": "every method forwards resolved resources to its inner call",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:184:a pre-aborted signal keeps the inner call from running",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 184,
+      "name": "a pre-aborted signal keeps the inner call from running",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:191:renderAnimation subsets fonts across every scene node",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 191,
+      "name": "renderAnimation subsets fonts across every scene node",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:207:prepare loads each reached file, and a failed one moves its rule on to the next src",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 207,
+      "name": "prepare loads each reached file, and a failed one moves its rule on to the next src",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:233:prepare loads each @font-face file once even when the cache releases it",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 233,
+      "name": "prepare loads each @font-face file once even when the cache releases it",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:248:a listed subset without the glyph its unicodeRange claims loads the next family",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 248,
+      "name": "a listed subset without the glyph its unicodeRange claims loads the next family",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-bindings-js/tests/renderer-facade.test.ts:277:a render loads listed subsets but leaves @font-face files to prepare",
+      "source": "takumi-bindings-js/tests/renderer-facade.test.ts",
+      "line": 277,
+      "name": "a render loads listed subsets but leaves @font-face files to prepare",
+      "sourceSha256": "7a1988843fb7826c1b61fe211aa0f03f46d6acb9d2cc5d7f270a60c86dbb7ca8",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:9:fetches remote images and skips provided sources",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 9,
+      "name": "fetches remote images and skips provided sources",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:27:single-flight cache coalesces concurrent fetches of the same url",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 27,
+      "name": "single-flight cache coalesces concurrent fetches of the same url",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:40:keeps emoji images across calls without a fetchCache",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 40,
+      "name": "keeps emoji images across calls without a fetchCache",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:52:a caller aborting leaves another waiting on the same emoji its image",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 52,
+      "name": "a caller aborting leaves another waiting on the same emoji its image",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:70:an aborted caller starts no shared emoji fetch",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 70,
+      "name": "an aborted caller starts no shared emoji fetch",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:82:a failed shared emoji fetch leaves the cache",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 82,
+      "name": "a failed shared emoji fetch leaves the cache",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:95:a provider URL that resolves elsewhere is not shared",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 95,
+      "name": "a provider URL that resolves elsewhere is not shared",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:108:a rejected fetch is evicted so a later call retries",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 108,
+      "name": "a rejected fetch is evicted so a later call retries",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:124:extracts urls from backgroundImage, maskImage, and tw",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 124,
+      "name": "extracts urls from backgroundImage, maskImage, and tw",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/prepare-images.test.ts:144:throwOnError false drops failed urls",
+      "source": "takumi-helpers/tests/prepare-images.test.ts",
+      "line": 144,
+      "name": "throwOnError false drops failed urls",
+      "sourceSha256": "2b092fbedb22bc2c6fc7afc67f9557a222a1058d157c7e64392dba80198305e3",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:63:registers a deprecated ranges loader with its unicodeRange",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 63,
+      "name": "registers a deprecated ranges loader with its unicodeRange",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:73:a pre-aborted signal rejects before resources resolve",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 73,
+      "name": "a pre-aborted signal rejects before resources resolve",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:81:a signal aborted during resolution rejects after resources resolve",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 81,
+      "name": "a signal aborted during resolution rejects after resources resolve",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:102:fonts, images and fontFamilies reach resolveResources",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 102,
+      "name": "fonts, images and fontFamilies reach resolveResources",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:113:fonts accepts a promise of the list",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 113,
+      "name": "fonts accepts a promise of the list",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:123:source drives font subsetting",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 123,
+      "name": "source drives font subsetting",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:133:a face covering list-marker characters stays without list content",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 133,
+      "name": "a face covering list-marker characters stays without list content",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:145:every method forwards resolved resources to its inner call",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 145,
+      "name": "every method forwards resolved resources to its inner call",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:159:a pre-aborted signal keeps the inner call from running",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 159,
+      "name": "a pre-aborted signal keeps the inner call from running",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-helpers/tests/renderer-facade.test.ts:166:renderAnimation subsets fonts across every scene node",
+      "source": "takumi-helpers/tests/renderer-facade.test.ts",
+      "line": 166,
+      "name": "renderAnimation subsets fonts across every scene node",
+      "sourceSha256": "faa14bbb197340e4831ce6bcdecde8ca546c2171463c21b63578f30bcce78840",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:12:fetches the images the document and its bands draw",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 12,
+      "name": "fetches the images the document and its bands draw",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:29:writes the file with the options render takes",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 29,
+      "name": "writes the file with the options render takes",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:36:measures the document it prepared",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 36,
+      "name": "measures the document it prepared",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:44:stops when its signal aborts",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 44,
+      "name": "stops when its signal aborts",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:52:a render stops when its signal aborts before reading the document",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 52,
+      "name": "a render stops when its signal aborts before reading the document",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/prepare.test.ts:67:loads the font subsets only the bands' text uses",
+      "source": "takumi-pdf-js/tests/prepare.test.ts",
+      "line": 67,
+      "name": "loads the font subsets only the bands' text uses",
+      "sourceSha256": "51782b425fb6a2687b0ae89be93ac6ea586cbe93ff7b627a81ecbe633b267e34",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:48:renders a single fixed page",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 48,
+      "name": "renders a single fixed page",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:56:defaults to paged A4 without options",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 56,
+      "name": "defaults to paged A4 without options",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:63:renders an HTML string with its own stylesheet",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 63,
+      "name": "renders an HTML string with its own stylesheet",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:73:object stylesheet rules match CSS strings in render and measure",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 73,
+      "name": "object stylesheet rules match CSS strings in render and measure",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:87:css takes one string",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 87,
+      "name": "css takes one string",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:96:paginates and substitutes footer counters",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 96,
+      "name": "paginates and substitutes footer counters",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:121:pageRanges keeps only the listed pages",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 121,
+      "name": "pageRanges keeps only the listed pages",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:140:page counter primitives fill per page and pull their counter face",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 140,
+      "name": "page counter primitives fill per page and pull their counter face",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:177:keeps a face the page counter needs but the document never uses",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 177,
+      "name": "keeps a face the page counter needs but the document never uses",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:199:auto-height viewport sizes the page to content",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 199,
+      "name": "auto-height viewport sizes the page to content",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:212:letter landscape",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 212,
+      "name": "letter landscape",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:219:accepts case-insensitive presets and per-side margins",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 219,
+      "name": "accepts case-insensitive presets and per-side margins",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:228:a side left out of the margin object is auto",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 228,
+      "name": "a side left out of the margin object is auto",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:240:rejects an unknown size keyword",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 240,
+      "name": "rejects an unknown size keyword",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:246:measures a band at full page width with counters filled",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 246,
+      "name": "measures a band at full page width with counters filled",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:257:measure defaults to paged A4",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 257,
+      "name": "measure defaults to paged A4",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:265:rejects viewport combined with paged options",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 265,
+      "name": "rejects viewport combined with paged options",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:274:embeds attachments from string and Uint8Array data",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 274,
+      "name": "embeds attachments from string and Uint8Array data",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:301:rejects duplicate attachment names",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 301,
+      "name": "rejects duplicate attachment names",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:309:rejects an invalid attachment mime type",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 309,
+      "name": "rejects an invalid attachment mime type",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:315:rejects an invalid attachment modificationDate",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 315,
+      "name": "rejects an invalid attachment modificationDate",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:323:embeds JPEG and WebP image bytes",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 323,
+      "name": "embeds JPEG and WebP image bytes",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:343:rejects a filter it cannot apply to a JPEG",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 343,
+      "name": "rejects a filter it cannot apply to a JPEG",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:356:rejects a filter a PDF cannot express",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 356,
+      "name": "rejects a filter a PDF cannot express",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:371:uncoveredText renders through uncovered characters",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 371,
+      "name": "uncoveredText renders through uncovered characters",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:389:only the placeholder policy trips the standard that forbids it",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 389,
+      "name": "only the placeholder policy trips the standard that forbids it",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:407:rejects a pages value that is not an object",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 407,
+      "name": "rejects a pages value that is not an object",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:422:loads font subsets for characters only a stylesheet adds",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 422,
+      "name": "loads font subsets for characters only a stylesheet adds",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:445:renders an HTML band with its own <style>",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 445,
+      "name": "renders an HTML band with its own <style>",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    },
+    {
+      "id": "takumi-pdf-js/tests/render.test.ts:453:a using block frees the renderer",
+      "source": "takumi-pdf-js/tests/render.test.ts",
+      "line": 453,
+      "name": "a using block frees the renderer",
+      "sourceSha256": "bf41840ca46a01379dac30b85bf5a1777a5100d75fdfc0a8dc804253334c1ef1",
+      "status": "pending-adapter",
+      "adapters": [],
+      "reason": "Public PDF/shared resource preparation contract; case assertions need an explicit bm runner mapping."
+    }
+  ]
+}

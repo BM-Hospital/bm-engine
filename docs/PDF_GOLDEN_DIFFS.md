@@ -2,11 +2,37 @@
 
 Developer notes on the fixtures of `node scripts/pdf-compare.mjs` that are not identical, and why.
 The script renders the input of each of takumi-pdf's 136 golden fixtures
-(`ref/takumi/takumi-pdf/tests/fixtures-generated/*.pdf`; 89 in `scripts/pdf-compare.mjs`, 47 more in
+(`tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf`; 89 in `scripts/pdf-compare.mjs`, 47 more in
 `scripts/pdf-compare-more.mjs`) with `bm-engine/pdf` and compares every page operator by operator after
-replacing resource names and object numbers by what they point at. The comparison rules were not changed
-for this work. The feature-by-feature view, with the cause of every remaining difference, is
+replacing resource names and object numbers by what they point at. Numeric tolerance remains unchanged.
+The narrowly scoped viewer-verified exception below is checked on every run. The historical feature-by-feature view is
 `docs/PDF_AUDIT.md` (see its "Golden coverage map").
+
+## Current source-pinned checkpoint (2026-11-14)
+
+The current oracle is built from `ff9a5d411310c8cdd1ac76a4f106c123d309e0a4`,
+not the published npm build described in the historical sections below. The corpus,
+oracle artifact hashes and toolchain are recorded by the runners.
+
+`color-glyph-text-shadow` resolves glyf points at the requested ppem before
+constructing implied points. Both encoded and implied points use FreeType's
+integer 26.6 arithmetic, including truncation toward zero below the baseline.
+The remaining structural difference is the transparency group's form bounds:
+BM uses tight curve bounds plus stroke radius; krilla bounds its stroked outline.
+
+Only this fixture can use the `form-bounds` equivalence gate in
+`scripts/pdf-fixture-equivalence.mjs`. All non-BBox instructions retain the normal
+comparison. Text extraction must match. MuPDF and PDFium must match exactly at
+144 and 288 dpi; PDF.js must match at 144 dpi. At 288 dpi PDF.js permits the
+observed decimal-rounding difference of at most five pixels and two channel
+levels. Every run repeats all six raster comparisons and records their results.
+Page, link and structure comparisons still run independently. Gate mutation tests
+verify that another fixture, another instruction difference, or changed paint
+cannot be excused by this check.
+
+The complete parity gate remains unfinished: rowspan continuation, collapsed-border
+and row-background continuation across page widths, float reflow and settled-page/live-memory work still need
+implementation. The runtime benchmark has run; see the current results in [PDF_TEST_PORT.md](PDF_TEST_PORT.md) and [the benchmark report](../bench/out/pdf/PDF.md).
 
 ## Numbers
 
@@ -15,7 +41,7 @@ for this work. The feature-by-feature view, with the cause of every remaining di
 | before the `pdf-bugs` work | 89 | 73 | 3 | 13 | 0 |
 | after the `pdf-bugs` fixes | 89 | 80 | 2 | 7 | 0 |
 | before the PDF audit (main `664fb3f`) | 136 | 105 | 2 | 29 | 0 |
-| now | 136 | 118 | 7 | 11 | 0 |
+| historical audit | 136 | 118 | 7 | 11 | 0 |
 
 Object layout is identical in 134 of 136. Embedded font programs are byte-identical in 71 (the subsetter
 does not write byte-identical subsets; this never changes a verdict, the comparison reads the fonts'
@@ -99,13 +125,13 @@ Categories:
 
 ## Current state
 
-All 136 goldens are compared: 118 identical, 7 close, 11 differ, 0 errors. Object layout is identical in
-134, embedded font programs byte-identical in 71. Of the open items of the first round, B (contour start of
-the static `glyf` reader: contours now start where FreeType and skrifa start them), F (the right edge of a
-decoration or link run is the run's origin plus its exact advance) and G (`stream-content-counters`) no
-longer produce differences; per-page widths are ported (src/pdf/paged.zig `laySegments`). C (the 1/64 px
-truncation of the page height) is still the cause of the close fixtures below. The 18 fixtures that are
-not identical:
+All 136 goldens are compared: 125 identical, 10 close, 1 differ, 0 errors (the same on the wasm build and
+the native addon). Object layout is identical in 135, embedded font programs byte-identical in 71. Of the
+open items of the first round, B (contour start of the static `glyf` reader: contours now start where
+FreeType and skrifa start them), F (the right edge of a decoration or link run is the run's origin plus its
+exact advance) and G (`stream-content-counters`) no longer produce differences; per-page widths are ported
+(src/pdf/paged.zig `laySegments`). C (the 1/64 px truncation of the page height) is still the cause of
+some close fixtures below. The 11 fixtures that are not identical:
 
 | Fixture | Result | Cause |
 |:--|:--|:--|
@@ -113,16 +139,26 @@ not identical:
 | `content-page-counters` | close | takumi stacks pages at the exact height but breaks at the height truncated to 1/64 px; content after a sliced box is 0.0073 px higher in bm-engine |
 | `report-links-outline`, `report-tagged-ua1`, `report-tagged-a2a` | close | outline destination of a heading on page 2 is 0.005 pt off (same cause as `content-page-counters`); link and decoration edges are identical |
 | `at-page-first-left-right` | close | pages of different widths are laid out at their own width; numbers within 0.01 |
-| `svg-filters-masks-and-patterns` | close | numbers within 0.01 |
-| `color-glyph-text-shadow` | differ | only a form `/BBox` (124.51 vs 124.546): takumi measures it on tiny-skia's stroked outline |
-| `named-pages` | differ | 3220 / 3356 ops: takumi's page 2 also paints the first border pieces of the wide table that starts page 3, outside its clip (invisible); in bm-engine page 3 is another frame laid out at its own width |
-| `inline-span-background-image` | differ | inline-span background extents: 3 gradient fragments vs 2 |
-| `inline-span-background-clip-text-nested` | differ | glyphs of a nested span inside the outer span's text mask sit 41/64 px further left in takumi; the visible text is identical |
-| `background-clip-text-reach` | differ | 1723 / 1102 ops: how far the clip-text mask reaches past the box |
-| `svg-singular-gradient-transform` | differ | `gradientTransform="scale(0)"`: a degenerate pattern matrix written differently, nothing visible |
-| `paged-transforms`, `paged-rotated-text` | differ | takumi slices a rotated box cut by a page boundary per fragment; bm-engine paints it whole in its first page's pass |
-| `paged-monolithic-overflow`, `paged-clipped-overflow` | differ | layout identical; marked-content regions and clip details at the page boundary |
-| `list-marker-pagination` | differ | deliberate: the marker of a split item stays on its first line (Chrome); takumi moves it to the last fragment |
+| `svg-filters-masks-and-patterns`, `paged-transforms`, `paged-rotated-text` | close | numbers within 0.01 |
+| `color-glyph-text-shadow` | close (verified equivalence) | only a form `/BBox` (124.51 vs 124.546): takumi measures it on tiny-skia's stroked outline; the `form-bounds` gate of `scripts/pdf-fixture-equivalence.mjs` checks every other instruction and six raster comparisons |
+| `list-marker-pagination` | differ | deliberate: the marker of a split item stays on its first line (Chrome); takumi moves it to the last fragment. `pagination.list-markers` in scripts/pdf-audit asserts the Chrome placement |
+
+Fixed in the last round (2026-11-15):
+
+- `named-pages`: the last page of a run of one width also paints the fragments of the next run's
+  first page that reach up into it, as takumi's page scene holds that page's root fragment too
+  (src/pdf/emit.zig `paintUnder`, `PageBox.under_frame`; a cell counts when its unsnapped border
+  reaches the window, then all its border pieces paint). Identical now.
+- `svg-background-image`, `text-shadow-stroke`, `font-weights`, `background-clip-text-descendants`,
+  `background-clip-text-reach`: an empty `/Artifact BMC EMC` pair before a box whose image layers are
+  all `background-clip: text` (they paint through the glyphs, `paintTextClip`, not in the box's
+  background artifact). src/pdf/emit.zig `paintBackground` counts only the layers it paints.
+- `paged-monolithic-overflow`: a line placed on an earlier page fragment (an oversized atomic inline)
+  that overflows onto this page owns its text in the earlier fragment's region; the later fragments'
+  empty regions now open after the line's atomic inline, as in takumi's page scene
+  (src/pdf/emit_text.zig `textRegions` / `paintText`, `Emitter.pending_regions`).
+- `inline-span-background-image`, `inline-span-background-clip-text-nested`,
+  `svg-singular-gradient-transform`, `paged-clipped-overflow`: identical since the preceding round.
 
 Still open on the layout side: **C**, growing a box that a page boundary slices by the gap between the
 truncated and the exact page height; rotated boxes sliced per page fragment (needs a layout per fragment).

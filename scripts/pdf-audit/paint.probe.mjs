@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { Name, Ref, outDir, probe, root, takumiSrc } from "./lib.mjs";
+import { INTER, Name, Ref, outDir, pdftotext, probe, root, takumiSrc } from "./lib.mjs";
 
 let currentId = "";
 /** `probe()` that also remembers the running probe's id (dump file names). */
@@ -420,7 +420,7 @@ export async function cmp(t, label, source, options = {}, extra = undefined, opt
   if (bm.error || ref.error) {
     // bm-engine's JS wrapper prefixes every message with "bm-engine: " (all entries, not PDF specific): compared without it
     const be = bm.error ? errText(bm.error).replace(/^bm-engine: /, "") : null;
-    const re = ref.error ? errText(ref.error) : null;
+    const re = ref.error ? errText(ref.error).replace(/^Error: /, "") : null;
     t.same(tag + "error", be, re);
     t.note(tag + "takumi: " + (re ? "ERROR " + re : "renders") + " | bm: " + (be ? "ERROR " + be : "renders"));
     if (!bm.error) { r.bmCanon = canonPages(bm); t.note(tag + "bm page 1: " + summary(r.bmCanon[0] || [])); }
@@ -470,10 +470,10 @@ export async function cmp(t, label, source, options = {}, extra = undefined, opt
 /** An error message with data: URIs shortened. */
 export const errText = (m) => String(m).replace(/data:([\w/+.-]+);base64,[A-Za-z0-9+/=]{24,}/g, "data:$1;base64,…");
 
-/** A page of `w` x `h` CSS px that is exactly the viewport. */
-export const vp = (w = 200, h = 120) => ({ viewport: { width: w, height: h } });
+/** A page of `w` x `h` CSS px that is exactly the viewport; paint probes exclude tagging. */
+export const vp = (w = 200, h = 120) => ({ viewport: { width: w, height: h }, tagged: false });
 
-/** A data: URI of a file (path relative to the repo root or to ref/takumi). */
+/** A data: URI of a file (path relative to the repo root or to tests/upstream/takumi). */
 export function dataUri(rel, mime) {
   return `data:${mime || mimeOf(rel)};base64,${fileBytes(rel).toString("base64")}`;
 }
@@ -566,6 +566,9 @@ cases("paint.gradient", "gradients", [
   ["conic-hard-stops", box("background:conic-gradient(red 0 25%,blue 25% 50%,lime 50% 75%,yellow 75%)")],
   ["conic-alpha", box("background:conic-gradient(red,transparent)")],
   ["conic-repeating", box("background:repeating-conic-gradient(red 0 15deg,blue 15deg 30deg)")],
+  ["conic-repeating-percent", box("background:repeating-conic-gradient(red 0% 12.5%,blue 12.5% 25%)")],
+  ["conic-repeating-turn", box("background:repeating-conic-gradient(red 0turn .125turn,blue .125turn .25turn)")],
+  ["conic-fraction-stops", box("background:conic-gradient(red 0 .25,blue .25 .5,green .5 1)")],
   ["border-radius", box("background:linear-gradient(red,blue);border-radius:50%")],
   ["transformed", box("background:linear-gradient(red,blue);transform:rotate(20deg)")],
   ["tiled-radial", box("background:radial-gradient(red,blue) 0 0/25px 25px")],
@@ -630,6 +633,17 @@ cases("paint.outline", "outlines", [
   ["auto", box("outline:auto")],
   ["inline", `<p style="margin:20px;font:16px Inter">a <span style="outline:2px solid red;outline-offset:2px">inline</span> b</p>`],
   ["inline-wrapped", `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:2px solid red">inline box that wraps lines</span> b</p>`],
+  ...["solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"].flatMap((style) => [
+    [`inline-${style}`, `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:5px ${style} #06c;outline-offset:2px">inline box that wraps lines</span> b</p>`],
+    [`inline-${style}-radius`, `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:5px ${style} #06c;outline-offset:2px;border-radius:6px 10px">inline box that wraps lines</span> b</p>`],
+  ]),
+  ...[1, 2, 3, 6].flatMap((width) => [
+    [`inline-dotted-${width}px`, `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:${width}px dotted #06c">inline box that wraps lines</span> b</p>`],
+    [`inline-double-${width}px`, `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:${width}px double #06c;border-radius:8px">inline box that wraps lines</span> b</p>`],
+  ]),
+  ["inline-opacity", `<p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:5px dashed #06c8;opacity:.6;border-radius:8px">inline box that wraps lines</span> b</p>`],
+  ["inline-transformed-clip", `<div style="overflow:hidden;width:130px;height:90px;transform:rotate(5deg)"><p style="margin:20px;width:90px;font:16px Inter">a <span style="outline:5px dotted #06c;border-radius:8px">inline box that wraps lines</span> b</p></div>`],
+  ["inline-paged", `<p style="margin:20px;width:90px;font:16px Inter;line-height:20px">a <span style="outline:5px double #06c;border-radius:8px">inline box that wraps across many lines and several pages of this short document</span> b</p>`, { size: { width: 150, height: 100 }, margin: 10 }],
   ["over-sibling", box("outline:6px solid #06c;background:#fff") + `<div style="margin:-20px 20px;width:100px;height:20px;background:#f00"></div>`],
   ["image", `<img src="${PNG}" style="margin:20px;width:40px;height:40px;outline:3px solid red">`],
 ]);
@@ -809,8 +823,6 @@ cases("paint.overflow", "overflow clip", [
   ["hidden", box("overflow:hidden;background:#eee", scroll)],
   ["clip", box("overflow:clip;background:#eee", scroll)],
   ["clip-margin", box("overflow:clip;overflow-clip-margin:10px;background:#eee", scroll)],
-  ["scroll", box("overflow:scroll;background:#eee", scroll)],
-  ["auto", box("overflow:auto;background:#eee", scroll)],
   ["visible", box("overflow:visible;background:#eee", scroll)],
   ["hidden-radius", box("overflow:hidden;border-radius:20px;background:#eee", scroll)],
   ["hidden-radius-border", box("overflow:hidden;border-radius:20px;border:6px solid #333;background:#eee", scroll)],
@@ -830,6 +842,28 @@ cases("paint.overflow", "overflow clip", [
 // ------------------------------------------------------------------------------------------------ transforms
 
 const tf = (t, extraStyle = "") => box(`${t};background:#c33;border:2px solid #000;font:14px Inter;${extraStyle}`, "Tx");
+cases("paint.motion", "CSS motion paths", [
+  ["path-line", tf(`offset-path:path('M0 0 L160 80');offset-distance:30%`)],
+  ["path-open-clamp", tf(`offset-path:path('M10 20 L80 20');offset-distance:200%;offset-rotate:0deg`)],
+  ["path-closed-wrap", tf(`offset-path:path('M10 20 L100 20 L100 80 Z');offset-distance:-20px`)],
+  ["ray", tf(`offset-path:ray(45deg sides at 20% 50%);offset-distance:50%;offset-rotate:reverse 20deg`)],
+  ["circle", tf(`offset-path:circle(35px at 60px 55px);offset-distance:20%`)],
+  ["ellipse", tf(`offset-path:ellipse(45px 25px at 70px 55px);offset-distance:60%`)],
+  ["polygon", tf(`offset-path:polygon(10px 10px,140px 10px,80px 90px);offset-distance:40%`)],
+  ["inset", tf(`offset-path:inset(10px 20px 30px 40px round 8px);offset-distance:35%`)],
+  ["anchor", tf(`offset-path:path('M0 0 L160 80');offset-distance:30%;offset-rotate:auto;offset-anchor:0% 0%`)],
+  ["composition", tf(`translate:5px 8px;rotate:10deg;scale:.8;offset-path:path('M0 0 L160 80');offset-distance:30%;transform:translateX(5px)`)],
+]);
+
+for (const overflow of ["scroll", "auto"]) {
+  probeAs(`paint.overflow.${overflow}`, `overflow:${overflow} clips at the padding box`, async (t) => {
+    const r = await t.bm(box(`overflow:${overflow};background:#eee`, scroll), vp());
+    if (r.error) return;
+    // The 100x60 CSS-pixel box starts at (20,20); at 0.75 pt/px its PDF clip is
+    // x=15..90 and y=30..75. Takumi 0.20.0 clips this case to the 160x80 child instead.
+    t.ok(/q\s+15\s+75\s+75\s+-45\s+re\s+W\s+n/.test(r.content(0)), `${overflow} clips at the box's 100x60 padding box`);
+  });
+}
 cases("paint.transform", "transforms", [
   ["translate", tf("transform:translate(10px,5px)")],
   ["translate-percent", tf("transform:translate(10%,-20%)")],
@@ -848,7 +882,6 @@ cases("paint.transform", "transforms", [
   ["prop-scale", tf("scale:.5 1.2")],
   ["prop-translate", tf("translate:10px 20px")],
   ["props-combined", tf("translate:10px 5px;rotate:20deg;scale:.8;transform:skewX(10deg)")],
-  ["rotate-axis-z", tf("rotate:z 30deg")],
   ["rotate3d", tf("transform:rotate3d(1,1,0,45deg)")],
   ["rotateX", tf("transform:rotateX(45deg)")],
   ["rotateY", tf("transform:rotateY(60deg)")],
@@ -869,6 +902,15 @@ cases("paint.transform", "transforms", [
   ["zoom", tf("zoom:1.5")],
   ["offset-path", tf("offset-path:path('M0 0 L50 30');offset-distance:50%")],
 ]);
+
+probeAs("paint.transform.rotate-axis-z", "rotate:z 30deg is equivalent to transform:rotate(30deg)", async (t) => {
+  const [a, b] = await Promise.all([
+    t.bm(tf("rotate:z 30deg"), vp()),
+    t.bm(tf("transform:rotate(30deg)"), vp()),
+  ]);
+  if (a.error || b.error) return t.same("both rotations render", !!a.error, !!b.error);
+  t.same("z-axis rotate and 2D rotate paint identical pages", canonPages(a), canonPages(b));
+});
 
 // ------------------------------------------------------------------------------------------------ visibility, order
 
@@ -989,7 +1031,28 @@ cases("paint.pseudo", "generated content painting", [
   ["first-line", `<style>p::first-line{color:red}</style><p style="margin:20px;font:14px Inter;width:80px">First line colour here</p>`],
   ["selection-ignored", `<style>p::selection{background:red}</style><p style="margin:20px;font:14px Inter">Sel</p>`],
   ["content-url", `<style>.x::before{content:url(${PNG})}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-url-sized", `<style>.x::before{content:url(${PNG});display:inline-block;width:4px;height:4px}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient", `<style>.x::before{content:linear-gradient(red,blue)}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-sized", `<style>.x::before{content:linear-gradient(red,blue);display:inline-block;width:24px;height:16px}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-inline-sized", `<style>.x::before{content:linear-gradient(red,blue);width:24px;height:16px}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-inline-mixed", `<style>.x::before{content:'before' linear-gradient(red,blue) 'after'}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-block-auto", `<style>.x::before{content:linear-gradient(red,blue);display:block}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-atomic-auto", `<style>.x::before{content:linear-gradient(red,blue);display:inline-block}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
+  ["content-gradient-mixed", `<style>.x::before{content:'before' radial-gradient(red,blue) 'after';display:block;width:100px;height:80px}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`],
 ]);
+
+probeAs("paint.pseudo.content-url-mixed", "a generated URL stays inline between surrounding pseudo text", async (t) => {
+  const html = `<style>.x::before{content:'before' url(${PNG}) 'after';display:inline-block;width:40px;height:24px}</style><div class="x" style="margin:20px;font:14px Inter">mid</div>`;
+  const r = await t.bm(html, vp(), { fonts: [INTER] });
+  if (r.error) { t.ok(false, "mixed generated image renders: " + r.error); return; }
+  const extracted = pdftotext(r.bytes, "pseudo-content-url-mixed", ["-bbox"]);
+  if (!extracted.ok) { t.ok(false, "Poppler bbox extraction: " + extracted.stderr); return; }
+  const words = new Map([...extracted.text.matchAll(/<word xMin="[\d.-]+" yMin="([\d.-]+)" xMax="[\d.-]+" yMax="[\d.-]+">([^<]+)<\/word>/g)].map((m) => [m[2], Number(m[1])]));
+  const before = words.get("before"); const after = words.get("after"); const mid = words.get("mid");
+  if (before === undefined || after === undefined || mid === undefined) { t.ok(false, "extracted generated text keeps before/after/host words"); return; }
+  t.ok(Math.abs(after - mid) < 0.02, "host text shares the line after the generated image");
+  t.ok(after - before < 24, "mixed generated image does not add a block line before following text");
+});
 
 // ------------------------------------------------------------------------------------------------ found while auditing
 

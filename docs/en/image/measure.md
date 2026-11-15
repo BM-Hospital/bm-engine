@@ -80,9 +80,8 @@ container's content width) and owns its runs. The second text wraps onto two lin
   above sits at (16, 16) because of the card's padding, the body text at (16, 53) = 16 + 29 + gap 8.
 - A run's `x` and `y` are relative to the **content box** of the box that owns it, so add that box's
   border and padding (and its `transform` position) to get canvas coordinates.
-- A run's `height` is the line height, not the glyph extent; takumi reports glyph-box heights here,
-  so values differ (positions and widths match).
-- Runs have no `text` field in 0.1.0 (takumi's have one). If you need the text of each line, keep it on
+- A run's `height` is the line height, not the glyph extent.
+- Runs have no `text` field in 0.1.0. If you need the text of each line, keep it on
   your side or measure the words individually.
 
 ### Which boxes appear
@@ -113,11 +112,11 @@ bold "fragment" and the comma. Inline-blocks and images on a line appear as chil
 transforms.
 
 A block inside an inline container (a "span" holding a `display: block` child) splits that inline box
-around the block, as in CSS 2.1 and in browsers. `measure()` reports the split form, like takumi: the
+around the block, as in CSS 2.1 and in browsers. `measure()` reports the split form: the
 text before and after the block stays as runs of the block container, and each run of consecutive
 blocks appears as one extra child box, as wide as the container, whose children are the blocks.
 Likewise, when a block container has both text and block-level children, each stretch of text is
-wrapped in an anonymous block that appears in `children` and owns those runs (as in takumi).
+wrapped in an anonymous block that appears in `children` and owns those runs .
 
 ### Drawing an overlay from the measurements
 
@@ -247,7 +246,7 @@ rounded per size (the body text of the [result section](#the-result) has 20 px l
 
 ## Transforms
 
-`transform` is the full 2D affine matrix of the box, as in takumi: the layout position, `position:
+`transform` is the full 2D affine matrix of the box: the layout position, `position:
 relative` offsets and the CSS transforms of the box (`transform`, `translate`, `rotate`, `scale`,
 skews, around its `transform-origin`), composed with the transforms of its ancestors. The numbers are
 the exact `f32` values the engine computes, printed as decimals (so `0.7071067690849304`, not

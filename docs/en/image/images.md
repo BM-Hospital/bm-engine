@@ -115,7 +115,7 @@ const sources = renderer.renderSync(
 
 Notice the raw 4 × 4 checkerboard: it was scaled up to 96 × 96 with smooth (bilinear) resampling.
 For crisp pixel-art upscaling, set `imageRendering: "pixelated"` (or `"crisp-edges"`): the image is
-then scaled with nearest-neighbour sampling, exactly as in takumi. It works on image nodes and on
+then scaled with nearest-neighbour sampling. It works on image nodes and on
 background images, on every profile:
 
 <!-- @example images#pixelated -->
@@ -143,8 +143,7 @@ const pixelated = renderer.renderSync(
 ![The 4 × 4 checkerboard scaled smoothly into a blurred pattern, the same with sharp pixel edges, and a background tiled with sharp checkerboards](/img/guide/images-pixelated.png)
 
 ::: warning bm-engine has no network access
-A URL in `src` (or in `url(...)`) is **never fetched**, not even by `prepare()` (takumi's `prepare`
-downloads; bm-engine's does not). Download the bytes yourself and pass them in `images`. The same
+A URL in `src` (or in `url(...)`) is **never fetched**, not even by `prepare()`. Download the bytes yourself and pass them in `images`. The same
 applies to `@font-face` URLs in stylesheets.
 :::
 
@@ -172,7 +171,7 @@ const lazy = await renderer.render(
 // renderer.renderSync(...) with the same options throws "lazy images[].data() needs the async API"
 ```
 
-`images` may be an array or an object `{ sources, cache }` (the takumi shape). Per-image `cache` and
+`images` may be an array or an object `{ sources, cache }`. Per-image `cache` and
 `images.cache` are accepted and ignored: decoded images are always cached (see
 [Caching](#caching-memory-and-limits)). Only the entries whose `src` actually appears in the source are
 copied into wasm memory, so it is fine to pass one shared list of all your assets to every render.

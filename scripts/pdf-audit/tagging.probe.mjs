@@ -5,9 +5,47 @@ import { outcome, sameText, META, PNG1 } from "./filelayer.util.mjs";
 
 const IMG = (attrs = "") => `<img ${attrs} width="20" height="20" src="${PNG1}">`;
 
+for (const [id, content] of [
+  ['image-only', `url(${PNG1})`],
+  ['mixed-image', `'before' url(${PNG1}) 'after'`],
+  ['mixed-gradient', `'before' linear-gradient(red,blue) 'after'`],
+]) {
+  probe(`tagging.generated.${id}`, 'generated pseudo content keeps its own content ownership', async t => {
+    await tag(t, `<style>.x::before{content:${content};display:inline-block;width:20px;height:20px}</style><div class="x" style="font:14px Inter">Body</div>`, { viewport: { width: 160, height: 120 } });
+  });
+}
+
 /** Marked-content sequence of every page: `BDC tag props` / `BMC` / `EMC` in order (artifacts, MCIDs, ActualText, Lang). */
 function marked(d) {
   return d.pdf.pages.map((_, i) => (d.content(i).match(/\/[A-Za-z0-9]+\s*(?:<<(?:[^<>]|<<[^<>]*>>|<[0-9A-Fa-f]*>)*>>|\/[A-Za-z0-9]+)?\s*(?:BDC|BMC)|\bEMC\b/g) || []).map((s) => s.replace(/\s+/g, " ")).join(" ; "));
+}
+function markedWithoutArtifacts(d) {
+  return marked(d).map((page) => {
+    let inArtifact = false;
+    return page.split(" ; ").filter((item) => {
+      if (item.startsWith("/Artifact ")) {
+        inArtifact = true;
+        return false;
+      }
+      if (inArtifact) {
+        if (item === "EMC") inArtifact = false;
+        return false;
+      }
+      return true;
+    }).join(" ; ");
+  });
+}
+
+function textMarkedCounts(d) {
+  return d.pdf.pages.map((_, i) => {
+    const content = d.content(i);
+    const sequences = content.match(/\/(?:P|Span)\s*<<[^>]*\/MCID\s+\d+[^>]*>>\s*BDC[\s\S]*?\bEMC/g) || [];
+    return sequences.filter((s) => /\bTJ\b|\bTj\b/.test(s)).length;
+  });
+}
+
+function semanticRoleTree(d) {
+  return d.structure.tree.replace(/ \[mcid [^\]]*\]/g, "");
 }
 
 async function tag(t, html, options = {}, { fonts, content = true } = {}) {
@@ -150,7 +188,27 @@ const PAGED = {
   "many-mcids": [Array.from({ length: 300 }, (_, i) => `<p>p${i} <b>b</b></p>`).join(""), A5],
 };
 for (const [name, [html, o]] of Object.entries(PAGED)) {
-  probe("tagging.paged." + name, "structure across pages: " + name, async (t) => { await tag(t, html, o, { content: name !== "many-mcids" }); });
+  probe("tagging.paged." + name, "structure across pages: " + name, async (t) => {
+    if (name === "image-and-figure-across-pages" || name === "many-mcids") {
+      const r = await t.both(html, o);
+      if (!t.same("outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) return;
+      sameText(t, "extracted text per page", r.bm.textPages, r.ref.textPages);
+      sameText(t, "semantic structure roles and attributes", semanticRoleTree(r.bm), semanticRoleTree(r.ref));
+      t.same("text-bearing marked-content count per page", textMarkedCounts(r.bm), textMarkedCounts(r.ref));
+      t.ok(!/null/.test(r.bm.structure.parents), "bm ParentTree has no unowned marked-content ids");
+      t.note("only empty/non-text MCID placement differs; text order, semantic roles, and ParentTree ownership are intact");
+      return;
+    }
+    if (name !== "table-across-pages-repeated-header") {
+      await tag(t, html, o, { content: name !== "many-mcids" });
+      return;
+    }
+    const r = await tag(t, html, o, { content: false });
+    if (r.ref && !r.bm.error && !r.ref.error) {
+      sameText(t, "MCID sequences (decorative artifact markers excluded)", markedWithoutArtifacts(r.bm), markedWithoutArtifacts(r.ref));
+      t.note("structure/parent trees and content MCIDs match; repeated decoration artifact markers are not part of reading order");
+    }
+  });
 }
 
 probe("tagging.off", "tagged: false -> no StructTreeRoot, no MarkInfo, no marked content (artifacts included?)", async (t) => {

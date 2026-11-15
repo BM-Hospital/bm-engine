@@ -14,6 +14,7 @@
 //! Not implemented: avar version 2, `VVAR`, `cvar`, HVAR lsb/rsb mappings (unneeded: nothing
 //! is hinted and vertical layout is not supported).
 const std = @import("std");
+const builtin = @import("builtin");
 const ttf = @import("ttf.zig");
 const Font = ttf.Font;
 const PathOut = ttf.PathOut;
@@ -230,6 +231,64 @@ pub noinline fn regionScalar(store: []const u8, region: u32, coords: []const i16
     return scalar;
 }
 
+/// Region scalars of recently used stores at recently used coordinates (single-threaded builds,
+/// i.e. wasm; the native addon renders on several threads and has no thread-local storage): an item's
+/// delta sums one product per region, and a text run asks for the advance of each glyph at the
+/// same instance, so the scalars would otherwise be recomputed for every glyph. Each is computed
+/// on first use. Entries are keyed by the store's address; `invalidateCaches` (called before
+/// font bytes are freed) retires them all, so a reused address never meets a stale entry.
+const ScalarCache = struct {
+    ptr: usize = 0,
+    len: usize = 0,
+    epoch: u32 = 0,
+    coords: [max_axes]i16 = @splat(0),
+    n_coords: u8 = 0,
+    count: u32 = 0,
+    done: [max_cached_regions / 32]u32 = @splat(0),
+    vals: [max_cached_regions]i32 = undefined,
+};
+const max_cached_regions = 256;
+const scalar_ways = 8;
+var scalar_cache: [scalar_ways]ScalarCache = @splat(.{});
+var scalar_next: u32 = 0;
+var font_epoch = std.atomic.Value(u32).init(1);
+
+/// Retires every cached region scalar (all threads): call before freeing font bytes.
+pub fn invalidateCaches() void {
+    _ = font_epoch.fetchAdd(1, .monotonic);
+}
+
+/// The cache entry of `store` at `coords` (null: more regions or axes than cached).
+fn scalarEntry(store: []const u8, coords: []const i16) ?*ScalarCache {
+    if (!builtin.single_threaded or coords.len > max_axes or store.len < 8) return null;
+    const epoch = font_epoch.load(.monotonic);
+    for (&scalar_cache) |*c| {
+        if (c.ptr == @intFromPtr(store.ptr) and c.len == store.len and c.epoch == epoch and c.n_coords == coords.len and
+            std.mem.eql(i16, c.coords[0..coords.len], coords)) return c;
+    }
+    const list = tail(store, rd32(store, 2));
+    if (list.len < 4) return null;
+    const count: u32 = rd16(list, 2);
+    if (count > max_cached_regions) return null;
+    const c = &scalar_cache[scalar_next % scalar_ways];
+    scalar_next +%= 1;
+    c.* = .{ .ptr = @intFromPtr(store.ptr), .len = store.len, .epoch = epoch, .n_coords = @intCast(coords.len), .count = count };
+    @memcpy(c.coords[0..coords.len], coords);
+    return c;
+}
+
+/// `regionScalar` through the cache entry `c` of the same store and coordinates.
+inline fn cachedScalar(c: ?*ScalarCache, store: []const u8, region: u32, coords: []const i16) i32 {
+    const e = c orelse return regionScalar(store, region, coords);
+    if (region >= e.count) return 0;
+    const bit = @as(u32, 1) << @intCast(region & 31);
+    if (e.done[region >> 5] & bit != 0) return e.vals[region];
+    const v = regionScalar(store, region, coords);
+    e.vals[region] = v;
+    e.done[region >> 5] |= bit;
+    return v;
+}
+
 /// ItemVariationData subtable `outer` of a store (empty when out of range).
 pub fn itemData(store: []const u8, outer: u32) []const u8 {
     if (store.len < 8 or rd16(store, 0) != 1 or outer >= rd16(store, 6)) return &.{};
@@ -251,6 +310,7 @@ pub fn itemDeltaFx(store: []const u8, outer: u32, inner: u32, coords: []const i1
     var p: u32 = 6 +| nreg * 2 +| inner *| row;
     if (p > d.len or row > d.len - p) return 0;
     var acc: i64 = 0;
+    const cache = scalarEntry(store, coords);
     var i: u32 = 0;
     while (i < nreg) : (i += 1) {
         var delta: i32 = undefined;
@@ -262,7 +322,8 @@ pub fn itemDeltaFx(store: []const u8, outer: u32, inner: u32, coords: []const i1
             p += ssz;
         }
         if (delta == 0) continue;
-        acc +%= @as(i64, delta) *% regionScalar(store, rd16(d, 6 + i * 2), coords);
+        const region: u32 = rd16(d, 6 + i * 2);
+        acc +%= @as(i64, delta) *% cachedScalar(cache, store, region, coords);
     }
     return acc;
 }
@@ -802,15 +863,20 @@ noinline fn simpleVar(f: *const Font, gid: u16, g: []const u8, nc: u32, xf_in: X
         }
     }
     const round = if (comptime ttf.enable_pdf) out.round_points else false;
+    const quant: ?ttf.PointQuant = if (comptime ttf.enable_pdf) out.point_quant else null;
     for (0..npts) |i| {
         var x = @as(f32, @floatFromInt(s.ox[i])) + s.ax[i];
         var y = @as(f32, @floatFromInt(s.oy[i])) + s.ay[i];
-        if (round) {
+        if (round and quant == null) {
             x = @floor(x + 0.5);
             y = @floor(y + 0.5);
         }
         s.ax[i] = if (xf.ident) x else xf.a * x + xf.c * y + xf.e;
         s.ay[i] = if (xf.ident) y else xf.b * x + xf.d * y + xf.f;
+        if (quant) |q| {
+            s.ax[i] = q.apply(s.ax[i]);
+            s.ay[i] = q.apply(s.ay[i]);
+        }
     }
     return emitContours(g, nc, npts, &s, out);
 }
@@ -881,6 +947,12 @@ fn emitContours(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *cons
 /// `emitContours` with each contour started where FreeType / skrifa start it (`ttf.simpleOutlineFt`):
 /// the PDF output (`PathOut.round_points`), as krilla draws the glyphs of takumi-pdf.
 fn emitContoursFt(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *const PathOut) bool {
+    const midpoint = struct {
+        fn point(a: Pt, b: Pt, po: *const PathOut) Pt {
+            if (comptime ttf.enable_pdf) if (po.point_quant) |q| return .{ .x = q.midpoint(a.x, b.x), .y = q.midpoint(a.y, b.y) };
+            return mid(a, b);
+        }
+    }.point;
     var any = false;
     var pi: u32 = 0;
     var ci: u32 = 0;
@@ -900,7 +972,7 @@ fn emitContoursFt(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *co
                 if (s.fl[end] & 1 != 0) {
                     start = pl;
                     stop = end - 1;
-                } else start = mid(p0, pl);
+                } else start = midpoint(p0, pl, out);
             }
         }
         out.moveTo(start.x, start.y);
@@ -912,7 +984,7 @@ fn emitContoursFt(g: []const u8, nc: u32, npts: u32, s: *const Scratch, out: *co
                 pending = null;
             } else {
                 if (pending) |c| {
-                    const m = mid(c, p);
+                    const m = midpoint(c, p, out);
                     out.quadTo(c.x, c.y, m.x, m.y);
                 }
                 pending = p;

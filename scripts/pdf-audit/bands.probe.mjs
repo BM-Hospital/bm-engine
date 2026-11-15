@@ -2,7 +2,7 @@
 // string, a node tree or `false`; it is laid out at the full page width and drawn in the page margin, 15 pt
 // (20 px) from the page edge; an `auto` margin on that side is max(10mm, band height + 20 px).
 import { probe } from "./lib.mjs";
-import { cmp, cmpAll, doc, lines, stripPrefix } from "./paged-helpers.mjs";
+import { cmp, cmpAll, doc, lines, stripPrefix, wordBoxes } from "./paged-helpers.mjs";
 
 const S = { width: 300, height: 300 };
 const G = { geom: true, expect: "render" };
@@ -149,7 +149,6 @@ probe("bands.styles", "which styles reach a band: the css option, the document's
     ["a band's <style> applies inside the band", D, { size: S, header: `<style>.hide{display:none}</style>` + hidden("hide") }],
     ["a band's <style> does not leak into the document?", doc(`<div class="l hide">DOCX</div>` + lines(1, 30)), { size: S, header: `<style>.hide{display:none}</style>` + band("HEAD") }],
     ["a header's <style> and the footer", D, { size: S, header: `<style>.hide{display:none}</style>` + band("HEAD"), footer: hidden("hide") }],
-    ["cssVariables reach a band", D, { size: S, header: band("HEAD", "margin-left:var(--x)"), cssVariables: { x: "100px" } }],
     ["the document's font-family is not inherited by a band", doc(lines(1, 30)), { size: S, header: `<div style="font-size:10px;line-height:20px">HEAD</div>` }],
     ["fontFamilies option reaches a band", D, { size: S, header: `<div style="font-size:10px;line-height:20px">HEAD</div>`, fontFamilies: ["Inter"] }],
     ["@media print in a band", D, { size: S, header: `<style>.p{display:none} @media print{.p{display:block}}</style><div class="p" style="font:10px/20px Inter">HPRINT</div>` + band("HEAD") }],
@@ -157,6 +156,15 @@ probe("bands.styles", "which styles reach a band: the css option, the document's
     ["lang option / dir=rtl in a band", D, { size: S, header: `<div dir="rtl" style="font:10px/20px Inter">HEAD</div>` }],
     ["@page in a band's <style> is not a page rule?", D, { size: S, header: `<style>@page{margin:80px}</style>` + band("HEAD") }],
   ], G);
+  const options = { size: S, header: band("HEAD", "margin-left:var(--x)"), cssVariables: { x: "100px" } };
+  const r = await t.bm(D, options);
+  if (r.error) t.ok(false, `cssVariables reach a band: ${r.error}`);
+  else {
+    const boxes = wordBoxes(r.bytes);
+    const head = boxes[0]?.find((word) => word[0] === "HEAD");
+    t.ok(!!head && Math.abs(head[1] - 75) <= 0.75, `cssVariables apply to band styles (HEAD x=${head?.[1] ?? "missing"}pt)`);
+  }
+  t.differs("bm resolves cssVariables in bands; pinned Takumi leaves var(--x) unresolved");
 });
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 probe("bands.images", "images in bands", async (t) => {

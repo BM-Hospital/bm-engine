@@ -199,7 +199,7 @@ B.noise = (res, lang) => {
 };
 
 // ------------------------------------------------------------------------------------------------ output
-export const DOCS = ["docs/BENCHMARK.md", "docs/en/benchmark.md", "docs/vi/benchmark.md", "docs/en/pdf/native-and-wasm.md", "docs/vi/pdf/native-and-wasm.md"];
+export const DOCS = ["docs/BENCHMARK.md", "docs/en/benchmark.md", "docs/vi/benchmark.md"];
 const langOf = (file) => (/(^|\/)vi\//.test(file) || /BENCHMARK\.md$/.test(file) ? "vi" : "en");
 
 export function fillBlocks(text, res, lang) {

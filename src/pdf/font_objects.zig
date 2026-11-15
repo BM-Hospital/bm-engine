@@ -145,8 +145,10 @@ pub const FontContainer = struct {
     cid: fe.CidFont,
     cid_ref: ?Ref = null,
     t3: std.ArrayList(Type3Font) = .empty,
-    /// gid -> routed to the CID font (true) or Type3 (false); filled by `addGlyph`
-    route: std.AutoHashMapUnmanaged(u16, bool) = .empty,
+    /// gid -> routed to the CID font (true) or Type3 (false); filled by `addGlyph` (looked up
+    /// for every drawn glyph, never iterated: a multiplicative hash, not the default Wyhash,
+    /// whose 128-bit multiplies are emulated on wasm32)
+    route: std.HashMapUnmanaged(u16, bool, GidContext, std.hash_map.default_max_load_percentage) = .empty,
     /// (gid, colour) -> Type3 font index + code
     t3_cache: std.AutoHashMapUnmanaged(u64, Added) = .empty,
 
@@ -162,6 +164,16 @@ pub const FontContainer = struct {
         c.cid = try fe.CidFont.init(a, &c.font, face_index);
         return c;
     }
+
+    const GidContext = struct {
+        pub fn hash(_: GidContext, k: u16) u64 {
+            const h = @as(u64, k) *% 0x9E3779B97F4A7C15;
+            return h ^ (h >> 29);
+        }
+        pub fn eql(_: GidContext, a: u16, b: u16) bool {
+            return a == b;
+        }
+    };
 
     fn colorKey(g: ColoredGlyph) u64 {
         return (@as(u64, g.gid) << 24) | (@as(u64, g.color[0]) << 16) | (@as(u64, g.color[1]) << 8) | g.color[2];
@@ -309,9 +321,8 @@ pub const Uncovered = struct {
         return out.items;
     }
 
-    /// The error of text met while no font is registered at all (takumi-pdf always has its bundled
-    /// Geist last-resort font; bm-engine bundles none). Names the first characters, null when none
-    /// were met.
+    /// The error of text met while no font is registered at all (the bundled Geist last-resort font
+    /// unregistered too). Names the first characters, null when none were met.
     pub fn noFontMessage(u: *const Uncovered, a: Allocator) !?[]const u8 {
         if (u.chars.items.len == 0) return null;
         var out: std.ArrayList(u8) = .empty;
@@ -319,7 +330,7 @@ pub const Uncovered = struct {
         const shown = @min(u.chars.items.len, 8);
         try u.appendNamed(a, &out, shown);
         if (shown < u.chars.items.len) try out.appendSlice(a, ", ...");
-        try out.appendSlice(a, ". bm-engine bundles no font: register one with registerFont or the fonts option.");
+        try out.appendSlice(a, ". Register one with registerFont or the fonts option (unregistering Geist removed the bundled fallback).");
         return out.items;
     }
 

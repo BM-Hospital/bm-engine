@@ -38,6 +38,11 @@ pub const Src = union(enum) {
 
 pub const El = struct {
     kind: Kind,
+    /// Synthetic generated-content child; it borrows and returns its pseudo's text region.
+    generated: bool = false,
+    /// A text-control host whose authored node carried text. Its shadow editor paints the
+    /// value, but the host still owns an empty inline content region (OwnContent::Inline).
+    control_text: bool = false,
     /// Bare text run (DOM text node): not an element for selectors / structural variants.
     run: bool = false,
     dir: Dir = .none,

@@ -52,7 +52,7 @@ set `tagName` (`"h1"`, `"p"`, ...) and `attributes` (`alt`, `href`) on a contain
 
 List markers are painted, in paged and in `viewport` output, and each list item with a marker has `Lbl` (label)
 and `LBody` elements. An item that gets no marker has `LBody` only
-([Known limitations](differences-from-takumi.md#known-limitations) lists what is supported).
+([Known limitations](limitations.md) lists what is supported).
 
 ## PDF/UA
 
@@ -207,17 +207,10 @@ attachments.
 
 ## How far the checks go
 
-The validation is a port of the rules krilla applies for takumi-pdf. It checks the document title, the
+The validation checks PDF conformance rules. It checks the document title, the
 document language, alternate text for images and links, the outline, the date, embedded files (existence,
 mime type, description, date), the fonts (embedding licence, Unicode mapping, `.notdef`) and the string,
 name and nesting limits (`TooLongString`, `TooLongName`, `TooManyIndirectObjects`, `TooHighQNestingLevel`).
 It does not re-read the file the way a validator does.
 
-The output was run through external validators. veraPDF 1.28.2 reports all 45 bm-engine test files compliant
-with the profile they claim (PDF/A-2a, 2b, 2u, 3a, 3b, 3u, 4, 4f and PDF/UA-1, PDF/UA-2), as it does for
-takumi-pdf's files. pdfcpu in strict mode reports 12 issues on the files of both engines (the PDF/A-3
-`AFRelationship` key, which it flags as PDF 2.0 only, and the structure destinations in PDF/UA-2 outline items,
-which takumi-pdf 0.20.0 writes too); none is specific to bm-engine. qpdf, poppler, MuPDF and pdf.js read the
-files without complaint. That is evidence, not a certification: if you need a certified archive, run a
-validator on your own output before you rely on it ([Differences from
-takumi-pdf](differences-from-takumi.md#known-limitations)).
+The project’s conformance fixtures have been checked with veraPDF. This is not certification of arbitrary documents: validate the PDF your application generates. See [known limitations](limitations.md).

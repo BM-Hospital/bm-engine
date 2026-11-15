@@ -1,60 +1,40 @@
 ---
 layout: home
 title: bm-engine
-titleTemplate: Render HTML + CSS thành ảnh bằng WebAssembly
+titleTemplate: Cây node và HTML + CSS thành ảnh và PDF
 
 hero:
   name: bm-engine
-  text: Cây node, HTML và CSS thành PNG, WebP, JPEG, SVG, ảnh động và PDF
-  tagline: Bản port takumi sang Zig → WebAssembly, không phụ thuộc. Cùng định dạng node, tệp nhị phân nhỏ hơn 4–9×, render nhanh hơn và kết quả tương đương điểm ảnh trên cả 250 fixture benchmark. Chạy trên Node.js, trình duyệt, Bun, Deno và edge worker.
+  text: Cây node và HTML + CSS thành ảnh và PDF
+  tagline: Thư viện render viết bằng Zig, chạy trên Node.js, trình duyệt, Bun, Deno và edge worker. Tạo ảnh chia sẻ, banner, hóa đơn và báo cáo bằng cùng một package.
   actions:
     - theme: brand
-      text: Tài liệu Ảnh
+      text: Bắt đầu
+      link: /vi/getting-started
+    - theme: brand
+      text: Tạo ảnh
       link: /vi/image/
     - theme: brand
-      text: Tài liệu PDF
+      text: Tạo PDF
       link: /vi/pdf/
-    - theme: alt
-      text: Cài đặt
-      link: /vi/getting-started
-    - theme: alt
-      text: Playground
-      link: /vi/image/playground
 
 features:
-  - icon: 📦
-    title: Nhỏ hơn takumi 4–9×
-    details: "<strong>core</strong> 489.6 KiB (nhỏ hơn 8.7×), <strong>standard</strong> 936.5 KiB (4.5×), <strong>full</strong> 1 143.6 KiB (3.7×) so với 4 234.9 KiB của <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 470.8 KiB."
-    link: /vi/profiles-and-size
-    linkText: Profile và kích thước
-  - icon: ⚡
-    title: Render nhanh hơn
-    details: "Render PNG mất <strong>0.45×</strong> thời gian của takumi (geomean 1.33 so với 2.95 ms, nhanh hơn ở 248/250 ca); raw <strong>0.63×</strong> (nhanh hơn ở 229/250). Cold start 78.1 ms so với 193.8 ms (nhanh hơn 2.5×). Số liệu là của bản wasm; addon native còn nhanh hơn nữa (xem Native và WebAssembly)."
-    link: /vi/benchmark
-    linkText: Benchmark
-  - icon: 🎯
-    title: Tương đương điểm ảnh với takumi
-    details: "Cả <strong>250</strong> fixture dùng chung đều identical (81) hoặc equivalent (169) với takumi 2.20: 0 close, 0 different, 0 lỗi."
-    link: /vi/benchmark-report
-    linkText: Báo cáo đầy đủ
-  - icon: 🌐
-    title: Chạy ở mọi nơi
-    details: "Một tệp <code>.wasm</code> và một ES module nhỏ: Node.js, trình duyệt, bundler, Cloudflare Workers, Deno và Bun. Không addon native, không postinstall."
-    link: /vi/getting-started
-    linkText: Bắt đầu
-  - icon: 🧩
-    title: Ba profile
-    details: "<code>core</code>: cây node, layout block / flex / grid, gradient, bóng đổ, filter. <code>standard</code>: + stylesheet, HTML, Tailwind, ảnh SVG, bảng, float. <code>full</code>: + emoji, chữ phức tạp, animation, <code>renderSvg</code>. Add-on WOFF 84.4 KiB tuỳ chọn cho <code>core</code>."
-    link: /vi/image/css-support
-    linkText: Hỗ trợ CSS và tính năng
-  - icon: 📄
-    title: Đầu ra PDF nhiều trang
-    details: "Một profile <code>pdf</code> riêng (khoảng 1.5 MB) port <code>takumi-pdf</code>: chữ bôi chọn được với font con, phân trang, header và footer, liên kết, bookmark, tệp đính kèm, PDF có thẻ và PDF/A."
+  - title: Ảnh và đồ họa
+    details: Tạo PNG, JPEG, WebP, SVG và ảnh động từ cây node hoặc HTML + CSS.
+    link: /vi/image/
+  - title: Tài liệu PDF
+    details: Tạo tài liệu nhiều trang với font nhúng, header, footer, liên kết và bookmark.
     link: /vi/pdf/
-    linkText: Đầu ra PDF
-  - icon: 🧪
-    title: Thử ngay trên trình duyệt
-    details: "Playground chạy engine thật ngay trong trình duyệt: mọi profile, đầu vào node JSON / HTML / Tailwind và mọi định dạng đầu ra."
+  - title: Chọn tính năng cần dùng
+    details: Chọn core, standard, full hoặc pdf theo đầu vào và đầu ra của ứng dụng.
+    link: /vi/profiles-and-size
+  - title: Chạy trong nhiều môi trường
+    details: Addon native trên Node.js, WebAssembly trên trình duyệt và các môi trường edge.
+    link: /vi/native-vs-wasm
+  - title: Thử trực tiếp
+    details: Chỉnh nội dung và xem kết quả render ngay trong trình duyệt.
     link: /vi/image/playground
-    linkText: Mở playground
+  - title: Bắt đầu từng bước
+    details: Cài package, đăng ký font và tạo kết quả đầu tiên.
+    link: /vi/getting-started
 ---

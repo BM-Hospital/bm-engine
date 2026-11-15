@@ -21,7 +21,7 @@ module and all synchronous:
 | 1. Input | The source becomes an element tree. A node object is read directly, `{ json }` is parsed, a string is parsed as HTML (standard / full). | `source` |
 | 2. Style | Each element gets its computed style: user-agent defaults (`preset`, HTML tags), stylesheet rules (`css`, `<style>`), Tailwind utilities (`tw`), inline `style`, then inheritance, `var()` and `calc()`. | `css`, `tw`, `style`, `devicePixelRatio`, `timeMs` |
 | 3. Layout | Boxes get positions and sizes: block and inline flow with line breaking and text shaping, flexbox, grid, tables, floats, absolute positioning. Units are device pixels with 1/64 px precision. | `width`, `height`, registered fonts |
-| 4. Paint | Backgrounds, borders, shadows, images, glyphs, filters and effects are rasterised into an RGBA canvas (anti-aliased with 4×4 supersampling, like takumi). | `images` |
+| 4. Paint | Backgrounds, borders, shadows, images, glyphs, filters and effects are rasterised into an RGBA canvas (anti-aliased with 4×4 supersampling). | `images` |
 | 5. Encode | The canvas becomes PNG, JPEG, WebP, ICO or stays raw RGBA. `renderSvg` replaces paint + encode with SVG output; `measure` stops after layout. | `format`, `quality` |
 
 Nothing in the pipeline touches the network, the file system or system fonts: every font and every
@@ -152,19 +152,18 @@ const fromJson = renderer.renderSync({ json: '{"type":"container","style":{"widt
 |:-:|:-:|:-:|
 | ![Node tree](/img/guide/concepts-input-tree.png) | ![HTML string](/img/guide/concepts-input-html.png) | ![Tailwind](/img/guide/concepts-input-tw.png) |
 
-- **Every JavaScript string is HTML**, as in takumi. To pass a node tree as JSON text, wrap it:
+- **Every JavaScript string is HTML**. To pass a node tree as JSON text, wrap it:
   `{ json: "..." }`.
 - The forms mix freely: HTML can carry `style=""`, `tw=""` and `<style>` blocks; a node tree can carry
   `tw` and be styled by the `css` option.
 - On `core`, an HTML source throws `this build has no HTML input support` and a node with `tw` throws
   ``Tailwind (`tw`) is not supported by this build``. See [HTML and Tailwind](./html-and-tailwind.md).
 
-If you write JSX, convert it to a node tree first (for example with `fromJsx` from
-`@takumi-rs/helpers`; see [Differences from takumi](./differences-from-takumi.md#migration-in-five-steps)).
+If you write JSX, convert it to node objects with the [node factory](frameworks/index.md#node-trees-without-jsx), or render HTML with your framework’s server renderer.
 
 ## Defaults that surprise people
 
-bm-engine follows takumi, which follows CSS and Chromium. A few CSS defaults look odd when you come from
+bm-engine uses CSS layout conventions. A few CSS defaults look odd when you come from
 satori or from a browser with a CSS reset.
 
 ### `display` is `inline`
@@ -230,7 +229,7 @@ boxes, as in a browser (see [HTML and Tailwind](./html-and-tailwind.md#user-agen
 
 ### `box-sizing` is `border-box`
 
-Unlike CSS, `width` and `height` include padding and border by default (takumi's choice). Set
+Unlike CSS, `width` and `height` include padding and border by default. Set
 `boxSizing: "content-box"` to get the CSS behaviour:
 
 <!-- @example concepts#box-sizing -->

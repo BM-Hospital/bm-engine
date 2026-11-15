@@ -18,7 +18,7 @@ const T = struct {
         const gpa = testing.allocator;
         const r = Renderer.create(gpa).?;
         errdefer r.destroy();
-        _ = try r.registerFont(try gpa.dupe(u8, inter), "", 0, -1);
+        _ = try r.registerFont(try gpa.dupe(u8, inter), "", 0, -1, null);
         return .{ .r = r };
     }
 
@@ -268,4 +268,181 @@ test "text: default-ignorable characters are invisible glyphs of their own" {
     try testing.expectEqualStrings("Writing the PDF failed: validation failed with 1 error", try t.err("<p>a\u{FEFF} b\u{FEFF}</p>", "{\"pdfa\":\"2u\",\"uncoveredText\":\"blank\"," ++ meta ++ "}"));
     // text without such characters is untouched
     try testing.expect(!has(try t.render("<p>plain text</p>", "{\"tagged\":false}"), "/ActualText"));
+}
+
+test "root element: relative offset and auto inline margins apply, document and bands (takumi-pdf)" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    // oracle: takumi-pdf 0.20.0 lays the root out as a block child of the page frame
+    const box = "<div style=\"width:50px;height:30px;position:relative;top:20px;left:10px;background:#f00\"></div>";
+    const page = "\"size\":{\"width\":200,\"height\":200}";
+    try expectHas(try t.render(box, "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 10 20 50 30 re");
+    try expectHas(try t.render(box, "{\"viewport\":{\"width\":200},\"tagged\":false}"), "1 0 0 rg 10 20 50 30 re");
+    // the offset moves the root but sizes nothing: a content-sized page is as tall as the box (30 px = 22.5 pt)
+    try expectHas(try t.render(box, "{\"viewport\":{\"width\":200},\"tagged\":false}"), "/MediaBox[0 0 150 22.5]");
+    try expectHas(try t.render("<div style=\"width:50px;height:30px;position:relative;bottom:-20px;right:-10px;background:#f00\"></div>", "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 10 20 50 30 re");
+    try expectHas(try t.render("<div></div>", "{" ++ page ++ ",\"margin\":{\"top\":0,\"right\":0,\"bottom\":60,\"left\":0},\"footer\":\"" ++
+        "<div style=\\\"width:50px;height:30px;position:relative;top:20px;left:10px;background:#f00\\\"></div>\",\"tagged\":false}"), "1 0 0 rg 10 20 50 30 re");
+    try expectHas(try t.render("<div style=\"width:50px;height:30px;margin:0 auto;background:#f00\"></div>", "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 75 0 50 30 re");
+    // a sticky or static root is not offset
+    try expectHas(try t.render("<div style=\"width:50px;height:30px;position:sticky;top:20px;background:#f00\"></div>", "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 0 0 50 30 re");
+    try expectHas(try t.render("<div style=\"width:50px;height:30px;top:20px;background:#f00\"></div>", "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 0 0 50 30 re");
+    // an absolute child of an offset root moves with it
+    try expectHas(try t.render("<div style=\"position:relative;top:20px;height:50px\"><div style=\"position:absolute;left:10px;top:0;width:50px;height:30px;background:#f00\"></div></div>", "{" ++ page ++ ",\"margin\":0,\"tagged\":false}"), "1 0 0 rg 10 20 50 30 re");
+}
+
+test "paged text: a rotated line reaches the preceding page as outlines only (takumi-pdf)" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    // Upstream pdf_fixtures.rs::paged_lines_under_a_transform_or_a_clip, paged-rotated-text.
+    const doc = try t.render("<div style=\"height:200px\">Q3 results</div>" ++
+        "<div style=\"height:200px;break-before:page\"><div style=\"transform:rotate(-15deg)\">Draft</div></div>", "{\"size\":{\"width\":400,\"height\":200},\"margin\":0,\"tagged\":false}");
+    try testing.expectEqual(@as(usize, 2), count(doc, "/Type/Page/"));
+    // Both pages hold one text run. The first also paints Draft as outlines, without duplicating text.
+    try testing.expectEqual(@as(usize, 2), count(doc, "BT"));
+    var pos: usize = 0;
+    var pages: usize = 0;
+    while (std.mem.indexOfPos(u8, doc, pos, "stream\n")) |start| {
+        const body = start + "stream\n".len;
+        const end = std.mem.indexOfPos(u8, doc, body, "endstream") orelse break;
+        pos = end + "endstream".len;
+        const content = doc[body..end];
+        if (!has(content, "BT")) continue;
+        try testing.expectEqual(@as(usize, 1), count(content, "BT"));
+        if (pages == 0) try expectHas(content, " m");
+        pages += 1;
+    }
+    try testing.expectEqual(@as(usize, 2), pages);
+}
+
+test "paged text: an overflow clip cutting away a baseline keeps visible text selectable" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const doc = try t.render("<div style=\"height:100px;overflow:hidden\">" ++
+        "<div style=\"padding-top:88px;line-height:24px\">Visible</div></div>" ++
+        "<div style=\"height:100px;break-before:page\"></div>", "{\"size\":{\"width\":300,\"height\":100},\"margin\":0,\"tagged\":false}");
+    try testing.expectEqual(@as(usize, 2), count(doc, "/Type/Page/"));
+    try testing.expectEqual(@as(usize, 1), count(doc, "BT"));
+}
+
+test "paged text: a monolithic atomic inline retains both continuation regions" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    // pdf_fixtures.rs::paged_monolithic_overflow: the oversized inline paints
+    // across the next page, so its original fragment still owns a content visit.
+    const doc = try t.render("<div style=\"font-size:16px;line-height:24px\">" ++
+        "<div>before 1</div><div>before 2</div><div>before 3</div>" ++
+        "<div><span style=\"display:inline-block;width:120px;height:360px;background:red\"></span> tall line text</div>" ++
+        "<div>after A</div><div>after B</div></div>", "{\"size\":{\"width\":400,\"height\":300},\"margin\":24}");
+    try testing.expectEqual(@as(usize, 3), count(doc, "/Type/Page/"));
+    try testing.expectEqual(@as(usize, 1), count(doc, "/P<</MCID 3"));
+    try testing.expectEqual(@as(usize, 3), count(doc, "/P<</MCID 0"));
+    try testing.expectEqual(@as(usize, 6), count(doc, "BT"));
+}
+
+test "paged continuation: parallel table cells survive alternating page widths" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const words = comptime blk: {
+        var left: []const u8 = "";
+        var right: []const u8 = "";
+        for (0..45) |_| {
+            left = left ++ "left word ";
+            right = right ++ "right word ";
+        }
+        break :blk .{ left, right };
+    };
+    const doc = try t.render("<style>@page{size:240px 140px;margin:10px}@page:left{size:360px 140px;margin:10px}td{padding:0;vertical-align:top}table{border-spacing:0}</style>" ++
+        "<div style=\"font:14px/20px Inter\"><table style=\"width:100%\"><tr><td style=\"width:50%\">" ++ words[0] ++ "</td><td>" ++ words[1] ++ "</td></tr></table><p>AFTER</p></div>", "{}");
+    try testing.expectEqual(@as(usize, 6), count(doc, "/Type/Page/"));
+}
+
+test "paged continuation: completed cells keep empty regions in remaining row space" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var left: std.ArrayList(u8) = .empty;
+    var right: std.ArrayList(u8) = .empty;
+    for (0..45) |i| {
+        try left.appendSlice(a, try std.fmt.allocPrint(a, "L{d} word ", .{i}));
+        try right.appendSlice(a, try std.fmt.allocPrint(a, "R{d} word ", .{i}));
+    }
+    const html = try std.mem.concat(a, u8, &.{
+        "<style>@page{size:240px 140px;margin:10px}@page:left{size:360px 140px;margin:10px}p{margin:0}td{padding:0;vertical-align:top}table{border-spacing:0}</style><div style=\"font:14px/20px Inter\"><table style=\"width:100%\"><tr><td style=\"width:50%\">",
+        left.items,
+        "</td><td>",
+        right.items,
+        "</td></tr></table><p>AFTER</p></div>",
+    });
+    const doc = try t.render(html, "{}");
+    try testing.expectEqual(@as(usize, 6), count(doc, "/Type/Page/"));
+    // Two cell regions on each of the first five pages, then the paragraph after the table.
+    try testing.expectEqual(@as(usize, 11), count(doc, "/P<</MCID"));
+}
+
+test "text controls: input values and textarea lines reach PDF, passwords stay masked" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const doc = try t.render("<div><input value=\"Zebra\"><textarea>one&#13;&#10;two</textarea>" ++
+        "<input type=\"password\" value=\"秘密\"></div>", "{\"tagged\":false}");
+    try expectHas(doc, "<005A>"); // Z from the input's value, absent before the shadow editor exists
+    try expectHas(doc, "<2022>"); // the password's mask, never its original characters
+    try testing.expect(!has(doc, "<79D8>"));
+    try testing.expect(!has(doc, "<5BC6>"));
+    try testing.expect(count(doc, "BT") >= 4); // input, two textarea lines, password
+}
+
+test "paged decorations: rotated border boxes use per-fragment geometry" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const doc = try t.render("<div style=\"height:80px\"></div>" ++
+        "<div style=\"box-sizing:border-box;width:60px;height:40px;transform:rotate(10deg);background:red;border:2px solid blue\"></div>", "{\"size\":{\"width\":200,\"height\":100},\"margin\":0,\"tagged\":false}");
+    try testing.expectEqual(@as(usize, 2), count(doc, "/Type/Page/"));
+    try testing.expect(count(doc, "0 0 60 20 re") >= 2);
+    try testing.expect(!has(doc, "0 0 60 40 re"));
+}
+
+test "generated images: content url reaches the PDF with its surrounding text" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const image = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='10'%20height='10'%3E%3Crect%20width='10'%20height='10'%20fill='blue'/%3E%3C/svg%3E";
+    const doc = try t.render("<style>p::before{content:'Zebra' url(\"" ++ image ++ "\") 'Yak'}</style><p>Body</p>", "{\"tagged\":false}");
+    try expectHas(doc, "0 0 1 rg");
+    try expectHas(doc, "<005A>");
+    try expectHas(doc, "<0059>");
+    const marker = try t.render("<ul style=\"list-style-type:none;list-style-image:url(&quot;" ++ image ++ "&quot;)\"><li>Body</li></ul>", "{\"tagged\":false}");
+    try expectHas(marker, "0 0 1 rg");
+}
+
+test "generated images: gradients fit explicit pseudo boxes and keep mixed text" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const doc = try t.render("<style>p::before{content:'Zebra' linear-gradient(red,blue) 'Yak';display:block;width:24px;height:16px}</style><p>Body</p>", "{\"viewport\":{\"width\":120,\"height\":120},\"tagged\":false}");
+    try expectHas(doc, "/ShadingType 2");
+    try expectHas(doc, "<005A>");
+    try expectHas(doc, "<0059>");
+    const inline_doc = try t.render("<style>p::before{content:linear-gradient(red,blue)}</style><p>Body</p>", "{\"viewport\":{\"width\":120,\"height\":120},\"tagged\":false}");
+    try testing.expect(!has(inline_doc, "/ShadingType"));
+}
+
+test "SVG page cascade: ancestor selectors and importance reach inline descendants" {
+    if (comptime !config.enable_pdf) return;
+    const t = try T.init();
+    defer t.deinit();
+    const doc = try t.render("<style>svg > g.outer rect.a{fill:blue!important}</style>" ++
+        "<div><svg width=\"40\" height=\"40\"><g class=\"outer\"><rect class=\"a\" width=\"40\" height=\"40\" style=\"fill:red\"/></g></svg></div>", "{\"tagged\":false}");
+    try expectHas(doc, "0 0 1 rg");
+    try testing.expect(!has(doc, "1 0 0 rg"));
 }

@@ -35,7 +35,7 @@ were not run with PDF output.
 | `content-type` | `image/png`, `image/webp`, ... | `application/pdf` |
 | `content-disposition` | usually not set | `inline` (shown in the browser's viewer) or `attachment` (saved as a file), with a `filename` |
 | Caching | OG images are a pure function of the URL: cache hard | documents are often per user: `private, no-store` unless they are public |
-| wasm binary for Workers / browsers | `bm_engine.wasm` and smaller profiles | `bm_engine.pdf.wasm`: 1 555.8 KiB raw, 761.6 KiB gzip, 625.1 KiB brotli |
+| wasm binary for Workers / browsers | `bm_engine.wasm` and smaller profiles | `bm_engine.pdf.wasm`: 3 187.8 KiB raw, 1 311.8 KiB gzip, 1 015.7 KiB brotli |
 
 `render()` returns the whole file as one `Uint8Array` once the document is finished; there is no
 streaming API. The examples on this page are 15 KiB; the [recipes](recipes.md) are 19 to 40 KiB, most of
@@ -175,7 +175,7 @@ import { init, PdfRenderer } from "bm-engine/pdf";
 await init(wasm);
 ```
 
-This snippet was not run under wrangler. The compressed size of `bm_engine.pdf.wasm` (761.6 KiB gzip)
+This snippet was not run under wrangler. The compressed size of `bm_engine.pdf.wasm` (1 311.8 KiB gzip)
 counts against the Workers script-size limit of your plan; see [Cloudflare
 Workers](../image/frameworks/cloudflare-workers.md) for the rest of the setup and the [PDF quick
 start](index.md) for a browser example that opens the result with a

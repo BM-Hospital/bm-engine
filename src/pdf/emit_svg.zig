@@ -14,7 +14,9 @@
 //! `currentColor`, linear / radial gradients and patterns (`href` chains, both unit systems),
 //! `paint-order`, `vector-effect: non-scaling-stroke`, `visibility`, `display`.
 //!
-//! Not ported: `text` (takumi draws its glyph outlines; this port draws nothing for it),
+//! Text uses shaped glyph outlines, inherited position lists, per-character rotation,
+//! textPath placement and text decorations with their declaring element's paint.
+//! Not ported:
 //! `context-fill` / `context-stroke`, `transform-origin`, the root's `background-color`, and
 //! takumi's op budget. Markup that is not SVG makes `draw` return false (nothing drawn).
 const std = @import("std");
@@ -34,6 +36,8 @@ const codec = @import("../codec/codec.zig");
 const render = @import("../render.zig");
 const font = @import("../font/font.zig");
 const type3 = @import("type3.zig");
+const text_position = @import("../svg/text_position.zig");
+const path_measure = @import("../raster/path_measure.zig");
 
 const Allocator = std.mem.Allocator;
 const Tf = geom.Tf;
@@ -232,6 +236,7 @@ const Layout = struct {
     instances: u32 = 0,
     image_depth: u32 = 0,
     fonts: ?*const font.FontCollection = null,
+    text_paths: std.AutoHashMapUnmanaged(u64, ?*const path_measure.Measure) = .empty,
 
     fn node(l: *const Layout, i: u32) *const Node {
         return &l.doc.nodes[i];
@@ -334,8 +339,11 @@ const Layout = struct {
     }
 
     fn renderable(t: Affine) bool {
-        const det = t.a * t.d - t.b * t.c;
-        return std.math.isFinite(det) and det != 0 and std.math.isFinite(t.e) and std.math.isFinite(t.f);
+        // Takumi tests row scales rather than invertibility: a rank-one transform with
+        // both rows nonzero still reaches its paint (notably repeating SVG gradients).
+        const sx = @sqrt(@as(f64, t.a) * t.a + @as(f64, t.c) * t.c);
+        const sy = @sqrt(@as(f64, t.b) * t.b + @as(f64, t.d) * t.d);
+        return t.isFinite() and sx > std.math.floatEps(f32) and sy > std.math.floatEps(f32);
     }
 
     /// takumi `is_visible_element`.
@@ -1433,55 +1441,65 @@ const Layout = struct {
 
     const Seg = struct {
         text: std.ArrayList(u8) = .empty,
+        positions: std.ArrayList(text_position.Position) = .empty,
         st: sstyle.Style,
-        /// the element whose x / y / dx / dy apply to the segment's first character
-        starts: u32 = NONE,
+        flow: u32 = NONE,
     };
+    const DecorationSpan = struct { seg: usize, face: font.FaceId, size: f32, width: f32, tf: Affine, dx: f32, dy: f32, rotate: f32 };
 
-    fn collectText(l: *Layout, idx: u32, st: *const sstyle.Style, segs: *std.ArrayList(Seg), prev_space: *bool, start_el: *u32, depth: u32) Error!void {
+    fn collectText(l: *Layout, idx: u32, st: *const sstyle.Style, sc: *const Scope, segs: *std.ArrayList(Seg), prev_space: *bool, scopes: *[17]text_position.Scope, flow: u32, depth: u32) Error!void {
         if (depth > 16) return;
+        scopes[depth] = text_position.Scope.init(l.node(idx), st.font_size);
         var ch = l.node(idx).first_child;
         while (ch != NONE) : (ch = l.node(ch).next_sibling) {
             const c = l.node(ch);
             if (c.tag == .textnode) {
-                var seg: Seg = .{ .st = st.*, .starts = start_el.* };
-                for (c.text) |b| {
+                var seg: Seg = .{ .st = st.*, .flow = flow };
+                var at: usize = 0;
+                while (at < c.text.len) {
+                    const b = c.text[at];
+                    const char_len: usize = std.unicode.utf8ByteSequenceLength(b) catch 1;
+                    const end = @min(at + char_len, c.text.len);
+                    const bytes = c.text[at..end];
+                    at = end;
                     if (b == '\n' or b == '\r') continue;
                     const ch2: u8 = if (b == '\t') ' ' else b;
                     if (ch2 == ' ') {
                         if (prev_space.*) continue;
                         prev_space.* = true;
                     } else prev_space.* = false;
-                    try seg.text.append(l.a, ch2);
+                    var pos = text_position.next(scopes[0 .. depth + 1], sc.vb[2], sc.vb[3]);
+                    // An absolute character position starts a separately anchored text chunk.
+                    if ((pos.x != null or pos.y != null) and seg.text.items.len > 0) {
+                        try segs.append(l.a, seg);
+                        seg = .{ .st = st.*, .flow = flow };
+                    }
+                    pos.byte = @intCast(seg.text.items.len);
+                    try seg.positions.append(l.a, pos);
+                    if (char_len == 1) try seg.text.append(l.a, ch2) else try seg.text.appendSlice(l.a, bytes);
                 }
                 if (seg.text.items.len > 0) {
-                    start_el.* = NONE;
                     try segs.append(l.a, seg);
                 }
-            } else if (c.tag == .tspan) {
+            } else if (c.tag == .tspan or c.tag == .a or (c.tag == .textPath and depth == 0)) {
                 if (!display(c)) continue;
                 const cst = l.styleOf(c, st);
-                if (c.attr("x") != null or c.attr("y") != null or c.attr("dx") != null or c.attr("dy") != null) start_el.* = ch;
-                try l.collectText(ch, &cst, segs, prev_space, start_el, depth + 1);
+                try l.collectText(ch, &cst, sc, segs, prev_space, scopes, if (c.tag == .textPath) ch else flow, depth + 1);
             }
         }
     }
 
-    fn firstNumber(n: *const Node, name: []const u8) ?f32 {
-        var rd: num.Reader = .{ .s = n.attr(name) orelse return null };
-        return rd.next();
-    }
-
     /// A `text` element's glyph outlines, one shape per span of characters, in chunks that start
     /// at an absolute position and are aligned by `text-anchor` (takumi `convert_text`, with
-    /// position lists reduced to their first value and no `textPath` / `rotate` / decorations).
+    /// per-character position lists inherited through tspans. The font engine keeps the source
+    /// clusters; outline transforms apply positioning and rotation after shaping.
     fn text(l: *Layout, idx: u32, st: *const sstyle.Style, sc: *const Scope, out: *Group) Error!void {
         const fonts = l.fonts orelse return;
         const n = l.node(idx);
         var segs: std.ArrayList(Seg) = .empty;
         var prev_space = true;
-        var start_el: u32 = idx;
-        try l.collectText(idx, st, &segs, &prev_space, &start_el, 0);
+        var scopes: [17]text_position.Scope = undefined;
+        try l.collectText(idx, st, sc, &segs, &prev_space, &scopes, NONE, 0);
         // strip the trailing space
         while (segs.items.len > 0) {
             const last = &segs.items[segs.items.len - 1];
@@ -1490,22 +1508,27 @@ const Layout = struct {
             _ = segs.pop();
         }
         if (segs.items.len == 0) return;
-        var pen_x = firstNumber(n, "x") orelse 0;
-        var pen_y = firstNumber(n, "y") orelse 0;
+        var pen_x: f32 = 0;
+        var pen_y: f32 = 0;
         var i: usize = 0;
         while (i < segs.items.len) {
             // a chunk: from a segment with an absolute position to the next one
             var j = i + 1;
             while (j < segs.items.len) : (j += 1) {
-                const se = segs.items[j].starts;
-                if (se != NONE and (l.node(se).attr("x") != null or l.node(se).attr("y") != null)) break;
+                const pos = segs.items[j].positions.items[0];
+                if (pos.x != null or pos.y != null or segs.items[j].flow != segs.items[i].flow) break;
             }
             const chunk = segs.items[i..j];
-            if (chunk[0].starts != NONE) {
-                const sn = l.node(chunk[0].starts);
-                if (firstNumber(sn, "x")) |v| pen_x = v;
-                if (firstNumber(sn, "y")) |v| pen_y = v;
+            const flow = if (chunk[0].flow != NONE) (try l.textFlow(chunk[0].flow, st, sc)) orelse {
+                i = j;
+                continue;
+            } else null;
+            if (flow != null and (i == 0 or segs.items[i - 1].flow != chunk[0].flow)) {
+                pen_x = 0;
+                pen_y = 0;
             }
+            if (chunk[0].positions.items[0].x) |v| pen_x = v;
+            if (chunk[0].positions.items[0].y) |v| pen_y = v;
             const runs = try l.a.alloc(font.Run, chunk.len);
             const fams = try l.a.alloc([8][]const u8, chunk.len);
             for (chunk, 0..) |*sg, k| {
@@ -1517,7 +1540,11 @@ const Layout = struct {
                     fams[k][nf] = t;
                     nf += 1;
                 }
-                runs[k] = .{ .text = sg.text.items, .style = .{ .families = fams[k][0..nf], .weight = weightOf(sg.st.font_weight), .size = sg.st.font_size, .user = @intCast(k) } };
+                var positioned = false;
+                for (sg.positions.items) |p| if (p.byte > 0 and p.addressed) {
+                    positioned = true;
+                };
+                runs[k] = .{ .text = sg.text.items, .style = .{ .families = fams[k][0..nf], .weight = weightOf(sg.st.font_weight), .size = sg.st.font_size, .user = @intCast(k), .features = if (positioned) &.{ .{ .tag = "liga".*, .value = 0 }, .{ .tag = "clig".*, .value = 0 } } else &.{} } };
             }
             const tl = font.layoutText(l.a, fonts, runs, .{ .white_space = .pre }) catch return;
             if (tl.lines.len == 0) {
@@ -1525,16 +1552,25 @@ const Layout = struct {
                 continue;
             }
             const line = tl.lines[0];
-            // dx / dy of each segment's first character, accumulated
-            const off = try l.a.alloc([2]f32, chunk.len);
+            // Source byte clusters index the accumulated per-character offsets, including
+            // UTF-8 text. Position list indices count scalar characters rather than bytes.
+            var bytes: usize = 0;
+            for (chunk) |sg| bytes += sg.text.items.len;
+            const off = try l.a.alloc(text_position.Position, bytes);
             var acc: [2]f32 = .{ 0, 0 };
-            for (chunk, 0..) |sg, k| {
-                if (sg.starts != NONE) {
-                    const sn = l.node(sg.starts);
-                    acc[0] += firstNumber(sn, "dx") orelse 0;
-                    acc[1] += firstNumber(sn, "dy") orelse 0;
+            var byte_base: usize = 0;
+            for (chunk) |sg| {
+                for (sg.positions.items, 0..) |p, pi| {
+                    if (p.byte >= sg.text.items.len) break;
+                    acc[0] += p.dx;
+                    acc[1] += p.dy;
+                    var resolved = p;
+                    resolved.dx = acc[0];
+                    resolved.dy = acc[1];
+                    const end = if (pi + 1 < sg.positions.items.len) @min(sg.positions.items[pi + 1].byte, sg.text.items.len) else sg.text.items.len;
+                    @memset(off[byte_base + p.byte .. byte_base + end], resolved);
                 }
-                off[k] = acc;
+                byte_base += sg.text.items.len;
             }
             var shift: f32 = 0;
             const anchor = num.trim(chunk[0].st.text_anchor);
@@ -1542,41 +1578,145 @@ const Layout = struct {
             if (std.mem.eql(u8, anchor, "middle")) shift = -width / 2 else if (std.mem.eql(u8, anchor, "end")) shift = -width;
             const paths = try l.a.alloc(Path, chunk.len);
             for (paths) |*p| p.* = .{};
-            for (tl.glyphs[line.glyph_start..line.glyph_end]) |g| {
+            var decoration_spans: std.ArrayList(DecorationSpan) = .empty;
+            var next_pen: ?[2]f32 = null;
+            const glyphs = tl.glyphs[line.glyph_start..line.glyph_end];
+            var cluster_start: usize = 0;
+            var cluster_end: usize = 0;
+            var cluster_tf: ?Affine = null;
+            var cluster_advance: f32 = 0;
+            for (glyphs, 0..) |g, gi| {
                 const k: usize = @min(g.user, chunk.len - 1);
                 const face = fonts.face(g.face);
                 const s = g.size / @as(f32, @floatFromInt(face.font.units_per_em));
-                const gx = pen_x + shift + g.x + off[k][0];
-                const gy = pen_y + (g.y - line.baseline) + off[k][1];
+                const pos = off[@min(g.cluster, off.len - 1)];
+                const gx = pen_x + shift + g.x + pos.dx;
+                const gy = pen_y + (g.y - line.baseline) + pos.dy;
+                var tf = Affine.translate(gx, gy).mul(Affine.rotate(pos.rotate * (std.math.pi / 180.0))).mul(Affine.scale(s, -s));
+                if (gi >= cluster_end) {
+                    cluster_start = gi;
+                    cluster_end = gi + 1;
+                    while (cluster_end < glyphs.len and glyphs[cluster_end].cluster == g.cluster) cluster_end += 1;
+                    const end_x = if (cluster_end < glyphs.len) glyphs[cluster_end].x else line.width;
+                    cluster_advance = @max(0, end_x - g.x);
+                }
+                if (flow) |along| {
+                    if (gi == cluster_start) {
+                        const advance = cluster_advance;
+                        const half = advance / 2;
+                        if (along.path.sampleSvg(pen_x + shift + along.offset + g.x + pos.dx + half)) |sample| {
+                            cluster_tf = Affine.translate(sample.x, sample.y).mul(Affine.rotate(sample.angle)).mul(Affine.translate(-half, pos.dy)).mul(Affine.rotate(pos.rotate * (std.math.pi / 180.0)));
+                            next_pen = .{ sample.x + advance, sample.y };
+                        } else cluster_tf = null;
+                    }
+                    const placed = cluster_tf orelse continue;
+                    tf = placed.mul(Affine.translate(g.x - glyphs[cluster_start].x, g.y - line.baseline)).mul(Affine.scale(s, -s));
+                }
+                if (gi == cluster_start and s > 0) {
+                    const count = decoration_spans.items.len;
+                    if (count > 0 and flow == null and decoration_spans.items[count - 1].seg == k and decoration_spans.items[count - 1].face == g.face and decoration_spans.items[count - 1].size == g.size and
+                        decoration_spans.items[count - 1].dx == pos.dx and decoration_spans.items[count - 1].dy == pos.dy and decoration_spans.items[count - 1].rotate == 0 and pos.rotate == 0)
+                    {
+                        decoration_spans.items[count - 1].width += cluster_advance;
+                    } else try decoration_spans.append(l.a, .{ .seg = k, .face = g.face, .size = g.size, .width = cluster_advance, .tf = tf.mul(Affine.scale(1 / s, -1 / s)), .dx = pos.dx, .dy = pos.dy, .rotate = pos.rotate });
+                }
                 var gp: Path = .{};
-                _ = type3.glyphPath(l.a, &face.font, g.gid, Tf.row(s, 0, 0, -s, gx, gy), &gp) catch return error.OutOfMemory;
+                var raw: Path = .empty;
+                var sink: raster.PathSink = .{ .path = &raw, .alloc = l.a };
+                _ = face.font.outlineResolved(g.gid, g.size, &sink);
+                if (sink.err) return error.OutOfMemory;
+                try gp.addPath(l.a, &raw, tf);
                 try paths[k].addPath(l.a, &gp, .identity);
             }
             var bounds: ?Rect = null;
             for (paths) |*p| if (pathdata.tightBounds(p)) |b| {
                 bounds = if (bounds) |x| unite(x, b) else b;
             };
-            for (chunk, paths) |*sg, *p| {
-                if (p.isEmpty() or !sg.st.visible) continue;
-                const b = bounds orelse continue;
-                const has_bbox = b.w > 0 and b.h > 0;
-                var fill = try l.resolveFill(&sg.st, sc, has_bbox);
-                var stroke = try l.resolveStroke(n, &sg.st, sc, has_bbox);
-                if (fill) |*f| if (f.paint.bboxUnits()) {
-                    if (try l.inUserUnits(f.paint, b)) |pp| f.paint = pp else fill = null;
+            const decorations = try l.a.alloc([3]Path, chunk.len);
+            for (decorations) |*p| p.* = @splat(.empty);
+            for (decoration_spans.items) |span| {
+                const metrics = fonts.face(span.face).font.lineMetrics();
+                const upem: f32 = @floatFromInt(fonts.face(span.face).font.units_per_em);
+                const ascent = @round(@as(f32, @floatFromInt(metrics.ascent)) * span.size / upem);
+                const thickness = @max(1, span.size / 10);
+                const centers = [3]f32{ -ascent - @floor(thickness) + thickness / 2, @max(1, @ceil(thickness / 2)) + thickness / 2, -ascent / 3 };
+                for (chunk[span.seg].st.decorations, 0..) |paint, d| if (paint != null and span.width > 0) {
+                    var box: Path = .empty;
+                    try box.addRect(l.a, .{ .x = 0, .y = centers[d] - thickness / 2, .w = span.width, .h = thickness });
+                    try decorations[span.seg][d].addPath(l.a, &box, span.tf);
+                    if (pathdata.tightBounds(&decorations[span.seg][d])) |b| bounds = if (bounds) |x| unite(x, b) else b;
                 };
-                if (stroke) |*s2| if (s2.paint.bboxUnits()) {
-                    if (try l.inUserUnits(s2.paint, b)) |pp| s2.paint = pp else stroke = null;
-                };
-                if (fill == null and stroke == null) continue;
-                const sh = try l.a.create(Shape);
-                sh.* = .{ .path = p.*, .bounds = b, .visible = true, .fill = fill, .stroke = stroke, .stroke_first = (sg.st.paint_order & 3) == 1 };
-                try out.kids.append(l.a, .{ .shape = sh });
             }
-            pen_x += shift + width;
-            pen_y += acc[1];
+            for (chunk, paths, decorations) |*sg, *glyph_path, *lines| {
+                if (!sg.st.visible) continue;
+                const b = bounds orelse continue;
+                for (0..4) |part| {
+                    var text_style = sg.st;
+                    const p = if (part == 2) glyph_path else &lines[if (part == 3) 2 else part];
+                    if (p.isEmpty()) continue;
+                    if (part != 2) {
+                        const paint = sg.st.decorations[if (part == 3) 2 else part] orelse continue;
+                        text_style.fill = paint.fill;
+                        text_style.stroke = paint.stroke;
+                        text_style.color = paint.color;
+                        text_style.fill_opacity = paint.fill_opacity;
+                        text_style.stroke_opacity = paint.stroke_opacity;
+                        text_style.stroke_width = paint.stroke_width;
+                    }
+                    const has_bbox = b.w > 0 and b.h > 0;
+                    var fill = try l.resolveFill(&text_style, sc, has_bbox);
+                    var stroke = try l.resolveStroke(n, &text_style, sc, has_bbox);
+                    if (fill) |*f| if (f.paint.bboxUnits()) {
+                        if (try l.inUserUnits(f.paint, b)) |pp| f.paint = pp else fill = null;
+                    };
+                    if (stroke) |*s2| if (s2.paint.bboxUnits()) {
+                        if (try l.inUserUnits(s2.paint, b)) |pp| s2.paint = pp else stroke = null;
+                    };
+                    if (fill == null and stroke == null) continue;
+                    const sh = try l.a.create(Shape);
+                    sh.* = .{ .path = p.*, .bounds = b, .visible = true, .fill = fill, .stroke = stroke, .stroke_first = (sg.st.paint_order & 3) == 1 };
+                    try out.kids.append(l.a, .{ .shape = sh });
+                }
+            }
+            if (next_pen) |p| {
+                pen_x = p[0];
+                pen_y = p[1];
+            } else {
+                pen_x += shift + width;
+                pen_y += acc[1];
+            }
             i = j;
         }
+    }
+
+    const TextFlow = struct { path: *const path_measure.Measure, offset: f32 };
+    fn textFlow(l: *Layout, id: u32, st: *const sstyle.Style, sc: *const Scope) Error!?TextFlow {
+        const n = l.node(id);
+        const href = num.trim(n.attr("href") orelse return null);
+        if (href.len < 2 or href[0] != '#') return null;
+        const target = l.doc.byId(href[1..]) orelse return null;
+        var hash = std.hash.Wyhash.init(target);
+        hash.update(std.mem.asBytes(&sc.vb));
+        hash.update(std.mem.asBytes(&st.font_size));
+        const key = hash.final();
+        const measured: ?*const path_measure.Measure = if (l.text_paths.get(key)) |cached| cached else blk: {
+            const target_node = l.node(target);
+            const outline = (try l.shapePath(target_node, sc, st.font_size, null)) orelse {
+                try l.text_paths.put(l.a, key, null);
+                return null;
+            };
+            var transformed: Path = .empty;
+            try transformed.addPath(l.a, &outline, transformOf(target_node));
+            const measure = try l.a.create(path_measure.Measure);
+            measure.* = .{ .svg_lines = true };
+            const valid = try measure.build(l.a, &transformed);
+            const result: ?*const path_measure.Measure = if (valid) measure else null;
+            try l.text_paths.put(l.a, key, result);
+            break :blk result;
+        };
+        const measure = measured orelse return null;
+        const offset = num.parseLength(n.attr("startOffset") orelse "0") orelse num.Length.px(0);
+        return .{ .path = measure, .offset = num.resolve(offset, @floatCast(measure.length), st.font_size) };
     }
 
     fn weightOf(v: []const u8) u16 {
@@ -1729,11 +1869,11 @@ fn resolveLen(v: num.Length, axis: num.Axis, sc: *const Scope, fs: f32) f32 {
 
 fn blendOf(v: []const u8) sf.Blend {
     const names = [_]struct { []const u8, sf.Blend }{
-        .{ "multiply", .multiply },       .{ "screen", .screen },         .{ "overlay", .overlay },
-        .{ "darken", .darken },           .{ "lighten", .lighten },       .{ "color-dodge", .color_dodge },
-        .{ "color-burn", .color_burn },   .{ "hard-light", .hard_light }, .{ "soft-light", .soft_light },
-        .{ "difference", .difference },   .{ "exclusion", .exclusion },   .{ "hue", .hue },
-        .{ "saturation", .saturation },   .{ "color", .color },           .{ "luminosity", .luminosity },
+        .{ "multiply", .multiply },     .{ "screen", .screen },         .{ "overlay", .overlay },
+        .{ "darken", .darken },         .{ "lighten", .lighten },       .{ "color-dodge", .color_dodge },
+        .{ "color-burn", .color_burn }, .{ "hard-light", .hard_light }, .{ "soft-light", .soft_light },
+        .{ "difference", .difference }, .{ "exclusion", .exclusion },   .{ "hue", .hue },
+        .{ "saturation", .saturation }, .{ "color", .color },           .{ "luminosity", .luminosity },
     };
     for (names) |e| if (std.mem.eql(u8, v, e[0])) return e[1];
     return .normal;
@@ -1953,7 +2093,7 @@ const Painter = struct {
     /// svg.rs `SvgPainter::image`: the bytes as krilla takes them, unless the filter recolours
     /// them; then decoded (PNG only in takumi-pdf's takumi-core).
     fn bitmap(p: *Painter, cx: *sf.Ctx, bytes: []const u8) ?sf.Ref {
-        if (p.filter == null) switch (eimg.draw(cx, bytes, null, null, "")) {
+        if (p.filter == null) switch (eimg.draw(cx, bytes, 0, null, null, "")) {
             .ref => |r| return r,
             else => {},
         };
@@ -1987,6 +2127,13 @@ test "draws the svg-vector-image fixture as operators" {
     try std.testing.expect(try draw(a, &s, src, 0, 8, 22, 22, .{ .current = raster.Color.black }));
     const st = s.finish();
     try std.testing.expect(std.mem.indexOf(u8, st.content, "1 J") != null);
+}
+
+test "SVG rank-one transforms reach paint while collapsed rows do not" {
+    try std.testing.expect(Layout.renderable(.{ .a = 1, .b = 1, .c = 0, .d = 0 }));
+    try std.testing.expect(!Layout.renderable(Affine.scale(0, 0)));
+    try std.testing.expect(!Layout.renderable(Affine.scale(1, 0)));
+    try std.testing.expect(!Layout.renderable(.{ .a = std.math.inf(f32) }));
 }
 
 test "an image's root without a viewBox stretches its width and height over the viewport" {

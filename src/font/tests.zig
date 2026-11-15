@@ -181,6 +181,9 @@ test "outlines: O, composites, emitGlyph" {
         try t.expectApproxEqAbs(10 + @as(f32, @floatFromInt(b.x_min)) * k, dev.min_x, 0.05);
         try t.expectApproxEqAbs(200 - @as(f32, @floatFromInt(b.y_max)) * k, dev.min_y, 0.05);
         try t.expectApproxEqAbs(200 - @as(f32, @floatFromInt(b.y_min)) * k, dev.max_y, 0.05);
+        var large: Stats = .{};
+        try t.expect(f.outlineResolved(gid, 40000, &large));
+        try t.expect(!large.bad and large.max_x > large.min_x and large.max_y > large.min_y);
     }
 }
 
@@ -208,6 +211,42 @@ test "contour starting off-curve and implied points" {
     try t.expectApproxEqAbs(@as(f32, 100), s.max_x, 0.01);
     try t.expectApproxEqAbs(@as(f32, 0), s.min_y, 0.01);
     try t.expectApproxEqAbs(@as(f32, 100), s.max_y, 0.01);
+}
+
+test "resolved glyf: implied midpoints stay on the integer 26.6 grid" {
+    var g: [26]u8 = @splat(0);
+    const header = [_]u8{ 0, 1, 0, 0, 0, 0, 0, 100, 0, 100, 0, 3, 0, 0 };
+    @memcpy(g[0..header.len], &header);
+    @memset(g[14..18], 0x36);
+    g[17] = 0x26;
+    g[19] = 100;
+    g[21] = 100;
+    g[24] = 100;
+    const Recorder = struct {
+        start: [2]f32 = .{ 0, 0 },
+        first_end: ?[2]f32 = null,
+        pub fn moveTo(r: *@This(), x: f32, y: f32) void {
+            r.start = .{ x, y };
+        }
+        pub fn lineTo(_: *@This(), _: f32, _: f32) void {}
+        pub fn quadTo(r: *@This(), _: f32, _: f32, x: f32, y: f32) void {
+            if (r.first_end == null) r.first_end = .{ x, y };
+        }
+        pub fn cubicTo(_: *@This(), _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) void {}
+        pub fn close(_: *@This()) void {}
+    };
+    var r: Recorder = .{};
+    // At 13 ppem in a 2048-upem font, 100 font units resolve to 41/64 px.
+    // FreeType's implied midpoint is 20/64 px, rather than 20.5/64 px.
+    try t.expect(font.ttf.testSimpleOutlineResolved(&g, .{ .mul = 13.0 / 32.0, .div = 13.0 / 32.0 }, &r));
+    const scale: f32 = 13.0 / 2048.0;
+    try t.expectApproxEqAbs(@as(f32, 20.0 / 64.0), r.start[1] * scale, 0.000001);
+    try t.expectApproxEqAbs(@as(f32, 20.0 / 64.0), r.first_end.?[0] * scale, 0.000001);
+    // Below the baseline, integer division truncates toward zero as well.
+    for (g[14..18]) |*flag| flag.* &= ~@as(u8, 0x20);
+    r = .{};
+    try t.expect(font.ttf.testSimpleOutlineResolved(&g, .{ .mul = 13.0 / 32.0, .div = 13.0 / 32.0 }, &r));
+    try t.expectApproxEqAbs(@as(f32, -20.0 / 64.0), r.start[1] * scale, 0.000001);
 }
 
 test "FreeType contour start: an off-curve first point starts at the last on-curve one" {
@@ -426,6 +465,22 @@ test "collection matching and fallback" {
     fx.fc.unregister(t.allocator, id);
     try t.expectEqualSlices(font.FaceId, &.{ 0, 2, 3 }, fx.fc.match(&.{"brand"}, 400, false, &buf));
 
+    // faces registered with the same name, weight and style are one composite face (unicode-range
+    // subsets): all of them are candidates, the last registered first (oracle: takumi-pdf 0.20);
+    // a face of another weight in the family is not
+    const s1 = try fx.fc.register(t.allocator, noto, .{ .family = "Subset", .weight = 400 });
+    const s2 = try fx.fc.register(t.allocator, inter, .{ .family = "Subset", .weight = 400 });
+    const s3 = try fx.fc.register(t.allocator, roboto, .{ .family = "Subset", .weight = 700 });
+    const subset = fx.fc.match(&.{"Subset"}, 400, false, &buf);
+    try t.expectEqualSlices(font.FaceId, &.{ s2, s1 }, subset[0..2]);
+    try t.expect(std.mem.indexOfScalar(font.FaceId, subset, s3) == null);
+    // `a` from the last registered face; U+2C60 (Noto Sans only) from the other face of the family,
+    // before the fallback to other families (face 2, the "Noto Sans" family)
+    const sg = try font.shape(t.allocator, &fx.fc, "a\u{2c60}", .{ .families = &.{"Subset"}, .size = 100 });
+    defer t.allocator.free(sg);
+    try t.expectEqual(s2, sg[0].face);
+    try t.expectEqual(s1, sg[1].face);
+
     // per-codepoint fallback: U+2C60 is in Noto Sans but not in Inter; U+4E2D is nowhere
     const gl = try font.shape(t.allocator, &fx.fc, "a\u{2c60}\u{4e2d}", .{ .families = inter_fam, .size = 100 });
     defer t.allocator.free(gl);
@@ -436,6 +491,28 @@ test "collection matching and fallback" {
     try t.expectEqual(@as(font.FaceId, 0), gl[2].face);
     try t.expectEqual(@as(u16, 0), gl[2].gid);
     try t.expectEqual(@as(u32, 4), gl[2].cluster);
+}
+
+test "shaping: paint-only runs preserve pair kerning and ligatures" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = roboto_fam, .size = 32 };
+    var other = st;
+    other.user = 7;
+    var whole = try font.Paragraph.init(t.allocator, &fx.fc, &.{.{ .text = "over fi V", .style = st }}, .{});
+    defer whole.deinit();
+    var split = try font.Paragraph.init(t.allocator, &fx.fc, &.{ .{ .text = "over", .style = st }, .{ .text = " f", .style = other }, .{ .text = "i V", .style = st } }, .{});
+    defer split.deinit();
+    try t.expectEqual(whole.glyphs.len, split.glyphs.len);
+    for (whole.glyphs, split.glyphs) |a, b| {
+        try t.expectEqual(a.gid, b.gid);
+        try t.expectApproxEqAbs(a.x_advance, b.x_advance, 0.0001);
+    }
+    var painted = false;
+    for (split.glyphs) |g| if (split.metrics[g.metric].user == 7) {
+        painted = true;
+    };
+    try t.expect(painted);
 }
 
 test "shaping: widths vs oracle" {
@@ -598,6 +675,50 @@ test "line breaking fixtures (oracle)" {
         const B = font.ShapedGlyph.BREAK_BEFORE;
         const expect = [_]bool{ false, true, false, true, false, false, true };
         for (expect, p.glyphs) |e, g| try t.expectEqual(e, g.flags & B != 0);
+    }
+}
+
+test "tabs use the run's CSS count and generated hyphens keep a character mapping" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 20, .tab_spaces = 4 };
+    var tabs = try fx.lay("a\tb\tc", st, .{ .white_space = .pre });
+    defer tabs.deinit(t.allocator);
+    const ft = fx.fc.font(tabs.glyphs[0].face);
+    const interval = @as(f32, @floatFromInt(ft.advanceWidth(ft.glyphIndex(' ')))) * 20 / @as(f32, @floatFromInt(ft.units_per_em)) * 4;
+    try t.expectApproxEqAbs(interval, tabs.glyphs[2].x, 0.02);
+    try t.expectApproxEqAbs(2 * interval, tabs.glyphs[4].x, 0.02);
+    var wrapped = try fx.lay("extra\u{ad}ordinary", st, .{ .max_width = 60 });
+    defer wrapped.deinit(t.allocator);
+    var found = false;
+    for (wrapped.glyphs) |g| if (g.generated) |cp| {
+        try t.expect(cp == 0x2010 or cp == '-');
+        try t.expect(g.gid != 0);
+        found = true;
+    };
+    try t.expect(found);
+}
+
+test "continuation cuts do not enlarge intrinsic text widths" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 14 };
+    var p = try font.Paragraph.init(t.allocator, &fx.fc, &.{.{ .text = "left word left word left word left word", .style = st }}, .{});
+    defer p.deinit();
+    if (comptime @TypeOf(p.cut) != void) {
+        const min_width = p.minContentWidth();
+        const max_width = p.maxContentWidth();
+        const before = p.measure(90);
+        p.cut = 20;
+        try t.expectEqual(min_width, p.minContentWidth());
+        try t.expectEqual(max_width, p.maxContentWidth());
+        const intrinsic = p.measureIntrinsic(90);
+        try t.expectEqual(before.height, intrinsic.height);
+        try t.expectEqual(before.width, intrinsic.width);
+        p.cut = @intCast(p.glyphs.len);
+        try t.expectEqual(@as(f32, 0), p.measure(90).height);
+        try t.expectEqual(@as(u32, 0), p.measure(90).line_count);
+        try t.expectEqual(before.height, p.measureIntrinsic(90).height);
     }
 }
 
@@ -803,6 +924,75 @@ test "empty collection and degenerate input" {
     defer l2.deinit(t.allocator);
     try t.expectEqual(@as(usize, 0), l2.lines.len);
     try t.expectError(error.InvalidFont, fc.register(t.allocator, "nope", .{}));
+}
+
+test "a line of default ignorables only is a line box (takumi / HarfBuzz)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16 };
+    var ref = try fx.lay("a", st, .{});
+    defer ref.deinit(t.allocator);
+    // ZWSP, word joiner, ZWJ, soft hyphen, BOM, LRM (oracle: takumi gives each one line of `a`'s height)
+    for ([_][]const u8{ "\u{200b}", "\u{2060}", "\u{200d}", "\u{ad}", "\u{feff}", "\u{200e}", "\u{200b}\u{200b}" }) |s| {
+        var l = try fx.lay(s, st, .{});
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 1), l.lines.len);
+        try t.expectEqual(ref.height, l.height);
+        try t.expectEqual(@as(f32, 0), l.lines[0].width);
+    }
+    // the part after a forced break
+    var two = try fx.lay("a\n\u{200b}", st, .{ .white_space = .pre });
+    defer two.deinit(t.allocator);
+    var two_ref = try fx.lay("a\nb", st, .{ .white_space = .pre });
+    defer two_ref.deinit(t.allocator);
+    try t.expectEqual(two_ref.lines.len, two.lines.len);
+    try t.expectEqual(two_ref.height, two.height);
+    // a line with other glyphs gets no extra glyph
+    var ab = try fx.lay("a\u{200b}b", st, .{});
+    defer ab.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 2), ab.glyphs.len);
+}
+
+test "overflow-wrap of a run, soft hyphen after spaces, fallback widths of Unicode spaces (takumi / HarfBuzz)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 16 };
+    const long = "0V0VNAT008002000000000000BMCKHH02350HTTPS";
+    // an `anywhere` span splits its overflowing word; the paragraph's own `normal` does not
+    var plain = try font.layoutText(t.allocator, &fx.fc, &.{ .{ .text = "x ", .style = st }, .{ .text = long, .style = st } }, .{ .max_width = 80 });
+    defer plain.deinit(t.allocator);
+    try t.expect(plain.width > 80);
+    var span = try font.layoutText(t.allocator, &fx.fc, &.{ .{ .text = "x ", .style = st }, .{ .text = long, .style = st, .overflow_wrap = .anywhere } }, .{ .max_width = 80 });
+    defer span.deinit(t.allocator);
+    try t.expect(span.lines.len > 2);
+    for (span.lines) |ln| try t.expect(ln.width <= 80);
+    var bw = try font.layoutText(t.allocator, &fx.fc, &.{.{ .text = long, .style = st, .overflow_wrap = .break_word }}, .{ .max_width = 80 });
+    defer bw.deinit(t.allocator);
+    try t.expect(bw.lines.len > 1);
+
+    // "aaaa \u{ad}bbbb" broken at the soft hyphen: the hyphen follows the space (oracle: Chromium, takumi)
+    var w1 = try fx.lay("aaaa ", st, .{});
+    defer w1.deinit(t.allocator);
+    var sh = try fx.lay("aaaa \u{ad}bbbb", st, .{ .max_width = w1.lines[0].width + 12 });
+    defer sh.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 2), sh.lines.len);
+    const f0 = fx.fc.font(0);
+    const hy = if (f0.glyphIndex(0x2010) != 0) f0.glyphIndex(0x2010) else f0.glyphIndex('-');
+    const first = sh.glyphs[sh.lines[0].glyph_start..sh.lines[0].glyph_end];
+    try t.expectEqual(hy, first[first.len - 1].gid);
+
+    // U+3000 without a glyph: the space glyph, one em wide (HarfBuzz `_hb_ot_shape_fallback_spaces`)
+    if (f0.glyphIndex(0x3000) == 0) {
+        const ab = try font.shape(t.allocator, &fx.fc, "ab", .{ .families = inter_fam, .size = 100 });
+        defer t.allocator.free(ab);
+        const ideo = try font.shape(t.allocator, &fx.fc, "a\u{3000}b", .{ .families = inter_fam, .size = 100 });
+        defer t.allocator.free(ideo);
+        var wa: f32 = 0;
+        for (ab) |g| wa += g.x_advance;
+        var wi: f32 = 0;
+        for (ideo) |g| wi += g.x_advance;
+        try t.expectApproxEqAbs(@as(f32, 100), wi - wa, 0.01);
+    }
 }
 
 test "text-overflow: custom marker string, block-ellipsis, rtl truncation side" {

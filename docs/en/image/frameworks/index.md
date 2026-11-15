@@ -60,7 +60,7 @@ choose one entry per application.
 ### Loading the wasm manually
 
 `init()` accepts bytes, a URL string, `URL`, `Request`, `Response`, a promise of any of these, a
-compiled `WebAssembly.Module`, or takumi's `{ module_or_path }` object. `initSync()` accepts bytes or a
+compiled `WebAssembly.Module`, or a `{ module_or_path }` object. `initSync()` accepts bytes or a
 `WebAssembly.Module`. A `Response` served as `application/wasm` is compiled with
 `WebAssembly.instantiateStreaming`; any other content type goes through `arrayBuffer()`.
 
@@ -76,7 +76,6 @@ initSync(bytes);
 // 3. a precompiled module (Cloudflare Workers, Vercel Edge `?module` imports)
 initSync(wasmModule);
 
-// takumi's form also works
 await init({ module_or_path: "/assets/bm_engine.wasm" });
 ```
 
@@ -128,13 +127,13 @@ export function card({ title, description }) {
 }
 ```
 
-`display: "flex"` on the root is not optional: like takumi, every node defaults to `display: inline`
+`display: "flex"` on the root is not optional:, every node defaults to `display: inline`
 (see [Troubleshooting](../../troubleshooting.md#containers-collapse-to-zero-height)). The per-framework
 pages import `getRenderer` and `card` from this file.
 
 ::: tip Rendering blocks the thread
 A render is synchronous WebAssembly work (a 1200 × 630 card with a gradient took about 14 ms in the
-batch recipe on the test machine). `render()` returns a promise for takumi compatibility, but the work
+batch recipe on the test machine). `render()` returns a promise accepted for API compatibility; ignored, but the work
 still happens on the calling thread. For CPU-heavy servers, render in a worker pool
 (see [Recipes](../recipes.md#worker-threads-pool)).
 :::
@@ -190,7 +189,7 @@ export async function GET(request) {
 }
 ```
 
-Differences from takumi's / `next/og`'s `ImageResponse`, so nobody is surprised:
+Known limitations's / `next/og`'s `ImageResponse`, so nobody is surprised:
 
 - It is a function returning `Promise<Response>`, not a `Response` subclass; await it or return the
   promise (every framework here accepts a promise from a handler).
@@ -198,7 +197,7 @@ Differences from takumi's / `next/og`'s `ImageResponse`, so nobody is surprised:
   (there is no streaming body that fails half-way and no `ready` promise to await).
 - There is no `emoji` option and nothing is fetched: fonts and images must already be registered or
   passed as `images` (see [Font loading](#font-loading-strategies)).
-- The renderer is explicit. takumi's default shared renderer corresponds to `getRenderer()` above.
+- The renderer is explicit. Reuse the renderer returned by `getRenderer()` above.
 
 ## Caching headers
 
@@ -302,6 +301,4 @@ of this approach, by design:
   UA styles.
 - A `Fragment` at the root returns an array, which is not a valid source; wrap it in a container.
 
-If you already have React components, `@takumi-rs/helpers` (takumi's package) converts a React element
-to a takumi node tree with its `fromJsx()`; the [migration guide](../migration/from-takumi.md#jsx) has
-the details and the verification status.
+For React components, render an HTML string on the server and pass it to the `standard` or `full` profile. Alternatively, use the node factory above for static templates.

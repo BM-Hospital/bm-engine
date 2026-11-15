@@ -10,28 +10,6 @@ cache work, keep memory flat, and spread work over worker threads. Numbers come 
 benchmark ([summary](../benchmark.md), [full report](../../BENCHMARK.md)); the code is
 `docs/examples/performance.mjs` and runs as shown.
 
-## The numbers
-
-Measured on an Intel Core i3-10100, Windows 11, Node 26.13, `full` profile, against `@takumi-rs/wasm`
-2.20.0 (final 0.1.0 run unless noted):
-
-| Metric | bm-engine | takumi-wasm |
-|:--|--:|--:|
-| Cold start: init + register a font + first og-card PNG | **78.1 ms** | 193.8 ms |
-| Compile + instantiate the wasm (cold-start run, Node) | 8.0 ms | 33.9 ms |
-| Streaming compile + instantiate in headless Edge 157 | 20.4 ms | — |
-| `raw` render, geometric mean over 250 fixtures | **0.64 ms** | 1.01 ms |
-| `png` render (render + encode), geometric mean | **1.33 ms** | 2.95 ms |
-| og-card / blog-card / stress (3000 × 2000) PNG | 14.51 / 30.48 / 83.20 ms | 22.26 / 49.99 / 143.20 ms |
-| wasm memory after 50 og-card PNG renders | 11.6 MiB | 10.6 MiB |
-| Peak process RSS | 92.3 MiB | 105.0 MiB |
-| wasm download, brotli: core / standard / full | 194.3 / 398.0 / 470.8 KiB | 1 409.3 KiB |
-
-All figures on this page are for the **wasm** build. Absolute times depend on the machine; the ratios are
-more stable. Over the 250 fixtures, PNG rendering was faster than takumi-wasm in 248/250 cases (0.45× its
-time) and raw rendering in 229/250 (0.63×). The native addon is faster still: see
-[Native vs WebAssembly](../native-vs-wasm.md).
-
 ## Create the renderer once
 
 A `Renderer` owns the registered fonts, a glyph cache and a decoded-image cache. Creating one is cheap;
@@ -78,7 +56,7 @@ A renderer per request multiplies font parsing and memory; if you really need a 
 On Node.js the `bm-engine` entries read and instantiate their binary synchronously **on import**, so
 the first `new Renderer()` can follow immediately. Cold start is the sum of instantiating the module,
 registering fonts and the first render (which also fills the glyph cache) — 78.1 ms in total for the
-og-card fixture in the benchmark, against 193.8 ms for takumi-wasm.
+og-card fixture in the benchmark.
 
 - In serverless functions, do the import, `new Renderer()` and `registerFont` at **module scope**, not
   inside the handler, so warm invocations skip them.
@@ -207,14 +185,13 @@ const asJpeg = renderer.renderSync(prepared, { format: "jpeg", quality: 80 });
 console.log(asPng.length, asJpeg.length);
 ```
 
-Unlike takumi, `prepare` never downloads anything; fetch the bytes yourself (see [Images](./images.md)).
+`prepare` never downloads anything; fetch the bytes yourself (see [Images](./images.md)).
 
 ## Memory
 
 All renderers of one entry share one WebAssembly linear memory, and **WebAssembly memory can grow but
 never shrink**. bm-engine reuses memory between renders (a per-render arena, fixed-budget caches), so a
-steady workload plateaus: 11.6 MiB of wasm memory after 50 og-card renders in the benchmark (takumi:
-10.6 MiB). What makes it grow is the largest thing you ever rendered:
+steady workload plateaus: 11.6 MiB of wasm memory after 50 og-card renders in the benchmark. What makes it grow is the largest thing you ever rendered:
 
 <!-- @example performance#memory -->
 ```js
@@ -226,14 +203,14 @@ console.log(renderer.memoryBytes());     // ... and stays that size: wasm memory
 ```
 
 In the phase-1 benchmark the instance ended the whole run, which includes a 3000 × 2000 canvas, at
-65.8 MiB (takumi: 66.4 MiB). Rules of thumb:
+65.8 MiB. Rules of thumb:
 
 - One canvas is `width × height × 4` bytes, plus layers for effects such as opacity groups, filters and
   masks. A 3000 × 2000 canvas is 24 MB before any layer.
 - Keep occasional giant renders out of the instance that serves everyday traffic — run them in a separate
   worker, which you can terminate to get the memory back.
 - Fixed budgets per renderer: decoded images up to 96 MiB, glyph masks up to 8 MiB. The constructor
-  options `cacheMaxBytes` / `fontCacheMaxBytes` are accepted for takumi compatibility and ignored.
+  options `cacheMaxBytes` / `fontCacheMaxBytes` are accepted accepted for API compatibility; ignored and ignored.
 - `renderer.memoryBytes()` (or `Renderer.memoryBytes()`) reports the current size; log it if you
   suspect growth.
 
@@ -269,7 +246,7 @@ With the native backend (used by `import "bm-engine"` on Node.js when the addon 
 installed), the async methods (`render()`, `measure()`, ...) run on the libuv thread pool and do not block
 the event loop. Parallelism there comes from several `Renderer` instances (one call at a time each) and
 the size of that pool, `UV_THREADPOOL_SIZE`, rather than from worker threads. See
-[Native vs WebAssembly → Threading model](../native-vs-wasm.md#threading-model) for the details and the
+[Native vs WebAssembly → Threading model](../native-vs-wasm.md) for the details and the
 measured throughput. The rest of this section applies to the wasm backend.
 :::
 

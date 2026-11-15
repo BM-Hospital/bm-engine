@@ -2,9 +2,7 @@
 
 [English](building-from-source.md) · [Tiếng Việt](../vi/building-from-source.md)
 
-How to build the three wasm profiles and the WOFF add-on, run the unit tests, the equivalence benchmark
-against takumi, the browser test and the fuzzers, and how the repository is organised. You only need
-this to change the engine or make a custom build; the npm package ships prebuilt binaries.
+This page explains how to build the library, run checks and find source modules. Build only when changing the engine or customizing a profile; the npm package includes prebuilt binaries.
 
 ## Prerequisites
 
@@ -58,7 +56,6 @@ loads any binary.
 | One module | `zig test src/<module>/<module>.zig` | modules that import siblings are tested through a `src/test_*.zig` root |
 | Package smoke test | `npm run test:pack` | `scripts/pack-test.mjs`: packs the npm tarball and imports it |
 | Feature probes per profile | `node bench/probe/profiles.mjs` | what each binary does with input of a missing feature; fails on any trap |
-| Equivalence + benchmark vs takumi | `cd bench && npm install --ignore-scripts && node run.mjs` | see [Benchmark](benchmark.md#reproducing) |
 | Real browser | `cd bench && npm run browser:quick` | headless Edge / Chrome via puppeteer-core; raw output must equal Node's |
 | Fuzzing (whole pipeline) | see below | run on a safety-checked build |
 
@@ -71,17 +68,9 @@ cd bench
 BM_WASM=/tmp/bmsafe/bin/bm_engine.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
 ```
 
-## How the equivalence harness works
+## Checking output
 
-`bench/` renders every fixture in `bench/fixtures/*.mjs` with takumi-wasm 2.20 (the oracle),
-takumi-native (noise floor) and bm-engine, from the same node tree, fonts and images. For each case the
-`raw` outputs are compared (`bench/lib/metrics.mjs`): byte equality, pixelmatch with and without
-anti-aliasing tolerance, mean / max channel difference, PSNR and SSIM (luma and RGB). The verdict is
-identical / equivalent / close / different as defined in [Benchmark](benchmark.md#conditions). Timing
-interleaves engines per case; cold start and memory run in fresh child processes. Engine adapters live
-in `bench/engines/`, outputs in `bench/out/` (`results.json`, `RESULTS.md`, per-case PNGs and diffs).
-Module-level oracles (layout trees, text widths, colours, cascade winners, Tailwind output, SVG,
-animation frames) are in `bench/probe/`.
+See [Benchmark](benchmark.md) for comparison setup and commands. Examples in `docs/examples/` exercise the documented API behavior.
 
 ## Repository layout
 
@@ -107,10 +96,7 @@ src/codec/            PNG, JPEG, WebP (lossless + VP8), GIF, ICO, animation enco
 src/bump.zig, pages.zig  allocators (per-render bump arena, page allocator)
 js/                   ESM wrapper (engine.mjs + entries), typings, prebuilt wasm, build manifest
 scripts/              build.mjs (release build, manifest), pack-test.mjs
-bench/                fixtures shared with takumi, benchmark / equivalence harness, probes, browser test
-docs/                 user docs (en/, vi/), developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK),
                       VitePress site config (.vitepress/), browser playground source (playground-app/)
-ref/takumi/           local clone of takumi used as a read-only reference (not in git)
 ```
 
 ## Documentation site
@@ -131,8 +117,6 @@ environment variables needed).
 ## Developer documents
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md): design, module map, render pipeline, wasm ABI.
-- [TAKUMI_NOTES.md](../TAKUMI_NOTES.md): takumi semantics the port reproduces (defaults, units, DPR,
-  font fallback, encoders), with source references.
 - [CONVENTIONS.md](../CONVENTIONS.md): engineering rules (no `std.Io` / libc in library code,
   untrusted-input discipline, size discipline, file ownership).
 - [BENCHMARK.md](../BENCHMARK.md), [RESULTS_FULL.md](../RESULTS_FULL.md), [results.json](../results.json):
@@ -145,7 +129,4 @@ environment variables needed).
   1 MiB), and reports its wasm size cost.
 - Every optional feature must be guarded by a flag in `src/config.zig` so that it compiles out of the
   smaller profiles; run `node bench/probe/profiles.mjs` after touching feature boundaries.
-- A rendering change should keep the benchmark at 0 "different" fixtures; add a fixture to
-  `bench/fixtures/` for new behaviour, compare with takumi, and record the result in
-  `docs/BENCHMARK.md`.
-- `ref/takumi` is a third-party clone for reading only; do not execute anything from it.
+- For rendering changes, add a fixture that exercises the behavior and run the relevant checks. See [Benchmark](benchmark.md) to measure output and timing.

@@ -114,7 +114,7 @@ const sources = renderer.renderSync(
 
 Hãy để ý bàn cờ thô 4 × 4: nó được phóng lên 96 × 96 bằng nội suy mượt (bilinear). Muốn phóng to kiểu
 pixel-art sắc nét, hãy đặt `imageRendering: "pixelated"` (hoặc `"crisp-edges"`): ảnh khi đó được phóng
-theo điểm gần nhất (nearest-neighbour), giống hệt takumi. Cách này dùng được cho image node và ảnh nền,
+theo điểm gần nhất (nearest-neighbour). Cách này dùng được cho image node và ảnh nền,
 trên mọi profile:
 
 <!-- @example images#pixelated -->
@@ -141,11 +141,7 @@ const pixelated = renderer.renderSync(
 
 ![Bàn cờ 4 × 4 được phóng mượt thành hoa văn nhoè, cũng bàn cờ đó với mép pixel sắc nét, và một nền lát bằng các bàn cờ sắc nét](/img/guide/images-pixelated.png)
 
-::: warning bm-engine không truy cập mạng
-Một URL trong `src` (hoặc trong `url(...)`) **không bao giờ được tải**, kể cả qua `prepare()` (`prepare`
-của takumi có tải; của bm-engine thì không). Hãy tự tải byte và truyền vào `images`. Điều này cũng áp
-dụng cho URL trong `@font-face` của stylesheet.
-:::
+URL trong `src` hoặc `url(...)` không được tự tải, kể cả khi dùng `prepare()`. Hãy tự tải byte và truyền vào `images`. Quy tắc này cũng áp dụng cho ảnh nền và mask.
 
 Một hàm nhỏ biến danh sách URL thành mảng `images`:
 
@@ -171,7 +167,7 @@ const lazy = await renderer.render(
 // renderer.renderSync(...) with the same options throws "lazy images[].data() needs the async API"
 ```
 
-`images` có thể là một mảng hoặc một object `{ sources, cache }` (dạng của takumi). `cache` của từng ảnh
+`images` có thể là một mảng hoặc một object `{ sources, cache }`. `cache` của từng ảnh
 và `images.cache` được chấp nhận nhưng bị bỏ qua: ảnh đã giải mã luôn được cache (xem
 [Cache](#cache-bộ-nhớ-và-giới-hạn)). Chỉ những mục có `src` thật sự xuất hiện trong source mới được chép
 vào bộ nhớ wasm, nên truyền cùng một danh sách chung mọi asset cho mọi lần render là hoàn toàn ổn.

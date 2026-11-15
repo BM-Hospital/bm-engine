@@ -6,13 +6,7 @@ Astro endpoints are files in `src/pages/` that export `GET`. In a static build A
 path and writes the returned bytes to `dist/`, which makes them the simplest way to ship one Open Graph
 image per page with zero runtime cost. In server mode the same endpoint renders on request.
 
-::: info Verification status
-Verified: the `getStaticPaths` + `GET({ props })` pair below was called on Node 26.13 the way Astro's
-static build calls it and returned one 1200 × 630 PNG per path
-(`docs/examples/frameworks/check-frameworks.mjs`); the standalone build script variant is the verified
-[build-time recipe](../recipes.md#generate-at-build-time). **Not verified inside a real Astro build**.
-takumi's `astro-takumi` integration is takumi-specific and does not work with bm-engine.
-:::
+Use an Astro server endpoint to return the image bytes. The example below shows the integration pattern; verify it in your application build.
 
 ## One image per page at build time
 

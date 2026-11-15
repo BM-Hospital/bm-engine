@@ -3,7 +3,7 @@
 [English](styles.md) · [Tiếng Việt](../../vi/image/styles.md)
 
 bm-engine styles elements with real CSS: the same properties, values, cascade and layout algorithms as
-a browser (ported from takumi, which ports Blink). This page shows the three ways to attach styles —
+a browser. This page shows the three ways to attach styles —
 inline `style` objects, stylesheets through the `css` option, and Tailwind classes in `tw` — how they
 combine, and one worked example for each layout mode (flex, grid, block / inline flow, absolute
 positioning, floats), followed by units and colours. The exhaustive list of properties and their
@@ -79,7 +79,7 @@ expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 p
 ```
 
 ::: warning Kebab-case keys are ignored
-`{ "background-color": "red" }` is silently ignored, as in takumi. Use `backgroundColor`. Vendor
+`{ "background-color": "red" }` is silently ignored. Use `backgroundColor`. Vendor
 prefixes are capitalised: `WebkitLineClamp`, `WebkitTextStroke`.
 :::
 
@@ -144,7 +144,7 @@ What the stylesheet engine supports, in short (full list in
 
 ::: warning Structural pseudo-classes on text nodes
 A `text` node without a `tagName` is not an element for `:first-child`, `:nth-child()`, `+` / `~` and
-the Tailwind `first:` / `odd:` / ... variants, as in takumi: it is not counted among its siblings, so
+the Tailwind `first:` / `odd:` / ... variants: it is not counted among its siblings, so
 when several bare text nodes sit side by side, **every** one of them matches `first:`, `last:` and
 `odd:`. Give the node a `tagName` (`{ type: "text", tagName: "div", ... }`) or put the text inside a
 `container` when the position matters. Empty or whitespace-only text nodes are dropped (in flex and grid
@@ -154,13 +154,12 @@ style.
 
 ### Rule objects
 
-Instead of text you can pass takumi rule objects, `{ selector, style }` with a camelCase `style`. They
+Instead of text you can pass rule objects, `{ selector, style }` with a camelCase `style`. They
 are convenient when values come from data, because nothing is concatenated into CSS text. Array order
 is cascade order:
 
 <!-- @example styles#rule-objects -->
 ```js
-// takumi rule objects: data stays data, no string concatenation
 const theme = { brand: "#16a34a" };
 const ruleObjects = renderer.renderSync(tagged, {
   width: 560,
@@ -175,7 +174,7 @@ const ruleObjects = renderer.renderSync(tagged, {
 
 ![The same card with a green brand colour and green background](/img/guide/styles-rule-objects.png)
 
-takumi's other rule-object forms (`{ media, rules }`, `{ keyframes, steps }`, ...) are accepted as
+Other rule-object forms (`{ media, rules }`, `{ keyframes, steps }`, ...) are accepted as
 well; `{ selector, style }` and `{ media, rules }` were checked here.
 
 ### Selectors and tagName
@@ -199,7 +198,7 @@ use the `preset` field, or an [HTML source](./html-and-tailwind.md#user-agent-st
 ## Tailwind: `tw`
 
 The `tw` field takes Tailwind v4 utility classes and compiles them inside the engine — no build step.
-It is the same compiler as takumi's, with the same subset; see
+For supported utilities, see
 [HTML and Tailwind](./html-and-tailwind.md#tailwind) for variants, arbitrary values and what is not
 supported.
 
@@ -231,7 +230,7 @@ From lowest to highest priority:
    `!`-prefixed utilities such as `!w-20` < `!important` rules in named layers; all of them beat
    normal inline declarations
 
-This is takumi's order. It also matches Tailwind v4 in a browser for layers declared before
+This order matches Tailwind v4 in a browser for layers declared before
 `@layer utilities` (such as `base`).
 
 <!-- @example styles#precedence -->
@@ -253,7 +252,7 @@ widthWith({ type: "container", preset: { display: "block", width: 30 }, style: {
 
 ## Layout modes
 
-Every layout mode of CSS that takumi supports is available on every profile, except floats and tables
+The CSS layout modes described here is available on every profile, except floats and tables
 which need `standard`. Tables have their own page: [Tables and floats](./tables.md).
 
 ### Flexbox
@@ -389,9 +388,7 @@ and the inline box's background and borders are drawn on each part (without the 
 
 ### `display: contents` {#display-contents}
 
-`display: "contents"` removes the element's own box: its children are laid out as if they were
-children of its parent, and its padding, border and background are not drawn. This follows Chrome;
-takumi does not support the value (it throws for an inline style and ignores it in stylesheets).
+`display: contents` does not generate its own box. Its children participate directly in the parent’s layout.
 
 <!-- @example styles#contents -->
 ```js

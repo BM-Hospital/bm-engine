@@ -49,7 +49,7 @@ artifact, mà trình đọc màn hình bỏ qua. Ngôn ngữ của chữ là thu
 `lang`. Trong cây node, đặt `tagName` (`"h1"`, `"p"`, ...) và `attributes` (`alt`, `href`) trên container.
 
 Ký hiệu danh sách được vẽ, cả trong đầu ra nhiều trang lẫn `viewport`, và mỗi mục có ký hiệu có phần tử `Lbl` (nhãn)
-và `LBody`. Mục không có ký hiệu chỉ có `LBody` ([Hạn chế đã biết](differences-from-takumi.md#hạn-chế-đã-biết) liệt kê những gì được hỗ trợ).
+và `LBody`. Mục không có ký hiệu chỉ có `LBody` ([Hạn chế đã biết](limitations.md) liệt kê những gì được hỗ trợ).
 
 ## PDF/UA
 
@@ -198,17 +198,10 @@ TypeScript `ArchivalAttachment` vẫn yêu cầu; hãy cung cấp chúng). PDF/A
 
 ## Các kiểm tra đi xa đến đâu
 
-Phần kiểm tra là bản port các quy tắc mà krilla áp dụng cho takumi-pdf. Nó kiểm tra tiêu đề tài liệu, ngôn ngữ
+Phần kiểm tra áp dụng các quy tắc về tính phù hợp của PDF. Nó kiểm tra tiêu đề tài liệu, ngôn ngữ
 tài liệu, văn bản thay thế cho ảnh và liên kết, outline, ngày, tệp nhúng (sự tồn tại, mime type, mô tả, ngày), và
 font (giấy phép nhúng, ánh xạ Unicode, `.notdef`) cùng các giới hạn về chuỗi, tên và độ sâu lồng nhau
 (`TooLongString`, `TooLongName`, `TooManyIndirectObjects`, `TooHighQNestingLevel`). Nó không đọc lại file như
 một validator.
 
-Đầu ra đã được chạy qua các validator ngoài. veraPDF 1.28.2 báo cả 45 file thử của bm-engine đều tuân thủ profile
-mà chúng khai báo (PDF/A-2a, 2b, 2u, 3a, 3b, 3u, 4, 4f và PDF/UA-1, PDF/UA-2), giống như với file của
-takumi-pdf. pdfcpu ở chế độ strict báo 12 vấn đề trên file của cả hai engine (khóa `AFRelationship` của PDF/A-3,
-mà nó coi là chỉ có ở PDF 2.0, và các structure destination trong mục outline của PDF/UA-2, điều mà takumi-pdf
-0.20.0 cũng ghi ra); không vấn đề nào riêng của bm-engine. qpdf, poppler, MuPDF và pdf.js đọc các file mà không
-phàn nàn. Đó là bằng chứng chứ không phải chứng nhận: nếu cần kho lưu trữ được chứng nhận, hãy chạy một validator
-trên đầu ra của bạn trước khi dựa vào nó ([Khác biệt với
-takumi-pdf](differences-from-takumi.md#hạn-chế-đã-biết)).
+Các fixture về tính phù hợp đã được kiểm tra bằng veraPDF. Kết quả này không chứng nhận mọi tài liệu tạo bởi thư viện: hãy kiểm tra PDF thực tế của ứng dụng. Xem [hạn chế đã biết](limitations.md).

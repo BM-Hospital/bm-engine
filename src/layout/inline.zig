@@ -113,7 +113,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.in = in_.*;
     const in = &c.in;
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     t.sbox(&c.box, s, in);
     const box = &c.box;
     c.known = tr.styledKnown(in, box);
@@ -204,7 +204,7 @@ noinline fn run(t: anytype, c: *S, node: u32, full: bool) Error!void {
 
     var ch = t.firstChild(node);
     while (ch != no_node) : (ch = t.nextSibling(ch)) {
-        const cs = &t.nodes.items[ch].style;
+        const cs = t.nodes.items[ch].style;
         if (cs.display == .none) {
             if (place) t.hide(ch);
             continue;
@@ -266,7 +266,7 @@ noinline fn run(t: anytype, c: *S, node: u32, full: bool) Error!void {
 /// its height (NaN = auto) in `c.ckh`.
 noinline fn itemWidth(t: anytype, c: *S, ch: u32) Error!f32 {
     const cn = &t.nodes.items[ch];
-    t.rbox(&c.cb, &cn.style, c.parent);
+    t.rbox(&c.cb, cn.style, c.parent);
     const cb = &c.cb;
     {
         // ORACLE QUIRK: takumi resolves the percentage part of an atomic inline's margins to 0
@@ -302,7 +302,7 @@ noinline fn itemWidth(t: anytype, c: *S, ch: u32) Error!f32 {
 /// Aligns the items of one line (`used` = sum of their margin-box widths), positions them when `place` is
 /// set and advances `c.y`. A line without in-flow items creates no line box.
 noinline fn finishLine(t: anytype, c: *S, node: u32, items: []Item, used: f32, last: bool, place: bool) void {
-    const s = &t.nodes.items[node].style;
+    const s = t.nodes.items[node].style;
     // metrics of the items aligned relative to the baseline, starting from the strut
     var asc = c.strut[0];
     var desc = c.strut[1];
@@ -390,7 +390,7 @@ noinline fn finishLine(t: anytype, c: *S, node: u32, items: []Item, used: f32, l
             .top => base - max_a,
             else => base + max_d - it.mh,
         };
-        const cs = &t.nodes.items[it.node].style;
+        const cs = t.nodes.items[it.node].style;
         const l = &t.layouts.items[it.node];
         l.x = x + it.ml + orElse(t.dim(cs.inset.left, c.parent[0]), -orElse(t.dim(cs.inset.right, c.parent[0]), 0));
         l.y = top + it.mt + orElse(t.dim(cs.inset.top, c.parent[1]), -orElse(t.dim(cs.inset.bottom, c.parent[1]), 0));

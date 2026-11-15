@@ -169,11 +169,11 @@ const out = { date: new Date().toISOString(), build: manifest.date, args: proces
 writeFileSync(path.join(OUT_DIR, "visual.json"), JSON.stringify(out, null, 1));
 writeFileSync(path.join(OUT_DIR, "VISUAL.md"), md(out));
 // A golden fixture that bm-engine draws differently from the published takumi-pdf 0.20.0 is checked against
-// takumi-pdf's own golden PDF of it (ref/takumi/takumi-pdf/tests/fixtures-generated, written by a takumi newer than
+// takumi-pdf's own vendored golden PDF of it (takumi-pdf/tests/fixtures-generated, written by a takumi newer than
 // 0.20.0): when bm-engine matches the golden (identical / equivalent under some rasteriser), the difference is
 // 0.20.0's, not bm-engine's, and does not fail the gate. Recorded per document as `golden`.
 for (const x of done.filter((r) => r.consensus === "different" && r.id.startsWith("golden/"))) {
-  const gp = path.join(ROOT, "ref", "takumi", "takumi-pdf", "tests", "fixtures-generated", x.id.slice(7) + ".pdf");
+  const gp = path.join(ROOT, "tests", "upstream", "takumi", "takumi-pdf", "tests", "fixtures-generated", x.id.slice(7) + ".pdf");
   let G;
   try { G = new Uint8Array(readFileSync(gp)); } catch { continue; }
   const A = new Uint8Array(readFileSync(fileOf(BM, x.id)));

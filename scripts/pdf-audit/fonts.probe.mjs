@@ -5,8 +5,55 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { probe, root, font, INTER, INTER_BOLD, ARCHIVO, NOTO_TC, TWEMOJI } from "./lib.mjs";
 import { outcome, fontShape, sameText, sameWithin, META } from "./filelayer.util.mjs";
+import { canonPages } from "./paint.probe.mjs";
 
 const local = (rel) => new Uint8Array(readFileSync(path.join(root, rel)));
+
+// Derive an actual SVG-in-OpenType font from the licensed Inter fixture. Preserve its outlines
+// and add a conspicuous red SVG document for every glyph; rebuild sfnt checksums, including head.
+function svgOutlineFont() {
+  const original = Buffer.from(font(INTER));
+  const tables = new Map();
+  for (let i = 0; i < original.readUInt16BE(4); i++) {
+    const at = 12 + i * 16;
+    const name = original.toString("ascii", at, at + 4);
+    tables.set(name, Buffer.from(original.subarray(original.readUInt32BE(at + 8), original.readUInt32BE(at + 8) + original.readUInt32BE(at + 12))));
+  }
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048"><rect width="2048" height="2048" fill="red"/></svg>');
+  const table = Buffer.alloc(26 + svg.length);
+  table.writeUInt32BE(10, 2); table.writeUInt16BE(1, 10);
+  table.writeUInt16BE(tables.get("maxp").readUInt16BE(4) - 1, 14);
+  table.writeUInt32BE(16, 16); table.writeUInt32BE(svg.length, 20); svg.copy(table, 26);
+  tables.set("SVG ", table); tables.delete("DSIG");
+  tables.get("head").writeUInt32BE(0, 8);
+  const entries = [...tables].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  const size = 12 + 16 * entries.length + entries.reduce((n, [, bytes]) => n + ((bytes.length + 3) & ~3), 0);
+  const out = Buffer.alloc(size); out.writeUInt32BE(original.readUInt32BE(0), 0); out.writeUInt16BE(entries.length, 4);
+  const power = Math.floor(Math.log2(entries.length));
+  out.writeUInt16BE(16 * 2 ** power, 6); out.writeUInt16BE(power, 8); out.writeUInt16BE(entries.length * 16 - 16 * 2 ** power, 10);
+  const checksum = (bytes) => { let sum = 0; for (let i = 0; i < bytes.length; i += 4) sum = (sum + bytes.readUInt32BE(i)) >>> 0; return sum; };
+  let offset = 12 + entries.length * 16; let headOffset = 0;
+  entries.forEach(([name, bytes], i) => {
+    const at = 12 + i * 16; const padded = Buffer.alloc((bytes.length + 3) & ~3); bytes.copy(padded);
+    out.write(name, at, 4, "ascii"); out.writeUInt32BE(checksum(padded), at + 4); out.writeUInt32BE(offset, at + 8); out.writeUInt32BE(bytes.length, at + 12);
+    padded.copy(out, offset); if (name === "head") headOffset = offset; offset += padded.length;
+  });
+  out.writeUInt32BE((0xB1B0AFBA - checksum(out)) >>> 0, headOffset + 8);
+  return new Uint8Array(out);
+}
+
+probe("fonts.svg-opentype-outline-fallback", "Pinned public PDF API leaves SVG glyph callback unset and falls back to outlines", async (t) => {
+  const source = '<p style="font-family:SvgOutline;font-size:24px">SVG font A</p>';
+  const modified = await t.both(source, { viewport: { width: 240, height: 70 } }, { fonts: [{ name: "SvgOutline", data: svgOutlineFont() }] });
+  t.same("outcome", outcome(modified.bm), outcome(modified.ref));
+  if (!modified.ref || modified.bm.error || modified.ref.error) return;
+  sameText(t, "SVG-table font extraction", modified.bm.text, modified.ref.text);
+  for (const [name, result] of [["bm", modified.bm], ["pinned public Takumi", modified.ref]]) {
+    const paint = canonPages(result)[0].join(" ");
+    t.ok(fontShape(result).some((f) => f.subtype === "Type3"), `${name}: SVG-table font uses the color-glyph Type3 path`);
+    t.ok(/\bc\b/.test(paint) && !/\b1\s+0\s+0\s+rg\b/.test(paint), `${name}: glyph curves are drawn while the red SVG rectangle is absent`);
+  }
+});
 const F = {
   cffOtf: () => ({ name: "SourceSans", data: local("src/font/testdata/SourceSans3-Regular.otf") }),
   cffItalicOtf: () => ({ name: "SourceSerifIt", data: local("src/font/testdata/SourceSerif4-It.otf") }),
@@ -104,9 +151,30 @@ probe("fonts.variable.truetype", "variable TrueType (gvar): one static instance 
 });
 
 probe("fonts.containers", "WOFF / WOFF2 / TTC inputs: decoded and embedded as sfnt subsets", async (t) => {
-  await fonts(t, `<p style="font-family:GeistWoff">Woff one</p>`, {}, [F.woff1()], { id: "woff1", widthsTol: 1 });
+  // BM supports WOFF1. The pinned Takumi build does not, so treat that as a BM capability
+  // check instead of reporting the expected unsupported-format difference as a regression.
+  const woff1 = await t.both(`<p style="font-family:GeistWoff">Woff one</p>`, {}, { fonts: [F.woff1()] });
+  t.ok(!woff1.bm.error && fontShape(woff1.bm)?.length === 1, "woff1 decodes and embeds in bm");
+  if (woff1.ref?.error === "Unsupported font format") t.differs("bm supports WOFF1; pinned Takumi does not");
+  else if (woff1.ref && !woff1.ref.error) fonts(t, `<p style="font-family:GeistWoff">Woff one</p>`, {}, [F.woff1()], { id: "woff1", widthsTol: 1 });
   await fonts(t, `<p style="font-family:GeistVarW2">Woff two</p>`, {}, [F.geistVarWoff2()], { id: "woff2", widthsTol: 1 });
-  await fonts(t, `<p style="font-family:Geist">Geist face</p><p style="font-family:'Geist Mono'">Mono face</p>`, {}, [F.ttcGeist()], { id: "ttc geist (two faces)", widthsTol: 1 });
+  const ttcHtml = `<p style="font-family:Geist">Geist face</p><p style="font-family:'Geist Mono'">Mono face</p>`;
+  const ttc = await t.both(ttcHtml, {}, { fonts: [F.ttcGeist()] });
+  if (!t.same("ttc geist outcome", outcome(ttc.bm), outcome(ttc.ref)) || !ttc.ref || ttc.bm.error) return;
+  const bmFonts = fontShape(ttc.bm) || [];
+  const refFonts = fontShape(ttc.ref) || [];
+  const withoutBBox = (fonts) => fonts.map((f) => {
+    const copy = structuredClone(f);
+    if (copy.descriptor) delete copy.descriptor.FontBBox;
+    delete copy.rawBaseFont; // subset tags are intentionally engine-specific
+    return copy;
+  });
+  // The source TTC's head tables specify these boxes. Takumi reports a different yMin
+  // (-220 for Geist-Regular); preserve an independent source-of-truth check for BM here.
+  t.same("ttc geist dictionaries excluding FontBBox", withoutBBox(bmFonts), withoutBBox(refFonts));
+  t.same("ttc geist face names", bmFonts.map((f) => f.baseFont), ["TAGTAG+Geist-Regular", "TAGTAG+GeistMono-Regular"]);
+  t.same("ttc geist FontBBox from face head tables", bmFonts.map((f) => f.descriptor?.FontBBox), ["[-200 -240 2338 940]", "[-1738 -394 654 1041]"]);
+  t.same("ttc geist extracted text", ttc.bm.text.replace(/\s+/g, " ").trim(), ttc.ref.text.replace(/\s+/g, " ").trim());
   await fonts(t, `<p style="font-family:Ubuntu">Ubuntu face</p><p style="font-family:Ubuntu;font-weight:700">bold</p><p style="font-family:Ubuntu;font-style:italic">italic</p>`, {}, [F.ttcUbuntu()], { id: "ttc ubuntu", widthsTol: 1 });
 });
 
@@ -194,6 +262,19 @@ probe("fonts.fallback", "fallback across families, unicodeRange, per-render font
   await fonts(t, `<p style="font-family:A, B">abc ABC</p>`, {}, [{ name: "A", data: font(INTER), unicodeRange: [[0x41, 0x5a]] }, { name: "B", data: font("assets/fonts/Roboto-Regular.ttf") }], { id: "unicodeRange split" });
   await fonts(t, `<p style="font-family:A">abc ABC</p>`, {}, [{ name: "A", data: font(INTER), unicodeRange: [[0x41, 0x5a]] }], { id: "unicodeRange excludes, no other font" });
   await fonts(t, `<p>no font registered at all</p>`, {}, [], { id: "no fonts" });
+});
+
+probe("fonts.unicode-range", "registered unicodeRange restricts a face and falls back to another family", async (t) => {
+  const r = await t.bm(`<p style="font-family:A, B">abc ABC</p>`, {}, { fonts: [
+    { name: "A", data: font(INTER), unicodeRange: "U+41-5A" },
+    { name: "B", data: font("assets/fonts/Roboto-Regular.ttf") },
+  ] });
+  t.ok(!r.error, "CSS unicodeRange string renders: " + (r.error || ""));
+  if (r.error) return;
+  const embedded = fontShape(r).map((f) => f.baseFont || f.name).join(" ");
+  t.ok(embedded.includes("Inter-Regular"), "uppercase A range uses the Inter face: " + embedded);
+  t.ok(embedded.includes("Roboto-Regular"), "lowercase text falls back to Roboto: " + embedded);
+  t.same("extracted text", r.text.replace(/\s+/g, " ").trim(), "abc ABC");
 });
 
 probe("fonts.broken", "fonts that cannot be embedded: garbage, truncated, no cmap, bitmap-only -> error text", async (t) => {

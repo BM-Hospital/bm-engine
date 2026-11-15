@@ -323,7 +323,8 @@ pub fn resample(alloc: Allocator, src: *const Pixmap, new_w: u32, new_h: u32) !P
             res = @min(@max(res, @as(V4, @splat(0))), @as(V4, @splat(255)));
             // colour <= alpha
             res = @min(res, @as(V4, @splat(res[3])));
-            orow[ox] = @bitCast(@as(@Vector(4, u8), @intCast(res)));
+            // (`@truncate` of the clamped values: vector `@intCast` narrowing miscompiles on x86-64-v2)
+            orow[ox] = @bitCast(@as(@Vector(4, u8), @truncate(@as(@Vector(4, u32), @bitCast(res)))));
         }
     }
     return out;

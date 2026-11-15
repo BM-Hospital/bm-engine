@@ -251,7 +251,17 @@ fn parseConfig(g: *Gradient, l: *Lexer, env: *const Env) Error!bool {
 }
 
 fn stopPos(kind: Kind, t: Token, env: *const Env) ?LP {
-    if (kind == .conic) return values.anglePct(t);
+    if (kind == .conic) {
+        // The source stores conic positions as percentage values, including
+        // angles. Preserve that f32 round trip: repeat boundaries depend on it.
+        const percent: f32 = switch (t.kind) {
+            .percentage => (t.num / 100) * 100,
+            .number => if (t.num >= 0 and t.num <= 1) t.num * 100 else return null,
+            .dimension => ((values.angle(t, false) orelse return null) / 360) * 100,
+            else => return values.anglePct(t),
+        };
+        return .{ .pct = percent / 100 };
+    }
     return values.lengthPct(t, env);
 }
 
@@ -530,9 +540,13 @@ test "radial and conic" {
     try T.expect(g.kind == .conic and g.angle == 0);
     g = try parseImg(a, "conic-gradient(from 90deg at 25% 75%, red 0deg, blue 90deg 50%, green 1turn)");
     try T.expect(g.angle == 90 and g.position[0].pct == 0.25 and g.stops.len == 4);
-    try T.expect(g.stops[1].pos.?.px == 90 and g.stops[2].pos.?.pct == 0.5 and g.stops[3].pos.?.px == 360);
+    try T.expect(g.stops[1].pos.?.resolve(360) == 90 and g.stops[2].pos.?.pct == 0.5 and g.stops[3].pos.?.resolve(360) == 360);
     g = try parseImg(a, "repeating-conic-gradient(red 0 15deg, blue 15deg 30deg)");
     try T.expect(g.repeating and g.stops.len == 4);
+    const resolved = try resolveStops(a, g.stops, 360, Color.black);
+    // Source Length::Percentage: ((30 / 360 * 100) / 100) * 360 in f32.
+    try T.expectEqual(@as(f32, 30.000004), resolved[3].offset_px);
+    try expectOffsets("conic-gradient(red 0 .25, blue .5 1)", 360, &.{ 0, 90, 180, 360 });
 }
 
 fn expectOffsets(stops_src: []const u8, len: f32, want: []const f32) !void {

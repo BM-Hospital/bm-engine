@@ -1,8 +1,8 @@
 //! Paged layout through the real pipeline (source -> Frame -> `setPaged` / `prepare` / `paginate`):
 //! line placement with real fonts, widows / orphans, forced and avoided breaks, images, repeated table
-//! headers, flex columns, the takumi-pdf pagination fixtures (`ref/takumi/takumi-pdf/tests/pdf_fixtures.rs`,
+//! headers, flex columns, the takumi-pdf pagination fixtures (`tests/upstream/takumi/takumi-pdf/tests/pdf_fixtures.rs`,
 //! page counts read from its `tests/fixtures-generated/*.pdf`), and pages painted by the raster painter.
-//! Only with the PDF feature (`zig build test -Dpdf=true`); the fonts are read from `ref/takumi/assets`
+//! Only with the PDF feature (`zig build test -Dpdf=true`); the fonts are read from `tests/upstream/takumi/assets`
 //! (Archivo, the font takumi's fixtures render with) or `assets/fonts`, falling back to the embedded Inter.
 const std = @import("std");
 const rt = @import("render.zig");
@@ -11,6 +11,9 @@ const frag = layout.fragment;
 const T = std.testing;
 
 const enabled = frag.enabled;
+/// The PDF document pipeline (`pdf/paged.zig`: runs of pages laid out at their own widths, which
+/// continue a paragraph through `Paragraph.cut`, a PDF build feature).
+const pdf_enabled = enabled and @import("config.zig").enable_pdf;
 
 fn readFile(path: []const u8) ?[]u8 {
     return std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, T.allocator, .limited(64 << 20)) catch null;
@@ -21,14 +24,14 @@ fn newRenderer() !*rt.Renderer {
     const r = rt.Renderer.create(gpa) orelse return error.OutOfMemory;
     errdefer r.destroy();
     var any = false;
-    for ([_][]const u8{ "ref/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf", "assets/fonts/Roboto-Regular.ttf" }) |p| {
+    for ([_][]const u8{ "tests/upstream/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf", "assets/fonts/Roboto-Regular.ttf" }) |p| {
         if (readFile(p)) |bytes| {
-            _ = try r.registerFont(bytes, "", 0, -1);
+            _ = try r.registerFont(bytes, "", 0, -1, null);
             any = true;
             break;
         }
     }
-    if (!any) _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+    if (!any) _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
     return r;
 }
 
@@ -168,6 +171,136 @@ fn nodeOfId(d: *Doc, id: []const u8) !*const rt.Node {
 const lorem = "Paged media splits the flow of a document into pages. A paragraph that does not fit on " ++
     "the current page continues on the next one, and its lines are never cut by the page edge. The " ++
     "orphans and widows properties set how many lines must stay together at the bottom and at the top of a page.";
+
+test "paged floats: deferred whole floats rebuild the line exclusion space" {
+    if (!enabled) return error.SkipZigTest;
+    for ([_]u32{ 10, 30 }) |margin| {
+        const src = try std.fmt.allocPrint(T.allocator, "<style>html,body{{margin:0}}.l{{height:20px}}</style><div style=\"font:12px/20px Inter\"><div style=\"height:140px\"></div><div id=\"float\" style=\"float:left;width:100px;margin-top:{d}px;break-inside:avoid\"><div class=\"l\">F1</div><div class=\"l\">F2</div><div class=\"l\">F3</div><div class=\"l\">F4</div></div><div id=\"before\" class=\"l\">L8</div><div class=\"l\">L9</div><div id=\"beside\" class=\"l\">L10</div><div class=\"l\">L11</div><div class=\"l\">L12</div><div id=\"last\" class=\"l\">L13</div><div class=\"l\">L14</div></div>", .{margin});
+        defer T.allocator.free(src);
+        const d = try open(.html, src, 300, 200, 10);
+        defer d.deinit();
+        try T.expectEqual(@as(usize, 2), d.count());
+        const floating = try nodeOfId(d, "float");
+        try T.expectApproxEqAbs(@as(f32, 180) + @as(f32, @floatFromInt(margin)), absTop(&d.f, floating.lid), 0.02);
+        for ([_][]const u8{ "before", "beside", "last" }, [_]f32{ 0, 100, 100 }) |id, expected_x| {
+            var node = try nodeOfId(d, id);
+            while (node.para == null and node.first_child != rt.none) node = &d.f.nodes.items[node.first_child];
+            const tl = node.tl orelse return error.MissingText;
+            try T.expectApproxEqAbs(expected_x, tl.lines[0].x, 0.02);
+        }
+    }
+}
+
+test "paged floats: resumed exclusions and clearance follow alternating page widths" {
+    if (!pdf_enabled) return error.SkipZigTest;
+    const r = rt.Renderer.create(T.allocator) orelse return error.OutOfMemory;
+    defer r.destroy();
+    const bytes = readFile("assets/fonts/Inter-Regular.ttf") orelse return error.FileNotFound;
+    _ = try r.registerFont(bytes, "Inter", 0, -1, null);
+    r.beginCall();
+    const a = r.arena.allocator();
+    const prefix = comptime blk: {
+        var s: []const u8 = "";
+        for (0..7) |_| s = s ++ "<div style=\"height:20px\">L</div>";
+        break :blk s;
+    };
+    const text = comptime blk: {
+        var s: []const u8 = "";
+        for (0..40) |_| s = s ++ "following words ";
+        break :blk s;
+    };
+    const src = "<style>@page{size:300px 200px;margin:10px}@page:left{size:360px 200px}html,body{margin:0;padding:0}body{font:12px/20px Inter}p{margin:0}</style>" ++ prefix ++ "<div id=\"float\" style=\"float:left;width:100px;margin-top:10px;break-inside:avoid\"><div style=\"height:20px\">F1</div><div style=\"height:20px\">F2</div><div style=\"height:20px\">F3</div><div style=\"height:20px\">F4</div></div><p>" ++ text ++ "</p><div id=\"clear\" style=\"height:20px;clear:both\">CLEAR</div>";
+    const pg = @import("pdf/paged.zig");
+    const d = try pg.layOut(r, a, .{}, null, .html, src, @import("pdf/options.zig").Page.a4, null);
+    defer d.release(r);
+    try T.expectEqual(@as(usize, 4), d.pages.len);
+    for (d.pages, [_]f32{ 300, 360, 300, 360 }) |page, width| try T.expectEqual(width, page.width);
+    const f = d.pages[3].frame orelse d.frame;
+    var found = false;
+    for (f.nodes.items) |n| if (n.para) |p| {
+        if (!std.mem.eql(u8, rt.Frame.paragraphText(p), "CLEAR")) continue;
+        try T.expectApproxEqAbs(@as(f32, 560), absTop(f, n.lid), 0.02);
+        found = true;
+    };
+    try T.expect(found);
+}
+
+test "paged rowspans: independent cell continuations preserve assigned rows" {
+    if (!pdf_enabled) return error.SkipZigTest;
+    const r = rt.Renderer.create(T.allocator) orelse return error.OutOfMemory;
+    defer r.destroy();
+    const bytes = readFile("assets/fonts/Inter-Regular.ttf") orelse return error.FileNotFound;
+    _ = try r.registerFont(bytes, "Inter", 0, -1, null);
+    r.beginCall();
+    const a = r.arena.allocator();
+    var words: [3]std.ArrayList(u8) = .{ .empty, .empty, .empty };
+    for ("LRB", &words) |letter, *out| for (0..45) |i| try out.appendSlice(a, try std.fmt.allocPrint(a, "{c}{d} word{s}", .{ letter, i, if (i == 44) "" else " " }));
+    const src = try std.fmt.allocPrint(a, "<style>@page{{size:240px 140px;margin:10px}}@page:left{{size:360px 140px;margin:10px}}p{{margin:0}}td{{padding:0;vertical-align:top}}table{{border-spacing:0}}</style><div style=\"font:14px/20px Inter\"><table style=\"width:100%\"><tr><td rowspan=\"2\" style=\"width:50%\">{s}</td><td>{s}</td></tr><tr><td>{s}</td></tr></table><p>AFTER</p></div>", .{ words[0].items, words[1].items[0..130], words[2].items });
+    const pg = @import("pdf/paged.zig");
+    const d = try pg.layOut(r, a, .{}, null, .html, src, @import("pdf/options.zig").Page.a4, null);
+    defer d.release(r);
+    try T.expectEqual(@as(usize, 8), d.pages.len);
+    for (d.pages, 0..) |page, i| {
+        const f = page.frame orelse d.frame;
+        // The seventh source page is empty row space; it can reuse a scene,
+        // provided no glyph line is placed on that page.
+        if (i == 6) {
+            for (f.nodes.items) |n| if (n.tl) |tl| {
+                const box = f.tree.layout(n.lid);
+                const top = absTop(f, n.lid) + box.border.top + box.padding.top;
+                for (tl.lines) |line| {
+                    if (line.glyph_start == line.glyph_end) continue;
+                    const baseline = top + line.baseline;
+                    try T.expect(baseline < d.windows[i].top or baseline >= d.windows[i].bottom);
+                }
+            };
+            continue;
+        }
+        try T.expectEqual(page.content.w, f.tree.paged.page_w);
+    }
+}
+
+test "paged continuation: aligned grid items resume without repeating the row offset" {
+    if (!enabled) return error.SkipZigTest;
+    const rows = comptime blk: {
+        var s: []const u8 = "";
+        for (0..24) |_| s = s ++ "<div style=\"height:20px\">LINE</div>";
+        break :blk s;
+    };
+    for ([_][]const u8{ "start", "center", "end" }) |alignment| {
+        for ([_]u32{ 0, 60 }) |prefix| {
+            const src = try std.fmt.allocPrint(T.allocator, "<div style=\"height:{d}px\"></div><div id=\"grid\" style=\"display:grid;grid-template-columns:1fr 1fr;align-items:{s}\"><div>{s}</div><div id=\"aligned\" style=\"height:20px\">ALIGNED</div></div>", .{ prefix, alignment, rows });
+            defer T.allocator.free(src);
+            const d = try open(.html, src, 300, 200, 10);
+            defer d.deinit();
+            const grid = try nodeOfId(d, "grid");
+            const item = try nodeOfId(d, "aligned");
+            const start = std.mem.eql(u8, alignment, "start");
+            const grid_top: f32 = if (prefix == 0 or start) @floatFromInt(prefix) else 180;
+            try T.expectEqual(grid_top, absTop(&d.f, grid.lid));
+            try T.expectEqual(if (start) grid_top else grid_top + 180, absTop(&d.f, item.lid));
+            try T.expect(std.math.isFinite(d.f.tree.layout(item.lid).grid_block_start));
+        }
+    }
+}
+
+test "page counters: painted ownership excludes only the own transform from the flow edge" {
+    if (!enabled) return error.SkipZigTest;
+    const counters = @import("pdf/counters.zig");
+    for ([_]bool{ false, true }) |on_parent| {
+        const src = try std.fmt.allocPrint(T.allocator, "<div><div style=\"height:60px\"></div><div style=\"{s}\"><div id=\"target\" style=\"height:20px;{s}\">COUNTER</div></div><div style=\"height:400px\"></div></div>", .{ if (on_parent) "transform:translateY(180px)" else "", if (on_parent) "" else "transform:translateY(180px)" });
+        defer T.allocator.free(src);
+        const d = try open(.html, src, 300, 200, 10);
+        defer d.deinit();
+        const target = try nodeOfId(d, "target");
+        const boxes = try counters.elementBoxes(T.allocator, &d.f, d.pages, null);
+        defer T.allocator.free(boxes);
+        try T.expectEqual(@as(?u32, 1), counters.elementPage(&d.f, target.el));
+        try T.expectEqual(@as(?u32, 1), counters.anchorPage(&d.f, "target"));
+        try T.expectEqual(@as(u32, 1), boxes[target.el].?.start);
+        try T.expectEqual(@as(?u32, if (on_parent) 1 else 0), boxes[target.el].?.next);
+    }
+}
 
 test "paged: paragraphs with real fonts break between lines, widows / orphans respected" {
     if (!enabled) return error.SkipZigTest;
@@ -456,7 +589,7 @@ test "paged: takumi-pdf HTML fixtures at A4" {
     const a4_w = 210 * mm;
     const a4_h = 297 * mm;
     const m0 = 10 * mm;
-    const dir = "ref/takumi/takumi-pdf/fixtures/";
+    const dir = "tests/upstream/takumi/takumi-pdf/fixtures/";
     inline for (.{ "invoice", "report", "certificate" }) |name| {
         if (readFile(dir ++ name ++ ".html")) |src| {
             defer T.allocator.free(src);
@@ -465,7 +598,7 @@ test "paged: takumi-pdf HTML fixtures at A4" {
             _ = try checkLines(d);
             std.debug.print("takumi-pdf fixture {s}.html at A4, 10 mm margins: {d} pages\n", .{ name, d.count() });
             if (comptime std.mem.eql(u8, name, "report")) try T.expectEqual(@as(usize, 3), d.count());
-        } else std.debug.print("(ref/takumi fixtures not found: skipped {s})\n", .{name});
+        } else return error.FileNotFound;
     }
     // invoice.pdf: 36 px margins, the bottom one = footer band height + 15 pt (>= 10 mm)
     const src = readFile(dir ++ "invoice.html") orelse return;

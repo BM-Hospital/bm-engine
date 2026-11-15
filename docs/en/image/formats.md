@@ -14,8 +14,8 @@ what the benchmark says about speed and file size. PDF documents have their own 
 | `format` | Alpha | `quality` | Profiles | Notes |
 |:--|:-:|:-:|:--|:--|
 | `"png"` (default) | yes | ignored | all | lossless; palette / RGB / RGBA chosen automatically |
-| `"jpeg"` (alias `"jpg"`) | no — dropped, transparent becomes **black** (same as takumi) | 1–100, default 75 | all | baseline JPEG; give the root an opaque background |
-| `"webp"` | yes | ignored | all | always **lossless** (as in takumi's wasm build); `lossless` is ignored too |
+| `"jpeg"` (alias `"jpg"`) | no — dropped, transparent becomes **black** (same) | 1–100, default 75 | all | baseline JPEG; give the root an opaque background |
+| `"webp"` | yes | ignored | all | always **lossless**; `lossless` is ignored too |
 | `"raw"` | yes | ignored | all | `width × height × 4` bytes of straight (non-premultiplied) RGBA8 |
 | `"ico"` | yes | ignored | `full` | one PNG inside an ICO container, 1–256 px per side |
 | `renderSvg()` | yes | — | `full` | an SVG document string |
@@ -61,10 +61,7 @@ const png = renderer.renderSync(card, { width: 400, height: 200 }); // format de
 
 ![PNG output of the card](/img/guide/formats-png.png)
 
-The encoder picks the pixel format per image: a flat image with few colours is written as an indexed
-(palette) PNG, a gradient like the one above as 8-bit RGBA. You do not need to configure anything, and
-there is no compression-level option. In the benchmark, bm-engine's PNG files are 0.78× the size of
-takumi's on average (geometric mean over 191 fixtures, see [Benchmark](../benchmark.md)).
+PNG uses lossless compression. File size depends on the image content.
 
 ## Comparing sizes
 
@@ -97,7 +94,7 @@ cases (time = render + encode, median; numbers from [docs/BENCHMARK.md](../../BE
 | photo background | 47.60 ms / 523 396 B | 17.88 ms / 56 442 B | 45.94 ms / 414 512 B |
 
 The photo WebP case was optimised afterwards (45.9 → 19.9 ms, 414 → 376 KB, see
-[Benchmark](../benchmark.md#phase-1-losses-and-what-was-done)); the other numbers have not been
+[Benchmark](../benchmark.md)); the other numbers have not been
 re-measured per format since. Overall, the final 0.1.0 run renders a PNG in 1.33 ms and a raw buffer
 in 0.64 ms (geometric means over 250 fixtures on an Intel i3-10100).
 
@@ -142,7 +139,7 @@ const onWhite = renderer.renderSync(
 
 ::: tip
 The JPEG encoder simply drops the alpha channel; it does not blend with any colour, and there is no
-background option — takumi behaves the same. Fully transparent
+background option. Fully transparent
 pixels become black, and a semi-transparent pixel keeps its colour at full strength: a canvas filled
 with `rgba(255, 0, 0, 0.5)` comes out solid red, and a soft shadow on a transparent canvas turns into a
 hard-edged block of the shadow colour. Put a solid colour on the root whenever you encode to JPEG.
@@ -150,7 +147,7 @@ hard-edged block of the shadow colour. Put a solid colour on the root whenever y
 
 ## WebP
 
-WebP output is **always lossless**, exactly like takumi's WebAssembly build: `quality` and
+WebP output is **always lossless**: `quality` and
 `lossless: false` are accepted and ignored. Alpha is kept.
 
 <!-- @example formats#webp -->
@@ -261,12 +258,7 @@ console.log(svg.slice(0, 90));
 
 The SVG of this example is 7 118 bytes. Things to know:
 
-- **Text is not text.** Glyphs are drawn as outlines; there is no font embedding and the text is not
-  selectable or searchable. In exchange, the SVG looks the same without your fonts installed.
-- `format`, `quality` and `devicePixelRatio` are ignored: SVG output is always laid out at a device
-  pixel ratio of 1, as in takumi (the document is scalable anyway).
-- In the benchmark both engines' SVG output was rasterised and compared: 175/179 fixtures identical or
-  equivalent to takumi's SVG.
+SVG text is emitted as glyph outlines. Test SVG output with the viewer your application uses.
 
 ## Device pixel ratio
 
@@ -365,6 +357,4 @@ try {
 }
 ```
 
-The encoders are bm-engine's own, so the bytes differ from takumi's even where the pixels are identical;
-the [Benchmark](../benchmark.md) compares decoded pixels. See also [Performance](./performance.md) for
-choosing between raw and encoded output, and [Profiles and size](../profiles-and-size.md).
+Encoded file hashes do not establish visual equality. Compare decoded pixels when checking image output.

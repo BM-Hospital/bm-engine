@@ -84,9 +84,7 @@ const families = pdf.registerFont({ name: "Inter", data: readFileSync("assets/fo
 pdf.loadFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") }); // loadFont = registerFont
 ```
 
-`registerFont` nhận đúng những gì `Renderer` ảnh nhận ([`registerFont`](../image/api.md#registerfont)):
-bytes, `{ name, data, weight?, style? }`, hoặc một URL / loader (khi đó nó trả về promise). `loadFont` là
-tên mà takumi-pdf đặt cho cùng method này.
+`renderPdf` là bí danh của `render` trên `PdfRenderer`.
 
 <!-- @example pdf-api#fonts-admin -->
 ```js
@@ -149,12 +147,7 @@ Dùng nó để đo một band trước khi đặt lề ([Lề và band](headers
 
 ### `prepare` {#prepare}
 
-`prepare(source, options)` xử lý `fonts` và `images` nạp lười một lần rồi trả về một handle `Prepared` mà
-`render` và `measure` đều nhận. Tùy chọn truyền cho `render` được gộp đè lên tùy chọn đã truyền cho
-`prepare`. Nó cũng tải về các ảnh từ xa mà tài liệu và các band nhắc tới còn `images` chưa cung cấp, bằng
-`images.fetch` hoặc `fetch` toàn cục (tìm bằng cách quét nguồn, không phải bằng bước `needs` native của
-takumi-pdf). Một lần tải lỗi sẽ làm promise bị từ chối, trừ khi `images.throwOnError` là `false`. Font không được
-tải: file font đi vào `fonts` hoặc `registerFont`.
+`prepare(source, options)` nạp tài nguyên một lần rồi trả về handle `Prepared` cho `render` và `measure`. Các tùy chọn của `render` được gộp đè lên tùy chọn của `prepare`. Bước này phân tích tài liệu và các band để nạp font subset, file `@font-face` và ảnh còn thiếu. Cấu hình `images.fetch` để kiểm soát việc tải ảnh; xem [font trong PDF](fonts.md) và đăng ký font rõ ràng để tránh thiếu chữ.
 
 <!-- @example pdf-api#prepare -->
 ```js
@@ -390,7 +383,7 @@ Script ví dụ kiểm tra từng thông điệp dưới đây (phần chữ sau
 | `viewport: { height: 300 }` | `invalid viewport: width is required` |
 | `viewport: { width: 0 }` | `invalid viewport: width/height must be > 0` |
 | `viewport` không có `height` và nội dung cao bằng 0 | `invalid viewport: content has zero size and no width/height was given` |
-| `header: 5` | no error: a number band is written as text, as takumi-pdf-js does |
+| `header: 5` | no error: a number band is written as text-js does |
 | `pages: { middle: {} }` | `unknown page rule: middle` |
 | `pages: { first: { body: "x" } }` | `unknown field of pages.first: body` |
 | `pageRanges: 3` | `invalid pageRanges: expected an array of page numbers or { from, to } spans` |

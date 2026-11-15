@@ -49,6 +49,8 @@ const S = struct {
     /// result of `avoidFloats`: x shift, band width, y push
     av: [3]f32,
     frq: FloatReq,
+    /// Fragmentainer offset of the preceding resumed in-flow child.
+    resume_dy: f32,
 };
 
 /// Where a float is placed from: its containing block and the position it occurs at.
@@ -82,13 +84,13 @@ fn inFlow(s: *const st.Style) bool {
 /// Static test for a box whose own margins collapse through it: an empty auto-height block.
 fn selfCollapsing(t: anytype, node: u32) bool {
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     if (n.measured or s.display != .block or s.flow_root or s.overflow_x != .visible or s.overflow_y != .visible) return false;
     if (s.border.top > 0 or s.border.bottom > 0 or tr.resolveLp(s.padding.top, 0) > 0 or tr.resolveLp(s.padding.bottom, 0) > 0) return false;
     if (orElse(tr.resolveDim(s.size[1], 0), 0) > 0 or orElse(tr.resolveDim(s.min_size[1], 0), 0) > 0 or s.aspect_ratio != null) return false;
     var k = n.first_child;
     while (k != no_node) : (k = t.nextSibling(k)) {
-        if (inFlow(&t.nodes.items[k].style)) return false;
+        if (inFlow(t.nodes.items[k].style)) return false;
     }
     return true;
 }
@@ -102,12 +104,12 @@ fn topSetEst(t: anytype, ch: u32, own: f32) MarginSet {
     var guard: u32 = 0;
     while (guard < tr.max_depth) : (guard += 1) {
         const n = &t.nodes.items[cur];
-        const s = &n.style;
+        const s = n.style;
         if (n.measured or n.child_count == 0 or s.display != .block or s.float != .none or s.flow_root or s.position.isOut() or
             s.overflow_x != .visible or s.overflow_y != .visible or s.border.top > 0 or tr.resolveLp(s.padding.top, 0) > 0) break;
         var k = n.first_child;
         while (k != no_node) : (k = t.nextSibling(k)) {
-            const ks = &t.nodes.items[k].style;
+            const ks = t.nodes.items[k].style;
             if (!inFlow(ks)) continue;
             set = set.with(orElse(tr.resolveDim(ks.margin.top, 0), 0));
             if (ks.clear != .none or !selfCollapsing(t, k)) break;
@@ -126,7 +128,7 @@ pub noinline fn placeFloat(t: anytype, ch: u32, rq: *const FloatReq, content: *[
     const mark = t.scratch.mark();
     defer t.scratch.release(mark);
     const c = try t.scratch.create(t.alloc, FloatS);
-    const cs = &t.nodes.items[ch].style;
+    const cs = t.nodes.items[ch].style;
     const inner_w = rq.parent[0];
     t.rbox(&c.cb, cs, rq.parent);
     const cb = &c.cb;
@@ -154,13 +156,17 @@ pub noinline fn placeFloat(t: anytype, ch: u32, rq: *const FloatReq, content: *[
     const bf = t.bfc orelse return true;
     const rects = t.float_rects.items[@min(bf.start, t.float_rects.items.len)..];
     const mw = @max(c.co.size[0] + ms, 0);
-    const mh = @max(c.co.size[1] + cb.margin[1] + cb.margin[3], 0);
+    const extra_h: f32 = if (comptime st.frag_enabled) if (ch < t.paged.float_extents.len) t.paged.float_extents[ch] else 0 else 0;
+    const mh = @max(c.co.size[1] + cb.margin[1] + cb.margin[3] + extra_h, 0);
     const lo = rq.org[0] + rq.inset_left;
     if (rq.fit) |f| {
         const line_top = rq.org[1] + rq.y_top;
         if (f[0] + mw > f[1] + 1.0 / 128.0 or bf.last_top > line_top + 1.0 / 128.0 or fl.clearY(rects, cs.clear) > line_top + 1.0 / 128.0) return false;
     }
     var top = @max(rq.org[1] + rq.y_top, bf.last_top);
+    if (comptime st.frag_enabled) if (ch < t.paged.float_shifts.len) {
+        top = @max(top, rq.org[1] + rq.y_top + t.paged.float_shifts[ch]);
+    };
     top = @max(top, fl.clearY(rects, cs.clear));
     const p = fl.place(rects, cs.float == .left, mw, mh, top, lo, lo + inner_w);
     bf.last_top = p[1];
@@ -238,7 +244,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     c.in = in_.*;
     const in = &c.in;
     const n = &t.nodes.items[node];
-    const s = &n.style;
+    const s = n.style;
     t.sbox(&c.box, s, in);
     const box = &c.box;
     c.known = tr.styledKnown(in, box);
@@ -263,7 +269,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
         var float_w: f32 = 0;
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display == .none or cs.position.isOut()) continue;
             const side = (comptime @TypeOf(t.*).config.floats) and cs.float != .none and avail_w != tr.MINC;
             t.rbox(&c.cb, cs, .{ NONE, inner_h });
@@ -331,7 +337,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
     if (in.layout) {
         var ch = n.first_child;
         while (ch != no_node) : (ch = t.nextSibling(ch)) {
-            const cs = &t.nodes.items[ch].style;
+            const cs = t.nodes.items[ch].style;
             if (cs.display != .none and cs.position.isOut()) n_abs += 1;
         }
         if (n_abs > 0) abs = try t.scratch.alloc(t.alloc, AbsItem, n_abs);
@@ -340,6 +346,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
 
     c.content = .{ 0, 0 };
     var y = inset[1];
+    c.resume_dy = 0;
     var y_abs = y;
     c.first_set = .{};
     c.active = .{};
@@ -350,7 +357,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
 
     var ch = n.first_child;
     while (ch != no_node) : (ch = t.nextSibling(ch)) {
-        const cs = &t.nodes.items[ch].style;
+        const cs = t.nodes.items[ch].style;
         if (cs.display == .none) {
             if (in.layout) t.hide(ch);
             continue;
@@ -363,7 +370,7 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             continue;
         }
         if (fl_on and cs.float != .none) {
-            c.frq = .{ .parent = c.parent, .org = c.org, .inset_left = inset[0], .y_top = y + (if (with_first and collapse_top) 0 else c.active.resolve()), .do_layout = in.layout };
+            c.frq = .{ .parent = c.parent, .org = .{ c.org[0], c.org[1] + c.resume_dy }, .inset_left = inset[0], .y_top = y + (if (with_first and collapse_top) 0 else c.active.resolve()), .do_layout = in.layout };
             _ = try placeFloat(t, ch, &c.frq, &c.content);
             continue;
         }
@@ -378,14 +385,14 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             const cn = &t.nodes.items[ch];
             const est: f32 = if (with_first and collapse_top) 0 else c.active.merge(topSetEst(t, ch, cb.margin[1])).resolve();
             if (cs.clear != .none) {
-                const cy = fl.clearY(t.float_rects.items[@min(t.bfc.?.start, t.float_rects.items.len)..], cs.clear) - c.org[1];
+                const cy = fl.clearY(t.float_rects.items[@min(t.bfc.?.start, t.float_rects.items.len)..], cs.clear) - c.org[1] - c.resume_dy;
                 if (cy > y + est) y = cy - est;
             }
             // (inline content keeps its box and has its lines shortened instead: flow.zig)
             const lines = (comptime @TypeOf(t.*).config.inline_fn) and t.inline_fn != null and cs.is_inline_content and
                 (cn.measured or cs.display == .inline_row) and !isRoot(cs, &.{ .collapse = true });
             if (!lines and (cn.measured or cs.display != .block or isRoot(cs, &.{ .collapse = true }))) {
-                try avoidFloats(t, c, ch, y + est);
+                try avoidFloats(t, c, ch, y + est + c.resume_dy);
                 fx = c.av[0];
                 band_w = c.av[1];
                 y += c.av[2];
@@ -397,14 +404,14 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
                 } else if (s.rtl and !cb.margin_auto[2] and has(cb.size[0])) {
                     ml += inner_w - clampO(cb.size[0], cb.min[0], cb.max[0]) - ms;
                 }
-                t.bfc_org = .{ c.org[0] + inset[0] + ml, c.org[1] + y + est };
+                t.bfc_org = .{ c.org[0] + inset[0] + ml, c.org[1] + y + est + c.resume_dy };
             }
         }
         // width: explicit, else from a definite height through the aspect ratio, else fill the container
         const ckw = orElse(cb.size[0], band_w - ms);
         // (width: min-/max-/fit-content does not fill: the child sizes itself against the available width;
         // so does a child whose width follows from its height through the aspect ratio)
-        const self_sized = cs.size[0].isKeyword() or (!has(cb.size[0]) and has(t.ratio(cs, cb, 0, ckh)));
+        const self_sized = cs.size[0].isKeyword() or t.nodes.items[ch].replaced or (!has(cb.size[0]) and has(t.ratio(cs, cb, 0, ckh)));
         c.ci = .{
             .known = .{ if (self_sized) NONE else @max(clampO(ckw, cb.min[0], cb.max[0]), cb.pb[0]), ckh },
             .parent = c.parent,
@@ -455,11 +462,20 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             c.active = bottom_set;
             y_abs = y + c.active.resolve();
         }
+        if (comptime st.frag_enabled) if (t.paged.inline_resume) |continuation| {
+            var ancestor = continuation.node;
+            while (ancestor < t.nodes.items.len) : (ancestor = t.nodes.items[ancestor].parent) {
+                if (ancestor == ch) {
+                    c.resume_dy = continuation.dy;
+                    break;
+                }
+            }
+        };
     }
 
     if (fl_on and t.bfc == &c.bfc) {
         // a formatting context root grows to contain its floats
-        const fb = fl.bottom(t.float_rects.items[@min(c.bfc.start, t.float_rects.items.len)..]);
+        const fb = fl.bottom(t.float_rects.items[@min(c.bfc.start, t.float_rects.items.len)..]) - c.resume_dy;
         if (fb > y + c.active.resolve()) {
             y = fb;
             c.active = .{};

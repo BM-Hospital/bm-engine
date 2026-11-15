@@ -2,22 +2,17 @@
 
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
-bm-engine is compiled into three binaries (and a fourth, `pdf`, for PDF output) with different feature sets so that you only download what you
-use: `core` (489.6 KiB), `standard` (936.5 KiB) and `full` (1 143.6 KiB), against 4 234.9 KiB for
-takumi 2.20's wasm. This page lists what each profile contains, what each optional feature costs, what a
-smaller profile does with input it cannot handle, how to make a custom build, and why only WOFF is
-available as a lazily loaded add-on. All sizes are after `wasm-opt -Oz`; KiB = 1024 bytes.
+Choose a profile to download only the features you need. Sizes below are after `wasm-opt -Oz` (`pdf`: built for speed, see below); KiB = 1024 bytes.
 
 ## Sizes
 
-| Build | Raw | gzip -9 | brotli (q11) | vs. takumi raw |
-|:--|--:|--:|--:|:--|
-| `core` — `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB | 195.3 KiB | 8.7× smaller |
-| `standard` — `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB | 398.6 KiB | 4.5× smaller |
-| `full` — `bm_engine.wasm` | 1 143.6 KiB | 560.0 KiB | 470.8 KiB | 3.7× smaller |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 675.2 KiB | 810.0 KiB | 660.2 KiB | 2.5× smaller |
-| WOFF add-on — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB | — |
-| takumi 2.20 (`@takumi-rs/wasm`) | 4 234.9 KiB | 1 860.9 KiB | 1 409.3 KiB | — |
+| Build | Raw | gzip -9 | brotli (q11)  |
+|:--|--:|--:|--: |
+| `core` — `bm_engine.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
+| `standard` — `bm_engine.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
+| `full` — `bm_engine.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 3 187.8 KiB | 1 311.8 KiB | 1 015.7 KiB  |
+| WOFF add-on — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB  |
 
 The JavaScript wrapper is a few KiB of dependency-free ESM and the same for every profile. The binaries
 import nothing from the host.
@@ -44,9 +39,7 @@ Which backend to use and how they compare: [Native vs WebAssembly](./native-vs-w
 | bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
 | bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
 | bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
-| bm wasm `WOFF add-on` | wasm32 | 84.4 | 67.8 | 65.5 |  |
-| takumi 2.20 native win32-x64-msvc (.node) |  | 9 796 | 4 258 | 3 201 |  |
-| takumi 2.20 wasm (takumi_wasm_bg.wasm) |  | 4 235 | 1 861 | 1 409 |  |
+| bm wasm `WOFF add-on` | wasm32 | 84.4 | 67.8 | 65.5  |
 
 Native addons from `native/dist/manifest.json` (built 2026-11-13 with Zig 0.17.1, ReleaseFast). Each user downloads one addon (the optional package for their platform) plus the wasm fallback that ships in the main package.
 <!-- /native-bench:sizes -->
@@ -83,7 +76,7 @@ Native addons from `native/dist/manifest.json` (built 2026-11-13 with Zig 0.17.1
 
 `bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
 CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
-Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.5 MB to `full`. It is not part of the table below because `pdf` is
+Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It is built for speed rather than size (Zig `ReleaseFast` + `wasm-opt -O3`): PDF generation is usually a batch job, and this makes warm renders 20-27 % faster for about 1.3 MB more wasm. The larger code also costs about 30-45 MB more process memory (V8's compiled code) and a slower first render after loading (about 100 ms instead of 60 ms for a one-page invoice). It is not part of the table below because `pdf` is
 not a feature of `core`, `standard` or `full`.
 
 ## Marginal cost per feature
@@ -127,7 +120,7 @@ Checked with `bench/probe/profiles.mjs` on all three binaries (no input ever tra
 | HTML string source | throws `this build has no HTML input support (use the standard / full build)` | ✓ |
 | `css` / `stylesheets` option | throws `this build has no stylesheet (\`css\` option) support ...` | ✓ |
 | node with `tw` | throws `Tailwind (\`tw\`) is not supported by this build` | ✓ |
-| WOFF / WOFF2 font | throws `this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF add-on ...)` | ✓ |
+| WOFF / WOFF2 font | throws `this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF add-on ...)`  |
 | CFF `.otf` font | throws `unsupported font format` | ✓ |
 | `oklch()` / `lab()` / `color-mix()` in an inline style | throws `invalid value for style property ...` | ✓ |
 | SVG / WebP / GIF image | paints nothing | ✓ |

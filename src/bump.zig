@@ -124,11 +124,16 @@ pub const Bump = struct {
         _ = alignment;
         _ = ret_addr;
         const self: *Bump = @ptrCast(@alignCast(ctx));
-        if (new_len <= memory.len) return true;
-        // grow in place only when `memory` is the last allocation of its chunk
-        const c = &self.chunks.items[self.find(memory.ptr) orelse return false];
+        // grow in place only when `memory` is the last allocation of its chunk (a shrink of the last
+        // allocation gives its tail back: `toOwnedSlice` of a list with spare capacity)
+        const ci = self.find(memory.ptr) orelse return new_len <= memory.len;
+        const c = &self.chunks.items[ci];
         const off = @intFromPtr(memory.ptr) - @intFromPtr(c.mem.ptr);
-        if (off + memory.len != c.used) return false;
+        if (off + memory.len != c.used) return new_len <= memory.len;
+        if (new_len <= memory.len) {
+            c.used = off + new_len;
+            return true;
+        }
         if (c.mem.len - off < new_len) return false;
         c.used = off + new_len;
         return true;

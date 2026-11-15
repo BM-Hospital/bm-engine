@@ -67,7 +67,7 @@ adapter afterwards (only the static PNGs ship).
 
 ## Rendering a Svelte component
 
-takumi's SvelteKit guide renders a component with `svelte/server` and passes `head + body` as HTML. The
+You can render a component with `svelte/server` and passes `head + body` as HTML. The
 same works with bm-engine's HTML input, which needs the `standard` or `full` profile (HTML parsing, plus
 the `css` feature for the injected `<style>` block). Fonts still come from the renderer: register them
 once instead of passing a font URL with every response:

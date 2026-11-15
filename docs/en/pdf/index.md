@@ -2,7 +2,7 @@
 
 [English](index.md) · [Tiếng Việt](../../vi/pdf/index.md)
 
-bm-engine can write PDF files. The PDF writer is a port of `takumi-pdf`: the same layout engine that
+bm-engine can write PDF files. The same layout engine that
 draws PNG and SVG lays a document out, breaks it into pages and writes it as vector graphics with real,
 selectable text and embedded subset fonts. It also writes headers and footers, links, bookmarks,
 metadata, attachments, tagged PDF and PDF/A. The PDF writer is only in the **`pdf` build profile**
@@ -196,4 +196,4 @@ apply to this entry in the same way.
 | Native addon, WebAssembly, the `pdf` profile's size | [Native and WebAssembly](native-and-wasm.md) |
 | Every export, method and option | [PDF API reference](api.md) |
 | What CSS does in a PDF | [CSS in PDF](css-support.md) |
-| Compared with takumi-pdf | [Differences from takumi-pdf](differences-from-takumi.md) |
+| Known limitations | [Known limitations](limitations.md) |

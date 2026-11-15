@@ -222,14 +222,16 @@ probe("metadata.attachments.basic", "attachments: /EmbeddedFiles name tree, file
   await att(t, "same bytes under two names", { attachments: [{ ...ATT, name: "one.xml" }, { ...ATT, name: "two.xml" }] });
 });
 
-probe("metadata.attachments.compression", "attachment stream filter: compressed when it helps? (text, incompressible bytes, tiny data)", async (t) => {
+probe("metadata.attachments.compression", "attachment stream filter and decoded bytes (compression output is implementation-dependent)", async (t) => {
   const rnd = new Uint8Array(4096); let s = 12345; for (let i = 0; i < rnd.length; i++) { s = (s * 1103515245 + 12345) >>> 0; rnd[i] = s >>> 24; }
   for (const [name, data] of [["compressible text 8k", "abcdefgh".repeat(1024)], ["random 4k", rnd], ["tiny", "x"], ["png signature (already compressed type)", new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...rnd.subarray(0, 600)])]]) {
     const r = await t.both(HTML, { attachments: [{ name: "f.bin", data, mimeType: "application/octet-stream" }] });
     if (!t.same(name + " outcome", ...outcomes(r.bm, r.ref)) || !r.ref || r.bm.error) continue;
     const f = (d) => { const a = attachmentsText(d).files[0]; return { filter: a.stream.Filter || null, size: a.stream.Params, sub: a.stream.Subtype }; };
     t.same(name + " filter / params", f(r.bm), f(r.ref));
-    t.same(name + " encoded length", attachmentsText(r.bm).files[0].rawLen, attachmentsText(r.ref).files[0].rawLen);
+    // Deflate is not canonical: different zlib versions/strategies encode the same bytes to
+    // different lengths. Compare the filter/params above and the decoded payload instead.
+    t.same(name + " decoded bytes", attachmentsText(r.bm).files[0].data, attachmentsText(r.ref).files[0].data);
   }
 });
 

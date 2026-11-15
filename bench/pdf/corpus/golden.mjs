@@ -1,20 +1,20 @@
-// The inputs behind takumi-pdf's golden PDFs (ref/takumi/takumi-pdf/tests/fixtures-generated/*.pdf), as
+// The inputs behind takumi-pdf's golden PDFs (tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf), as
 // scripts/pdf-compare.mjs builds them. That script is a CLI (it renders when imported), so its FIXTURES section
 // is sliced out of the source at load time and compiled into bench/out/pdf/.gen/golden-fixtures.mjs: whatever the
 // checkout's scripts/pdf-compare.mjs says the inputs are is what this corpus renders, with no copy to drift.
 // The interchange and tagging fixtures come from their own modules (scripts/pdf-interchange.mjs,
-// scripts/pdf-tagging-fixtures.mjs). Returns [] (with a reason) when ref/takumi is absent.
+// scripts/pdf-tagging-fixtures.mjs). Returns [] (with a reason) when the vendored corpus is absent.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT, OUT_DIR } from "../lib/tools.mjs";
 
-export const REF = path.join(ROOT, "ref", "takumi");
+export const REF = path.join(ROOT, "tests", "upstream", "takumi");
 export const GOLDEN_DIR = path.join(REF, "takumi-pdf", "tests", "fixtures-generated");
 
 export async function goldenFixtures() {
   const src = path.join(ROOT, "scripts", "pdf-compare.mjs");
-  if (!existsSync(REF) || !existsSync(src)) return { fixtures: [], reason: "ref/takumi or scripts/pdf-compare.mjs missing" };
+  if (!existsSync(REF) || !existsSync(src)) return { fixtures: [], reason: "vendored Takumi corpus or scripts/pdf-compare.mjs missing" };
   const text = readFileSync(src, "utf8").replace(/\r\n/g, "\n"); // git autocrlf checkouts
   const a = text.indexOf("// fixtures (inputs from tests/pdf_fixtures.rs)");
   const b = text.indexOf("\n// run\n");
@@ -28,9 +28,10 @@ export async function goldenFixtures() {
     'import zlib from "node:zlib";',
     `import { INTERCHANGE_FIXTURES } from ${url(path.join(ROOT, "scripts", "pdf-interchange.mjs"))};`,
     `import { taggingFixtures } from ${url(path.join(ROOT, "scripts", "pdf-tagging-fixtures.mjs"))};`,
+    `import { moreFixtures } from ${url(path.join(ROOT, "scripts", "pdf-compare-more.mjs"))};`,
     `const ref = ${JSON.stringify(REF)};`,
     body,
-    "export const ALL = [...FIXTURES, ...INTERCHANGE_FIXTURES, ...taggingFixtures({ png })];",
+    "export const ALL = [...FIXTURES, ...INTERCHANGE_FIXTURES, ...taggingFixtures({ png }), ...moreFixtures({ jtext, jcolumn })];",
     "export { DEFAULT_FONTS, png };",
   ].join("\n");
   const dir = path.join(OUT_DIR, ".gen");

@@ -263,7 +263,7 @@ test "table: collapsed borders are reported as used borders" {
     // separate borders: the styles' values
     var st = t.style(tbl).*;
     st.border_collapse = false;
-    t.setStyle(tbl, st);
+    try t.setStyle(tbl, st);
     try t.compute(root, vp400, &T.dummy, T.noMeasure, .{});
     try testing.expectEqual(@as(f32, 6), t.layout(tbl).border.left);
     try testing.expectEqual(@as(f32, 9), t.layout(tbl).padding.left);
@@ -652,7 +652,7 @@ test "table: rtl orders the columns right to left" {
     const g = t.tableGeom(tbl).?;
     try testing.expect(g.rtl);
     // an rtl block parent puts the shrink-to-fit table at its right edge
-    t.setStyle(root, .{ .display = .block, .size = .{ px(400), .auto }, .rtl = true });
+    try t.setStyle(root, .{ .display = .block, .size = .{ px(400), .auto }, .rtl = true });
     try t.compute(root, .{ .{ .definite = 400 }, .{ .definite = 300 } }, &T.dummy, T.noMeasure, .{});
     try expectRect(&t, tbl, 304, 0, 96, 14);
 }

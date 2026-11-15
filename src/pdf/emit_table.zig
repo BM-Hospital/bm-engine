@@ -160,6 +160,7 @@ pub noinline fn collapsedAfter(e: *Painter, id: u32, x: f32, y: f32) Error!void 
     if (!tg.collapse) return;
     const c = e.ctx();
     try paintCollapsed(e, &c, id, x, y, tg);
+    for (e.repeats) |repeat| try paintCollapsedRepeat(e, &c, id, x, y, tg, repeat);
 }
 
 /// Row / row-group decorations: its shadows, and its background into each of its cells.
@@ -557,6 +558,40 @@ fn roundPx(v: f32) f32 {
 /// Blink `TablePainter::PaintCollapsedBorders` for the table laid out at node `id`, whose border
 /// box is at (`x`, `y`): painted after everything inside the table.
 pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y: f32, tg: *const TG) Error!void {
+    try paintCollapsedImpl(p, ctx, id, x, y, tg, null, 0);
+}
+
+/// Paints the collapsed borders of one repeated table section at its repeated page position.
+pub noinline fn paintCollapsedRepeat(
+    p: *Painter,
+    ctx: *const Ctx,
+    id: u32,
+    x: f32,
+    y: f32,
+    tg: *const TG,
+    repeat: layout.fragment.Repeat,
+) Error!void {
+    var section_index: ?usize = null;
+    for (tg.secs, 0..) |sec, i| {
+        if (sec.node == repeat.node) {
+            section_index = i;
+            break;
+        }
+    }
+    const index = section_index orelse return;
+    try paintCollapsedImpl(p, ctx, id, x, y, tg, index, repeat.dy);
+}
+
+fn paintCollapsedImpl(
+    p: *Painter,
+    ctx: *const Ctx,
+    id: u32,
+    x: f32,
+    y: f32,
+    tg: *const TG,
+    only_section: ?usize,
+    repeat_dy: f32,
+) Error!void {
     if (!tg.collapse or tg.n_bcols == 0 or tg.rows.len == 0) return;
     if (p.f.nodes.items[id].cs.visibility != .visible) return;
     var b: Borders = .{ .p = p, .bc = tg.n_bcols, .rtl = tg.rtl };
@@ -571,7 +606,10 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
     const per_row = b.epr;
     const pr: isize = @intCast(per_row);
     var prev_row: ?usize = null;
-    for (tg.secs) |*sec| {
+    for (tg.secs, 0..) |*sec, section_index| {
+        if (only_section) |wanted| {
+            if (section_index != wanted) continue;
+        }
         if (sec.n_rows == 0) continue;
         const end = @min((@as(usize, sec.start) + sec.n_rows + 1) * per_row, b.edges.len);
         var index: usize = @as(usize, sec.start) * per_row;
@@ -653,25 +691,98 @@ pub noinline fn paintCollapsed(p: *Painter, ctx: *const Ctx, id: u32, x: f32, y:
                 if (prev_end < row_start - 64) {
                     starts = .{ prev_end - @divTrunc(w, 2), bs };
                     n_starts = 2;
-                    frag_end = y + sec.y + @as(f32, @floatFromInt(prev_end)) / 64;
+                    frag_end = y + repeat_dy + sec.y + @as(f32, @floatFromInt(prev_end)) / 64;
                 }
             }
             _ = ctx;
             for (starts[0..n_starts], 0..) |bs_k, k_start| {
                 const fx = x + tg.sec_x + @as(f32, @floatFromInt(is)) / 64;
-                const fy = y + sec.y + @as(f32, @floatFromInt(bs_k)) / 64;
+                const fy = y + repeat_dy + sec.y + @as(f32, @floatFromInt(bs_k)) / 64;
                 const x1 = roundPx(fx);
                 const y1 = roundPx(fy);
                 const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);
                 const y2 = @max(roundPx(fy + @as(f32, @floatFromInt(bsz)) / 64), y1);
                 // (a page of a paginated document draws the borders on it, once)
                 const hi = if (k_start == 0 and n_starts == 2) @min(@max(y1, y2), frag_end.?) else @max(y1, y2);
-                if (!p.pieceShows(@min(y1, y2), hi)) continue;
+                // (from the page before, `paintUnder`: takumi keeps a cell whose unsnapped bounds
+                // reach the window and paints all its pieces)
+                const lo = if (p.no_content) @min(fy, @min(y1, y2)) else @min(y1, y2);
+                if (!p.pieceShows(lo, hi)) continue;
                 try border.paintSideRect(&p.d, if (inline_axis) 0 else 3, x1, y1, x2, y2, b.styleAt(index), b.color(index));
             }
         }
         prev_row = @as(usize, sec.start) + sec.n_rows;
     }
+
+    // A row fragmented by a page boundary gets the collapsed block edge of that fragment on
+    // each page. The regular grid only has edges at the row's real start and end, so reproduce
+    // those winners at the current page window's interior cuts.
+    if (p.plain()) {
+        const win = p.window;
+        const dy = p.plain_dy;
+        for (tg.secs, 0..) |sec, section_index| {
+            if (only_section) |wanted| if (section_index != wanted) continue;
+            for (0..sec.n_rows) |frow| {
+                const row_index = @as(usize, sec.start) + frow;
+                if (row_index >= tg.rows.len or tg.rows[row_index].collapsed) continue;
+                const row = &tg.rows[row_index];
+                const row_top = y + repeat_dy + sec.y + row.y - dy;
+                const row_bottom = row_top + row.h;
+                const eps = 1.0 / 64.0;
+                if (std.math.isFinite(win.top) and win.top > row_top + eps and win.top < row_bottom - eps) {
+                    const boundary = win.top + dy;
+                    for (0..tg.cols.len + 1) |col| {
+                        const edge = row_index * per_row + col * 2 + 1;
+                        try paintFragmentInlineEdge(p, &b, tg, edge, x, boundary);
+                    }
+                }
+                if (std.math.isFinite(win.bottom) and win.bottom > row_top + eps and win.bottom < row_bottom - eps) {
+                    const boundary = win.bottom + dy;
+                    for (0..tg.cols.len + 1) |col| {
+                        const edge = (row_index + 1) * per_row + col * 2 + 1;
+                        try paintFragmentInlineEdge(p, &b, tg, edge, x, boundary);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Paints one collapsed horizontal grid edge at a page-fragment boundary.
+fn paintFragmentInlineEdge(p: *Painter, b: *const Borders, tg: *const TG, index: usize, x: f32, boundary: f32) Error!void {
+    if (!b.canPaint(index)) return;
+    const per_row = b.epr;
+    const pr: isize = @intCast(per_row);
+    const tcol = (index % per_row) / 2;
+    if (tcol >= tg.cols.len + 1) return;
+    const w = b.width(index);
+    const s = b.joint(b.at(index, -2), index, b.at(index, -(pr + 1)), b.at(index, -1), false);
+    const e = b.joint(index, b.at(index, 2), b.at(index, -(pr - 1)), b.at(index, 1), false);
+    const start_wins = s.ivb != -1 and s.ic != 1;
+    const end_wins = e.ivb != -1 and e.ic != -1;
+    var is = colEdge(tg, tcol);
+    var isz = colEdge(tg, tcol + 1) - is;
+    const bs = luRel(boundary) - @divTrunc(w, 2);
+    const bsz = w;
+    const sj = @divTrunc(s.inline_size, 2);
+    const ej = @divTrunc(e.inline_size, 2);
+    if (start_wins) {
+        is -= sj;
+        isz += sj;
+    } else {
+        is += sj;
+        isz -= sj;
+    }
+    if (end_wins) isz += ej else isz -= ej;
+    const ic = if (tg.rtl) luRel(tg.sec_w) - is - isz else is;
+    const fx = x + tg.sec_x + @as(f32, @floatFromInt(ic)) / 64;
+    const fy = @as(f32, @floatFromInt(bs)) / 64;
+    const x1 = roundPx(fx);
+    const y1 = roundPx(fy);
+    const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);
+    const y2 = @max(roundPx(fy + @as(f32, @floatFromInt(bsz)) / 64), y1);
+    if (!p.pieceShows(@min(y1, y2), @max(y1, y2))) return;
+    try border.paintSideRect(&p.d, 0, x1, y1, x2, y2, b.styleAt(index), b.color(index));
 }
 
 /// Inline-start edge of column `k` (the inline-end edge of the last one for k = cols.len).

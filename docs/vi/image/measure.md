@@ -79,9 +79,8 @@ cao dòng của Inter cỡ 16 px).
   nằm tại (16, 16) do padding của thẻ, phần thân nằm tại (16, 53) = 16 + 29 + gap 8.
 - `x` và `y` của một run tương đối với **content box** của hộp sở hữu nó, nên hãy cộng thêm border và
   padding của hộp đó (và vị trí `transform` của nó) để ra toạ độ trên canvas.
-- `height` của run là chiều cao dòng, không phải phạm vi glyph; takumi báo chiều cao hộp glyph ở đây, nên
-  giá trị khác nhau (vị trí và chiều rộng thì khớp).
-- Trong 0.1.0 run không có trường `text` (run của takumi thì có). Nếu cần nội dung của từng dòng, hãy tự
+- `height` của run là chiều cao dòng, không phải phạm vi glyph.
+- Trong 0.1.0 run không có trường `text`. Nếu cần nội dung của từng dòng, hãy tự
   giữ ở phía bạn hoặc đo từng từ riêng.
 
 ### Hộp nào xuất hiện
@@ -111,11 +110,10 @@ const p = renderer.measureSync(paragraph, { width: 300, height: 140 });
 "fragment" và dấu phẩy. Inline-block và ảnh nằm trên dòng thì xuất hiện như các con, với transform riêng.
 
 Một block nằm trong inline container (một "span" chứa con `display: block`) sẽ tách inline box đó ra
-quanh block, như CSS 2.1 và trình duyệt. `measure()` trả về dạng đã tách, giống takumi: chữ trước và sau
+quanh block, như CSS 2.1 và trình duyệt. `measure()` trả về dạng đã tách: chữ trước và sau
 block vẫn là run của block container, còn mỗi nhóm block liên tiếp xuất hiện thành một hộp con thêm vào,
 rộng bằng container, có các con là những block đó. Tương tự, khi một block container có cả chữ lẫn con dạng
-block, mỗi đoạn chữ được bọc trong một block ẩn danh xuất hiện trong `children` và sở hữu các run đó (giống
-takumi).
+block, mỗi đoạn chữ được bọc trong một block ẩn danh xuất hiện trong `children` và sở hữu các run đó.
 
 ### Vẽ lớp phủ từ số đo
 
@@ -245,7 +243,7 @@ làm tròn theo từng cỡ (phần thân của [mục kết quả](#kết-quả
 
 ## Transform
 
-`transform` là ma trận affine 2D đầy đủ của hộp, giống takumi: vị trí layout, độ dời của `position:
+`transform` là ma trận affine 2D đầy đủ của hộp: vị trí layout, độ dời của `position:
 relative` và CSS transform của hộp (`transform`, `translate`, `rotate`, `scale`, skew, quanh
 `transform-origin`), nhân với transform của các tổ tiên. Các số là giá trị `f32` chính xác mà engine
 tính ra, in dạng thập phân (nên là `0.7071067690849304`, không phải `Math.SQRT1_2`):

@@ -78,13 +78,7 @@ const gradients = renderer.renderSync(grid([
 
 Ghi chú:
 
-- Hướng: góc (`135deg`, `0.25turn`) và từ khóa (`to right`, `to bottom left`). Gradient radial nhận
-  `circle` / `ellipse`, kích thước (`closest-side`, `farthest-corner`, độ dài, phần trăm) và
-  `at <position>`; gradient conic nhận `from <angle>` và `at <position>`.
-- `backgroundSize` và `backgroundRepeat` lát gradient giống như ảnh (ô bàn cờ là một
-  `repeating-conic-gradient` cỡ `30px 30px`).
-- Phần bên trong gradient có thể lệch takumi một mức màu (benchmark: 7 / 7 fixture gradient tương
-  đương).
+- Phép làm tròn màu có thể ảnh hưởng các điểm chuyển gradient. Kiểm tra ảnh ở đúng kích thước đầu ra bạn cần.
 
 ### Không gian màu
 
@@ -279,7 +273,7 @@ const transforms = renderer.renderSync(grid([
 
 ::: warning Không có transform 3D
 Các hàm 3D (`rotateX()`, `rotateY()`, `perspective()`, `matrix3d()`, `translateZ()`, ...) là giá trị
-không hợp lệ, như trong takumi. Trong style inline chúng làm cả lần render throw:
+không hợp lệ. Trong style inline chúng làm cả lần render throw:
 :::
 
 <!-- @example effects#transform-3d -->

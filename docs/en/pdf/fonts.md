@@ -22,7 +22,7 @@ and was executed by it.
 
 bm-engine ships no font and no PDF viewer has yours, so every font a page uses is embedded. It is
 embedded as a subset: only the glyphs the document actually draws, renumbered and written as a CID-keyed
-font. The subsetter is a port of the Rust `subsetter` crate (the one takumi-pdf uses) and reads TrueType
+font. The subsetter is a port of the Rust `subsetter` crate and reads TrueType
 (`glyf`) fonts, TrueType collections and CFF (`.otf`) fonts; WOFF and WOFF2 are decoded first. The
 `cmap` and layout tables are dropped from the output, since the text is already shaped.
 
@@ -53,7 +53,7 @@ a variable font without a `weight` so that it can serve every weight, as describ
 
 <!-- @example pdf-fonts#variable -->
 ```js
-const archivo = readFileSync("ref/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf");
+const archivo = readFileSync("./fonts/Archivo-Variable.ttf");
 pdf.registerFont({ name: "Archivo", data: archivo }); // no weight: the axes stay free
 
 const weights = await pdf.render(
@@ -94,6 +94,14 @@ pdf.registerFont({ name: "Noto Sans", data: readFileSync("assets/fonts/NotoSans-
 // "ⱥ" (U+2C65) is not in Inter but is in Noto Sans: every registered family is a fallback
 const mixed = pdf.renderSync(`<p style="font: 20px Inter">Inter text and ⱥ</p>`, { viewport: { width: 400 } });
 // Inter draws the Latin text and Noto Sans draws ⱥ: two font programs in the file
+```
+
+Use `unicodeRange` when a registered file is one subset of a family. It accepts code point pairs or
+CSS `unicode-range` syntax; characters outside the range continue through the normal fallback chain.
+CSS `@font-face` `unicode-range` descriptors follow the same rule:
+
+```js
+pdf.registerFont({ name: "Inter", data: inter, unicodeRange: "U+0000-00FF" });
 ```
 
 `fontFamilies: ["Inter", "Noto Sans"]` sets the ordered font stack for a render where the document names

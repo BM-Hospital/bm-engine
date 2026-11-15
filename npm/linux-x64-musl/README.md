@@ -20,4 +20,4 @@ The x64 binary needs an x86-64-v2 CPU (SSE4.2, 2009+); on older CPUs it refuses 
 
 Status: cross-compiled and structurally verified (exports, imported symbols, CPU level), but **not yet executed on this platform** by the project; `bm-engine` falls back to WebAssembly if it does not load.
 
-License: (MIT OR Apache-2.0). See LICENSE-MIT, LICENSE-APACHE, NOTICE and THIRD-PARTY-NOTICES.md.
+License: MIT. See LICENSE, NOTICE and THIRD-PARTY-NOTICES.md.

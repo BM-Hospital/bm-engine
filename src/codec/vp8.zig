@@ -1076,7 +1076,7 @@ inline fn loadRows(comptime N: usize, buf: []u8, start: usize, hs: usize, vs: us
 inline fn storeRows(comptime N: usize, buf: []u8, start: usize, hs: usize, vs: usize, r: *const [8]@Vector(N, i16), k0: usize, k1: usize) void {
     const base = buf.ptr + start - 4 * hs;
     for (k0..k1) |k| {
-        const c: @Vector(N, u8) = @intCast(vclamp(r[k], 0, 255));
+        const c: @Vector(N, u8) = @truncate(@as(@Vector(N, u16), @bitCast(vclamp(r[k], 0, 255))));
         const row = base + k * hs;
         if (vs == 1) {
             row[0..N].* = c;

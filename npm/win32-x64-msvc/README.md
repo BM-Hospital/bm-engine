@@ -20,4 +20,4 @@ The x64 binary needs an x86-64-v2 CPU (SSE4.2, 2009+); on older CPUs it refuses 
 
 This binary is executed by the project's native test suite (byte identity against the wasm build, threading, fuzzing).
 
-License: (MIT OR Apache-2.0). See LICENSE-MIT, LICENSE-APACHE, NOTICE and THIRD-PARTY-NOTICES.md.
+License: MIT. See LICENSE, NOTICE and THIRD-PARTY-NOTICES.md.

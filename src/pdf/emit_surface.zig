@@ -197,10 +197,11 @@ const GState = struct { ext: Gs = .{}, ctm: Tf = .identity };
 // ---------------------------------------------------------------------------------------------
 
 pub const Hasher = struct {
-    h: std.hash.Wyhash,
+    // (XxHash64: 64-bit multiplies only; Wyhash's 128-bit products are emulated on wasm32)
+    h: std.hash.XxHash64,
 
     pub fn init(tag: u8) Hasher {
-        return .{ .h = std.hash.Wyhash.init(@as(u64, tag) *% 0x9E37_79B9_7F4A_7C15) };
+        return .{ .h = std.hash.XxHash64.init(@as(u64, tag) *% 0x9E37_79B9_7F4A_7C15) };
     }
     pub fn bytes(h: *Hasher, b: []const u8) void {
         h.u64_(b.len);

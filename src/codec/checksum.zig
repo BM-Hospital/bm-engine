@@ -6,7 +6,13 @@ const bytes = @import("bytes.zig");
 
 /// Tables used: 3 KiB more buy about 2x on the megabyte-long IDAT stream of a photo-like PNG
 /// (1 ms of a 35 ms encode); the wasm binaries keep the single table.
-const crc_slices = if (builtin.cpu.arch.isWasm()) 1 else 4;
+/// The PDF wasm build checks the CRC of every embedded PNG chunk on each render (krilla
+/// `PngData::new`), so it keeps the four tables too.
+const pdf_build = blk: {
+    const root = @import("root");
+    break :blk @hasDecl(root, "bm_config") and root.bm_config.enable_pdf;
+};
+const crc_slices = if (builtin.cpu.arch.isWasm() and !pdf_build) 1 else 4;
 
 /// `crc_tables[k][b]`: the CRC of byte `b` followed by `k` zero bytes.
 const crc_tables: [crc_slices][256]u32 = blk: {

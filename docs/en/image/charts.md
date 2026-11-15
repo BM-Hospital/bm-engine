@@ -512,7 +512,7 @@ const twPng = renderer.renderSync(twChart, { width: 360, height: 200 });
 ::: warning Tailwind v4 gradient names
 The gradient utility is `bg-linear-to-t` (Tailwind v4). The v3 name `bg-gradient-to-t` is not part of
 the supported subset and is skipped **silently** — the bars would simply be invisible. The same is true
-in takumi.
+by the renderer.
 :::
 
 ## Tips

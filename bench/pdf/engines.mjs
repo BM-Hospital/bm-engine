@@ -19,15 +19,25 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { ROOT, PDF_DIR } from "./lib/tools.mjs";
+import { REVISION } from "../../scripts/takumi-test-corpus.mjs";
 
 export const ENGINES = ["bm-native", "bm-wasm", "takumi-pdf"];
 const require = createRequire(path.join(PDF_DIR, "package.json"));
 const TK_DIR = path.join(PDF_DIR, "node_modules", "takumi-pdf");
+const pinnedDir = process.env.TAKUMI_PDF_REF_ENTRY ? path.dirname(path.resolve(process.env.TAKUMI_PDF_REF_ENTRY)) : null;
+const pinned = pinnedDir ? JSON.parse(readFileSync(path.join(pinnedDir, 'wasm-provenance.json'), 'utf8')) : null;
+if (pinned) {
+  if (pinned.revision !== REVISION) throw new Error('PDF validation/benchmark reference revision differs from the corpus');
+  for (const [file, expected] of [['wasm/takumi_pdf_wasm_bg.wasm', pinned.wasmSha256], ['export.mjs', pinned.wrapperSha256]]) {
+    const actual = createHash('sha256').update(readFileSync(path.join(pinnedDir, file))).digest('hex');
+    if (!expected || actual !== expected) throw new Error(`PDF reference artifact changed: ${file}`);
+  }
+}
 export const PATHS = {
   bmPdfWasm: path.join(ROOT, "js", "bm_engine.pdf.wasm"),
   bmNative: process.env.BM_ENGINE_NATIVE_PATH || path.join(ROOT, "native", "dist", `${process.platform}-${process.arch}-msvc`, `bm-engine.${process.platform}-${process.arch}-msvc.node`),
-  takumiWasm: path.join(TK_DIR, "pkg", "takumi_pdf_wasm_bg.wasm"),
-  takumiGlue: path.join(TK_DIR, "dist", "export.mjs"),
+  takumiWasm: pinnedDir ? path.join(pinnedDir, 'wasm', 'takumi_pdf_wasm_bg.wasm') : path.join(TK_DIR, "pkg", "takumi_pdf_wasm_bg.wasm"),
+  takumiGlue: pinnedDir ? path.join(pinnedDir, 'export.mjs') : path.join(TK_DIR, "dist", "export.mjs"),
 };
 
 let nodePdf, wasmPdf, takumi, takumiMemory;
@@ -112,6 +122,6 @@ export function engineVersions() {
   return {
     "bm-native": { package: "bm-engine", version: pkgVersion(ROOT), file: rel(PATHS.bmNative), bytes: existsSync(PATHS.bmNative) ? statSync(PATHS.bmNative).size : null, sha256: sha256(PATHS.bmNative), zig: manifest?.zig ?? null, built: manifest?.date ?? null },
     "bm-wasm": { package: "bm-engine", version: pkgVersion(ROOT), profile: "pdf", file: rel(PATHS.bmPdfWasm), bytes: existsSync(PATHS.bmPdfWasm) ? statSync(PATHS.bmPdfWasm).size : null, sha256: sha256(PATHS.bmPdfWasm) },
-    "takumi-pdf": { package: "takumi-pdf", version: pkgVersion(TK_DIR), file: "takumi-pdf/pkg/takumi_pdf_wasm_bg.wasm", bytes: existsSync(PATHS.takumiWasm) ? statSync(PATHS.takumiWasm).size : null, sha256: sha256(PATHS.takumiWasm), native: "none published (npm search: no takumi-pdf native / @takumi-rs/pdf-* package)" },
+    "takumi-pdf": { package: "takumi-pdf", version: pinned?.version ?? pkgVersion(TK_DIR), reference: pinned ?? { kind: 'published-npm' }, file: rel(PATHS.takumiWasm), bytes: existsSync(PATHS.takumiWasm) ? statSync(PATHS.takumiWasm).size : null, sha256: sha256(PATHS.takumiWasm), native: "not used" },
   };
 }

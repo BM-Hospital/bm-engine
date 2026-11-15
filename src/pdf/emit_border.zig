@@ -936,8 +936,12 @@ fn paintIsland(d: *Device, island: []const InlineOutlineRect, lone: bool, ox: f3
     const outer = (try RightAngleContour.ofRects(a, grown.items)) orelse return;
     const inner = try outer.shrunk(a, width);
     const col = cs.resolveColor(cs.outline_color);
+    const radii = pm.resolveRadiiRaw(cs, island[0].w, island[0].h);
+    var rounded = false;
+    for (radii) |r| rounded = rounded or (r[0] > 0 and r[1] > 0);
+    if (cs.outline_style != .solid or rounded) return @import("emit_outline.zig").paint(d, outer, width, offset, cs.outline_style, col, if (rounded) radii else null, ox, oy);
     // the outer contour clips, the inner one clips out within the outline's bounds, and the
-    // bounds are filled (Blink's solid `ComplexOutlinePainter`; the other styles are drawn solid)
+    // bounds are filled (Blink's solid square `ComplexOutlinePainter`)
     var path: Path = .empty;
     try outer.addTo(a, &path, ox, oy);
     d.pushClip(&path, 0, 0, .nonzero);

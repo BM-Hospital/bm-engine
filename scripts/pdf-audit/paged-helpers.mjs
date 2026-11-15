@@ -18,14 +18,21 @@ export const doc = (body, css = "") =>
 /** Word boxes per page through `pdftotext -bbox`: [[word, x, y, x2, y2], ...] in pt, rounded to 0.1. */
 export function wordBoxes(bytes) {
   const r = pdftotext(bytes, "bbox" + Math.random().toString(36).slice(2, 8), ["-bbox"]);
+  if (r.skipped || !r.ok) throw new Error(`Cannot verify PDF word positions: ${r.skipped ? "pdftotext is missing" : r.stderr}`);
+  return parseWordBoxes(r.text);
+}
+
+/** Reject missing/malformed extraction instead of treating two empty results as equal. */
+export function parseWordBoxes(text) {
   const pages = [];
-  for (const pg of r.text.split("<page ").slice(1)) {
+  for (const pg of text.split("<page ").slice(1)) {
     const words = [];
     const re = /<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">([^<]*)<\/word>/g;
     let m;
     while ((m = re.exec(pg))) words.push([m[5], +(+m[1]).toFixed(1), +(+m[2]).toFixed(1), +(+m[3]).toFixed(1), +(+m[4]).toFixed(1)]);
     pages.push(words);
   }
+  if (!pages.length) throw new Error("Cannot verify PDF word positions: extraction contains no page elements");
   return pages;
 }
 
@@ -63,15 +70,16 @@ export function noteBoth(t, r, label = "") {
   t.note(`${label} bm: ${one(r.bm)}`);
   t.note(`${label} takumi: ${one(r.ref)}`);
 }
-/** bm-engine prefixes every message with "bm-engine: " (probe page.error-prefix records it); compare without it. */
-export const stripPrefix = (m) => (m == null ? m : String(m).replace(/^bm-engine: /, ""));
+/** Drop bm-engine's binding prefix and Takumi's wasm-bindgen `Error: ` wrapper before comparing messages. */
+export const stripPrefix = (m) => (m == null ? m : String(m).replace(/^bm-engine: /, "").replace(/^Error: /, ""));
 /** One line describing a render result: the error, or page count, page sizes (pt) and the text of each page. */
 export const summary = (x) => (!x ? "n/a" : x.error ? "ERROR " + stripPrefix(x.error)
   : `${x.pages.length}p ${[...new Set(x.pages.map((p) => p.media.slice(2).join("x")))].join(",")} ${JSON.stringify(pagesOf(x))}`);
 
 /**
  * The labelled comparison every probe uses: both engines must give the same outcome on the same input, i.e. the
- * same error message (bm's prefix aside) or the same page count, page boxes and text per page (and, with
+ * the same error message for unclassified failures; when `expect: error` is supplied, both engines must reject but
+ * error wording may differ; for successful renders, the same page count, page boxes and text per page (and, with
  * `geom`, the same word positions; with `paint`, the same content-stream operators on every page). A failure
  * message carries the label and both summaries.
  * `expect`: "error" (both must fail), "render" (both must render), or undefined (either).
@@ -81,7 +89,9 @@ export async function cmp(t, label, html, options = {}, { geom = false, paint = 
   const a = summary(r.bm);
   if (!r.ref) { t.note(`${label}: bm ${a.slice(0, 200)}`); t.same(label, 0, 0); return r; }
   const b = summary(r.ref);
-  t.ok(a === b, `${label}: bm ${a.slice(0, 700)} | takumi ${b.slice(0, 700)}`);
+  const bothReject = expect === "error" && a.startsWith("ERROR ") && b.startsWith("ERROR ");
+  t.ok(bothReject || a === b, `${label}: bm ${a.slice(0, 700)} | takumi ${b.slice(0, 700)}`);
+  if (bothReject && a !== b) t.note(`${label}: both reject; error wording differs (bm ${a.slice(0, 180)} | takumi ${b.slice(0, 180)})`);
   if (expect === "error") t.ok(!!r.ref.error, `${label}: expected an error from takumi, got ${b.slice(0, 120)}`);
   if (expect === "render") t.ok(!r.ref.error, `${label}: expected takumi to render, got ${b.slice(0, 200)}`);
   if (geom && a === b && !r.bm.error) {

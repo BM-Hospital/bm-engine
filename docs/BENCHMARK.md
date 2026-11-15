@@ -30,24 +30,24 @@ hai bằng cùng thiết lập.
 <!-- pdf-bench:env -->
 | Mục | Giá trị |
 |:--|:--|
-| Máy | Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz, 8 CPU logic, 7.8 GiB, win32 10.0.26200 x64 |
-| Node.js | v26.13.0 (V8 14.6.202.34-node.40, libuv 1.52.1) |
-| bm-engine | 0.1.0, git `cffb3e7f04` (main, 9 file đang sửa) |
-| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3.327 KiB, sha256 `1d5ff5ea0a4f` |
-| bm-wasm | `js/bm_engine.pdf.wasm` (profile pdf), 1.675 KiB, sha256 `9550649646c6` |
+| Máy | 11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz, 8 CPU logic, 31.7 GiB, win32 10.0.19045 x64 |
+| Node.js | v24.21.0 (V8 13.6.233.17-node.53, libuv 1.52.1) |
+| bm-engine | 0.1.0, git `7b293dd16a` (pdf-parity-perf-geist) |
+| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3.676 KiB, sha256 `771d6f7f6c9b` |
+| bm-wasm | `js/bm_engine.pdf.wasm` (profile pdf), 3.188 KiB, sha256 `f65c24f99666` |
 | takumi-pdf | npm `takumi-pdf` 0.20.0 (wasm, 4.335 KiB); không có bản native nào được phát hành |
-| Lần chạy | 2026-11-13 04:39 UTC, full, 5.8 min; CPU bận trước khi chạy: 5.5 % |
+| Lần chạy | 2026-11-15 22:33 UTC, full, 6.1 min; CPU bận trước khi chạy: 5.9 % |
 <!-- /pdf-bench:env -->
 
 ### Tóm tắt
 
 <!-- pdf-bench:summary -->
-- **Thời gian render, bm-native so với takumi-pdf:** sync 0,33× [0,33× / 0,34× / 0,34×] (nhanh hơn ở 112/112, 0,14×–0,91×); async 0,33× [0,33× / 0,33× / 0,33×] (nhanh hơn ở 112/112, 0,13×–0,92×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
-- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,54× [0,54× / 0,54× / 0,54×] (nhanh hơn ở 107/112, 0,23×–1,34×). **bm-native vs bm-wasm (sync):** 0,62× [0,62× / 0,63× / 0,62×] (nhanh hơn ở 112/112, 0,43×–0,75×).
-- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 409 / 559 / 553 / 504; bm-wasm 128 / 306 / 342 / 295; takumi-pdf 57 / 100 / 117 / 110.
-- **Trùng byte:** bm-native == bm-wasm 114/114 tài liệu.
-- **Bộ kiểm tra:** bm-native 105/114 PDF không có lỗi hay cảnh báo nào (takumi-pdf 105/114); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 114/114.
-- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 86, equivalent 27, different 1 (114 tài liệu, pdfium + mupdf).
+- **Thời gian render, bm-native so với takumi-pdf:** sync 0,32× [0,31× / 0,32× / 0,32×] (nhanh hơn ở 159/159, 0,15×–0,69×); async 0,39× [0,39× / 0,39× / 0,40×] (nhanh hơn ở 159/159, 0,16×–0,79×). Dưới 1× = bm tốn ít thời gian hơn; trong ngoặc vuông là cùng tỉ lệ ở từng lượt.
+- **bm-wasm vs takumi-pdf (cả hai là wasm):** 0,40× [0,40× / 0,40× / 0,40×] (nhanh hơn ở 159/159, 0,21×–0,81×). **bm-native vs bm-wasm (sync):** 0,80× [0,79× / 0,80× / 0,80×] (nhanh hơn ở 159/159, 0,59×–0,96×).
+- **Trang mỗi giây ở 1 / 10 / 100 / 500 trang:** bm-native 498 / 796 / 851 / 756; bm-wasm 152 / 217 / 550 / 447; takumi-pdf 54 / 105 / 133 / 118.
+- **Trùng byte:** bm-native == bm-wasm 161/161 tài liệu.
+- **Bộ kiểm tra:** bm-native 152/161 PDF không có lỗi hay cảnh báo nào (takumi-pdf 152/161); veraPDF bm-native 45/45, takumi-pdf 45/45; cùng chữ, liên kết, mục lục và thẻ như takumi-pdf: 153/161.
+- **Kết luận hình ảnh so với takumi-pdf (tốt nhất trong các bộ raster):** identical 117, equivalent 35, different 8, close 1 (161 tài liệu, pdfium + mupdf).
 <!-- /pdf-bench:summary -->
 
 ### Thời gian render
@@ -55,21 +55,21 @@ hai bằng cùng thiết lập.
 <!-- pdf-bench:speed -->
 | Biến thể | geomean ms | từng lượt | độ lệch |
 |:--|--:|--:|--:|
-| bm-native:sync | 1,04 | 1,05 / 1,05 / 1,04 | 0,7 % |
-| bm-native:async | 1,03 | 1,04 / 1,05 / 1,04 | 0,3 % |
-| bm-wasm:sync | 1,67 | 1,68 / 1,68 / 1,68 | 0,4 % |
-| bm-wasm:async | 1,56 | 1,56 / 1,56 / 1,56 | 0,4 % |
-| takumi-pdf:async | 3,11 | 3,13 / 3,14 / 3,12 | 0,5 % |
+| bm-native:sync | 0,69 | 0,68 / 0,70 / 0,69 | 2,9 % |
+| bm-native:async | 0,86 | 0,86 / 0,86 / 0,86 | 0,2 % |
+| bm-wasm:sync | 0,87 | 0,87 / 0,88 / 0,86 | 2,4 % |
+| bm-wasm:async | 0,73 | 0,74 / 0,75 / 0,73 | 2,0 % |
+| takumi-pdf:async | 2,18 | 2,18 / 2,23 / 2,17 | 2,6 % |
 
 | Tỉ lệ (thời gian) | geomean | từng lượt | nhanh hơn | khoảng | độ lệch |
 |:--|--:|--:|--:|--:|--:|
-| bm-native:sync / takumi-pdf:async | 0,33× | 0,33× / 0,34× / 0,34× | 112/112 | 0,14×–0,91× | 0,3 % |
-| bm-native:async / takumi-pdf:async | 0,33× | 0,33× / 0,33× / 0,33× | 112/112 | 0,13×–0,92× | 0,3 % |
-| bm-wasm:sync / takumi-pdf:async | 0,54× | 0,54× / 0,54× / 0,54× | 107/112 | 0,23×–1,34× | 0,2 % |
-| bm-native:sync / bm-wasm:sync | 0,62× | 0,62× / 0,63× / 0,62× | 112/112 | 0,43×–0,75× | 0,6 % |
-| bm-native:async / bm-native:sync | 0,99× | 1,00× / 0,99× / 1,00× | 68/112 | 0,91×–1,09× | 0,4 % |
+| bm-native:sync / takumi-pdf:async | 0,32× | 0,31× / 0,32× / 0,32× | 159/159 | 0,15×–0,69× | 1,6 % |
+| bm-native:async / takumi-pdf:async | 0,39× | 0,39× / 0,39× / 0,40× | 159/159 | 0,16×–0,79× | 2,3 % |
+| bm-wasm:sync / takumi-pdf:async | 0,40× | 0,40× / 0,40× / 0,40× | 159/159 | 0,21×–0,81× | 0,8 % |
+| bm-native:sync / bm-wasm:sync | 0,80× | 0,79× / 0,80× / 0,80× | 159/159 | 0,59×–0,96× | 1,9 % |
+| bm-native:async / bm-native:sync | 1,25× | 1,25× / 1,22× / 1,25× | 2/159 | 0,95×–2,43× | 2,7 % |
 
-Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trước, đầu ra giữ trong bộ nhớ), 112 tài liệu, 3 lượt; các biến thể chạy xen kẽ, đổi thứ tự mỗi vòng.
+Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trước, đầu ra giữ trong bộ nhớ), 159 tài liệu, 3 lượt; các biến thể chạy xen kẽ, đổi thứ tự mỗi vòng.
 <!-- /pdf-bench:speed -->
 
 ### Kích thước file
@@ -77,11 +77,11 @@ Thời gian render khi đã nóng cho mỗi tài liệu (font đăng ký trướ
 <!-- pdf-bench:sizes -->
 | Nhóm | tài liệu | bm | takumi-pdf | tỉ lệ tổng | tỉ lệ geomean | sau cùng một lần nén lại bằng qpdf |
 |:--|--:|--:|--:|--:|--:|--:|
-| golden | 89 | 1.282 KiB | 1.258 KiB | 1,02× | 1,01× | 1.134 KiB / 1.106 KiB (1,03×) |
-| docs | 21 | 1.310 KiB | 1.311 KiB | 1,00× | 1,00× | 1.343 KiB / 1.343 KiB (1,00×) |
-| stress | 4 | 2.227 KiB | 2.697 KiB | 0,83× | 0,92× | 1.841 KiB / 2.314 KiB (0,80×) |
+| golden | 136 | 1.652 KiB | 1.609 KiB | 1,03× | 1,01× | 1.444 KiB / 1.419 KiB (1,02×) |
+| docs | 21 | 1.315 KiB | 1.311 KiB | 1,00× | 1,01× | 1.343 KiB / 1.343 KiB (1,00×) |
+| stress | 4 | 2.345 KiB | 2.697 KiB | 0,87× | 0,95× | 1.841 KiB / 2.314 KiB (0,80×) |
 
-Tỉ lệ kích thước bm / takumi-pdf lớn nhất: `golden/text-stroke-paint-order` 1,75× (15 KiB / 8,8 KiB), `golden/text-shadow-stroke` 1,19× (111 KiB / 93 KiB), `golden/paged-landscape` 1,06× (15 KiB / 14 KiB), `golden/at-page-first-left-right` 1,04× (16 KiB / 15 KiB), `golden/at-page-root-element` 1,04× (15 KiB / 14 KiB), `golden/color-glyph-text-shadow` 1,01× (79 KiB / 78 KiB).
+Tỉ lệ kích thước bm / takumi-pdf lớn nhất: `golden/text-stroke-paint-order` 1,80× (16 KiB / 8,8 KiB), `golden/text-shadow-stroke` 1,23× (115 KiB / 93 KiB), `golden/paged-landscape` 1,16× (16 KiB / 14 KiB), `golden/at-page-first-left-right` 1,11× (17 KiB / 15 KiB), `golden/at-page-root-element` 1,09× (15 KiB / 14 KiB), `golden/floated-flex-item-break-after` 1,08× (5,7 KiB / 5,3 KiB).
 
 Không engine nào có tuỳ chọn nén (cả hai ghi luồng Flate và object stream); cột cuối nén lại file của cả hai engine bằng cùng thiết lập qpdf (zlib mức 9, object stream).
 <!-- /pdf-bench:sizes -->
@@ -91,12 +91,12 @@ Không engine nào có tuỳ chọn nén (cả hai ghi luồng Flate và object 
 <!-- pdf-bench:scale -->
 | Trang | bm-native ms | trang/s | kích thước | RSS đỉnh | bm-wasm ms | trang/s | kích thước | RSS đỉnh | takumi-pdf ms | trang/s | kích thước | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| 1 | 2,40 ms | 408,8 | 27 KiB | 53 MiB | 7,80 ms | 128,0 | 27 KiB | 81 MiB | 17,5 ms | 57,3 | 27 KiB | 106 MiB |
-| 10 | 17,9 ms | 558,9 | 58 KiB | 60 MiB | 32,7 ms | 306,0 | 58 KiB | 81 MiB | 99,8 ms | 100,2 | 58 KiB | 115 MiB |
-| 100 | 181 ms | 553,1 | 369 KiB | 114 MiB | 292 ms | 342,2 | 369 KiB | 126 MiB | 854 ms | 117,2 | 426 KiB | 127 MiB |
-| 500 | 993 ms | 503,6 | 1.772 KiB | 317 MiB | 1.693 ms | 295,3 | 1.772 KiB | 286 MiB | 4.534 ms | 110,3 | 2.186 KiB | 190 MiB |
+| 1 | 2,00 ms | 498,4 | 27 KiB | 62 MiB | 6,60 ms | 151,6 | 27 KiB | 121 MiB | 18,7 ms | 53,6 | 27 KiB | 115 MiB |
+| 10 | 12,6 ms | 795,8 | 60 KiB | 67 MiB | 46,1 ms | 216,9 | 60 KiB | 123 MiB | 95,5 ms | 104,7 | 58 KiB | 132 MiB |
+| 100 | 118 ms | 851,0 | 390 KiB | 100 MiB | 182 ms | 550,1 | 390 KiB | 144 MiB | 752 ms | 133,0 | 426 KiB | 145 MiB |
+| 500 | 661 ms | 756,0 | 1.868 KiB | 205 MiB | 1.119 ms | 446,9 | 1.868 KiB | 255 MiB | 4.230 ms | 118,2 | 2.186 KiB | 202 MiB |
 
-Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 1,01×, bm-wasm 0,89×, takumi-pdf 0,86×.
+Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, bảng 14 dòng, một ảnh; `break-after: page`) trong một tiến trình mới cho mỗi điểm; làm nóng bằng tài liệu 1 trang. Độ siêu tuyến tính (thời gian mỗi trang ở 100 trang / ở 10 trang; 1× = tuyến tính): bm-native 0,93×, bm-wasm 0,39×, takumi-pdf 0,79×.
 <!-- /pdf-bench:scale -->
 
 ### Khởi động lạnh
@@ -104,12 +104,12 @@ Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, b
 <!-- pdf-bench:cold -->
 | Engine | wall median ms | p95 | hơn Node trống | import | font | PDF đầu tiên | RSS đỉnh |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Node.js trống | 43,7 | 50,8 | — | — | — | — | 43 MiB |
-| bm-native | 52,7 | 57,1 | 8,90 | 4,90 | 0,34 | 3,20 | 48 MiB |
-| bm-wasm | 136 | 145 | 92,3 | 8,50 | 2,40 | 54,6 | 73 MiB |
-| takumi-pdf | 213 | 233 | 169 | 35,8 | 3,12 | 110 | 75 MiB |
+| Node.js trống | 49,6 | 56,4 | — | — | — | — | 52 MiB |
+| bm-native | 62,2 | 67,8 | 12,6 | 7,10 | 0,49 | 3,90 | 56 MiB |
+| bm-wasm | 186 | 200 | 136 | 13,0 | 4,12 | 88,3 | 97 MiB |
+| takumi-pdf | 209 | 217 | 160 | 35,1 | 2,91 | 100 | 89 MiB |
 
-30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 24.3 %.
+30 lần mỗi engine, xen kẽ: khởi động Node -> import -> đăng ký Inter Regular -> hoá đơn A4 một trang -> thoát. CPU bận trong lúc đo 27.2 %.
 <!-- /pdf-bench:cold -->
 
 ### Bộ nhớ
@@ -117,11 +117,11 @@ Một lần render tài liệu stress (mỗi trang: tiêu đề, đoạn văn, b
 <!-- pdf-bench:memory -->
 | Engine | RSS sau lượt 1 | RSS sau lượt 10 | bộ nhớ engine (lượt 1 → cuối) | RSS đỉnh, tài liệu stress lớn nhất |
 |:--|--:|--:|--:|--:|
-| bm-native | 88 MiB | 89 MiB | 29,8 → 29,6 MiB | 500 trang: 317 MiB |
-| bm-wasm | 119 MiB | 121 MiB | 59,1 → 59,1 MiB | 500 trang: 286 MiB |
-| takumi-pdf | 124 MiB | 125 MiB | 46,3 → 46,3 MiB | 500 trang: 190 MiB |
+| bm-native | 99 MiB | 100 MiB | 30,7 → 30,4 MiB | 500 trang: 205 MiB |
+| bm-wasm | 142 MiB | 133 MiB | 60,1 → 60,1 MiB | 500 trang: 255 MiB |
+| takumi-pdf | 128 MiB | 131 MiB | 46,3 → 46,3 MiB | 500 trang: 202 MiB |
 
-Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần đọc; Node.js trống: 41.6 MiB RSS. Bộ nhớ engine: bm Renderer.memoryBytes (bộ nhớ tuyến tính wasm, hoặc phần cấp phát đang sống của addon native), takumi-pdf: bộ nhớ wasm.
+Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần đọc; Node.js trống: 50.3 MiB RSS. Bộ nhớ engine: bm Renderer.memoryBytes (bộ nhớ tuyến tính wasm, hoặc phần cấp phát đang sống của addon native), takumi-pdf: bộ nhớ wasm.
 <!-- /pdf-bench:memory -->
 
 ### Chặn event loop
@@ -129,11 +129,11 @@ Mọi tài liệu hướng dẫn (21) render 10 lần, GC trước mỗi lần �
 <!-- pdf-bench:eventloop -->
 | Engine | API | render ms | độ trễ timer lớn nhất | p99 | số tick |
 |:--|--:|--:|--:|--:|--:|
-| bm-native | sync | 180 | 180 ms | 180 ms | 1 |
-| bm-native | async | 197 | 1,50 ms | 1,10 ms | 198 |
-| bm-wasm | sync | 373 | 374 ms | 374 ms | 1 |
-| bm-wasm | async | 376 | 376 ms | 376 ms | 1 |
-| takumi-pdf | async | 1.135 | 1.135 ms | 1.135 ms | 1 |
+| bm-native | sync | 127 | 127 ms | 127 ms | 1 |
+| bm-native | async | 147 | 1,20 ms | 1,10 ms | 148 |
+| bm-wasm | sync | 284 | 284 ms | 284 ms | 1 |
+| bm-wasm | async | 297 | 297 ms | 297 ms | 1 |
+| takumi-pdf | async | 934 | 934 ms | 934 ms | 1 |
 
 Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gần bằng thời gian render nghĩa là event loop bị chặn suốt lần render.
 <!-- /pdf-bench:eventloop -->
@@ -143,25 +143,25 @@ Một lần render 100 trang trong khi một timer 1 ms chạy; độ trễ gầ
 <!-- pdf-bench:throughput -->
 | Cấu hình | N=1 | N=2 | N=4 | N=8 |
 |:--|--:|--:|--:|--:|
-| bm-native seq uv=4 | 502 |  |  |  |
-| bm-wasm seq | 315 |  |  |  |
-| takumi-pdf seq | 146 |  |  |  |
-| bm-native many k=1 uv=4 | 502 | 525 | 529 | 519 |
-| bm-native many k=2 uv=4 | 501 | 1.031 | 1.032 | 1.016 |
-| bm-native many k=4 uv=4 | 493 | 1.009 | 1.943 | 1.888 |
-| bm-native many k=8 uv=4 | 510 | 1.022 | 1.914 | 1.884 |
-| bm-native many k=1 uv=8 | 486 | 522 | 531 | 527 |
-| bm-native many k=2 uv=8 | 495 | 1.025 | 1.028 | 1.002 |
-| bm-native many k=4 uv=8 | 499 | 1.021 | 1.858 | 1.980 |
-| bm-native many k=8 uv=8 | 514 | 1.040 | 1.930 | 2.373 |
-| bm-wasm pool k=1 | 303 | 322 | 321 | 325 |
-| bm-wasm pool k=2 | 304 | 626 | 631 | 629 |
-| bm-wasm pool k=4 | 293 | 625 | 1.171 | 1.199 |
-| bm-wasm pool k=8 | 306 | 624 | 1.182 | 1.416 |
-| takumi-pdf pool k=1 | 143 | 167 | 175 | 178 |
-| takumi-pdf pool k=2 | 145 | 326 | 344 | 350 |
-| takumi-pdf pool k=4 | 146 | 308 | 637 | 655 |
-| takumi-pdf pool k=8 | 146 | 313 | 642 | 739 |
+| bm-native seq uv=4 | 639 |  |  |  |
+| bm-wasm seq | 514 |  |  |  |
+| takumi-pdf seq | 170 |  |  |  |
+| bm-native many k=1 uv=4 | 565 | 611 | 613 | 613 |
+| bm-native many k=2 uv=4 | 571 | 1.116 | 1.157 | 1.141 |
+| bm-native many k=4 uv=4 | 565 | 1.158 | 1.742 | 1.787 |
+| bm-native many k=8 uv=4 | 586 | 1.084 | 1.703 | 1.717 |
+| bm-native many k=1 uv=8 | 564 | 614 | 611 | 613 |
+| bm-native many k=2 uv=8 | 569 | 1.178 | 1.217 | 1.198 |
+| bm-native many k=4 uv=8 | 571 | 1.109 | 1.639 | 1.667 |
+| bm-native many k=8 uv=8 | 587 | 1.113 | 1.439 | 2.018 |
+| bm-wasm pool k=1 | 330 | 479 | 481 | 469 |
+| bm-wasm pool k=2 | 466 | 908 | 851 | 764 |
+| bm-wasm pool k=4 | 420 | 822 | 1.257 | 1.265 |
+| bm-wasm pool k=8 | 436 | 823 | 1.265 | 1.503 |
+| takumi-pdf pool k=1 | 154 | 174 | 179 | 179 |
+| takumi-pdf pool k=2 | 162 | 326 | 311 | 306 |
+| takumi-pdf pool k=4 | 152 | 296 | 459 | 462 |
+| takumi-pdf pool k=8 | 154 | 296 | 446 | 549 |
 
 Số PDF mỗi giây, docs/invoice (one-page A4 invoice, HTML + footer), closed loop: N clients each with one request in flight; 2000 ms mỗi điểm, 8 CPU logic. seq = một client với API sync (takumi-pdf: await render), many = N client trên K renderer bm-native (API async trên pool libuv, UV_THREADPOOL_SIZE = uv), pool = pool worker_threads gồm K worker, mỗi worker có engine riêng.
 <!-- /pdf-bench:throughput -->
@@ -171,21 +171,21 @@ Số PDF mỗi giây, docs/invoice (one-page A4 invoice, HTML + footer), closed 
 <!-- pdf-bench:equiv -->
 | Engine | PDF | sạch | lỗi | cảnh báo | bm-only | chung với takumi-pdf | veraPDF |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| bm-native | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
-| bm-wasm | 114 | 105 | 12 | 0 | 0 | 12 | 45/45 |
-| takumi-pdf | 114 | 105 | 12 | 0 | — | — | 45/45 |
+| bm-native | 161 | 152 | 12 | 0 | 0 | 12 | 45/45 |
+| bm-wasm | 161 | 152 | 12 | 0 | 0 | 12 | 45/45 |
+| takumi-pdf | 161 | 152 | 12 | 0 | — | — | 45/45 |
 
-Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 114/114 tài liệu.
+Bộ kiểm tra: qpdf 12.4.2, pdfcpu 0.16.4 (strict), poppler 26.09.0 (oschwartz10612/poppler-windows Release-26.09.0-0) (pdfinfo, pdffonts), MuPDF 1.28.6 (wasm), pdf.js 6.5.438, veraPDF 1.28.2 (greenfield-apps, the shaded CLI jar published to Maven Central). Ngữ nghĩa (pdf.js: chữ từng trang, liên kết, mục lục, tệp đính kèm, thẻ, metadata) trùng với takumi-pdf ở 153/161 tài liệu.
 
 | Bộ raster | identical | equivalent | close | different |
 |:--|--:|--:|--:|--:|
-| pdfium | 78 | 35 | 0 | 1 |
-| mupdf | 78 | 34 | 1 | 1 |
-| tốt nhất trong các bộ raster | 86 | 27 | 0 | 1 |
+| pdfium | 108 | 44 | 1 | 8 |
+| mupdf | 108 | 43 | 2 | 8 |
+| tốt nhất trong các bộ raster | 117 | 35 | 1 | 8 |
 
-bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 114 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 11, close 16, identical 2; mupdf equivalent 19, different 11, close 6.
+bm-native so với takumi-pdf, cùng bộ raster, 96 và 144 dpi, 161 tài liệu (tính theo trang tệ nhất). PDF của bm so với ảnh bm render cùng cây (tài liệu viewport, 96 dpi): pdfium equivalent 7, different 18, close 22, identical 2; mupdf equivalent 21, different 17, close 11.
 
-bm-native == bm-wasm từng byte: 114/114. Lỗi render: không có.
+bm-native == bm-wasm từng byte: 161/161. Lỗi render: không có.
 <!-- /pdf-bench:equiv -->
 
 ### Nhiễu
@@ -193,16 +193,16 @@ bm-native == bm-wasm từng byte: 114/114. Lỗi render: không có.
 <!-- pdf-bench:noise -->
 | Giai đoạn | CPU bận trước | CPU bận trong lúc đo | tiến trình khác (lõi) |
 |:--|--:|--:|--:|
-| speed lượt 1 | 4,5 % | 16,4 % | 0,23 |
-| speed lượt 2 | 2,8 % | 16,6 % | 0,25 |
-| speed lượt 3 | 3,0 % | 18,6 % | 0,41 |
-| scale | — | 21,8 % | — |
-| cold | — | 24,3 % | 0,67 |
-| memory | — | 19,7 % | 0,18 |
-| eventloop | — | 24,0 % | — |
-| throughput | — | 31,6 % | 0,73 |
+| speed lượt 1 | 4,5 % | 16,5 % | 0,24 |
+| speed lượt 2 | 3,7 % | 18,5 % | 0,40 |
+| speed lượt 3 | 4,6 % | 15,8 % | 0,19 |
+| scale | — | 26,0 % | — |
+| cold | — | 27,2 % | 0,84 |
+| memory | — | 26,3 % | 0,24 |
+| eventloop | — | 28,1 % | — |
+| throughput | — | 31,9 % | 0,80 |
 
-Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 52 (ví dụ golden/box-chrome bm-native:sync, golden/box-chrome bm-native:async, golden/box-chrome bm-wasm:sync, golden/box-chrome bm-wasm:async, golden/box-chrome takumi-pdf:async).
+Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 91 (ví dụ golden/box-chrome bm-wasm:sync, golden/box-chrome bm-wasm:async, golden/box-chrome takumi-pdf:async, golden/gradients bm-wasm:sync, golden/gradients takumi-pdf:async).
 <!-- /pdf-bench:noise -->
 
 <details><summary>Từng tài liệu</summary>
@@ -210,118 +210,165 @@ Median từng tài liệu có độ lệch giữa các lượt vượt 10 %: 52 
 <!-- pdf-bench:per-doc -->
 | Tài liệu | bm-native:sync | bm-native:async | bm-wasm:sync | bm-wasm:async | takumi-pdf:async | bm-n sync / tk | byte bm / tk |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| `golden/box-chrome` | 0,67 / 1,16 | 0,66 / 1,77 | 1,09 / 1,39 | 1,06 / 1,37 | 2,01 / 2,37 | 0,33× | 5433 / 5453 |
-| `golden/gradients` | 0,42 / 1,09 | 0,39 / 0,76 | 0,62 / 1,04 | 0,57 / 1,04 | 0,93 / 1,79 | 0,46× | 4477 / 4483 |
-| `golden/repeating-gradients` | 0,46 / 0,59 | 0,45 / 0,58 | 0,72 / 0,83 | 0,67 / 0,78 | 0,98 / 1,13 | 0,47× | 8465 / 8454 |
-| `golden/box-shadows` | 0,28 / 0,39 | 0,27 / 0,42 | 0,46 / 0,55 | 0,42 / 0,54 | 0,74 / 0,86 | 0,38× | 4091 / 4128 |
-| `golden/blend-opacity` | 0,18 / 0,25 | 0,18 / 0,25 | 0,28 / 0,32 | 0,25 / 0,31 | 0,54 / 0,62 | 0,34× | 3154 / 3172 |
-| `golden/overflow-clip` | 0,17 / 0,24 | 0,17 / 0,27 | 0,25 / 0,31 | 0,22 / 0,29 | 0,50 / 0,62 | 0,34× | 2487 / 2505 |
-| `golden/transformed-overflow-clip` | 0,11 / 0,13 | 0,11 / 0,15 | 0,15 / 0,17 | 0,13 / 0,16 | 0,31 / 0,37 | 0,34× | 1828 / 1846 |
-| `golden/clip-path-shapes` | 0,21 / 0,26 | 0,21 / 0,32 | 0,37 / 0,43 | 0,34 / 0,40 | 0,61 / 0,69 | 0,35× | 4344 / 4367 |
-| `golden/mask-image` | 0,31 / 0,40 | 0,30 / 0,43 | 0,49 / 0,53 | 0,45 / 0,53 | 0,88 / 1,01 | 0,36× | 9341 / 9354 |
-| `golden/color-filters` | 0,15 / 0,20 | 0,16 / 0,21 | 0,24 / 0,29 | 0,21 / 0,25 | 0,43 / 0,52 | 0,36× | 1924 / 1939 |
-| `golden/outlines` | 0,17 / 0,21 | 0,17 / 0,22 | 0,26 / 0,28 | 0,23 / 0,28 | 0,42 / 0,49 | 0,40× | 2403 / 2421 |
-| `golden/background-boxes` | 0,19 / 0,23 | 0,19 / 0,24 | 0,34 / 0,40 | 0,31 / 0,36 | 0,51 / 0,56 | 0,38× | 3935 / 3954 |
-| `golden/background-placement` | 0,21 / 0,26 | 0,21 / 0,30 | 0,35 / 0,38 | 0,31 / 0,37 | 0,56 / 0,64 | 0,38× | 4676 / 4694 |
-| `golden/url-layers` | 0,21 / 0,28 | 0,21 / 0,34 | 0,32 / 0,38 | 0,28 / 0,34 | 0,59 / 0,70 | 0,36× | 3486 / 3501 |
-| `golden/edge-degenerate` | 0,49 / 0,60 | 0,47 / 0,61 | 0,76 / 0,85 | 0,67 / 0,80 | 1,36 / 1,50 | 0,36× | 5504 / 5520 |
-| `golden/image-object-fit` | 0,15 / 0,19 | 0,16 / 0,22 | 0,21 / 0,24 | 0,17 / 0,22 | 0,69 / 0,85 | 0,22× | 2290 / 2302 |
-| `golden/encoded-bitmaps` | 0,15 / 0,23 | 0,16 / 0,25 | 0,20 / 0,26 | 0,16 / 0,23 | 0,46 / 0,65 | 0,32× | 3213 / 3228 |
-| `golden/png-streams` | 0,13 / 0,16 | 0,13 / 0,18 | 0,17 / 0,20 | 0,14 / 0,18 | 0,37 / 0,44 | 0,34× | 2561 / 2576 |
-| `golden/border-mixed-sides` | 0,18 / 0,24 | 0,18 / 0,27 | 0,27 / 0,31 | 0,23 / 0,28 | 0,56 / 0,67 | 0,32× | 2428 / 2442 |
-| `golden/inline-span-background` | 0,52 / 0,62 | 0,50 / 0,57 | 0,85 / 0,91 | 0,76 / 0,87 | 1,49 / 1,59 | 0,35× | 6518 / 6537 |
-| `golden/inline-span-border` | 0,47 / 0,54 | 0,45 / 0,53 | 0,74 / 0,78 | 0,66 / 0,76 | 1,26 / 1,36 | 0,37× | 6222 / 6246 |
-| `golden/inline-images` | 0,47 / 0,56 | 0,45 / 0,58 | 0,69 / 0,75 | 0,59 / 0,75 | 1,44 / 1,70 | 0,33× | 6311 / 6330 |
-| `golden/inline-image-decorations` | 0,46 / 0,50 | 0,43 / 0,57 | 0,67 / 0,73 | 0,58 / 0,69 | 1,27 / 1,48 | 0,36× | 6125 / 6141 |
-| `golden/page-background` | 0,39 / 0,50 | 0,35 / 0,49 | 0,58 / 0,63 | 0,49 / 0,60 | 1,26 / 1,36 | 0,31× | 5463 / 5488 |
-| `golden/svg-background-image` | 0,41 / 0,51 | 0,37 / 0,58 | 0,62 / 0,67 | 0,54 / 0,64 | 1,06 / 1,22 | 0,39× | 5947 / 5980 |
-| `golden/collapsed-table` | 0,95 / 1,04 | 0,94 / 1,07 | 1,63 / 1,73 | 1,55 / 1,67 | 3,29 / 3,44 | 0,29× | 9576 / 9618 |
-| `golden/text-decorations` | 0,67 / 0,70 | 0,67 / 0,78 | 1,12 / 1,18 | 1,05 / 1,14 | 1,69 / 1,81 | 0,40× | 8895 / 8924 |
-| `golden/text-decoration-styles` | 0,52 / 0,56 | 0,52 / 0,60 | 0,86 / 0,94 | 0,78 / 0,88 | 1,23 / 1,34 | 0,42× | 6061 / 6082 |
-| `golden/svg-vector-image` | 0,14 / 0,18 | 0,15 / 0,22 | 0,21 / 0,27 | 0,17 / 0,23 | 0,46 / 0,59 | 0,31× | 2460 / 2473 |
-| `golden/text-basic` | 0,33 / 0,36 | 0,31 / 0,40 | 0,48 / 0,51 | 0,41 / 0,49 | 0,87 / 0,95 | 0,38× | 5090 / 5113 |
-| `golden/text-ligatures` | 0,32 / 0,39 | 0,31 / 0,39 | 0,46 / 0,49 | 0,39 / 0,48 | 0,84 / 0,94 | 0,38× | 4965 / 4983 |
-| `golden/text-decoration-shadow` | 2,76 / 2,83 | 2,74 / 2,83 | 4,08 / 4,12 | 4,08 / 4,25 | 4,80 / 4,88 | 0,57× | 41383 / 41576 |
-| `golden/text-shadow-stroke` | 9,15 / 9,34 | 9,32 / 9,50 | 13,5 / 13,7 | 13,5 / 13,7 | 10,1 / 10,5 | 0,91× | 113528 / 95472 |
-| `golden/color-glyph-text-shadow` | 5,33 / 5,46 | 5,48 / 5,62 | 7,81 / 7,93 | 7,71 / 7,84 | 7,78 / 7,95 | 0,69× | 81290 / 80275 |
-| `golden/bitmap-glyph-text-shadow` | 1,38 / 1,51 | 1,39 / 1,51 | 1,97 / 2,09 | 1,88 / 1,98 | 2,41 / 2,57 | 0,57× | 15157 / 15247 |
-| `golden/text-stroke-paint-order` | 1,18 / 1,27 | 1,18 / 1,32 | 1,69 / 1,82 | 1,61 / 1,75 | 1,41 / 1,54 | 0,84× | 15719 / 8977 |
-| `golden/cluster-closing-on-a-mark` | 0,23 / 0,27 | 0,25 / 0,32 | 0,32 / 0,35 | 0,26 / 0,33 | 0,61 / 0,70 | 0,38× | 4989 / 5003 |
-| `golden/font-weights` | 3,20 / 3,31 | 3,23 / 3,31 | 5,38 / 5,54 | 5,26 / 5,37 | 8,38 / 8,51 | 0,38× | 57046 / 57162 |
-| `golden/certificate` | 1,23 / 1,37 | 1,25 / 1,40 | 2,05 / 2,17 | 1,99 / 2,15 | 3,14 / 3,27 | 0,39× | 14269 / 14304 |
-| `golden/paged-lines` | 1,60 / 1,73 | 1,62 / 1,74 | 2,92 / 3,03 | 2,82 / 2,94 | 6,78 / 6,96 | 0,24× | 8713 / 8688 |
-| `golden/paged-page-ranges` | 1,05 / 1,14 | 1,01 / 1,14 | 1,79 / 1,87 | 1,68 / 1,79 | 7,67 / 7,85 | 0,14× | 7154 / 7192 |
-| `golden/paged-table` | 2,63 / 2,79 | 2,62 / 2,72 | 4,65 / 4,77 | 4,52 / 4,70 | 8,57 / 8,74 | 0,31× | 14569 / 14664 |
-| `golden/paged-breaks` | 0,47 / 0,51 | 0,46 / 0,61 | 0,71 / 0,77 | 0,62 / 0,72 | 1,79 / 1,93 | 0,26× | 5930 / 5948 |
-| `golden/paged-widows-orphans` | 0,77 / 0,89 | 0,76 / 0,94 | 1,27 / 1,40 | 1,18 / 1,30 | 2,66 / 3,00 | 0,29× | 8271 / 8296 |
-| `golden/paged-narrow` | 1,40 / 1,46 | 1,41 / 1,52 | 2,49 / 2,54 | 2,38 / 2,48 | 4,66 / 4,85 | 0,30× | 9202 / 9266 |
-| `golden/paged-landscape` | 5,77 / 6,38 | 5,93 / 6,19 | 10,7 / 10,9 | 10,6 / 11,3 | 13,9 / 14,3 | 0,41× | 15006 / 14122 |
-| `golden/legacy-page-break` | 0,68 / 0,73 | 0,66 / 0,77 | 1,08 / 1,26 | 0,99 / 1,10 | 2,17 / 2,35 | 0,31× | 7789 / 7826 |
-| `golden/text-shadow-page-cut` | 0,78 / 0,84 | 0,78 / 0,88 | 1,13 / 1,23 | 1,05 / 1,16 | 1,55 / 1,69 | 0,50× | 10452 / 10562 |
-| `golden/fixed-repeats-per-page` | 0,49 / 0,52 | 0,47 / 0,59 | 0,76 / 0,83 | 0,66 / 0,77 | 1,54 / 1,69 | 0,32× | 6381 / 6402 |
-| `golden/invoice` | 7,60 / 8,19 | 7,68 / 8,08 | 13,8 / 14,2 | 13,7 / 13,8 | 42,4 / 44,3 | 0,18× | 28817 / 28723 |
-| `golden/report-links-outline` | 1,15 / 1,19 | 1,13 / 1,25 | 1,90 / 1,97 | 1,78 / 1,93 | 4,30 / 4,56 | 0,27× | 14186 / 14223 |
-| `golden/paged-footer` | 1,58 / 1,62 | 1,65 / 1,70 | 2,68 / 2,75 | 2,60 / 2,74 | 8,34 / 8,55 | 0,19× | 11377 / 11427 |
-| `golden/paged-band-remeasure` | 0,72 / 0,77 | 0,72 / 0,85 | 1,15 / 1,25 | 1,07 / 1,18 | 3,23 / 3,50 | 0,22× | 6848 / 6879 |
-| `golden/paged-header-footer` | 2,20 / 2,24 | 2,17 / 2,28 | 3,89 / 3,98 | 3,79 / 4,11 | 11,2 / 11,3 | 0,20× | 10628 / 10657 |
-| `golden/auto-margin-bands` | 1,72 / 1,78 | 1,69 / 1,84 | 3,01 / 3,15 | 2,92 / 3,07 | 8,26 / 8,54 | 0,21× | 8697 / 8727 |
-| `golden/page-rules` | 1,28 / 1,37 | 1,28 / 1,46 | 2,22 / 2,32 | 2,10 / 2,24 | 6,98 / 7,06 | 0,18× | 10492 / 10542 |
-| `golden/paged-target-counters` | 0,71 / 0,84 | 0,70 / 0,85 | 1,10 / 1,27 | 1,01 / 1,18 | 3,99 / 4,50 | 0,18× | 7532 / 7555 |
-| `golden/content-page-counters` | 0,41 / 0,48 | 0,41 / 0,50 | 0,60 / 0,64 | 0,51 / 0,61 | 1,49 / 1,65 | 0,27× | 5128 / 5145 |
-| `golden/fixed-page-counters` | 0,41 / 0,46 | 0,37 / 0,47 | 0,61 / 0,66 | 0,52 / 0,63 | 1,30 / 1,42 | 0,31× | 4271 / 4292 |
-| `golden/stream-total-pages-band` | 1,84 / 1,94 | 1,81 / 1,94 | 3,17 / 3,26 | 3,05 / 3,19 | 6,34 / 6,59 | 0,29× | 11087 / 11120 |
-| `golden/stream-content-counters` | 1,40 / 1,48 | 1,40 / 1,51 | 2,32 / 2,39 | 2,24 / 2,32 | 8,66 / 9,09 | 0,16× | 11945 / 11979 |
-| `golden/stream-page-ranges-middle` | 0,91 / 0,98 | 0,91 / 1,01 | 1,46 / 1,58 | 1,37 / 1,48 | 3,72 / 3,95 | 0,24× | 10517 / 10540 |
-| `golden/at-page-first-left-right` | 8,37 / 8,52 | 8,68 / 9,18 | 15,8 / 16,0 | 15,8 / 16,3 | 21,2 / 21,6 | 0,40× | 16221 / 15653 |
-| `golden/at-page-root-element` | 6,69 / 6,88 | 6,82 / 7,19 | 12,3 / 12,9 | 12,3 / 12,6 | 12,6 / 12,8 | 0,53× | 14926 / 14404 |
-| `golden/named-pages` | 11,8 / 13,0 | 12,0 / 13,8 | 22,7 / 25,3 | 22,5 / 24,2 | 30,6 / 33,3 | 0,39× | 17054 / 17129 |
-| `golden/stream-forward-link` | 1,03 / 1,10 | 1,05 / 1,20 | 1,70 / 1,86 | 1,60 / 1,82 | 5,41 / 5,79 | 0,19× | 12394 / 12432 |
-| `golden/stream-tagged-outline` | 1,07 / 1,18 | 1,06 / 1,17 | 1,77 / 1,87 | 1,66 / 1,82 | 4,16 / 4,31 | 0,26× | 12391 / 12416 |
-| `golden/invoice-pdfa-3b-attachment` | 7,71 / 8,36 | 7,77 / 8,53 | 13,9 / 14,2 | 13,8 / 14,4 | 39,7 / 40,8 | 0,19× | 34007 / 33899 |
-| `golden/font-formats-pdfa-2b` | 1,55 / 1,63 | 1,51 / 1,64 | 2,35 / 2,49 | 2,23 / 2,40 | 3,55 / 3,61 | 0,44× | 35145 / 35291 |
-| `golden/font-formats-pdfa-2u` | 1,55 / 1,68 | 1,53 / 1,65 | 2,36 / 2,51 | 2,29 / 2,52 | 3,57 / 3,70 | 0,44× | 35145 / 35291 |
-| `golden/font-formats-pdfa-2a` | 1,55 / 1,62 | 1,52 / 1,70 | 2,36 / 2,45 | 2,24 / 2,40 | 3,54 / 3,66 | 0,44× | 35145 / 35291 |
-| `golden/font-formats-pdfa-3b` | 1,53 / 1,66 | 1,52 / 1,88 | 2,35 / 2,44 | 2,23 / 2,36 | 3,53 / 3,66 | 0,43× | 35145 / 35291 |
-| `golden/font-formats-pdfa-3u` | 1,55 / 1,60 | 1,52 / 1,65 | 2,35 / 2,40 | 2,23 / 2,38 | 3,52 / 3,67 | 0,44× | 35145 / 35291 |
-| `golden/font-formats-pdfa-3a` | 1,55 / 1,70 | 1,51 / 1,72 | 2,37 / 2,47 | 2,25 / 2,40 | 3,57 / 3,70 | 0,43× | 35145 / 35291 |
-| `golden/font-formats-pdfa-4` | 1,52 / 1,71 | 1,53 / 1,69 | 2,34 / 2,39 | 2,22 / 2,35 | 3,47 / 3,57 | 0,44× | 31772 / 31906 |
-| `golden/invoice-pdfa-2b` | 7,60 / 7,78 | 7,76 / 8,49 | 13,8 / 14,0 | 13,7 / 13,9 | 39,1 / 39,9 | 0,19× | 32058 / 31953 |
-| `golden/invoice-pdfa-4` | 7,73 / 7,92 | 7,73 / 8,49 | 13,8 / 14,0 | 13,5 / 13,9 | 39,1 / 39,5 | 0,20× | 29745 / 29644 |
-| `golden/invoice-pdfa-4f-attachment` | 7,70 / 8,26 | 7,79 / 8,77 | 13,9 / 14,6 | 13,8 / 14,1 | 39,2 / 41,2 | 0,20× | 31903 / 31803 |
-| `golden/report-tagged-ua1` | 1,17 / 1,21 | 1,16 / 1,29 | 1,94 / 2,03 | 1,82 / 1,94 | 4,28 / 4,47 | 0,27× | 18431 / 18461 |
-| `golden/report-tagged-a2a` | 1,17 / 1,28 | 1,18 / 1,39 | 1,93 / 2,01 | 1,81 / 1,93 | 4,23 / 4,61 | 0,28× | 17134 / 17166 |
-| `golden/list-tagged-ua1` | 0,83 / 0,94 | 0,82 / 0,97 | 1,32 / 1,40 | 1,22 / 1,38 | 2,63 / 2,79 | 0,32× | 10488 / 10522 |
-| `golden/inline-block-tagged` | 0,57 / 0,69 | 0,55 / 0,67 | 0,85 / 0,93 | 0,75 / 0,96 | 1,59 / 1,72 | 0,36× | 8605 / 8630 |
-| `golden/structure-types-a4` | 1,14 / 1,19 | 1,10 / 1,24 | 1,83 / 1,95 | 1,73 / 1,85 | 4,77 / 4,91 | 0,24× | 13686 / 13724 |
-| `golden/table-tagged-ua2` | 0,92 / 0,97 | 0,90 / 1,02 | 1,47 / 1,55 | 1,36 / 1,52 | 2,53 / 2,64 | 0,37× | 12295 / 12319 |
-| `golden/report-tagged-ua2` | 0,85 / 0,90 | 0,82 / 0,96 | 1,33 / 1,49 | 1,22 / 1,34 | 2,43 / 2,66 | 0,35× | 12532 / 12555 |
-| `golden/borders-tagged-ua1` | 0,57 / 0,62 | 0,55 / 0,65 | 0,86 / 0,93 | 0,76 / 0,88 | 1,52 / 1,65 | 0,37× | 12934 / 12955 |
-| `golden/decorative-image-ua1` | 0,37 / 0,42 | 0,34 / 0,44 | 0,53 / 0,57 | 0,44 / 0,54 | 1,05 / 1,16 | 0,35× | 5740 / 5762 |
-| `golden/inline-box-lang-ua1` | 0,57 / 0,66 | 0,55 / 0,67 | 0,84 / 0,91 | 0,74 / 0,84 | 1,54 / 1,70 | 0,37× | 12813 / 12835 |
-| `golden/heading-levels-ua1` | 0,84 / 0,89 | 0,83 / 1,00 | 1,32 / 1,41 | 1,22 / 1,44 | 2,35 / 2,53 | 0,36× | 16960 / 16995 |
-| `docs/invoice` | 1,97 / 2,02 | 1,95 / 2,07 | 3,21 / 3,26 | 3,06 / 3,49 | 6,10 / 6,62 | 0,32× | 26055 / 26094 |
-| `docs/report-repeating-header` | 7,86 / 8,28 | 7,92 / 8,05 | 14,3 / 14,7 | 14,3 / 14,6 | 28,1 / 28,6 | 0,28× | 33703 / 34052 |
-| `docs/ticket` | 0,79 / 0,91 | 0,81 / 0,91 | 1,18 / 1,29 | 1,09 / 1,25 | 1,70 / 1,80 | 0,46× | 19037 / 19063 |
-| `docs/multipage-text` | 7,56 / 8,00 | 7,68 / 7,91 | 13,6 / 14,1 | 13,6 / 14,5 | 16,0 / 16,6 | 0,47× | 23780 / 23586 |
-| `docs/headers-footers` | 6,13 / 6,43 | 6,11 / 6,78 | 10,9 / 11,5 | 10,7 / 11,5 | 21,7 / 23,3 | 0,28× | 16051 / 15898 |
-| `docs/links-outline` | 4,93 / 5,08 | 4,99 / 5,32 | 8,57 / 8,69 | 8,60 / 8,90 | 18,3 / 18,6 | 0,27× | 28346 / 28260 |
-| `docs/images` | 1,06 / 1,16 | 1,15 / 1,34 | 2,40 / 2,48 | 2,34 / 2,52 | 2,08 / 2,20 | 0,51× | 407883 / 407901 |
-| `docs/images-viewport` | 1,03 / 1,21 | 1,13 / 1,40 | 2,39 / 2,63 | 2,34 / 2,56 | 1,94 / 2,39 | 0,53× | 407774 / 407788 |
-| `docs/effects` | 1,14 / 1,27 | 1,13 / 1,32 | 1,75 / 1,83 | 1,66 / 1,78 | 2,04 / 2,17 | 0,56× | 19527 / 19643 |
-| `docs/intl-rtl-cjk-emoji` | 1,99 / 2,08 | 2,05 / 2,13 | 3,16 / 3,33 | 3,11 / 3,27 | 4,30 / 4,40 | 0,46× | 39262 / 39475 |
-| `docs/tagged-ua1` | 1,14 / 1,26 | 1,15 / 1,36 | 1,82 / 1,91 | 1,68 / 1,82 | 2,98 / 3,21 | 0,38× | 27397 / 27439 |
-| `docs/tagged-ua2-pdfa4` | 1,18 / 1,26 | 1,15 / 1,46 | 1,86 / 1,91 | 1,72 / 1,89 | 3,03 / 3,22 | 0,39× | 28723 / 28758 |
-| `docs/attachments` | 1,98 / 2,07 | 1,94 / 2,07 | 3,22 / 3,29 | 3,09 / 3,23 | 6,01 / 6,15 | 0,33× | 26664 / 26698 |
-| `docs/invoice-pdfa-2b` | 2,00 / 2,09 | 1,97 / 2,08 | 3,26 / 3,28 | 3,11 / 3,25 | 6,03 / 6,20 | 0,33× | 29699 / 29736 |
-| `docs/invoice-pdfa-2u` | 2,00 / 2,06 | 2,00 / 2,12 | 3,23 / 3,34 | 3,14 / 3,32 | 6,01 / 6,30 | 0,33× | 29699 / 29736 |
-| `docs/invoice-pdfa-2a` | 2,00 / 2,17 | 1,96 / 2,14 | 3,26 / 3,42 | 3,11 / 3,27 | 5,99 / 6,23 | 0,33× | 29707 / 29741 |
-| `docs/invoice-pdfa-3b` | 2,03 / 2,07 | 2,01 / 2,10 | 3,27 / 3,38 | 3,14 / 3,26 | 5,99 / 6,10 | 0,34× | 30813 / 30848 |
-| `docs/invoice-pdfa-3u` | 2,03 / 2,07 | 1,99 / 2,31 | 3,26 / 3,46 | 3,17 / 3,35 | 6,04 / 6,27 | 0,34× | 30813 / 30848 |
-| `docs/invoice-pdfa-3a` | 2,06 / 2,13 | 2,02 / 2,29 | 3,27 / 3,47 | 3,14 / 3,27 | 6,12 / 6,31 | 0,34× | 30821 / 30857 |
-| `docs/invoice-pdfa-4` | 2,00 / 2,13 | 2,00 / 2,21 | 3,26 / 3,36 | 3,10 / 3,29 | 5,98 / 6,24 | 0,33× | 27320 / 27351 |
-| `docs/invoice-pdfa-4f` | 2,03 / 2,10 | 1,98 / 2,15 | 3,27 / 3,37 | 3,13 / 3,25 | 5,99 / 6,08 | 0,34× | 28727 / 28754 |
-| `stress/1p` | 2,03 / 2,06 | 2,04 / 2,14 | 3,44 / 3,85 | 3,34 / 3,57 | 7,23 / 7,46 | 0,28× | 27378 / 27389 |
-| `stress/10p` | 15,6 / 16,0 | 15,6 / 17,5 | 27,7 / 28,7 | 27,8 / 29,4 | 76,3 / 77,7 | 0,20× | 59551 / 59608 |
+| `golden/box-chrome` | 0,66 / 0,94 | 0,63 / 1,33 | 1,03 / 1,19 | 0,79 / 1,16 | 2,11 / 2,53 | 0,31× | 5441 / 5453 |
+| `golden/gradients` | 0,56 / 1,52 | 0,54 / 1,34 | 0,78 / 0,97 | 0,60 / 0,95 | 1,75 / 2,18 | 0,32× | 4506 / 4483 |
+| `golden/repeating-gradients` | 0,43 / 0,71 | 0,49 / 0,87 | 0,47 / 0,93 | 0,38 / 0,81 | 1,01 / 2,24 | 0,43× | 8558 / 8454 |
+| `golden/box-shadows` | 0,23 / 0,32 | 0,37 / 0,46 | 0,29 / 0,38 | 0,23 / 0,36 | 0,63 / 0,87 | 0,37× | 4120 / 4128 |
+| `golden/blend-opacity` | 0,15 / 0,22 | 0,27 / 0,35 | 0,18 / 0,26 | 0,14 / 0,22 | 0,47 / 0,62 | 0,32× | 3156 / 3172 |
+| `golden/overflow-clip` | 0,14 / 0,22 | 0,26 / 0,35 | 0,17 / 0,26 | 0,13 / 0,22 | 0,44 / 0,62 | 0,32× | 2492 / 2505 |
+| `golden/transformed-overflow-clip` | 0,09 / 0,14 | 0,21 / 0,28 | 0,10 / 0,16 | 0,07 / 0,13 | 0,26 / 0,40 | 0,32× | 1828 / 1846 |
+| `golden/clip-path-shapes` | 0,19 / 0,26 | 0,30 / 0,39 | 0,23 / 0,33 | 0,18 / 0,27 | 0,55 / 0,70 | 0,34× | 4348 / 4367 |
+| `golden/mask-image` | 0,24 / 0,32 | 0,38 / 0,46 | 0,29 / 0,38 | 0,24 / 0,35 | 0,73 / 0,92 | 0,33× | 9341 / 9354 |
+| `golden/color-filters` | 0,13 / 0,21 | 0,25 / 0,33 | 0,15 / 0,24 | 0,12 / 0,19 | 0,38 / 0,53 | 0,35× | 1924 / 1939 |
+| `golden/outlines` | 0,14 / 0,20 | 0,26 / 0,33 | 0,16 / 0,23 | 0,13 / 0,19 | 0,37 / 0,51 | 0,37× | 2417 / 2421 |
+| `golden/background-boxes` | 0,16 / 0,23 | 0,28 / 0,37 | 0,19 / 0,27 | 0,16 / 0,23 | 0,46 / 0,62 | 0,36× | 3938 / 3954 |
+| `golden/background-placement` | 0,17 / 0,25 | 0,29 / 0,38 | 0,20 / 0,28 | 0,16 / 0,24 | 0,47 / 0,63 | 0,36× | 4681 / 4694 |
+| `golden/url-layers` | 0,17 / 0,25 | 0,29 / 0,38 | 0,20 / 0,29 | 0,16 / 0,24 | 0,49 / 0,67 | 0,35× | 3489 / 3501 |
+| `golden/edge-degenerate` | 0,46 / 0,57 | 0,57 / 0,70 | 0,59 / 0,74 | 0,46 / 0,66 | 1,33 / 1,58 | 0,35× | 5511 / 5520 |
+| `golden/image-object-fit` | 0,13 / 0,21 | 0,24 / 0,33 | 0,15 / 0,24 | 0,11 / 0,20 | 0,62 / 0,91 | 0,21× | 2290 / 2302 |
+| `golden/encoded-bitmaps` | 0,12 / 0,18 | 0,25 / 0,33 | 0,14 / 0,24 | 0,10 / 0,19 | 0,39 / 0,58 | 0,31× | 3213 / 3228 |
+| `golden/png-streams` | 0,10 / 0,15 | 0,22 / 0,28 | 0,11 / 0,17 | 0,08 / 0,13 | 0,31 / 0,44 | 0,32× | 2561 / 2576 |
+| `golden/border-mixed-sides` | 0,16 / 0,25 | 0,28 / 0,38 | 0,19 / 0,29 | 0,14 / 0,23 | 0,52 / 0,70 | 0,31× | 2436 / 2442 |
+| `golden/inline-span-background` | 0,49 / 0,61 | 0,60 / 0,75 | 0,63 / 0,77 | 0,52 / 0,73 | 1,43 / 1,68 | 0,35× | 6529 / 6537 |
+| `golden/inline-span-border` | 0,44 / 0,53 | 0,55 / 0,67 | 0,56 / 0,64 | 0,44 / 0,62 | 1,20 / 1,39 | 0,36× | 6236 / 6246 |
+| `golden/inline-images` | 0,43 / 0,55 | 0,53 / 0,66 | 0,54 / 0,67 | 0,41 / 0,58 | 1,29 / 1,48 | 0,33× | 6312 / 6330 |
+| `golden/inline-image-decorations` | 0,42 / 0,49 | 0,52 / 0,61 | 0,51 / 0,61 | 0,39 / 0,57 | 1,19 / 1,42 | 0,36× | 6129 / 6141 |
+| `golden/page-background` | 0,36 / 0,46 | 0,47 / 0,58 | 0,46 / 0,59 | 0,35 / 0,53 | 1,14 / 1,39 | 0,32× | 5464 / 5488 |
+| `golden/svg-background-image` | 0,39 / 0,48 | 0,50 / 0,62 | 0,48 / 0,59 | 0,36 / 0,52 | 1,02 / 1,23 | 0,38× | 5968 / 5980 |
+| `golden/collapsed-table` | 0,89 / 0,97 | 1,01 / 1,11 | 1,17 / 1,39 | 1,02 / 1,27 | 2,96 / 3,36 | 0,30× | 9638 / 9618 |
+| `golden/text-decorations` | 0,62 / 0,71 | 0,74 / 0,86 | 0,80 / 0,98 | 0,69 / 0,86 | 1,54 / 1,79 | 0,40× | 8906 / 8924 |
+| `golden/text-decoration-styles` | 0,48 / 0,57 | 0,62 / 0,70 | 0,62 / 0,74 | 0,52 / 0,66 | 1,11 / 1,32 | 0,43× | 6068 / 6082 |
+| `golden/svg-vector-image` | 0,11 / 0,19 | 0,23 / 0,32 | 0,14 / 0,22 | 0,10 / 0,17 | 0,39 / 0,61 | 0,29× | 2460 / 2473 |
+| `golden/text-basic` | 0,29 / 0,37 | 0,42 / 0,51 | 0,35 / 0,48 | 0,28 / 0,40 | 0,83 / 1,07 | 0,35× | 5099 / 5113 |
+| `golden/text-ligatures` | 0,27 / 0,36 | 0,40 / 0,47 | 0,33 / 0,45 | 0,27 / 0,39 | 0,79 / 0,97 | 0,35× | 4966 / 4983 |
+| `golden/text-decoration-shadow` | 1,99 / 2,09 | 2,11 / 2,24 | 2,13 / 2,29 | 1,99 / 2,18 | 3,98 / 4,48 | 0,50× | 42120 / 41576 |
+| `golden/text-shadow-stroke` | 6,13 / 6,27 | 6,33 / 6,59 | 6,99 / 7,13 | 6,83 / 6,99 | 9,05 / 9,39 | 0,68× | 117714 / 95472 |
+| `golden/color-glyph-text-shadow` | 3,87 / 3,99 | 4,06 / 4,23 | 4,12 / 4,43 | 4,03 / 4,16 | 6,71 / 6,90 | 0,58× | 81054 / 80275 |
+| `golden/bitmap-glyph-text-shadow` | 1,24 / 1,43 | 1,39 / 1,59 | 1,59 / 2,14 | 1,46 / 1,68 | 2,21 / 2,53 | 0,56× | 15158 / 15247 |
+| `golden/text-stroke-paint-order` | 0,94 / 1,03 | 1,05 / 1,20 | 1,11 / 1,25 | 0,97 / 1,19 | 1,37 / 1,54 | 0,69× | 16178 / 8977 |
+| `golden/cluster-closing-on-a-mark` | 0,19 / 0,26 | 0,30 / 0,40 | 0,23 / 0,29 | 0,18 / 0,27 | 0,53 / 0,71 | 0,36× | 4991 / 5003 |
+| `golden/font-weights` | 2,83 / 3,00 | 3,01 / 3,21 | 3,68 / 3,89 | 3,57 / 3,71 | 7,33 / 7,55 | 0,39× | 57268 / 57162 |
+| `golden/certificate` | 1,09 / 1,27 | 1,19 / 1,34 | 1,37 / 1,53 | 1,25 / 1,47 | 2,93 / 3,22 | 0,37× | 14358 / 14304 |
+| `golden/paged-lines` | 1,22 / 1,35 | 1,31 / 1,54 | 1,62 / 1,78 | 1,52 / 1,74 | 5,67 / 5,95 | 0,22× | 8817 / 8688 |
+| `golden/paged-page-ranges` | 0,93 / 1,00 | 1,00 / 1,15 | 1,25 / 1,41 | 1,10 / 1,30 | 6,06 / 6,65 | 0,15× | 7197 / 7192 |
+| `golden/paged-table` | 2,13 / 2,30 | 2,20 / 2,35 | 2,86 / 2,96 | 2,82 / 2,99 | 7,27 / 7,52 | 0,29× | 14858 / 14664 |
+| `golden/paged-breaks` | 0,44 / 0,51 | 0,55 / 0,65 | 0,56 / 0,67 | 0,44 / 0,60 | 1,63 / 1,90 | 0,27× | 5929 / 5948 |
+| `golden/paged-widows-orphans` | 0,68 / 0,73 | 0,77 / 0,86 | 0,88 / 0,97 | 0,74 / 0,90 | 2,41 / 2,61 | 0,28× | 8308 / 8296 |
+| `golden/paged-narrow` | 1,06 / 1,20 | 1,17 / 1,25 | 1,38 / 1,56 | 1,23 / 1,43 | 4,19 / 4,54 | 0,25× | 9459 / 9266 |
+| `golden/paged-landscape` | 3,54 / 3,66 | 3,66 / 3,89 | 4,65 / 4,84 | 4,56 / 4,68 | 11,7 / 11,8 | 0,30× | 16412 / 14122 |
+| `golden/legacy-page-break` | 0,61 / 0,70 | 0,72 / 0,81 | 0,80 / 0,97 | 0,67 / 0,90 | 2,03 / 2,34 | 0,30× | 7815 / 7826 |
+| `golden/text-shadow-page-cut` | 0,65 / 0,78 | 0,75 / 0,87 | 0,77 / 0,91 | 0,65 / 0,82 | 1,52 / 1,69 | 0,43× | 10645 / 10562 |
+| `golden/fixed-repeats-per-page` | 0,46 / 0,52 | 0,57 / 0,69 | 0,58 / 0,72 | 0,46 / 0,63 | 1,46 / 1,68 | 0,32× | 6382 / 6402 |
+| `golden/invoice` | 5,96 / 6,14 | 6,11 / 6,22 | 8,01 / 8,23 | 7,86 / 8,19 | 36,5 / 37,1 | 0,16× | 29571 / 28723 |
+| `golden/report-links-outline` | 1,03 / 1,19 | 1,14 / 1,32 | 1,34 / 1,52 | 1,18 / 1,39 | 3,93 / 4,23 | 0,26× | 14252 / 14223 |
+| `golden/paged-footer` | 1,38 / 1,52 | 1,46 / 1,61 | 1,84 / 1,99 | 1,69 / 1,89 | 7,23 / 7,58 | 0,19× | 11459 / 11427 |
+| `golden/paged-band-remeasure` | 0,66 / 0,83 | 0,76 / 0,84 | 0,87 / 1,02 | 0,70 / 0,88 | 3,01 / 3,34 | 0,22× | 6868 / 6879 |
+| `golden/paged-header-footer` | 1,69 / 1,86 | 1,87 / 1,99 | 2,32 / 2,50 | 2,23 / 2,43 | 9,83 / 10,2 | 0,17× | 10707 / 10657 |
+| `golden/auto-margin-bands` | 1,37 / 1,51 | 1,43 / 1,59 | 1,85 / 2,01 | 1,71 / 1,86 | 7,23 / 7,60 | 0,19× | 8765 / 8727 |
+| `golden/page-rules` | 1,12 / 1,19 | 1,19 / 1,36 | 1,47 / 1,63 | 1,30 / 1,49 | 6,17 / 6,41 | 0,18× | 10578 / 10542 |
+| `golden/paged-target-counters` | 0,65 / 0,78 | 0,75 / 0,90 | 0,85 / 0,92 | 0,69 / 0,87 | 3,51 / 3,88 | 0,19× | 7539 / 7555 |
+| `golden/content-page-counters` | 0,37 / 0,46 | 0,50 / 0,59 | 0,47 / 0,63 | 0,37 / 0,50 | 1,41 / 1,74 | 0,26× | 5130 / 5145 |
+| `golden/fixed-page-counters` | 0,37 / 0,50 | 0,50 / 0,62 | 0,47 / 0,57 | 0,35 / 0,51 | 1,24 / 1,63 | 0,30× | 4271 / 4292 |
+| `golden/stream-total-pages-band` | 1,44 / 1,61 | 1,54 / 1,64 | 2,01 / 2,18 | 1,86 / 2,05 | 5,83 / 6,13 | 0,25× | 11138 / 11120 |
+| `golden/stream-content-counters` | 1,21 / 1,35 | 1,33 / 1,44 | 1,59 / 1,71 | 1,48 / 1,66 | 7,58 / 7,82 | 0,16× | 11989 / 11979 |
+| `golden/stream-page-ranges-middle` | 0,83 / 0,96 | 0,93 / 1,06 | 1,07 / 1,16 | 0,92 / 1,10 | 3,47 / 3,94 | 0,24× | 10529 / 10540 |
+| `golden/at-page-first-left-right` | 4,92 / 5,16 | 4,98 / 5,19 | 7,40 / 7,52 | 7,24 / 7,50 | 17,8 / 19,1 | 0,28× | 17311 / 15653 |
+| `golden/at-page-root-element` | 4,14 / 4,63 | 4,41 / 4,62 | 6,02 / 6,37 | 6,01 / 6,15 | 11,0 / 11,4 | 0,38× | 15697 / 14404 |
+| `golden/named-pages` | 8,00 / 8,11 | 8,09 / 8,29 | 12,5 / 12,8 | 12,4 / 12,7 | 25,7 / 26,5 | 0,31× | 17572 / 17129 |
+| `golden/stream-forward-link` | 0,93 / 1,05 | 1,03 / 1,17 | 1,21 / 1,31 | 1,04 / 1,28 | 4,73 / 4,97 | 0,20× | 12436 / 12432 |
+| `golden/stream-tagged-outline` | 0,94 / 1,09 | 1,05 / 1,16 | 1,24 / 1,34 | 1,07 / 1,28 | 3,78 / 4,10 | 0,25× | 12433 / 12416 |
+| `golden/invoice-pdfa-3b-attachment` | 6,06 / 6,39 | 6,18 / 6,47 | 8,11 / 8,20 | 7,94 / 8,16 | 34,9 / 36,0 | 0,17× | 34751 / 33899 |
+| `golden/font-formats-pdfa-2b` | 1,35 / 1,49 | 1,43 / 1,60 | 1,69 / 1,79 | 1,53 / 1,71 | 3,41 / 3,67 | 0,40× | 35336 / 35291 |
+| `golden/font-formats-pdfa-2u` | 1,36 / 1,50 | 1,48 / 1,69 | 1,69 / 1,91 | 1,56 / 1,71 | 3,38 / 3,65 | 0,40× | 35336 / 35291 |
+| `golden/font-formats-pdfa-2a` | 1,35 / 1,55 | 1,45 / 1,74 | 1,70 / 1,93 | 1,56 / 1,87 | 3,39 / 3,64 | 0,40× | 35336 / 35291 |
+| `golden/font-formats-pdfa-3b` | 1,35 / 1,54 | 1,44 / 1,55 | 1,70 / 1,85 | 1,54 / 1,89 | 3,36 / 3,62 | 0,40× | 35336 / 35291 |
+| `golden/font-formats-pdfa-3u` | 1,36 / 1,42 | 1,44 / 1,51 | 1,70 / 1,93 | 1,52 / 1,82 | 3,44 / 3,65 | 0,39× | 35336 / 35291 |
+| `golden/font-formats-pdfa-3a` | 1,35 / 1,47 | 1,44 / 1,67 | 1,71 / 1,89 | 1,59 / 1,92 | 3,37 / 3,66 | 0,40× | 35336 / 35291 |
+| `golden/font-formats-pdfa-4` | 1,35 / 1,63 | 1,44 / 1,63 | 1,69 / 1,89 | 1,51 / 1,78 | 3,30 / 3,66 | 0,41× | 31963 / 31906 |
+| `golden/invoice-pdfa-2b` | 6,01 / 6,27 | 6,21 / 6,54 | 7,99 / 8,29 | 7,98 / 8,12 | 34,7 / 35,8 | 0,17× | 32804 / 31953 |
+| `golden/invoice-pdfa-4` | 6,00 / 6,46 | 6,15 / 6,36 | 7,99 / 8,20 | 7,92 / 8,20 | 34,6 / 35,9 | 0,17× | 30497 / 29644 |
+| `golden/invoice-pdfa-4f-attachment` | 6,08 / 6,16 | 6,14 / 6,60 | 8,01 / 8,18 | 7,92 / 8,78 | 34,4 / 35,5 | 0,18× | 32656 / 31803 |
+| `golden/report-tagged-ua1` | 1,05 / 1,24 | 1,17 / 1,35 | 1,37 / 1,58 | 1,20 / 1,39 | 3,99 / 4,28 | 0,26× | 18501 / 18461 |
+| `golden/report-tagged-a2a` | 1,05 / 1,13 | 1,13 / 1,36 | 1,36 / 1,56 | 1,19 / 1,42 | 3,95 / 4,51 | 0,26× | 17197 / 17166 |
+| `golden/list-tagged-ua1` | 0,80 / 0,90 | 0,89 / 1,01 | 1,02 / 1,19 | 0,85 / 1,04 | 2,51 / 2,77 | 0,32× | 10525 / 10522 |
+| `golden/inline-block-tagged` | 0,53 / 0,64 | 0,65 / 0,77 | 0,68 / 0,82 | 0,54 / 0,73 | 1,58 / 1,80 | 0,34× | 8607 / 8630 |
+| `golden/structure-types-a4` | 1,05 / 1,15 | 1,14 / 1,31 | 1,33 / 1,61 | 1,19 / 1,44 | 4,34 / 4,61 | 0,24× | 13767 / 13724 |
+| `golden/table-tagged-ua2` | 0,84 / 0,96 | 0,97 / 1,14 | 1,08 / 1,21 | 0,93 / 1,23 | 2,47 / 2,92 | 0,34× | 12349 / 12319 |
+| `golden/report-tagged-ua2` | 0,81 / 0,89 | 0,90 / 1,03 | 1,01 / 1,18 | 0,85 / 1,04 | 2,36 / 2,56 | 0,34× | 12570 / 12555 |
+| `golden/borders-tagged-ua1` | 0,54 / 0,62 | 0,64 / 0,77 | 0,67 / 0,79 | 0,54 / 0,72 | 1,50 / 1,74 | 0,36× | 12943 / 12955 |
+| `golden/decorative-image-ua1` | 0,34 / 0,46 | 0,46 / 0,55 | 0,43 / 0,53 | 0,32 / 0,49 | 1,05 / 1,28 | 0,33× | 5737 / 5762 |
+| `golden/inline-box-lang-ua1` | 0,53 / 0,68 | 0,65 / 0,79 | 0,67 / 0,83 | 0,54 / 0,72 | 1,53 / 1,85 | 0,35× | 12819 / 12835 |
+| `golden/heading-levels-ua1` | 0,80 / 0,88 | 0,91 / 1,02 | 1,02 / 1,13 | 0,84 / 1,07 | 2,32 / 2,60 | 0,35× | 16979 / 16995 |
+| `golden/media-print` | 0,26 / 0,35 | 0,38 / 0,45 | 0,32 / 0,41 | 0,25 / 0,36 | 0,73 / 0,96 | 0,35× | 4601 / 4617 |
+| `golden/inline-span-background-image` | 0,71 / 0,81 | 0,81 / 0,89 | 0,87 / 1,04 | 0,73 / 0,96 | 1,65 / 1,82 | 0,43× | 12584 / 12542 |
+| `golden/inline-span-background-clip-text-nested` | 1,08 / 1,20 | 1,20 / 1,35 | 1,27 / 1,53 | 1,15 / 1,44 | 2,08 / 2,37 | 0,52× | 19352 / 19194 |
+| `golden/inline-span-background-clip-text-decoration` | 1,10 / 1,27 | 1,27 / 1,59 | 1,35 / 1,67 | 1,22 / 1,42 | 2,25 / 2,64 | 0,49× | 19111 / 18973 |
+| `golden/background-clip-text-descendants` | 2,19 / 2,31 | 2,30 / 2,55 | 2,61 / 2,81 | 2,49 / 2,78 | 3,74 / 3,88 | 0,59× | 38990 / 38302 |
+| `golden/background-clip-text-reach` | 1,03 / 1,17 | 1,13 / 1,29 | 1,23 / 1,42 | 1,08 / 1,43 | 1,98 / 2,24 | 0,52× | 17665 / 17505 |
+| `golden/inline-span-box-decoration-break-clone` | 0,41 / 0,53 | 0,53 / 0,63 | 0,52 / 0,69 | 0,42 / 0,57 | 1,05 / 1,27 | 0,39× | 6218 / 6233 |
+| `golden/sided-avoid-page-breaks` | 0,62 / 0,71 | 0,74 / 0,88 | 0,79 / 1,02 | 0,66 / 0,88 | 1,96 / 2,18 | 0,31× | 7854 / 7864 |
+| `golden/avoid-break-out-of-flow-overflow` | 0,51 / 0,65 | 0,60 / 0,76 | 0,63 / 0,79 | 0,52 / 0,68 | 1,59 / 1,83 | 0,32× | 6622 / 6647 |
+| `golden/img-without-source-past-page` | 0,37 / 0,49 | 0,48 / 0,61 | 0,45 / 0,64 | 0,35 / 0,51 | 1,08 / 1,32 | 0,34× | 5627 / 5639 |
+| `golden/flex-item-margin-past-page` | 0,39 / 0,49 | 0,50 / 0,59 | 0,48 / 0,57 | 0,37 / 0,53 | 1,16 / 1,39 | 0,33× | 5588 / 5521 |
+| `golden/flex-item-child-break-after` | 0,49 / 0,59 | 0,60 / 0,72 | 0,61 / 0,73 | 0,49 / 0,65 | 1,39 / 1,63 | 0,35× | 6634 / 6185 |
+| `golden/flex-item-table-row-break-after` | 0,51 / 0,77 | 0,60 / 0,72 | 0,63 / 1,13 | 0,49 / 0,76 | 1,43 / 2,56 | 0,36× | 6290 / 5859 |
+| `golden/floated-flex-item-break-after` | 0,41 / 0,56 | 0,52 / 0,61 | 0,50 / 0,65 | 0,39 / 0,58 | 1,15 / 1,47 | 0,36× | 5884 / 5431 |
+| `golden/break-after-with-running-absolute` | 0,48 / 0,56 | 0,57 / 0,66 | 0,60 / 0,72 | 0,47 / 0,64 | 1,55 / 1,82 | 0,31× | 6240 / 6728 |
+| `golden/paged-offpage-clips` | 0,68 / 0,83 | 0,78 / 0,92 | 0,86 / 1,00 | 0,73 / 0,90 | 2,04 / 2,32 | 0,33× | 11121 / 10685 |
+| `golden/paged-nested-flex-forced-break` | 0,37 / 0,47 | 0,48 / 0,57 | 0,45 / 0,55 | 0,36 / 0,50 | 1,20 / 1,53 | 0,31× | 5308 / 5328 |
+| `golden/svg-singular-gradient-transform` | 0,16 / 0,24 | 0,28 / 0,35 | 0,19 / 0,28 | 0,14 / 0,23 | 0,50 / 0,73 | 0,31× | 3154 / 3169 |
+| `golden/svg-filters-masks-and-patterns` | 0,14 / 0,21 | 0,26 / 0,34 | 0,17 / 0,25 | 0,13 / 0,19 | 0,45 / 0,63 | 0,32× | 3137 / 3153 |
+| `golden/svg-embedded-png` | 0,19 / 0,28 | 0,30 / 0,38 | 0,23 / 0,34 | 0,18 / 0,28 | 0,60 / 0,83 | 0,32× | 9031 / 9048 |
+| `golden/svg-with-color-filter` | 0,55 / 0,67 | 0,66 / 0,82 | 0,73 / 0,90 | 0,63 / 0,82 | 1,79 / 1,99 | 0,31× | 8290 / 8312 |
+| `golden/inline-outlines` | 0,43 / 0,52 | 0,56 / 0,64 | 0,55 / 0,68 | 0,44 / 0,57 | 1,13 / 1,36 | 0,38× | 6733 / 6747 |
+| `golden/inline-zero-sized-parents` | 0,43 / 0,52 | 0,54 / 0,64 | 0,54 / 0,65 | 0,45 / 0,61 | 1,18 / 1,38 | 0,36× | 6165 / 6183 |
+| `golden/background-clip-border-area-gaps` | 0,20 / 0,27 | 0,33 / 0,41 | 0,23 / 0,33 | 0,19 / 0,27 | 0,57 / 0,77 | 0,35× | 4946 / 4960 |
+| `golden/paged-clone-decorations` | 1,00 / 1,12 | 1,09 / 1,18 | 1,31 / 1,42 | 1,16 / 1,33 | 3,46 / 3,74 | 0,29× | 9632 / 9553 |
+| `golden/paged-transforms` | 0,20 / 0,28 | 0,34 / 0,44 | 0,24 / 0,32 | 0,19 / 0,30 | 0,66 / 0,85 | 0,31× | 2802 / 2814 |
+| `golden/paged-overflow-clip-stitched` | 0,11 / 0,16 | 0,23 / 0,30 | 0,12 / 0,20 | 0,08 / 0,15 | 0,39 / 0,59 | 0,27× | 2162 / 2181 |
+| `golden/paged-rounded-clip-stitched` | 0,14 / 0,21 | 0,26 / 0,33 | 0,16 / 0,23 | 0,12 / 0,19 | 0,52 / 0,70 | 0,28× | 3064 / 3080 |
+| `golden/paged-transform-past-the-last-page` | 0,11 / 0,17 | 0,23 / 0,29 | 0,12 / 0,19 | 0,09 / 0,15 | 0,38 / 0,56 | 0,28× | 2457 / 2472 |
+| `golden/paged-monolithic-overflow` | 0,53 / 0,66 | 0,65 / 0,76 | 0,67 / 0,84 | 0,54 / 0,80 | 1,65 / 1,98 | 0,32× | 7149 / 7152 |
+| `golden/paged-clipped-overflow` | 0,12 / 0,20 | 0,24 / 0,32 | 0,14 / 0,22 | 0,11 / 0,17 | 0,42 / 0,61 | 0,29× | 2174 / 2171 |
+| `golden/paged-images` | 0,43 / 0,52 | 0,54 / 0,64 | 0,54 / 0,64 | 0,42 / 0,59 | 1,48 / 1,71 | 0,29× | 6895 / 6919 |
+| `golden/list-marker-pagination` | 0,43 / 0,55 | 0,55 / 0,65 | 0,54 / 0,67 | 0,44 / 0,60 | 1,45 / 1,68 | 0,30× | 5713 / 5723 |
+| `golden/outline-over-content` | 0,23 / 0,33 | 0,34 / 0,41 | 0,27 / 0,37 | 0,20 / 0,32 | 0,68 / 0,90 | 0,34× | 4092 / 4109 |
+| `golden/outline-under-transform` | 0,22 / 0,31 | 0,34 / 0,42 | 0,27 / 0,37 | 0,20 / 0,31 | 0,68 / 0,89 | 0,33× | 4105 / 4124 |
+| `golden/inline-containers` | 0,49 / 0,60 | 0,61 / 0,74 | 0,64 / 0,83 | 0,50 / 0,68 | 1,58 / 1,78 | 0,31× | 5629 / 5634 |
+| `golden/font-variation-settings` | 0,66 / 0,78 | 0,76 / 0,88 | 0,83 / 0,94 | 0,69 / 0,88 | 1,73 / 1,94 | 0,38× | 11311 / 11329 |
+| `golden/font-optical-sizing` | 0,40 / 0,51 | 0,53 / 0,66 | 0,50 / 0,65 | 0,40 / 0,54 | 1,14 / 1,44 | 0,35× | 7728 / 7738 |
+| `golden/page-sized-boxes` | 0,13 / 0,19 | 0,27 / 0,38 | 0,15 / 0,23 | 0,11 / 0,17 | 0,46 / 0,63 | 0,28× | 2646 / 2660 |
+| `golden/page-area-viewport-units` | 0,12 / 0,19 | 0,24 / 0,32 | 0,14 / 0,22 | 0,11 / 0,16 | 0,44 / 0,62 | 0,28× | 2646 / 2660 |
+| `golden/stream-transform-three-pages-back` | 0,81 / 0,96 | 0,92 / 1,07 | 1,02 / 1,16 | 0,88 / 1,12 | 2,99 / 3,38 | 0,27× | 10540 / 10539 |
+| `golden/stream-relative-body-bottom` | 0,88 / 0,97 | 1,00 / 1,13 | 1,14 / 1,31 | 1,00 / 1,28 | 3,47 / 3,81 | 0,25× | 8333 / 8322 |
+| `golden/paged-rotated-text` | 0,48 / 0,56 | 0,60 / 0,75 | 0,58 / 0,65 | 0,46 / 0,63 | 1,25 / 1,41 | 0,39× | 7652 / 7644 |
+| `golden/paged-clipped-line` | 0,40 / 0,52 | 0,52 / 0,73 | 0,50 / 0,66 | 0,40 / 0,56 | 1,12 / 1,40 | 0,36× | 6308 / 6322 |
+| `golden/paged-clipped-line-at-page-edge` | 0,34 / 0,43 | 0,44 / 0,57 | 0,42 / 0,50 | 0,32 / 0,49 | 1,00 / 1,24 | 0,34× | 5239 / 5264 |
+| `golden/paged-translated-text-past-the-end` | 0,46 / 0,56 | 0,59 / 0,77 | 0,53 / 0,69 | 0,44 / 0,59 | 1,09 / 1,40 | 0,42× | 8235 / 8182 |
+| `golden/paged-translated-text-across-pages` | 0,49 / 0,57 | 0,60 / 0,66 | 0,57 / 0,67 | 0,45 / 0,58 | 1,17 / 1,36 | 0,42× | 8235 / 8182 |
+| `docs/invoice` | 1,60 / 1,77 | 1,70 / 1,83 | 2,13 / 2,25 | 2,01 / 2,13 | 5,82 / 6,01 | 0,27× | 26208 / 26094 |
+| `docs/report-repeating-header` | 6,68 / 6,78 | 6,72 / 7,08 | 9,08 / 9,26 | 9,01 / 9,14 | 24,9 / 25,2 | 0,27× | 34497 / 34052 |
+| `docs/ticket` | 0,70 / 0,84 | 0,85 / 0,98 | 0,88 / 1,03 | 0,76 / 0,90 | 1,64 / 1,84 | 0,43× | 19058 / 19063 |
+| `docs/multipage-text` | 3,84 / 3,96 | 3,91 / 4,36 | 6,52 / 6,66 | 6,53 / 6,71 | 13,7 / 13,9 | 0,28× | 24302 / 23586 |
+| `docs/headers-footers` | 3,07 / 3,17 | 3,30 / 3,59 | 5,12 / 5,30 | 5,08 / 5,23 | 18,3 / 18,8 | 0,17× | 16361 / 15898 |
+| `docs/links-outline` | 2,83 / 2,96 | 2,85 / 3,00 | 4,48 / 4,70 | 4,30 / 4,51 | 15,7 / 16,2 | 0,18× | 29168 / 28260 |
+| `docs/images` | 1,11 / 1,25 | 1,38 / 1,58 | 1,16 / 1,35 | 1,12 / 1,35 | 2,13 / 2,37 | 0,52× | 407889 / 407901 |
+| `docs/images-viewport` | 1,08 / 1,34 | 1,25 / 1,53 | 1,12 / 1,31 | 1,04 / 1,23 | 1,97 / 2,29 | 0,55× | 407778 / 407788 |
+| `docs/effects` | 0,98 / 1,14 | 1,08 / 1,27 | 1,16 / 1,27 | 0,99 / 1,15 | 1,97 / 2,23 | 0,50× | 19733 / 19643 |
+| `docs/intl-rtl-cjk-emoji` | 1,74 / 1,83 | 1,85 / 2,02 | 2,25 / 2,44 | 2,07 / 2,37 | 4,19 / 4,31 | 0,41× | 39593 / 39475 |
+| `docs/tagged-ua1` | 1,03 / 1,09 | 1,13 / 1,37 | 1,32 / 1,50 | 1,14 / 1,34 | 2,88 / 3,19 | 0,36× | 27462 / 27439 |
+| `docs/tagged-ua2-pdfa4` | 1,05 / 1,20 | 1,16 / 1,31 | 1,35 / 1,54 | 1,18 / 1,37 | 2,92 / 3,22 | 0,36× | 28791 / 28758 |
+| `docs/attachments` | 1,63 / 1,73 | 1,75 / 1,82 | 2,15 / 2,28 | 1,99 / 2,31 | 5,76 / 5,90 | 0,28× | 26817 / 26698 |
+| `docs/invoice-pdfa-2b` | 1,63 / 1,73 | 1,75 / 2,03 | 2,16 / 2,33 | 1,97 / 2,22 | 5,71 / 6,10 | 0,29× | 29859 / 29736 |
+| `docs/invoice-pdfa-2u` | 1,64 / 1,71 | 1,72 / 1,92 | 2,17 / 2,35 | 2,07 / 2,28 | 5,65 / 5,94 | 0,29× | 29859 / 29736 |
+| `docs/invoice-pdfa-2a` | 1,63 / 1,80 | 1,74 / 1,96 | 2,16 / 2,34 | 2,06 / 2,28 | 5,69 / 6,04 | 0,29× | 29867 / 29741 |
+| `docs/invoice-pdfa-3b` | 1,66 / 1,78 | 1,74 / 1,98 | 2,19 / 2,35 | 1,99 / 2,27 | 5,78 / 6,15 | 0,29× | 30977 / 30848 |
+| `docs/invoice-pdfa-3u` | 1,66 / 1,79 | 1,73 / 1,92 | 2,19 / 2,33 | 1,98 / 2,18 | 5,76 / 6,10 | 0,29× | 30977 / 30848 |
+| `docs/invoice-pdfa-3a` | 1,64 / 1,86 | 1,73 / 1,87 | 2,20 / 2,36 | 1,99 / 2,24 | 5,76 / 6,03 | 0,29× | 30985 / 30857 |
+| `docs/invoice-pdfa-4` | 1,64 / 1,79 | 1,70 / 1,95 | 2,15 / 2,28 | 1,97 / 2,22 | 5,65 / 6,03 | 0,29× | 27489 / 27351 |
+| `docs/invoice-pdfa-4f` | 1,65 / 1,78 | 1,75 / 1,98 | 2,19 / 2,30 | 1,97 / 2,23 | 5,73 / 6,10 | 0,29× | 28893 / 28754 |
+| `stress/1p` | 1,63 / 1,71 | 1,68 / 1,82 | 2,19 / 2,36 | 2,03 / 2,20 | 6,78 / 7,18 | 0,24× | 27560 / 27389 |
+| `stress/10p` | 10,6 / 10,9 | 10,8 / 11,0 | 15,3 / 15,5 | 15,2 / 15,4 | 66,7 / 68,2 | 0,16× | 61623 / 59608 |
 
 median / p95 ms.
 <!-- /pdf-bench:per-doc -->

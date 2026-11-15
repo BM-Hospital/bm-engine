@@ -2,7 +2,7 @@
 
 [English](../../en/image/animation.md) · [Tiếng Việt](animation.md)
 
-bm-engine render CSS animation giống cách takumi làm: nó không chạy đồng hồ mà **lấy mẫu** dòng thời gian
+bm-engine render CSS animation bằng cách **lấy mẫu** dòng thời gian
 `@keyframes` tại thời điểm bạn chọn. Một lời gọi cho bạn một khung hình tại `timeMs`; lời gọi khác lấy
 mẫu một danh sách scene theo tốc độ khung hình cố định rồi mã hoá thành WebP động, APNG hoặc GIF. Trang này
 trình bày cả hai, cách khai báo keyframes (văn bản stylesheet, rule object, `<style>` trong HTML), các
@@ -53,13 +53,12 @@ const scene = {
 
 ### Keyframes dạng dữ liệu
 
-Khi giá trị đến từ ứng dụng của bạn, hãy truyền keyframes dưới dạng rule object của takumi thay vì ghép
+Khi giá trị đến từ ứng dụng của bạn, hãy truyền keyframes dưới dạng rule object thay vì ghép
 chuỗi CSS: `{ keyframes: name, steps: [{ offset, style }] }`, trong đó `offset` là `"from"`, `"to"` hoặc
 phần trăm như `"50%"`, còn `style` dùng cùng các khoá camelCase như style inline.
 
 <!-- @example animation#rule-object -->
 ```js
-// Keyframes as data instead of CSS text (takumi rule object):
 const pulse = renderer.renderSync(
   { type: "container", style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
     children: [{ type: "container", style: { width: 40, height: 40, borderRadius: 8, backgroundColor: "#16a34a", animation: "pop 1s ease-out" } }] },
@@ -76,12 +75,12 @@ const pulse = renderer.renderSync(
 ![Khung hình tại 500 ms của animation dạng rule object](/img/guide/animation-rule-object.png)
 
 Tuỳ chọn cấp cao nhất `keyframes` (đã deprecated; `{ name: { from: {...}, to: {...} } }`) vẫn hoạt
-động, giống takumi.
+động.
 
 ### Tên dựng sẵn và Tailwind
 
-`spin`, `ping`, `pulse` và `bounce` (keyframes của Tailwind) dùng được mà không cần rule `@keyframes`,
-giống takumi: `animation: "spin 1s linear infinite"` làm phần tử xoay. Các utility Tailwind cũng dùng
+`spin`, `ping`, `pulse` và `bounce` (keyframes của Tailwind) dùng được mà không cần rule `@keyframes`. Ví dụ,
+`animation: "spin 1s linear infinite"` làm phần tử xoay. Các utility Tailwind cũng dùng
 được: `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`, `animate-none`, giá trị tùy ý như
 `animate-[spin_1s_linear_infinite]`, và tên riêng của bạn từ biến `--animate-*` trong `@theme` (kèm
 `@keyframes` của chúng, đặt trong khối `@theme` hoặc ở đâu đó trong `css`):
@@ -225,7 +224,7 @@ const slides = renderer.renderAnimationSync({
 
 ### Lịch khung hình
 
-Lịch giống hệt takumi: với `total` = tổng các `durationMs`, có `ceil(total × fps / 1000)` khung hình;
+Lịch: với `total` = tổng các `durationMs`, có `ceil(total × fps / 1000)` khung hình;
 khung *i* bắt đầu tại `floor(i × 1000 / fps)` ms và kéo dài tới khi khung kế tiếp bắt đầu (khung có độ dài
 0 bị bỏ). Mỗi khung hiển thị scene đang hoạt động tại thời điểm bắt đầu của nó, lấy mẫu theo thời gian cục
 bộ của scene đó.
@@ -309,7 +308,7 @@ console.log(probe("move 1s steps(4)", 300));                   // 25
 Các giá trị in ra khớp với chú thích: 25, 0, 100, 60, 0 và 25.
 
 ::: warning `animation-play-state` bị bỏ qua
-Animation `paused` vẫn được lấy mẫu, giống takumi: một lần render lấy mẫu không có khái niệm "tạm dừng".
+Animation `paused` vẫn được lấy mẫu: một lần render lấy mẫu không có khái niệm "tạm dừng".
 :::
 
 ## Những gì animate được
@@ -410,10 +409,7 @@ lời gọi bị giới hạn 512 MiB.
 
 ## Chi phí
 
-Một animation tốn xấp xỉ một lần render đầy đủ cho mỗi khung, cộng bộ mã hoá: 2 giây ở 25 fps là 50 lần
-layout và 50 lần rasterize. Trong benchmark, 42 fixture animation (các khung đơn nhỏ tại `timeMs`) render
-raw mất 0.16 ms so với 0.25 ms của takumi (trung bình nhân, lượt chạy giai đoạn 2), và số khung cùng độ trễ
-của `renderAnimation` giống hệt takumi. Để animation rẻ:
+Chi phí render animation tăng theo số khung hình, kích thước canvas và hiệu ứng. Để giảm chi phí:
 
 - giữ canvas nhỏ — công việc và bộ nhớ tăng theo `width × height × số khung`;
 - dùng `fps` thấp nhất mà vẫn mượt (12–25 là đủ cho hầu hết chuyển động UI);

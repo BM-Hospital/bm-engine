@@ -38,9 +38,10 @@ export declare class PdfRenderer {
   unregisterFont(family: string | { name: string }): boolean;
   clearFonts(): void;
   /**
-   * Resolves `fonts` / lazy `images` once and fetches the remote images the document and its bands name that
-   * `images` does not provide (`images: { sources?, fetch?, throwOnError?, timeout? }`; without a custom `fetch`,
-   * http(s) URLs only). Rejects on an aborted `signal`.
+   * Discovers resources after the cascade, loads the font subsets used by the document and its bands, and
+   * fetches their missing images and `@font-face` files. Resolves lazy `images` once. Image fetches honor
+   * `sources`, `fetch`, `fetchCache`, `throwOnError`, `timeout`, `maxBytes` and `allowUrl`; without a custom
+   * `fetch`, only http(s) image URLs are fetched. Rejects on an aborted `signal`.
    */
   prepare(source: Source | JsxElement, options?: PdfRenderOptions): Promise<Prepared>;
   /** A node tree, an HTML string or a prepared document -> PDF bytes. Paged A4 by default; `viewport` renders one page. */

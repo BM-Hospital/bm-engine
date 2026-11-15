@@ -21,7 +21,7 @@ WebAssembly và đều đồng bộ:
 | 1. Input | Source được chuyển thành cây phần tử. Object node được đọc trực tiếp, `{ json }` được parse, chuỗi được parse như HTML (standard / full). | `source` |
 | 2. Style | Mỗi phần tử nhận computed style: mặc định user-agent (`preset`, thẻ HTML), rule của stylesheet (`css`, `<style>`), utility Tailwind (`tw`), `style` inline, rồi kế thừa, `var()` và `calc()`. | `css`, `tw`, `style`, `devicePixelRatio`, `timeMs` |
 | 3. Layout | Các box nhận vị trí và kích thước: luồng block và inline với ngắt dòng và shaping chữ, flexbox, grid, bảng, float, định vị absolute. Đơn vị là pixel thiết bị với độ chính xác 1/64 px. | `width`, `height`, font đã đăng ký |
-| 4. Paint | Nền, viền, bóng, ảnh, glyph, filter và hiệu ứng được rasterize vào canvas RGBA (khử răng cưa bằng supersampling 4×4, giống takumi). | `images` |
+| 4. Paint | Nền, viền, bóng, ảnh, glyph, filter và hiệu ứng được rasterize vào canvas RGBA (khử răng cưa bằng supersampling 4×4). | `images` |
 | 5. Encode | Canvas thành PNG, JPEG, WebP, ICO hoặc giữ nguyên RGBA thô. `renderSvg` thay paint + encode bằng đầu ra SVG; `measure` dừng sau layout. | `format`, `quality` |
 
 Không bước nào chạm tới mạng, hệ thống file hay font hệ thống: mọi font và mọi byte ảnh đều đến từ mã
@@ -153,19 +153,18 @@ const fromJson = renderer.renderSync({ json: '{"type":"container","style":{"widt
 |:-:|:-:|:-:|
 | ![Node tree](/img/guide/concepts-input-tree.png) | ![Chuỗi HTML](/img/guide/concepts-input-html.png) | ![Tailwind](/img/guide/concepts-input-tw.png) |
 
-- **Mọi chuỗi JavaScript đều là HTML**, giống takumi. Muốn truyền node tree dưới dạng văn bản JSON,
+- **Mọi chuỗi JavaScript đều là HTML**. Muốn truyền node tree dưới dạng văn bản JSON,
   hãy bọc nó lại: `{ json: "..." }`.
 - Các dạng có thể trộn tự do: HTML có thể mang `style=""`, `tw=""` và khối `<style>`; node tree có thể
   mang `tw` và được style bằng option `css`.
 - Trên `core`, source HTML ném `this build has no HTML input support` và node có `tw` ném
   ``Tailwind (`tw`) is not supported by this build``. Xem [HTML và Tailwind](./html-and-tailwind.md).
 
-Nếu bạn viết JSX, hãy chuyển nó thành node tree trước (ví dụ bằng `fromJsx` của `@takumi-rs/helpers`;
-xem [Khác biệt so với takumi](./differences-from-takumi.md#chuyển-đổi-trong-năm-bước)).
+Với JSX, chuyển nội dung thành cây node bằng [hàm dựng node](frameworks/index.md#node-tree-không-cần-jsx), hoặc render thành HTML bằng hàm server của framework.
 
 ## Những mặc định gây bất ngờ {#defaults-that-surprise-people}
 
-bm-engine theo takumi, mà takumi theo CSS và Chromium. Vài mặc định của CSS trông lạ nếu bạn đến từ
+bm-engine dùng các quy ước layout của CSS. Vài mặc định của CSS trông lạ nếu bạn đến từ
 satori hoặc từ trình duyệt có CSS reset.
 
 ### `display` là `inline` {#display-is-inline}
@@ -231,7 +230,7 @@ block, giống trình duyệt (xem [HTML và Tailwind](./html-and-tailwind.md#us
 
 ### `box-sizing` là `border-box` {#box-sizing-is-border-box}
 
-Khác với CSS, `width` và `height` mặc định đã bao gồm padding và viền (lựa chọn của takumi). Đặt
+Khác với CSS, `width` và `height` mặc định đã bao gồm padding và viền. Đặt
 `boxSizing: "content-box"` để có hành vi như CSS:
 
 <!-- @example concepts#box-sizing -->

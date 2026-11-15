@@ -7,14 +7,7 @@ lần cho mỗi path và ghi các byte trả về vào `dist/`, nên đây là c
 một ảnh Open Graph mà không tốn chi phí runtime nào. Ở chế độ server, cùng endpoint đó render theo từng
 request.
 
-::: info Trạng thái kiểm chứng
-Đã kiểm chứng: cặp `getStaticPaths` + `GET({ props })` bên dưới được gọi trên Node 26.13 theo đúng cách
-build tĩnh của Astro gọi chúng và trả về một PNG 1200 × 630 cho mỗi path
-(`docs/examples/frameworks/check-frameworks.mjs`); biến thể dùng script build độc lập chính là
-[recipe build-time](../recipes.md#sinh-ảnh-lúc-build) đã kiểm chứng. **Chưa kiểm chứng trong một bản
-build Astro thật**. Integration `astro-takumi` của takumi gắn riêng với takumi và không dùng được với
-bm-engine.
-:::
+Dùng server endpoint của Astro để trả byte ảnh. Ví dụ dưới đây minh họa cách tích hợp; hãy kiểm tra trong bản build ứng dụng của bạn.
 
 ## Mỗi trang một ảnh lúc build
 

@@ -4,7 +4,7 @@
 
 Ngoài node tree, profile `standard` và `full` còn nhận hai cách mô tả ảnh nữa: một **chuỗi HTML** làm
 source render, và **class Tailwind** trong trường `tw` của node (hoặc thuộc tính `tw=""` trong HTML).
-Cả hai đều là bản port trình parse HTML và trình biên dịch Tailwind của chính takumi, nên nhận cùng tập
+Trình parse HTML và trình biên dịch Tailwind nhận tập
 con. Trang này nói về những gì trình parse HTML hiểu, style user-agent nào được áp dụng, cái gì bị bỏ
 qua, và trình biên dịch Tailwind đi được tới đâu — variant, giá trị tùy ý, Preflight, biến theme và các
 lỗ hổng. Toàn bộ mã là `docs/examples/html-and-tailwind.mjs`, chạy với `bm-engine/standard`.
@@ -36,7 +36,7 @@ expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10
 
 ## Source HTML {#html-sources}
 
-**Mọi chuỗi JavaScript truyền vào làm source đều được parse như HTML** (giống takumi). Trình parse là
+**Mọi chuỗi JavaScript truyền vào làm source đều được parse như HTML**. Trình parse là
 một tập con dễ dãi của thuật toán WHATWG: nhận cả fragment lẫn tài liệu đầy đủ, thẻ đóng ngầm định
 (`p`, `li`, `dt` / `dd`, các phần của bảng), `tbody` ngầm định, phần tử void và tham chiếu ký tự. Khối
 `<style>` ở bất kỳ đâu trong chuỗi đều được áp dụng như một stylesheet, cùng với option `css` nếu có.
@@ -101,7 +101,7 @@ bằng `::before` hoặc một phần tử inline.
 :::
 
 Style user-agent chỉ áp dụng cho source HTML. Đặt `tagName: "h1"` trên node tree giúp node khớp với
-selector `h1` nhưng không làm nó đậm hay to lên (giống takumi).
+selector `h1` nhưng không làm nó đậm hay to lên.
 
 ### Fragment và tài liệu {#fragments-and-documents}
 
@@ -178,20 +178,16 @@ const ignoredPng = renderer.renderSync(`
 ![Hai dòng chữ xanh lá: đoạn văn trong body và đoạn có thuộc tính hidden](/img/guide/html-and-tailwind-ignored.png)
 
 ::: warning Thuộc tính `hidden` không được tôn trọng
-Phần tử có `hidden` vẫn được vẽ (style user-agent không có rule `[hidden] { display: none }`), giống
-takumi. Hãy dùng `style="display:none"` thay thế.
+Phần tử có `hidden` vẫn được vẽ (style user-agent không có rule `[hidden] { display: none }`). Hãy dùng `style="display:none"` thay thế.
 :::
 
-Cũng chưa được hiện thực (cùng các lỗ hổng như trình parse của takumi): thuật toán adoption agency cho
+Cũng chưa được hiện thực: thuật toán adoption agency cho
 thẻ định dạng lồng sai, foster parenting cho nội dung lạc trong bảng, MathML, và điều khiển form như
 widget (`<input>`, `<button>`, `<select>` chỉ là box thường).
 
 ## Tailwind {#tailwind}
 
-Đặt class vào trường `tw` của node, hoặc thuộc tính `tw="..."` trong HTML. Chúng được biên dịch thành
-khai báo CSS lúc render và cần profile `standard` hoặc `full`. Trình biên dịch là bản port tập con
-Tailwind v4 của takumi: 656 trên 657 chuỗi class trong bài kiểm tra tương đương biên dịch ra cùng khai
-báo như takumi.
+`tw` hỗ trợ một tập con utility của Tailwind v4. Dùng các nhóm class được liệt kê dưới đây; những class chưa hỗ trợ sẽ bị bỏ qua.
 
 <!-- @example html-and-tailwind#tw-node -->
 ```js
@@ -321,7 +317,7 @@ const variantsPng = renderer.renderSync({
 
 ::: warning Variant cấu trúc trên node text trần
 Node `text` không có `tagName` không phải là phần tử đối với `first:`, `last:`, `odd:` và các variant
-tương tự (cũng như `:first-child` trong stylesheet), giống takumi: nó không được tính vào các anh em, nên
+tương tự (cũng như `:first-child` trong stylesheet): nó không được tính vào các anh em, nên
 khi nhiều node text trần đứng cạnh nhau thì **node nào** cũng khớp `first:`, `last:` và `odd:`. Đó là lý
 do các hàng ở trên là container có một node text con; đặt `tagName` (ví dụ `"div"`) cho node text cũng
 được. Phần tử HTML không bị ảnh hưởng.
@@ -413,7 +409,7 @@ Utility `animate-*`, kể cả tên lấy từ `--animate-*`, cần profile `ful
 
 ### Những gì Tailwind không làm {#what-tailwind-does-not-do}
 
-Đã kiểm tra với package. takumi cũng không hỗ trợ bất kỳ mục nào sau đây:
+Các utility sau chưa được hỗ trợ:
 
 <!-- @example html-and-tailwind#tw-gaps -->
 ```js

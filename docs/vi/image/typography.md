@@ -166,9 +166,7 @@ const indent = renderer.renderSync(
 
 ![Bốn đoạn văn: thụt 24 px, thụt 10 %, thụt ra ngoài 16 px, và thụt treo 24 px](/img/guide/typography-indent.png)
 
-Chỉ dòng đầu của block được thụt, giống Chrome; takumi thụt cả dòng đầu của phần chữ đứng sau một con
-dạng block (xem [Khác biệt so với takumi](./differences-from-takumi.md#khác-biệt-có-chủ-ý-bm-engine-theo-chrome)).
-`textAlignLast` được parse nhưng không có tác dụng.
+Chỉ dòng đầu của block được thụt. `textAlignLast` được parse nhưng không có tác dụng.
 
 ## Cắt bớt: dấu ba chấm và line clamp
 
@@ -241,9 +239,7 @@ const balance = renderer.renderSync(
 
 ![Xuống dòng tham lam để "browser" một mình ở dòng cuối; balance cho ba dòng đều nhau](/img/guide/typography-balance.png)
 
-`textWrap: "pretty"` theo cách cài đặt của takumi, và trong ví dụ này cho kết quả giống xuống dòng thường
-(dòng cuối vẫn chỉ có một từ). Cân dòng quay về xuống dòng thường trong những đoạn có inline box hoặc
-atomic inline, hoặc nằm cạnh một float.
+`textWrap: "pretty"` hiện thường cho kết quả xuống dòng như chế độ thông thường. Kiểm tra bằng nội dung thật nếu cần kiểm soát chính xác cách ngắt dòng.
 
 ## Trang trí chữ
 
@@ -295,7 +291,7 @@ const effects = renderer.renderSync(
   `background-clip: text` cần `standard` hoặc `full`.
 
 ::: info `paint-order` bị bỏ qua
-`paintOrder: "stroke"` được parse, nhưng viền luôn được vẽ đè lên phần tô, giống takumi 2.20. Vì vậy viền
+`paintOrder: "stroke"` được parse, nhưng viền luôn được vẽ đè lên phần tô. Vì vậy viền
 dày sẽ ăn vào nét chữ; hãy giữ viền mảnh hoặc dùng `textShadow` để tạo viền.
 :::
 
@@ -453,14 +449,13 @@ dùng cho chắc. Dòng được ngắt ở dấu cách, đúng với những g�
 Profile `full` chạy thuật toán hai chiều của Unicode (UAX #9) và các bộ shaping phức tạp cho tiếng Ả Rập,
 Do Thái, Devanagari, Bengali và Thái. Hướng gốc lấy từ `direction: "rtl"` trong style hoặc `dir: "rtl"`
 trên node. Chữ CJK được ngắt giữa các ký tự. Repository này không có font cho các hệ chữ đó; ví dụ dùng
-các file WOFF2 trong bộ font test của takumi (OFL):
+các file WOFF2 bạn chuẩn bị trong thư mục `fonts/`:
 
 <!-- @example typography#scripts -->
 ```js
 // Arabic (Scheherazade New) and Traditional Chinese (Noto Sans TC) WOFF2 fonts from
-// takumi's test assets (OFL). Registering them is enough: per-character fallback finds them.
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/sil/scheherazade-new-v17-arabic-regular.woff2"));
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoSansTC-VariableFont_wght.woff2"));
+renderer.registerFont(readFileSync("./fonts/ScheherazadeNew.woff2"));
+renderer.registerFont(readFileSync("./fonts/NotoSansTC.woff2"));
 
 const scripts = page({ flexDirection: "column", gap: 6, fontSize: 24 }, [
   text("Mixed: Hello مرحبا بالعالم 123 world"),
@@ -498,8 +493,7 @@ chưa được hỗ trợ, và khoảng trắng treo của chữ RTL với `whit
 
 Được parse và chấp nhận nhưng không có hiệu ứng nhìn thấy: `textAlignLast`, `hyphens` (trừ dấu gạch nối
 mềm trong văn bản), `lineBreak`, `writingMode`, `fontSynthesisWeight` / `fontSynthesisStyle` và phần weight /
-style của `fontSynthesis` (đậm và nghiêng luôn được tự tạo), và `paintOrder` trên chữ (bị bỏ qua giống takumi
-2.20; ảnh SVG thì có tôn trọng). Danh sách đầy đủ các thuộc tính được hỗ trợ
+style của `fontSynthesis` (đậm và nghiêng luôn được tự tạo), và `paintOrder` trên chữ (bị bỏ qua; ảnh SVG thì có tôn trọng). Danh sách đầy đủ các thuộc tính được hỗ trợ
 nằm ở [Hỗ trợ CSS](./css-support.md#văn-bản).
 
 Xem thêm: [Font](./fonts.md), [measure()](./measure.md) để co chữ vừa một hộp,

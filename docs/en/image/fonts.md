@@ -30,10 +30,7 @@ The family name, weight and style come from the font's own tables (`name` and `O
 the renderer: a second `new Renderer()` starts with no fonts at all. Register once at startup and reuse
 the renderer for every render (see [Performance](./performance.md)).
 
-::: warning No font, no text
-Without a registered font, text is silently **not drawn** (no error). takumi falls back to its built-in
-Geist font; bm-engine has none. `clearFonts()` brings you back to that state.
-:::
+Without a registered font, text is silently **not drawn**. Register at least one font before rendering text.
 
 ### Several faces of one family
 
@@ -60,9 +57,9 @@ const brand = renderer.registerFont({ name: "Brand", data: readFileSync("assets/
 | `name` | family name to register under (default: the font's family name) |
 | `weight` | number overriding the weight from the file |
 | `style` | `"normal"`, `"italic"` or `"oblique"`, overriding the file |
-| `unicodeRange`, `subsetOf`, `generic` | accepted for takumi compatibility and **ignored** |
+| `unicodeRange`, `subsetOf`, `generic` | accepted accepted for API compatibility; ignored and **ignored** |
 
-A `.ttc` / `.otc` collection registers every face it contains: takumi's `GeistDuo.ttc` returns two
+A `.ttc` / `.otc` collection registers every face it contains: a two-face collection returns two
 families, `Geist` (face `index: 0`) and `Geist Mono` (face `index: 1`).
 
 ## Font formats and profiles
@@ -241,7 +238,7 @@ it matters, or put the font you want first in `fontFamilies`.
 With the async methods (`render`, `measure`, `renderAsDataUrl`, `prepare`, ...) you can pass fonts per
 call. Each entry is anything `registerFont` accepts: bytes, a URL, or a details object whose `data` may be
 a function or a promise. They are registered on the renderer before rendering and **stay registered**
-afterwards, as in takumi. When `fontFamilies` is not given, the families of these fonts become the root font stack, so
+afterwards. When `fontFamilies` is not given, the families of these fonts become the root font stack, so
 text without a `fontFamily` uses them:
 
 <!-- @example fonts#fonts-option -->
@@ -272,20 +269,19 @@ fresh.clearFonts(); // no font at all now: text is not drawn until you register 
 ```
 
 `unregisterFont` takes a family name or `{ name }` and removes every face of that family; `clearFonts()`
-removes all fonts. Unlike takumi, nothing is left afterwards.
+removes all fonts. No fonts remain afterwards.
 
 ## Variable fonts
 
 On `standard` and `full`, a variable font follows `font-weight` (`wght` axis), `font-stretch` (`wdth`),
 `font-optical-sizing` (`opsz`) and `font-variation-settings` (any axis). Register it **without** a
 `weight` so that it can serve every weight. The example uses Archivo, a variable font with `wght` and
-`wdth` axes from takumi's test assets (OFL); any variable TTF or WOFF2 works the same way:
+`wdth` axes from local font files; any variable TTF or WOFF2 works the same way:
 
 <!-- @example fonts#variable -->
 ```js
 // Archivo is a variable font with wght (100-900) and wdth (62-125) axes (OFL; this file
-// comes from takumi's test assets; any variable TTF / WOFF2 works the same way).
-const archivo = readFileSync("ref/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf");
+const archivo = readFileSync("./fonts/Archivo-Variable.ttf");
 renderer.registerFont({ name: "Archivo", data: archivo }); // no weight: keep the axes free
 
 const line = (text, style) => ({ type: "text", text, style: { fontFamily: "Archivo", fontSize: 26, ...style } });
@@ -329,13 +325,13 @@ the process:
 <!-- @example fonts#woff -->
 ```js
 // WOFF / WOFF2 work directly on standard and full ...
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
+renderer.registerFont(readFileSync("./fonts/Geist.woff2"));
 
 // ... and on core after loading the 84 KiB WOFF add-on once per process.
 const { Renderer: CoreRenderer } = await import("bm-engine/core");
 const { loadWoff } = await import("bm-engine/woff");
 await loadWoff();
-const geist = new CoreRenderer().registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
+const geist = new CoreRenderer().registerFont(readFileSync("./fonts/Geist.woff2"));
 // geist: [{ name: "Geist", faces: [{ weight: 400, ... }], ... }]
 ```
 
@@ -354,7 +350,7 @@ emoji glyphs:
 <!-- @example fonts#emoji -->
 ```js
 // Noto Color Emoji (CBDT bitmaps, 10 MB; OFL). Registering it is enough: fallback finds it.
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoColorEmoji.ttf"));
+renderer.registerFont(readFileSync("./fonts/NotoColorEmoji.ttf"));
 // ZWJ sequences (👩‍💻), skin tones (👍🏽), flags (🇻🇳), keycaps (1️⃣) and VS16 (❤️) are one glyph each
 const emoji = renderer.renderSync(
   { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
@@ -365,10 +361,7 @@ const emoji = renderer.renderSync(
 
 ![Text with colour emoji: rocket, party popper, woman technologist, thumbs up with a medium skin tone, Vietnamese flag, keycap 1 and heart](/img/guide/fonts-emoji.png)
 
-Emoji sequences are shaped as one cluster and drawn as one glyph on `standard` and `full`: ZWJ
-sequences (👩‍💻), skin-tone modifiers (👍🏽), flags (🇻🇳) and tag flags, keycaps (1️⃣) and the VS15 / VS16
-presentation selectors (❤️). Line wrapping, font fallback and letter spacing never split them. One
-remaining difference: takumi picks the presentation of `©️` (U+00A9 + VS16) depending on context.
+Emoji presentation depends on the registered font and Unicode variation selectors. Test the exact sequences your application uses.
 
 On `core` colour tables are ignored. A COLR font is drawn from its plain outlines, without colour, but
 a bitmap-only font such as Noto Color Emoji (CBDT) has no outlines at all, so its emoji are **not drawn**

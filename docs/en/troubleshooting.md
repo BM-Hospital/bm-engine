@@ -3,7 +3,7 @@
 [English](troubleshooting.md) · [Tiếng Việt](../vi/troubleshooting.md)
 
 Symptoms you are likely to hit with bm-engine 0.1.0, their cause and the fix. Most of them come from
-two design decisions inherited from takumi (`display` defaults to `inline`; inputs are never fetched)
+two defaults (`display` defaults to `inline`; inputs are never fetched)
 and one of bm-engine's own (no bundled font).
 
 - [Text is missing, or shows as boxes](#text-is-missing-or-shows-as-boxes)
@@ -36,7 +36,7 @@ and one of bm-engine's own (no bundled font).
 
 ## Containers collapse to zero height
 
-`display` defaults to `inline` for every node, as in takumi and CSS. An inline container ignores
+`display` defaults to `inline` for every node. An inline container ignores
 `width` / `height`, so two sized children of a block container end up on an empty line:
 
 ```js
@@ -44,7 +44,6 @@ r.measureSync({ type: "container", style: { display: "block" }, children: [
   { type: "container", style: { width: 50, height: 50 } },
   { type: "container", style: { width: 50, height: 50 } },
 ] }, { width: 200, height: 200 });
-// -> { width: 200, height: 0, ... }   (takumi gives the same result)
 ```
 
 Give containers an explicit `display: "flex"`, `"block"` or `"grid"`. Children of a flex or grid
@@ -167,14 +166,7 @@ its pixel size (`<img width="1200">`).
 
 ## Vietnamese text
 
-- Use a font with full Vietnamese coverage (Inter, Noto Sans, Roboto, Be Vietnam Pro, ...). Missing
-  precomposed letters (`ắ`, `ợ`, ...) show as boxes.
-- Normalise user input to NFC (`text.normalize("NFC")`). Precomposed text renders correctly on every
-  profile; decomposed (NFD) text relies on the font's mark positioning, and only the `full` profile
-  normalises it for you.
-- Line breaking follows UAX #14 and breaks at spaces, which is what Vietnamese needs; `text-wrap:
-  balance` (standard / full) gives nicer headlines.
-- The repository's fixtures `text-vietnamese*` render equivalently to takumi.
+- Use a font containing Vietnamese glyphs and test both precomposed and decomposed text when accepting user input.
 
 ## Emoji are not in colour
 
@@ -188,19 +180,19 @@ enough — fallback walks every registered family.
 ## A style is ignored
 
 - Inline `style` keys must be **camelCase**: `backgroundColor`, not `"background-color"` (kebab-case keys
-  are ignored silently, as in takumi). In stylesheets, HTML and `tw` use normal CSS syntax.
+  are ignored silently). In stylesheets, HTML and `tw` use normal CSS syntax.
 - The property needs a larger profile (for example `float`, `clipPath` or `mixBlendMode` on `core`
   are accepted and ignored).
 - A stylesheet or Tailwind declaration with an invalid value is dropped silently. Check it as an inline
   style, which throws on invalid values.
 - Tailwind variants other than breakpoints, structural variants and `before:` / `after:`
-  (`hover:`, `dark:`, `group-*:`) never apply — as in takumi. `animate-*` utilities need the `full`
+  (`hover:`, `dark:`, `group-*:`) never apply —. `animate-*` utilities need the `full`
   profile.
 - See the list of [parsed-but-not-implemented properties](image/css-support.md#appendix-supported-property-names).
 
 ## "invalid value for style property"
 
-An inline `style` (or `preset`) value could not be parsed; the whole render throws, as in takumi. Typical
+An inline `style` (or `preset`) value could not be parsed; the whole render throws. Typical
 causes: a typo (`"10 px"`), a 3D transform (`rotateX()`), relative colour syntax, modern colour
 functions on `core`. Stylesheet declarations do not throw; they are dropped.
 

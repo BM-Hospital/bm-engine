@@ -121,13 +121,13 @@ test "floats: a text leaf shortens next to a float, moves below when its longest
     try expectRect(&t, root, 0, 0, 300, 50);
 
     // a float that leaves less than the longest word: the text starts below it
-    t.setStyle(fl, .{ .display = .block, .float = .left, .size = .{ px(280), px(50) } });
+    try t.setStyle(fl, .{ .display = .block, .float = .left, .size = .{ px(280), px(50) } });
     try t.compute(root, vp, &text, Text.measure, .{});
     try expectRect(&t, leaf, 0, 50, 300, 10);
     try expectRect(&t, root, 0, 0, 300, 60);
 
     // right float + narrower band: the text wraps (documented approximation: it keeps the band width)
-    t.setStyle(fl, .{ .display = .block, .float = .right, .size = .{ px(220), px(15) } });
+    try t.setStyle(fl, .{ .display = .block, .float = .right, .size = .{ px(220), px(15) } });
     try t.compute(root, vp, &text, Text.measure, .{});
     try expectRect(&t, leaf, 0, 0, 80, 30);
 }

@@ -84,9 +84,7 @@ const families = pdf.registerFont({ name: "Inter", data: readFileSync("assets/fo
 pdf.loadFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") }); // loadFont = registerFont
 ```
 
-`registerFont` accepts exactly what the image `Renderer` accepts ([`registerFont`](../image/api.md#registerfont)):
-bytes, `{ name, data, weight?, style? }`, or a URL / loader (then it returns a promise). `loadFont` is
-takumi-pdf's name for the same method.
+`renderPdf` is an alias for `render` on `PdfRenderer`.
 
 <!-- @example pdf-api#fonts-admin -->
 ```js
@@ -150,12 +148,7 @@ Use it to size a band before you set a margin ([Margins and bands](headers-foote
 
 ### `prepare`
 
-`prepare(source, options)` resolves `fonts` and lazy `images` once and returns a `Prepared` handle that
-`render` and `measure` accept. The options given to `render` are merged over the ones given to
-`prepare`. It also fetches the remote images that the document and its bands name and that `images` does not
-provide, with `images.fetch` or the global `fetch` (found by scanning the source, not by takumi-pdf's native
-`needs` pass). A failed fetch rejects unless `images.throwOnError` is `false`. Fonts are not downloaded: font
-files go in `fonts` or `registerFont`.
+`prepare(source, options)` resolves resources once and returns a `Prepared` handle for `render` and `measure`. Render options override prepared options. Preparation discovers resources in the document and bands, loads font subsets and `@font-face` files, and fetches missing images. Configure `images.fetch` to control image downloads; see [PDF fonts](fonts.md) and register fonts explicitly to avoid missing text.
 
 <!-- @example pdf-api#prepare -->
 ```js
@@ -392,7 +385,7 @@ The example script checks each of these messages (the text after `bm-engine: `):
 | `viewport: { height: 300 }` | `invalid viewport: width is required` |
 | `viewport: { width: 0 }` | `invalid viewport: width/height must be > 0` |
 | `viewport` without `height` and content of zero height | `invalid viewport: content has zero size and no width/height was given` |
-| `header: 5` | no error: a number band is written as text, as takumi-pdf-js does |
+| `header: 5` | no error: a number band is written as text-js does |
 | `pages: { middle: {} }` | `unknown page rule: middle` |
 | `pages: { first: { body: "x" } }` | `unknown field of pages.first: body` |
 | `pageRanges: 3` | `invalid pageRanges: expected an array of page numbers or { from, to } spans` |

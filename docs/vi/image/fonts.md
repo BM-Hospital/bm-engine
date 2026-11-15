@@ -30,10 +30,7 @@ Tên family, độ đậm và kiểu chữ được đọc từ chính các bả
 renderer: một `new Renderer()` thứ hai bắt đầu với không có font nào. Hãy đăng ký một lần lúc khởi động và
 dùng lại renderer cho mọi lần render (xem [Hiệu năng](./performance.md)).
 
-::: warning Không có font thì không có chữ
-Khi chưa đăng ký font nào, chữ **không được vẽ** mà cũng không báo lỗi. takumi còn có font Geist dựng sẵn
-để dự phòng; bm-engine thì không. Gọi `clearFonts()` sẽ đưa renderer về đúng trạng thái đó.
-:::
+Khi chưa đăng ký font, chữ **không được vẽ** và cũng không báo lỗi. Hãy đăng ký ít nhất một font trước khi render chữ.
 
 ### Nhiều face trong một family
 
@@ -60,9 +57,9 @@ const brand = renderer.registerFont({ name: "Brand", data: readFileSync("assets/
 | `name` | tên family để đăng ký (mặc định: tên family trong font) |
 | `weight` | số ghi đè độ đậm đọc từ file |
 | `style` | `"normal"`, `"italic"` hoặc `"oblique"`, ghi đè giá trị trong file |
-| `unicodeRange`, `subsetOf`, `generic` | được chấp nhận để tương thích takumi và **bị bỏ qua** |
+| `unicodeRange`, `subsetOf`, `generic` | được chấp nhận để tương thích API và **bị bỏ qua** |
 
-Một collection `.ttc` / `.otc` đăng ký mọi face bên trong: file `GeistDuo.ttc` của takumi trả về hai
+Một collection `.ttc` / `.otc` đăng ký mọi face bên trong: một collection có hai face trả về hai
 family là `Geist` (face `index: 0`) và `Geist Mono` (face `index: 1`).
 
 ## Định dạng font và profile
@@ -241,7 +238,7 @@ trọng, hoặc đặt font bạn muốn lên đầu `fontFamilies`.
 
 Với các method async (`render`, `measure`, `renderAsDataUrl`, `prepare`, ...) bạn có thể truyền font cho
 từng lần gọi. Mỗi phần tử là bất cứ thứ gì `registerFont` nhận: bytes, URL, hoặc object chi tiết có `data`
-là hàm hay promise. Chúng được đăng ký lên renderer trước khi render và **vẫn được giữ** sau đó, giống takumi. Khi không
+là hàm hay promise. Chúng được đăng ký lên renderer trước khi render và **vẫn được giữ** sau đó. Khi không
 có `fontFamilies`, các family của những font này trở thành font stack gốc, nên chữ không có `fontFamily`
 sẽ dùng chúng:
 
@@ -273,20 +270,19 @@ fresh.clearFonts(); // no font at all now: text is not drawn until you register 
 ```
 
 `unregisterFont` nhận tên family hoặc `{ name }` và gỡ mọi face của family đó; `clearFonts()` gỡ tất cả.
-Khác với takumi, sau đó không còn font nào.
+Sau đó không còn font nào.
 
 ## Font biến thiên
 
 Trên `standard` và `full`, font biến thiên đi theo `font-weight` (trục `wght`), `font-stretch` (`wdth`),
 `font-optical-sizing` (`opsz`) và `font-variation-settings` (mọi trục). Hãy đăng ký nó **không kèm**
 `weight` để nó phục vụ được mọi độ đậm. Ví dụ dùng Archivo, một font biến thiên có trục `wght` và `wdth`
-lấy từ bộ font test của takumi (OFL); mọi file TTF hay WOFF2 biến thiên khác đều dùng y như vậy:
+từ file font cục bộ; mọi file TTF hay WOFF2 biến thiên khác đều dùng y như vậy:
 
 <!-- @example fonts#variable -->
 ```js
 // Archivo is a variable font with wght (100-900) and wdth (62-125) axes (OFL; this file
-// comes from takumi's test assets; any variable TTF / WOFF2 works the same way).
-const archivo = readFileSync("ref/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf");
+const archivo = readFileSync("./fonts/Archivo-Variable.ttf");
 renderer.registerFont({ name: "Archivo", data: archivo }); // no weight: keep the axes free
 
 const line = (text, style) => ({ type: "text", text, style: { fontFamily: "Archivo", fontSize: 26, ...style } });
@@ -329,13 +325,13 @@ const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200
 <!-- @example fonts#woff -->
 ```js
 // WOFF / WOFF2 work directly on standard and full ...
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
+renderer.registerFont(readFileSync("./fonts/Geist.woff2"));
 
 // ... and on core after loading the 84 KiB WOFF add-on once per process.
 const { Renderer: CoreRenderer } = await import("bm-engine/core");
 const { loadWoff } = await import("bm-engine/woff");
 await loadWoff();
-const geist = new CoreRenderer().registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
+const geist = new CoreRenderer().registerFont(readFileSync("./fonts/Geist.woff2"));
 // geist: [{ name: "Geist", faces: [{ weight: 400, ... }], ... }]
 ```
 
@@ -353,7 +349,7 @@ COLR chỉ trên `full`. Như mọi font khác, chỉ cần đăng ký là đủ
 <!-- @example fonts#emoji -->
 ```js
 // Noto Color Emoji (CBDT bitmaps, 10 MB; OFL). Registering it is enough: fallback finds it.
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoColorEmoji.ttf"));
+renderer.registerFont(readFileSync("./fonts/NotoColorEmoji.ttf"));
 // ZWJ sequences (👩‍💻), skin tones (👍🏽), flags (🇻🇳), keycaps (1️⃣) and VS16 (❤️) are one glyph each
 const emoji = renderer.renderSync(
   { type: "container", style: { display: "flex", alignItems: "center", padding: "0 20px", width: "100%", height: "100%", backgroundColor: "#fff" },
@@ -364,10 +360,7 @@ const emoji = renderer.renderSync(
 
 ![Dòng chữ có emoji màu: tên lửa, pháo giấy, nữ lập trình viên, ngón cái giơ lên với màu da trung bình, cờ Việt Nam, keycap 1 và trái tim](/img/guide/fonts-emoji.png)
 
-Trên `standard` và `full`, chuỗi emoji được shape thành một cluster và vẽ thành một glyph: chuỗi ZWJ
-(👩‍💻), bộ chỉnh màu da (👍🏽), cờ (🇻🇳) và cờ dạng tag, keycap (1️⃣) và bộ chọn kiểu hiển thị VS15 / VS16
-(❤️). Xuống dòng, font dự phòng và giãn chữ không bao giờ tách chúng ra. Còn một khác biệt: takumi chọn
-cách hiển thị của `©️` (U+00A9 + VS16) tuỳ theo ngữ cảnh.
+Cách hiển thị emoji phụ thuộc font đã đăng ký và variation selector trong chuỗi Unicode. Hãy kiểm tra đúng chuỗi emoji mà ứng dụng sử dụng.
 
 Trên `core`, các bảng màu bị bỏ qua. Font COLR được vẽ từ outline thường, không có màu, nhưng font chỉ có
 bitmap như Noto Color Emoji (CBDT) thì không có outline nào, nên emoji của nó **không được vẽ** (cùng cây

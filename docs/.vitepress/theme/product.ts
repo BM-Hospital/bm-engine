@@ -31,7 +31,7 @@ export function saveRemembered(p: Product): void {
 }
 
 // Pages that exist in both products under the same name; the switcher keeps the reader on the "same" page.
-const SAME = new Set(["", "fonts", "api", "css-support", "recipes", "differences-from-takumi", "playground"]);
+const SAME = new Set(["", "fonts", "api", "css-support", "recipes", "limitations", "playground"]);
 /** Route of the page that corresponds to `pathname` in product `to` (its index when there is no counterpart). */
 export function counterpart(pathname: string, to: Product): string {
   const vi = /^\/vi(\/|$)/.test(pathname);

@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const REPO = "https://github.com/OWNER/bm-engine"; // same OWNER placeholder as package.json
+export const REPO = "https://github.com/BM-Hospital/bm-engine";
 const BLOB = `${REPO}/blob/main/`;
 const TREE = `${REPO}/tree/main/`;
 
@@ -45,7 +45,7 @@ const DATA_FILES = new Set(["results.json", "PACKAGE_FACTS.json"]);
 
 /** docs-relative source path of a page -> site route ("/x", "/vi/", ...), or null when it is not a page. */
 function routeOf(src: string): string | null {
-  if (src.includes("feature_table_phase") || src.startsWith("playground-app/") || src.startsWith("public/")) return null;
+  if ((src.endsWith(".md") && !src.includes("/") && src !== "index.md") || src.includes("feature_table_phase") || src.startsWith("playground-app/") || src.startsWith("public/")) return null;
   const out = rewrites[src] ?? src;
   if (!existsSync(path.join(SRC, src))) return null;
   return "/" + out.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "");
@@ -104,7 +104,6 @@ const githubSlug = (s: string) => s.trim().toLowerCase().replace(/[^\p{L}\p{M}\p
 // one URL; which product sidebar it shows follows the product the reader chose last (theme/product.ts).
 const devItems = [
   { text: "Architecture", link: "/dev/architecture" },
-  { text: "takumi semantics notes", link: "/dev/takumi-notes" },
   { text: "Engineering conventions", link: "/dev/conventions" },
 ];
 // [slug, English title, Vietnamese title]; a group is [English title, Vietnamese title, pages, collapsed?].
@@ -117,10 +116,8 @@ const PACKAGE: G = ["Package (shared)", "Gói (dùng chung)", [
   ["getting-started", "Install & entry points", "Cài đặt và điểm vào"],
   ["native-vs-wasm", "Native vs WebAssembly", "Native và WebAssembly"],
   ["profiles-and-size", "Profiles & size", "Profile và kích thước"],
-  ["outputs-compared", "Image, PDF & Paint", "Image, PDF và Paint"],
-  ["benchmark", "Benchmark summary", "Benchmark (tóm tắt)"],
-  ["vi:benchmark-report", "", "Benchmark — báo cáo đầy đủ"],
-  ["/results-full", "Per-fixture results", "Kết quả từng fixture"],
+  ["outputs-compared", "Choose an output", "Chọn đầu ra"],
+  ["benchmark", "Benchmark", "Benchmark"],
   ["troubleshooting", "Troubleshooting", "Xử lý sự cố"],
   ["building-from-source", "Building from source", "Build từ mã nguồn"],
   ["publishing", "Publishing (maintainers)", "Phát hành (maintainer)"],
@@ -166,9 +163,9 @@ const IMAGE_GROUPS: G[] = [
     ["image/templates", "Templates", "Mẫu dựng sẵn"],
   ]],
   ["Migration", "Chuyển đổi", [
-    ["image/migration/from-takumi", "From takumi", "Từ takumi"],
+    ["image/migration/checklist", "Integration checklist", "Checklist tích hợp"],
     ["image/migration/from-satori", "From Satori", "Từ Satori"],
-    ["image/differences-from-takumi", "Differences from takumi", "Khác biệt với takumi"],
+    ["image/limitations", "Known limitations", "Hạn chế đã biết"],
   ]],
 ];
 const PDF_GROUPS: G[] = [
@@ -192,7 +189,7 @@ const PDF_GROUPS: G[] = [
   ["Reference", "Tham chiếu", [
     ["pdf/api", "PDF API reference", "Tham chiếu API PDF"],
     ["pdf/css-support", "CSS in PDF", "CSS trong PDF"],
-    ["pdf/differences-from-takumi", "Differences from takumi-pdf", "Khác biệt với takumi-pdf"],
+    ["pdf/limitations", "Known limitations", "Hạn chế đã biết"],
   ]],
 ];
 /** Source file (under docs/en or docs/vi) of a sidebar slug. */
@@ -210,7 +207,7 @@ function sidebar(groups: G[], vi: boolean): DefaultTheme.SidebarItem[] {
     }
     if (items.length) out.push({ text: vi ? viT : en, items, ...(collapsed ? { collapsed: false } : {}) });
   }
-  out.push({ text: vi ? "Cho nhà phát triển (tiếng Anh)" : "Developer", collapsed: true, items: devItems });
+
   return out;
 }
 /** Multi-sidebar of one locale. Shared pages (everything outside /image/ and /pdf/) get the Image sidebar on the
@@ -233,11 +230,11 @@ const productOf = (rel: string): "image" | "pdf" | null => {
 
 export default defineConfig({
   title: "bm-engine",
-  description: "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG and animations with a dependency-free WebAssembly engine (Zig port of takumi).",
+  description: "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG and animations with a dependency-free WebAssembly engine.",
   cleanUrls: true,
   lastUpdated: false,
   rewrites,
-  srcExclude: ["feature_table_phase*.md", "playground-app/**", "public/**", "examples/**", "**/node_modules/**"],
+  srcExclude: [...readdirSync(SRC).filter((f) => f.endsWith(".md") && f !== "index.md"), "feature_table_phase*.md", "playground-app/**", "public/**", "examples/**", "**/node_modules/**"],
   // Only links that are legitimately outside the site (local dev servers mentioned in the docs).
   ignoreDeadLinks: [/^https?:\/\/(localhost|127\.0\.0\.1)/],
   head: [
@@ -292,7 +289,7 @@ export default defineConfig({
           pdf: { title: "PDF", description: "Paged documents" },
         },
         outline: { level: [2, 3], label: "On this page" },
-        footer: { message: "Released under the MIT or Apache-2.0 license.", copyright: "bm-engine is a Zig port of takumi." },
+        footer: { message: "Released under the MIT License.", copyright: "bm-engine · Zig, native and WebAssembly." },
       },
     },
     vi: {
@@ -300,7 +297,7 @@ export default defineConfig({
       lang: "vi",
       link: "/vi/",
       title: "bm-engine",
-      description: "Render cây node kiểu JSX / HTML + CSS thành PNG, JPEG, WebP, SVG và ảnh động bằng một engine WebAssembly không phụ thuộc (bản port takumi sang Zig).",
+      description: "Render cây node kiểu JSX / HTML + CSS thành PNG, JPEG, WebP, SVG và ảnh động bằng một engine WebAssembly không phụ thuộc.",
       themeConfig: {
         nav: [
           { text: "Ảnh", link: "/vi/image/", activeMatch: "^/vi/image/(?!playground)" },
@@ -324,7 +321,7 @@ export default defineConfig({
         returnToTopLabel: "Lên đầu trang",
         langMenuLabel: "Đổi ngôn ngữ",
         notFound: { title: "KHÔNG TÌM THẤY TRANG", quote: "Trang này không tồn tại hoặc đã được chuyển đi.", linkText: "Về trang chủ", linkLabel: "về trang chủ" },
-        footer: { message: "Phát hành theo giấy phép MIT hoặc Apache-2.0.", copyright: "bm-engine là bản port takumi sang Zig." },
+        footer: { message: "Phát hành theo giấy phép MIT.", copyright: "bm-engine · Zig, native và WebAssembly." },
       },
     },
   },

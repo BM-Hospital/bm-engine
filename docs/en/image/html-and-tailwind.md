@@ -4,7 +4,7 @@
 
 Besides node trees, the `standard` and `full` profiles accept two more ways of describing an image: an
 **HTML string** as the render source, and **Tailwind classes** in a node's `tw` field (or a `tw=""`
-attribute in HTML). Both are ports of takumi's own HTML parser and Tailwind compiler, so they accept
+attribute in HTML). The HTML parser and Tailwind compiler accept
 the same subset. This page covers what the HTML parser understands, which user-agent styles apply,
 what is ignored, and how far the Tailwind compiler goes — variants, arbitrary values, Preflight, theme
 variables and the gaps. All code is `docs/examples/html-and-tailwind.mjs`, run with `bm-engine/standard`.
@@ -36,7 +36,7 @@ expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10
 
 ## HTML sources
 
-**Every JavaScript string passed as a source is parsed as HTML** (as in takumi). The parser is a
+**Every JavaScript string passed as a source is parsed as HTML** . The parser is a
 tolerant subset of the WHATWG algorithm: it accepts fragments and whole documents, implied end tags
 (`p`, `li`, `dt` / `dd`, table parts), implied `tbody`, void elements and character references. A
 `<style>` block anywhere in the string is applied as a stylesheet, together with any `css` option.
@@ -101,7 +101,7 @@ inline element if you need them.
 :::
 
 The user-agent styles only apply to HTML sources. Setting `tagName: "h1"` on a node tree makes the node
-match `h1` selectors but does not make it bold or large (as in takumi).
+match `h1` selectors but does not make it bold or large .
 
 ### Fragments and documents
 
@@ -179,19 +179,16 @@ const ignoredPng = renderer.renderSync(`
 
 ::: warning The `hidden` attribute is not honoured
 An element with `hidden` is still drawn (there is no `[hidden] { display: none }` rule in the
-user-agent styles), as in takumi. Use `style="display:none"` instead.
+user-agent styles). Use `style="display:none"` instead.
 :::
 
-Also not implemented (same gaps as takumi's parser): the adoption-agency algorithm for misnested
+Also not implemented (same gaps's parser): the adoption-agency algorithm for misnested
 formatting tags, foster parenting of stray table content, MathML, and form controls as widgets
 (`<input>`, `<button>`, `<select>` are plain boxes).
 
 ## Tailwind
 
-Put classes in the `tw` field of a node, or in a `tw="..."` attribute in HTML. They are compiled to CSS
-declarations at render time and need the `standard` or `full` profile. The compiler is a port of
-takumi's Tailwind v4 subset: 656 of 657 class strings in the equivalence test compile to the same
-declarations as takumi.
+`tw` supports a subset of Tailwind v4. The utility groups below describe its coverage; unsupported classes are ignored.
 
 <!-- @example html-and-tailwind#tw-node -->
 ```js
@@ -320,7 +317,7 @@ const variantsPng = renderer.renderSync({
 
 ::: warning Structural variants on bare text nodes
 A `text` node without a `tagName` is not an element for `first:`, `last:`, `odd:` and friends (nor for
-`:first-child` in stylesheets), as in takumi: it does not count among its siblings, so when several bare
+`:first-child` in stylesheets): it does not count among its siblings, so when several bare
 text nodes sit side by side **every** one of them matches `first:`, `last:` and `odd:`. That is why the
 rows above are containers with a text child; giving the text nodes a `tagName` (for example `"div"`)
 works too. HTML elements are not affected.
@@ -412,7 +409,7 @@ const themePng = renderer.renderSync({
 
 ### What Tailwind does not do
 
-Checked against the package. takumi does not support any of these either:
+The following utilities are not supported:
 
 <!-- @example html-and-tailwind#tw-gaps -->
 ```js

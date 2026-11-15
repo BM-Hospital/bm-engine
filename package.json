@@ -1,7 +1,7 @@
 {
   "name": "bm-engine",
   "version": "0.1.0",
-  "description": "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG and animations with a dependency-free engine (Zig port of takumi): WebAssembly in Node.js, browsers, Bun, Deno and edge runtimes such as Cloudflare Workers, and a native Node-API addon on Node.js through optional per-platform packages (automatic wasm fallback).",
+  "description": "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG, animations and PDF with a dependency-free Zig engine: WebAssembly in Node.js, browsers, Bun, Deno and edge runtimes such as Cloudflare Workers, and a native Node-API addon on Node.js through optional per-platform packages (automatic wasm fallback).",
   "keywords": [
     "og-image",
     "open-graph",
@@ -18,7 +18,6 @@
     "wasm",
     "webassembly",
     "zig",
-    "takumi",
     "satori",
     "satori-alternative",
     "vercel-og-alternative",
@@ -30,15 +29,15 @@
     "node-api",
     "native-addon"
   ],
-  "license": "(MIT OR Apache-2.0)",
-  "author": "AUTHOR_NAME",
-  "homepage": "https://github.com/OWNER/bm-engine#readme",
+  "license": "MIT",
+  "author": "hunghg255",
+  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/bm-engine.git"
+    "url": "git+https://github.com/BM-Hospital/bm-engine.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-engine/issues"
   },
   "type": "module",
   "main": "./js/node.mjs",
@@ -175,6 +174,7 @@
     "js/node-full.mjs",
     "js/pdf.mjs",
     "js/pdf-api.mjs",
+    "js/pdf-resources.mjs",
     "js/pdf.d.mts",
     "js/pdf-types.d.mts",
     "js/node-pdf.mjs",
@@ -189,8 +189,7 @@
     "js/build-manifest.json",
     "README.md",
     "README.vi.md",
-    "LICENSE-MIT",
-    "LICENSE-APACHE",
+    "LICENSE",
     "NOTICE",
     "THIRD-PARTY-NOTICES.md"
   ],
@@ -207,6 +206,9 @@
     "verify": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify",
     "test": "node scripts/build.mjs --test",
     "test:pdf": "node scripts/pdf-test.mjs",
+    "test:pdf:takumi": "node scripts/pdf-compare.mjs",
+    "test:pdf:takumi:fetch": "node scripts/fetch-takumi-tests.mjs",
+    "test:takumi:verify": "node scripts/takumi-test-corpus.mjs",
     "pdf:setup": "node bench/pdf/setup.mjs",
     "pdf:validate": "node bench/pdf/validate.mjs",
     "pdf:visual": "node bench/pdf/visual.mjs",
@@ -226,7 +228,10 @@
     "docs:build": "npm run docs:prepare && vitepress build docs",
     "docs:preview": "vitepress preview docs --port 4173",
     "docs": "npm run docs:dev",
-    "prepublishOnly": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify && node scripts/pack-test.mjs"
+    "release:check": "node scripts/publish.mjs --check",
+    "release": "node scripts/publish.mjs",
+    "release:dry": "node scripts/publish.mjs --dry-run",
+    "prepublishOnly": "node scripts/publish.mjs --prepublish"
   },
   "devDependencies": {
     "binaryen": "^132.0.0",

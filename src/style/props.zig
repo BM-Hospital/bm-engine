@@ -254,6 +254,12 @@ pub const Prop = enum(u16) {
     mixBlendMode,
     objectFit,
     objectPosition,
+    offset,
+    offsetAnchor,
+    offsetDistance,
+    offsetPath,
+    offsetPosition,
+    offsetRotate,
     opacity,
     order,
     orphans,
@@ -497,6 +503,12 @@ fn fieldsOf(comptime p: Prop) []const FieldRef {
         .mixBlendMode => &.{fr("mix_blend_mode")},
         .objectFit => &.{fr("object_fit")},
         .objectPosition => &.{fr("object_position")},
+        .offset => &.{ fr("offset_path"), fr("offset_distance"), fr("offset_anchor"), fr("offset_position"), fr("offset_rotate") },
+        .offsetPath => &.{fr("offset_path")},
+        .offsetDistance => &.{fr("offset_distance")},
+        .offsetAnchor => &.{fr("offset_anchor")},
+        .offsetPosition => &.{fr("offset_position")},
+        .offsetRotate => &.{fr("offset_rotate")},
         .opacity => &.{fr("opacity")},
         .order => &.{fr("order")},
         .outline => &.{ fr("outline_width"), fr("outline_style"), fr("outline_color") },
@@ -1674,6 +1686,13 @@ fn parseFilter(cx: *Cx, l: *Lexer) Error![]const c.Filter {
         if (t.kind != .function) return bad;
         var al = Lexer.init(t.args);
         const n = t.text;
+        if (ieq(n, "url")) {
+            // This renderer has no SVG filter rasterizer (Takumi's PDF build has the same
+            // limitation). Treat the URL reference as an identity filter, but keep parsing
+            // later CSS filter functions in the list instead of dropping the whole declaration.
+            if (al.next().kind == .eof or !al.atEnd()) return bad;
+            continue;
+        }
         const f: c.Filter = blk: {
             if (ieq(n, "drop-shadow")) {
                 const sh = try shadowItem(cx, &al, false);
@@ -1698,7 +1717,8 @@ fn parseFilter(cx: *Cx, l: *Lexer) Error![]const c.Filter {
         try out.append(cx.a, f);
         if (out.items.len > 256) return bad;
     }
-    if (out.items.len == 0) return bad;
+    // A URL reference can be the only filter when its SVG filter resource is unavailable.
+    // In that case the CSS filter list is an identity operation, not an invalid declaration.
     return out.items;
 }
 
@@ -2203,7 +2223,6 @@ fn kwEntryOf(comptime p: Prop) ?KwEntry {
         .borderLeftStyle => ke(c.BorderStyle, fi("border_style", 3)),
         .objectFit => ke(c.ObjectFit, fr("object_fit")),
         .mixBlendMode => ke(c.BlendMode, fr("mix_blend_mode")),
-        .textTransform => ke(c.TextTransform, fr("text_transform")),
         .textDecorationStyle => ke(c.DecorationStyle, fr("text_decoration_style")),
         .whiteSpaceCollapse => ke(c.WhiteSpaceCollapse, fr("white_space_collapse")),
         .textWrapMode => ke(c.TextWrapMode, fr("text_wrap_mode")),
@@ -2615,6 +2634,123 @@ fn parseClipPath(cx: *Cx, l: *Lexer) Error!?*const c.ClipPath {
     return out;
 }
 
+fn offsetPosition(cx: *Cx, l: *Lexer, anchor: bool) Error!?[2]LP {
+    if (l.peek().isIdent("auto") or (!anchor and l.peek().isIdent("normal"))) {
+        _ = l.next();
+        return null;
+    }
+    return try motionPosition(cx, l);
+}
+
+// Pinned Takumi's ShapePosition accepts one/two lengths, without CSS side keywords.
+fn motionPosition(cx: *Cx, l: *Lexer) Error![2]LP {
+    const x = try lp(cx, l.next());
+    const y = values.lengthPct(l.peek(), &cx.env);
+    if (y != null) _ = l.next();
+    return .{ x, y orelse LP{ .pct = 0.5 } };
+}
+
+fn offsetRotate(l: *Lexer) Error!c.OffsetRotate {
+    var out: c.OffsetRotate = .{};
+    var have_mode = false;
+    var have_angle = false;
+    while (!l.atEnd() and l.peek().kind != .slash) {
+        const t = l.peek();
+        if (!have_mode and (t.isIdent("auto") or t.isIdent("reverse"))) {
+            out.mode = if (t.isIdent("auto")) .auto else .reverse;
+            have_mode = true;
+        } else if (!have_angle and values.angle(t, true) != null) {
+            out.angle = try angleArg(t);
+            have_angle = true;
+        } else break;
+        _ = l.next();
+    }
+    if (!have_mode and !have_angle) return bad;
+    if (!have_mode) out.mode = .fixed;
+    return out;
+}
+
+fn offsetPath(cx: *Cx, l: *Lexer) Error!?*const c.MotionPath {
+    const t = l.next();
+    if (t.isIdent("none")) return null;
+    var ray: ?c.MotionRay = null;
+    var shape: ?c.BasicShape = null;
+    if (t.isFunc("ray")) {
+        var args = Lexer.init(t.args);
+        var r: c.MotionRay = .{ .angle = 0 };
+        var have_angle = false;
+        var have_size = false;
+        var contain = false;
+        while (!args.atEnd()) {
+            const item = args.peek();
+            if (!have_size) if (tok.kw(@FieldType(c.MotionRay, "size"), item)) |size| {
+                r.size = size;
+                have_size = true;
+                _ = args.next();
+                continue;
+            };
+            if (!contain and item.isIdent("contain")) {
+                contain = true;
+                _ = args.next();
+                continue;
+            }
+            if (r.at == null and item.isIdent("at")) {
+                _ = args.next();
+                r.at = try motionPosition(cx, &args);
+                continue;
+            }
+            if (have_angle) return bad;
+            r.angle = try angleArg(args.next());
+            have_angle = true;
+        }
+        if (!have_angle) return bad;
+        ray = r;
+    } else if (geometryBox(t) == null) {
+        shape = (try basicShape(cx, t)) orelse return bad;
+        if (t.isFunc("circle") or t.isFunc("ellipse")) {
+            var args = Lexer.init(t.args);
+            while (!args.atEnd()) if (args.next().isIdent("at")) {
+                _ = try motionPosition(cx, &args);
+                if (!args.atEnd()) return bad;
+                break;
+            };
+        }
+    }
+    if (geometryBox(l.peek()) != null) _ = l.next();
+    return try @import("motion_path.zig").compile(cx.a, shape, ray, cx.env);
+}
+
+fn offsetShorthand(cx: *Cx, l: *Lexer) Error!void {
+    const s = cx.s;
+    s.offset_position = null;
+    s.offset_path = null;
+    s.offset_distance = .{};
+    s.offset_rotate = .{};
+    s.offset_anchor = null;
+    const t = l.peek();
+    if (!t.isIdent("none") and !t.isFunc("ray") and t.kind != .function and geometryBox(t) == null) s.offset_position = try offsetPosition(cx, l, false);
+    if (!l.atEnd() and l.peek().kind != .slash) s.offset_path = try offsetPath(cx, l);
+    if (s.offset_path != null) {
+        var have_distance = false;
+        var have_rotate = false;
+        while (!l.atEnd() and l.peek().kind != .slash) {
+            if (!have_distance) if (values.lengthPct(l.peek(), &cx.env)) |distance| {
+                s.offset_distance = distance;
+                have_distance = true;
+                _ = l.next();
+                continue;
+            };
+            if (have_rotate) return bad;
+            s.offset_rotate = try offsetRotate(l);
+            have_rotate = true;
+        }
+    }
+    if (l.peek().kind == .slash) {
+        _ = l.next();
+        s.offset_anchor = try offsetPosition(cx, l, true);
+    }
+}
+
 /// mask `<geometry-box> | no-clip` -> BgBox (margin/fill/stroke/view-box and no-clip map to border-box).
 fn maskBox(t: Token) ?c.BgBox {
     if (t.isIdent("no-clip")) return .border_box;
@@ -2683,14 +2819,18 @@ fn parsePaintOrder(l: *Lexer) Error!c.PaintOrder {
     if (t.isIdent("normal")) return .normal;
     const first = tok.kw(c.PaintOrder, t) orelse return bad;
     if (first == .normal) return bad;
+    // Text has no markers phase. Resolve its first relevant phase while the CSS declaration
+    // still contains the full order (e.g. `markers stroke` means stroke before fill for text).
+    var text_first: ?c.PaintOrder = if (first == .markers) null else first;
     var seen: u8 = @as(u8, 1) << @intCast(@backingInt(first));
     while (!l.atEnd()) {
         const x = tok.kw(c.PaintOrder, l.next()) orelse return bad;
         const bit = @as(u8, 1) << @intCast(@backingInt(x));
         if (x == .normal or seen & bit != 0) return bad;
         seen |= bit;
+        if (text_first == null and x != .markers) text_first = x;
     }
-    return first;
+    return text_first orelse .fill;
 }
 
 const stretch_pct = [_]f32{ 50, 62.5, 75, 87.5, 112.5, 125, 150, 200 };
@@ -3524,6 +3664,12 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
             if (!l.atEnd()) _ = try len(cx, l.next()); // z offset ignored
         },
         .objectPosition => s.object_position = try need([2]LP, values.position(l, env, 4)),
+        .offset => try offsetShorthand(cx, l),
+        .offsetPath => s.offset_path = try offsetPath(cx, l),
+        .offsetDistance => s.offset_distance = try lp(cx, l.next()),
+        .offsetAnchor => s.offset_anchor = try offsetPosition(cx, l, true),
+        .offsetPosition => s.offset_position = try offsetPosition(cx, l, false),
+        .offsetRotate => s.offset_rotate = try offsetRotate(l),
         .imageRendering => {
             const t = l.next();
             s.image_rendering = if (t.isIdent("high-quality") or t.isIdent("optimizeQuality"))
@@ -3576,6 +3722,23 @@ pub fn apply(cx: *Cx, p: Prop, l: *Lexer) Error!void {
             const t = l.next();
             s.text_decoration_thickness = try need(?f32, try decoThickness(cx, t));
             s.text_decoration_from_font = t.isIdent("from-font");
+        },
+        .textTransform => {
+            var flags: u8 = 0;
+            var any = false;
+            while (!l.atEnd()) {
+                const item = l.next();
+                if (item.isIdent("none") and !any and l.atEnd()) {
+                    s.text_transform = .none;
+                    return;
+                }
+                const flag: u8 = if (item.isIdent("uppercase")) 1 else if (item.isIdent("lowercase")) 2 else if (item.isIdent("capitalize")) 3 else if (item.isIdent("full-width")) 4 else if (item.isIdent("full-size-kana")) 8 else return bad;
+                if ((flags & (if (flag < 4) @as(u8, 3) else flag)) != 0) return bad;
+                flags |= flag;
+                any = true;
+            }
+            if (!any) return bad;
+            s.text_transform = @fromBackingInt(flags);
         },
         .whiteSpace => try parseWhiteSpace(cx, l),
         .textWrap => try parseTextWrap(cx, l),

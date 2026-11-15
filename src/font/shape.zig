@@ -201,6 +201,21 @@ const ShapePlan = struct {
 pub const Cache = struct {
     alloc: std.mem.Allocator,
     plans: std.ArrayList(ShapePlan) = .empty,
+    /// Shaped runs (`shapeCached`), kept when `keep_results`: generated documents repeat the
+    /// same labels, headers, footers and boilerplate on every row and page.
+    keep_results: bool = false,
+    results: std.AutoHashMapUnmanaged(u64, Result) = .empty,
+    result_glyphs: usize = 0,
+    key_buf: std.ArrayList(u8) = .empty,
+
+    /// A shaped run: the key bytes it was shaped from (`resultKey`) and its output glyphs.
+    const Result = struct { key: []const u8, out: []const Shaped };
+    /// What a shaped glyph gives its caller (cluster relative to the run's first input glyph).
+    const Shaped = struct { gid: u16, cluster: u32, x_adv: i32, x_off: i32, y_off: i32, kern: i32 };
+    /// bound of the stored output glyphs (the cache is cleared beyond it)
+    const max_result_glyphs = 1 << 18;
+    /// runs longer than this are shaped every time (long paragraphs rarely repeat)
+    const max_run = 2048;
 
     pub fn init(alloc: std.mem.Allocator) Cache {
         return .{ .alloc = alloc };
@@ -208,10 +223,60 @@ pub const Cache = struct {
     pub fn clear(c: *Cache) void {
         for (c.plans.items) |*p| p.ot.deinit(c.alloc);
         c.plans.clearRetainingCapacity();
+        c.clearResults();
+    }
+    fn clearResults(c: *Cache) void {
+        var it = c.results.valueIterator();
+        while (it.next()) |r| {
+            c.alloc.free(r.key);
+            c.alloc.free(r.out);
+        }
+        c.results.clearRetainingCapacity();
+        c.result_glyphs = 0;
     }
     pub fn deinit(c: *Cache) void {
         c.clear();
         c.plans.deinit(c.alloc);
+        c.results.deinit(c.alloc);
+        c.key_buf.deinit(c.alloc);
+    }
+
+    /// Everything the shaped output of `b` depends on, as bytes (in `key_buf`): the font (its
+    /// data and variation instance), the run, and the input glyphs (clusters relative to the
+    /// first one's).
+    fn resultKey(c: *Cache, comptime complex: bool, font: *const Font, b: *const ot.Buffer, run: Run) ![]const u8 {
+        const k = &c.key_buf;
+        k.clearRetainingCapacity();
+        const in = b.list.items;
+        try k.ensureTotalCapacity(c.alloc, 64 + run.lang.len + run.features.len * 6 + in.len * 10 + @as(usize, font.n_axes) * 2);
+        const put = struct {
+            fn v(list: *std.ArrayList(u8), x: anytype) void {
+                list.appendSliceAssumeCapacity(std.mem.asBytes(&x));
+            }
+        }.v;
+        put(k, @as(u8, @intFromBool(complex)));
+        put(k, @intFromPtr(font.data.ptr));
+        put(k, font.data.len);
+        put(k, @as(u8, @intFromBool(font.varied)));
+        put(k, font.n_axes);
+        for (font.coords[0..font.n_axes]) |cv| put(k, cv);
+        put(k, run.script);
+        put(k, @as(u8, @intFromBool(run.rtl)));
+        put(k, @as(u8, @intFromBool(run.spaced)));
+        put(k, @as(u32, @intCast(run.lang.len)));
+        k.appendSliceAssumeCapacity(run.lang);
+        put(k, @as(u32, @intCast(run.features.len)));
+        for (run.features) |f| {
+            k.appendSliceAssumeCapacity(&f.tag);
+            put(k, f.value);
+        }
+        const base = in[0].cluster;
+        for (in) |g| {
+            put(k, @as(u32, g.cp));
+            put(k, g.cluster -% base);
+            put(k, g.gid);
+        }
+        return k.items;
     }
 
     fn get(c: *Cache, comptime complex: bool, font: *const Font, run: Run) !*const ShapePlan {
@@ -317,6 +382,43 @@ fn compile(comptime complex: bool, alloc: std.mem.Allocator, font: *const Font, 
 
 /// Hebrew: patah / qamats + sheva / hiriq + meteg-or-below are swapped so that the font's
 /// mark positioning sees the order it expects. `normalize.ReorderHook`.
+/// HarfBuzz `_hb_ot_shape_fallback_spaces`: a Unicode space the font has no glyph for is drawn with
+/// the space glyph (normalize.zig) and given the width its kind asks for (`gl.x_adv` in font units:
+/// the space glyph's advance on entry). Characters the font maps itself keep their own advance.
+fn fallbackSpace(font: *const Font, gl: *ot.Glyph) void {
+    if (font.glyphIndex(gl.cp) != 0) return;
+    const upem: i32 = font.units_per_em;
+    const em = struct {
+        fn div(u: i32, n: i32) i32 {
+            return @divTrunc(u + @divTrunc(n, 2), n);
+        }
+    }.div;
+    gl.x_adv = switch (gl.cp) {
+        0x2001, 0x2003, 0x3000 => upem,
+        0x2000, 0x2002 => em(upem, 2),
+        0x2004 => em(upem, 3),
+        0x2005 => em(upem, 4),
+        0x2009 => em(upem, 5),
+        0x2006 => em(upem, 6),
+        0x200a => em(upem, 16),
+        0x205f => @divTrunc(upem * 4, 18),
+        0x2007 => blk: { // figure space: the width of a digit
+            var d: u21 = '0';
+            while (d <= '9') : (d += 1) {
+                const g = font.glyphIndex(d);
+                if (g != 0) break :blk font.advanceWidth(g);
+            }
+            break :blk gl.x_adv;
+        },
+        0x2008 => blk: { // punctuation space: the width of '.' (or ',')
+            const g = if (font.glyphIndex('.') != 0) font.glyphIndex('.') else font.glyphIndex(',');
+            break :blk if (g != 0) font.advanceWidth(g) else gl.x_adv;
+        },
+        0x202f => @divTrunc(gl.x_adv, 2), // narrow no-break space: half a space
+        else => gl.x_adv,
+    };
+}
+
 fn reorderMarksHebrew(b: *ot.Buffer, start: usize, end: usize) void {
     const gs = b.g();
     var i = start + 2;
@@ -405,6 +507,36 @@ pub fn fontCovers(comptime complex: bool, font: *const Font, starter: *u21, cp: 
 /// Shapes the buffer in place. On entry every glyph has `cp` and `cluster` set (logical order);
 /// on return `gid`, `x_adv`, `x_off`, `y_off`, `kern` (font units) are final and the glyphs are
 /// still in logical order (an RTL run is NOT reversed).
+/// `shape`, the output taken from the cache's stored runs when the same input was shaped before
+/// (`Cache.keep_results`): only the fields `Glyph` callers of a shaped run read are set (gid,
+/// cluster, advances, offsets, kern).
+pub fn shapeCached(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Buffer, run: Run) !void {
+    const in = b.list.items;
+    if (!cache.keep_results or in.len == 0 or in.len > Cache.max_run) return shape(complex, cache, font, b, run);
+    const key = try cache.resultKey(complex, font, b, run);
+    const h = std.hash.XxHash64.hash(0x5eed, key); // (Wyhash: emulated 128-bit multiplies on wasm32)
+    const base = in[0].cluster;
+    if (cache.results.get(h)) |r| if (std.mem.eql(u8, r.key, key)) {
+        b.rtl = run.rtl;
+        b.list.clearRetainingCapacity();
+        try b.list.ensureTotalCapacity(b.alloc, r.out.len);
+        for (r.out) |o| b.list.appendAssumeCapacity(.{ .gid = o.gid, .cluster = base +% o.cluster, .x_adv = o.x_adv, .x_off = o.x_off, .y_off = o.y_off, .kern = o.kern });
+        return;
+    };
+    try shape(complex, cache, font, b, run);
+    const gs = b.list.items;
+    if (cache.result_glyphs + gs.len > Cache.max_result_glyphs) cache.clearResults();
+    const slot = try cache.results.getOrPut(cache.alloc, h);
+    if (slot.found_existing) return; // (a hash collision: the first run keeps the slot)
+    errdefer cache.results.removeByPtr(slot.key_ptr);
+    const kd = try cache.alloc.dupe(u8, key);
+    errdefer cache.alloc.free(kd);
+    const out = try cache.alloc.alloc(Cache.Shaped, gs.len);
+    for (gs, out) |g, *o| o.* = .{ .gid = g.gid, .cluster = g.cluster -% base, .x_adv = g.x_adv, .x_off = g.x_off, .y_off = g.y_off, .kern = g.kern };
+    slot.value_ptr.* = .{ .key = kd, .out = out };
+    cache.result_glyphs += gs.len;
+}
+
 pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Buffer, run: Run) !void {
     if (b.g().len == 0) return;
     const sp = try cache.get(complex, font, run);
@@ -522,6 +654,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
     }
 
     // advances + GPOS
+    const space_gid = font.glyphIndex(' ');
     for (b.g()) |*gl| {
         gl.x_adv = font.advanceWidth(gl.gid);
         gl.x_off = 0;
@@ -529,6 +662,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
         gl.kern = 0;
         gl.attach_chain = 0;
         gl.attach_type = 0;
+        if (space_gid != 0 and gl.gid == space_gid and gl.cp != ' ') fallbackSpace(font, gl);
     }
     const has_gpos = plan.gpos_table.len != 0;
     if (plan.gpos.lookups.len != 0) ot.position(plan, font, b);

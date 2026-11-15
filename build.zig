@@ -97,7 +97,8 @@ pub fn build(b: *std.Build) void {
         .optimize = .debug,
     });
     test_mod.addOptions("build_options", flags);
-    const tests = b.addTest(.{ .root_module = test_mod });
+    const test_filter = b.option([]const u8, "test-filter", "Run tests whose names contain this string");
+    const tests = b.addTest(.{ .root_module = test_mod, .filters = if (test_filter) |filter| &.{filter} else &.{} });
     const run_tests = b.addRunArtifact(tests);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 

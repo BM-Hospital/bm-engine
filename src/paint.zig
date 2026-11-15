@@ -1006,7 +1006,7 @@ pub const Painter = struct {
     // ---- nodes
 
     fn localTransform(cs: *const CS, x: f32, y: f32, w: f32, h: f32) ?Affine {
-        const has = cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1 or cs.translate[0].px != 0 or cs.translate[0].pct != 0 or cs.translate[1].px != 0 or cs.translate[1].pct != 0 or cs.translate[0].calc != null or cs.translate[1].calc != null;
+        const has = cs.offset_path != null or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1 or cs.translate[0].px != 0 or cs.translate[0].pct != 0 or cs.translate[1].px != 0 or cs.translate[1].pct != 0 or cs.translate[0].calc != null or cs.translate[1].calc != null;
         if (!has) return null;
         const d2r: f32 = std.math.pi / 180.0;
         const ox = x + cs.transform_origin[0].resolve(w);
@@ -1015,6 +1015,7 @@ pub const Painter = struct {
         m = m.mul(Affine.translate(cs.translate[0].resolve(w), cs.translate[1].resolve(h)));
         if (cs.rotate != 0) m = m.mul(Affine.rotate(cs.rotate * d2r));
         if (cs.scale[0] != 1 or cs.scale[1] != 1) m = m.mul(Affine.scale(cs.scale[0], cs.scale[1]));
+        if (@import("style/motion_path.zig").transform(cs, w, h)) |motion| m = m.mul(motion);
         for (cs.transform) |op| {
             const t: Affine = switch (op) {
                 .translate => |v| Affine.translate(v[0].resolve(w), v[1].resolve(h)),
@@ -1492,12 +1493,12 @@ pub const Painter = struct {
 
     /// Painted in the positioned / stacking-context phase.
     fn stacks(cs: *const CS) bool {
-        return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
+        return cs.z_index != null or cs.position != .static or pfx.needsGroup(cs) or cs.offset_path != null or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
     }
 
     /// Stacking context in the strict sense (z-index ordering is local to it).
     fn isContext(cs: *const CS) bool {
-        return cs.z_index != null or pfx.needsGroup(cs) or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
+        return cs.z_index != null or pfx.needsGroup(cs) or cs.offset_path != null or cs.transform.len > 0 or cs.rotate != 0 or cs.scale[0] != 1 or cs.scale[1] != 1;
     }
 
     /// Appends a box (or the inline content of one) to a paint queue. Out of line: the queued context

@@ -403,8 +403,11 @@ pub fn fromValue(a: Allocator, v: json.Value, blobs: []const Blob, diag: *Diag) 
     }
     if (field(v, "attachments")) |x| o.attachments = try parseAttachments(a, x, blobs, diag);
     if (field(v, "uncoveredText")) |x| {
-        const s = x.asString() orelse return fail(diag, &.{"invalid uncoveredText: expected \"error\", \"placeholder\" or \"blank\""});
-        o.uncovered_text = if (std.mem.eql(u8, s, "error")) .@"error" else if (std.mem.eql(u8, s, "placeholder")) .placeholder else if (std.mem.eql(u8, s, "blank")) .blank else return fail(diag, &.{ "unknown uncoveredText: ", s });
+        const s = switch (x) {
+            .string => |value| value,
+            else => return invalidType(diag, x, "enum UncoveredTextInput"),
+        };
+        o.uncovered_text = if (std.mem.eql(u8, s, "error")) .@"error" else if (std.mem.eql(u8, s, "placeholder")) .placeholder else if (std.mem.eql(u8, s, "blank")) .blank else return fail(diag, &.{ "unknown variant `", s, "`, expected one of `error`, `placeholder`, `blank`" });
     }
     try validate(&o, tagged_set, diag);
     return o;
@@ -502,7 +505,12 @@ fn parseVars(a: Allocator, x: json.Value, d: *Diag) Error![]const [2][]const u8 
 /// A margin side value: a number (px) or the keyword "auto".
 fn parseSide(x: json.Value, d: *Diag) Error!Margin {
     switch (x) {
-        .number => |n| return .{ .px = @floatCast(n) },
+        .number => |n| {
+            const px: f32 = @floatCast(n);
+            if (!std.math.isFinite(n) or !std.math.isFinite(px))
+                return fail(d, &.{"Page size must be finite and larger than zero"});
+            return .{ .px = px };
+        },
         .string => |s| if (std.mem.eql(u8, s, "auto")) return .auto,
         else => {},
     }
@@ -1093,6 +1101,14 @@ test "margins: uniform, per side, auto rule" {
     try expectErr("{\"size\":{\"width\":100,\"height\":100},\"margin\":60}", "Page size must be finite and larger than zero");
 }
 
+test "margins reject non-finite numeric values" {
+    for ([_]f64{ std.math.nan(f64), std.math.inf(f64), -std.math.inf(f64) }) |value| {
+        var d: Diag = .{};
+        try testing.expectError(error.Invalid, parseSide(.{ .number = value }, &d));
+        try testing.expectEqualStrings("Page size must be finite and larger than zero", d.message());
+    }
+}
+
 test "viewport and the paged options are mutually exclusive" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -1268,7 +1284,7 @@ test "pdfa / tagged / attachments / uncoveredText combinations" {
     try testing.expectEqual(UncoveredText.placeholder, ok.uncovered_text);
     try expectErr("{\"pdfa\":\"1b\"}", "unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`");
     try expectErr("{\"tagged\":\"ua3\"}", "data did not match any variant of untagged enum TaggedInput");
-    try expectErr("{\"uncoveredText\":\"skip\"}", "unknown uncoveredText: skip");
+    try expectErr("{\"uncoveredText\":\"skip\"}", "unknown variant `skip`, expected one of `error`, `placeholder`, `blank`");
 }
 
 test "css variables gain the -- prefix; misc fields" {

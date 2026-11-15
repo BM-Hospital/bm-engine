@@ -18,4 +18,4 @@ Requires Node-API 6 (`engines.node`: `>=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0
 
 Status: cross-compiled and structurally verified (exports, imported symbols, CPU level), but **not yet executed on this platform** by the project; `bm-engine` falls back to WebAssembly if it does not load.
 
-License: (MIT OR Apache-2.0). See LICENSE-MIT, LICENSE-APACHE, NOTICE and THIRD-PARTY-NOTICES.md.
+License: MIT. See LICENSE, NOTICE and THIRD-PARTY-NOTICES.md.

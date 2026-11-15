@@ -20,9 +20,9 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
 
 ## Thiết lập một lần
 
-1. Thay các placeholder `OWNER` / `AUTHOR_NAME` trong `package.json` gốc (`author`, `homepage`,
-   `repository`, `bugs`), rồi chạy `npm run build:npm` để chép chúng sang `npm/*/package.json`.
-   `npm run verify` sẽ không qua chừng nào còn placeholder.
+1. `author`, `homepage`, `repository` và `bugs` đã được đặt trong `package.json` gốc (hunghg255,
+   https://github.com/BM-Hospital/bm-engine). Sau khi đổi bất kỳ trường nào, chạy `npm run build:npm` để
+   chép chúng sang `npm/*/package.json`.
 2. Một tài khoản npm có xác thực hai lớp. Lần `npm publish` đầu tiên của mỗi tên sẽ tạo package và đặt
    bạn làm owner; thêm đồng maintainer cho **cả chín** package bằng `npm owner add <user> <pkg>`. Ngày
    2026-11-12, chưa có tên nào trong chín tên này tồn tại trên registry (`npm view <name>` trả về 404).
@@ -30,6 +30,23 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
    repository để có `wasm-opt` (binaryen).
 
 ## Quy trình release
+
+**Cách ngắn: một lệnh.** Khi code đã commit:
+
+```sh
+npm run release:dry -- 0.1.1   # chạy thử: mọi bước bên dưới với `npm publish --dry-run`, rồi hoàn tác
+npm run release -- 0.1.1       # release thật
+```
+
+`npm run release -- <version>` (scripts/publish.mjs) đặt version ở mọi nơi, build lại wasm và manifest
+(`npm run build`), commit "Release <version>", build addon native cho 8 nền tảng và các thư mục
+`npm/<platform>/`, chạy mọi kiểm tra (`npm run release:check`: verify, test Zig, test PDF, test native,
+pack test), publish 8 platform package trước và bm-engine sau cùng, rồi gắn tag `v<version>` và push commit
+cùng tag. Script từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`. Gói nào đã publish ở
+version đó thì bỏ qua, nên một lần release bị ngắt (OTP hết hạn, mạng) chỉ cần chạy lại đúng lệnh đó. Tuỳ
+chọn: `--otp=<mã>`, `--tag=<dist-tag>` (ví dụ `next`), `--skip-checks`. Không có `--otp` thì npm hỏi mã OTP
+(hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên `npm publish` trực
+tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
 
 ### 1. Đặt version (một lệnh)
 
@@ -95,7 +112,7 @@ npm publish ./npm/linux-arm64-musl --access public
 npm publish ./npm/darwin-x64 --access public
 npm publish ./npm/darwin-arm64 --access public
 npm view bm-engine-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
-npm publish --access public                     # bm-engine itself (prepublishOnly re-runs verify + test:pack)
+npm publish --access public                     # bm-engine itself (prepublishOnly runs npm run release:check)
 ```
 
 `--access public` đã có sẵn trong `publishConfig` của mỗi package, nó được lặp lại cho rõ.

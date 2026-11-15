@@ -1,6 +1,6 @@
 // JS API surface probes: every option of takumi-pdf's `render` / `measure`, its default, its validation and the error
 // message, compared with the published takumi-pdf package (dts-header.d.ts / export.ts / options.rs / metadata.rs).
-import { bmMod, refMod, probe, sameError, squash, font, INTER, pngRgba, noProducer } from "./lib.mjs";
+import { bmMod, refMod, probe, sameError, squash, font, INTER, pngRgba, noProducer, errNorm } from "./lib.mjs";
 
 const P = (n) => Array.from({ length: n }, (_, i) => `<p>Line ${String(i + 1).padStart(3, "0")}</p>`).join("");
 const DOC = `<div>${P(120)}</div>`;
@@ -314,7 +314,7 @@ matrix("api.uncoveredText", "uncoveredText: error / placeholder / blank and the 
 
 // ---- layout resources ----------------------------------------------------------------------------------------------
 
-matrix("api.css", "css: string, list, object rules, cssVariables", `<p class="a">Styled</p>${P(60)}`, [
+matrix("api.css", "css: string, list, object rules", `<p class="a">Styled</p>${P(60)}`, [
   ["string", { css: "p { font-size: 40px }" }],
   ["list", { css: ["p { font-size: 40px }", ".a { font-size: 80px }"] }],
   ["empty list", { css: [] }],
@@ -322,14 +322,32 @@ matrix("api.css", "css: string, list, object rules, cssVariables", `<p class="a"
   ["number", { css: 5 }],
   ["null", { css: null }],
   ["invalid css text", { css: "p { font-size: }}}} @@@" }],
-  ["cssVariables", { css: "p { font-size: var(--size) }", cssVariables: { "--size": "40px" } }],
-  ["cssVariables no prefix", { css: "p { font-size: var(--size) }", cssVariables: { size: "40px" } }],
-  ["cssVariables number", { css: "p { font-size: var(--size) }", cssVariables: { size: 40 } }],
-  ["cssVariables array", { cssVariables: [] }],
   ["stylesheets alias", { stylesheets: ["p { font-size: 40px }"] }],
   ["@page in css", { css: "@page { size: 300px 300px; margin: 10px }" }],
   ["media print", { css: "@media print { p { font-size: 40px } } @media screen { p { font-size: 80px } }" }],
 ]);
+
+probe("api.css.variables", "cssVariables resolve identically to literal CSS and reject values outside the API type", async (t) => {
+  const html = `<p class="a">Styled</p>${P(60)}`;
+  const literal = await t.bm(html, { css: "p { font-size: 40px }" });
+  for (const [label, cssVariables] of [
+    ["prefixed", { "--size": "40px" }],
+    ["unprefixed", { size: "40px" }],
+  ]) {
+    const r = await t.bm(html, { css: "p { font-size: var(--size) }", cssVariables });
+    t.ok(!r.error && !literal.error, `${label}: both render`);
+    if (!r.error && !literal.error) {
+      t.same(`${label}: page count`, r.pages.length, literal.pages.length);
+      t.same(`${label}: text per page`, r.textPages, literal.textPages);
+      t.same(`${label}: page boxes`, r.pages.map((p) => p.media), literal.pages.map((p) => p.media));
+    }
+  }
+  const numeric = await t.bm(`<p>Text</p>`, { css: "p { font-size: var(--size) }", cssVariables: { size: 40 } });
+  const array = await t.bm(`<p>Text</p>`, { cssVariables: [] });
+  t.ok(!!numeric.error, "numeric cssVariables value is rejected");
+  t.ok(!!array.error, "array cssVariables value is rejected");
+  t.differs("pinned Takumi does not resolve cssVariables and coerces invalid shapes; bm follows the documented string map");
+});
 
 matrix("api.fontFamilies", "fontFamilies: per-render fallback chain", `<p>Fallback text</p><p style="font-family: Nope">Other</p>`, [
   ["names", { fontFamilies: ["Inter"] }],
@@ -534,7 +552,7 @@ probe("api.renderer.fonts", "PdfRenderer: registerFont result, unregisterFont, c
       out.unregisterKnown = r.unregisterFont({ name: "Alias" }); // (takumi-pdf takes a family: `{ name }`)
       out.unregisterUnknown = r.unregisterFont({ name: "Nope" });
       r.clearFonts();
-      try { await r.render(`<p style="font-family: Inter">Zażółć</p>`, { viewport: { width: 200, height: 50 } }); out.afterClear = "renders"; } catch (e) { out.afterClear = e.message; }
+      try { await r.render(`<p style="font-family: Inter">Zażółć</p>`, { viewport: { width: 200, height: 50 } }); out.afterClear = "renders"; } catch (e) { out.afterClear = errNorm(e.message); } // (bm-engine prefixes its errors: compared without it, as sameError does)
     } catch (e) { out.error = e.message; } finally { r.free(); }
     return out;
   };

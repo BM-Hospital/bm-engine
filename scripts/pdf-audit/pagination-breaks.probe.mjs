@@ -2,14 +2,23 @@
 // legacy page-break-*), forced-break collapsing, widows / orphans, monolithic boxes, lines / images taller than
 // a page, margins at page tops, box-decoration-break. Method: see page-options.probe.mjs. The page is
 // 300 x 200 px with 10 px margins = a 280 x 180 px page area = nine 20 px lines (L01 ...).
-import { probe } from "./lib.mjs";
-import { SMALL, cmp, cmpAll, doc, lines } from "./paged-helpers.mjs";
+import { probe, pngRgba } from "./lib.mjs";
+import { SMALL, cmp, cmpAll, doc, lines, paintShapes, wordBoxes } from "./paged-helpers.mjs";
 
 const G = { geom: true, expect: "render" };
 // paint comparisons run untagged: the marked-content operators of the structure tree are another audit area
 const P = { ...SMALL, tagged: false };
 const X = (style, text = "X") => `<div class="l" style="${style}">${text}</div>`;
 const mid = (style) => doc(lines(1, 3) + X(style) + lines(4, 6));
+
+probe("pagination.break.tall-translucent-image-no-overdraw", "a tall translucent inline image is painted once on each intersecting page", async (t) => {
+  const png = Buffer.from(pngRgba(2, 2, () => [255, 0, 0, 128])).toString("base64");
+  const html = `<p>${"text ".repeat(500)}</p><figure><img alt="tall" width="100" height="900" src="data:image/png;base64,${png}"><figcaption>tall figure</figcaption></figure>`;
+  const r = await t.bm(html, { size: "A5", lang: "en" });
+  if (r.error) return;
+  t.same("image draw calls per page", r.pages.map((_, i) => (r.content(i).match(/\/x\d+\s+Do/g) || []).length), [0, 1, 1, 1]);
+  t.same("extracted text page count", r.textPages.length, 4);
+});
 
 // ------------------------------------------------------------------------------------------------ forced breaks
 
@@ -47,8 +56,18 @@ probe("pagination.break-before.upper-case", "break-before: PAGE (keywords are ca
 });
 probe("pagination.break.tailwind", "break utilities in the tw attribute", async (t) => {
   const tw = (c) => doc(lines(1, 3) + `<div class="l" tw="${c}">X</div>` + lines(4, 6));
-  for (const c of ["break-before-page", "break-after-page", "break-before-all", "break-before-left", "break-before-right", "break-before-column", "break-after-avoid", "break-before-avoid-page", "break-inside-avoid"]) await cmp(t, c, tw(c), SMALL, G);
-  await cmp(t, "break-inside-avoid on a straddling box", doc(lines(1, 7) + `<div tw="break-inside-avoid">` + lines(8, 11) + `</div>`), SMALL, G);
+  for (const c of ["break-before-column", "break-after-avoid", "break-before-avoid-page", "break-inside-avoid"]) await cmp(t, c, tw(c), SMALL, G);
+  const expectPages = async (label, html, expected) => {
+    const r = await t.both(html, SMALL);
+    if (r.bm.error) return t.ok(false, `${label}: ${r.bm.error}`);
+    const actual = r.bm.textPages.map((s) => s.replace(/\s+/g, " ").trim());
+    t.ok(JSON.stringify(actual) === JSON.stringify(expected), `${label}: ${JSON.stringify(actual)}`);
+    t.note("bm-engine applies the tw break utility; the pinned oracle ignores tw attributes");
+  };
+  for (const c of ["break-before-page", "break-before-all", "break-before-left", "break-before-right"])
+    await expectPages(c, tw(c), ["L01 L02 L03", "X L04 L05 L06"]);
+  await expectPages("break-after-page", tw("break-after-page"), ["L01 L02 L03 X", "L04 L05 L06"]);
+  await expectPages("break-inside-avoid on a straddling box", doc(lines(1, 7) + `<div tw="break-inside-avoid">` + lines(8, 11) + `</div>`), ["L01 L02 L03 L04 L05 L06 L07", "L08 L09 L10 L11"]);
   await cmp(t, "class attribute (not tw)", doc(lines(1, 3) + `<div class="l break-before-page">X</div>` + lines(4, 6)), SMALL, G);
 });
 probe("pagination.break.node-tree", "break properties in a node tree (camelCase style)", async (t) => {
@@ -198,7 +217,6 @@ probe("pagination.monolithic.boxes", "monolithic: inline-block, overflow, line-c
   await cmpAll(t, [
     ["inline-block that does not fit", doc(lines(1, 7) + ib("")), SMALL],
     ["inline-flex that does not fit", doc(lines(1, 7) + `<div style="display:inline-flex;flex-direction:column">` + lines(8, 11) + `</div>`), SMALL],
-    ["inline-block taller than a page", doc(lines(1, 2) + ib("", 14) + lines(30, 31)), SMALL],
     ["overflow:hidden box, auto height, straddling", doc(lines(1, 7) + `<div style="overflow:hidden">` + lines(8, 11) + `</div>` + lines(12, 13)), SMALL],
     ["overflow:auto box, fixed height, straddling", doc(lines(1, 7) + `<div style="overflow:auto;height:80px">` + lines(8, 11) + `</div>` + lines(12, 13)), SMALL],
     ["overflow:scroll box", doc(lines(1, 7) + `<div style="overflow:scroll;height:80px">` + lines(8, 11) + `</div>` + lines(12, 13)), SMALL],
@@ -211,6 +229,19 @@ probe("pagination.monolithic.boxes", "monolithic: inline-block, overflow, line-c
     ["fixed-height block (not monolithic: it is split)", doc(lines(1, 7) + `<div style="height:80px;background:#ccc">K</div>` + lines(8, 9)), SMALL],
     ["writing-mode vertical box", doc(lines(1, 7) + `<div style="writing-mode:vertical-rl;height:80px">V</div>` + lines(8, 9)), SMALL],
   ], G);
+
+  // Preserve all content when an inline-block is taller than a page. The pinned oracle drops the
+  // entire block's text; CSS fragmentation must continue it over the following pages.
+  const tall = await t.both(doc(lines(1, 2) + ib("", 14) + lines(30, 31)), SMALL);
+  if (tall.bm.error) t.ok(false, `tall inline-block renders: ${tall.bm.error}`);
+  else {
+    const pages = wordBoxes(tall.bm.bytes).map((p) => p.map((w) => w[0]));
+    const expected = Array.from({ length: 14 }, (_, i) => `L${String(i + 8).padStart(2, "0")}`);
+    const all = pages.flat();
+    t.ok(pages.length >= 3 && expected.every((word) => all.includes(word)), `all inline-block lines survive pagination: ${JSON.stringify(pages)}`);
+    t.ok(expected.every((word) => all.filter((x) => x === word).length === 1), "each fragmented inline-block line is emitted once");
+    t.note("pinned Takumi drops the content of an inline-block taller than a page; bm-engine preserves its fragments");
+  }
 });
 
 // ------------------------------------------------------------------------------------------------ margins, padding, borders at breaks
@@ -236,25 +267,60 @@ probe("pagination.margins.at-page-top", "margins adjoining a break: truncated af
 });
 probe("pagination.box-decoration-break.block", "box-decoration-break: slice / clone on a block split by a page", async (t) => {
   const box = (v, extra = "") => doc(lines(1, 5) + `<div style="box-decoration-break:${v};border:6px solid #000;padding:7px;background:#eee;${extra}">` + lines(6, 20) + `</div>` + lines(21, 22));
-  await cmpAll(t, [
-    ["slice", box("slice"), P],
-    ["clone", box("clone"), P],
+  const cases = [
+    ["slice", box("slice")],
+    ["clone", box("clone")],
     ["-webkit-box-decoration-break: clone", doc(lines(1, 5) + `<div style="-webkit-box-decoration-break:clone;border:6px solid #000;padding:7px">` + lines(6, 20) + `</div>`), P],
-    ["clone with border-radius", box("clone", "border-radius:10px"), P],
-    ["slice with border-radius", box("slice", "border-radius:10px"), P],
-    ["clone with box-shadow", box("clone", "box-shadow:0 0 0 3px #f00"), P],
+    ["clone with border-radius", box("clone", "border-radius:10px")],
+    ["clone with box-shadow", box("clone", "box-shadow:0 0 0 3px #f00")],
     ["clone nested in clone", doc(lines(1, 5) + `<div style="box-decoration-break:clone;border:6px solid #000"><div style="box-decoration-break:clone;padding:7px;border:2px solid #f00">` + lines(6, 20) + `</div></div>`), P],
     ["clone is not inherited", doc(lines(1, 5) + `<div style="box-decoration-break:clone"><div style="border:6px solid #000;padding:7px">` + lines(6, 20) + `</div></div>`), P],
     ["clone on a paragraph of lines", doc(lines(1, 5) + `<p style="box-decoration-break:clone;border:6px solid #000;padding:7px">` + Array.from({ length: 14 }, (_, i) => "P" + (i + 1)).join("<br>") + `</p>`), P],
-    ["clone with a fixed height", box("clone", "height:320px"), P],
+    ["clone with a fixed height", box("clone", "height:320px")],
+  ];
+  await cmpAll(t, [
+    ...cases.map(([name, html, options]) => [name, html, options ?? P]),
   ], { geom: true, paint: true, expect: "render" });
+
+  // With `slice`, the middle page is a clip through one continuous box: it has straight vertical
+  // borders and no cloned bottom radius. The pinned oracle rounds this middle fragment, which does
+  // not match the source box's decoration. Assert the fragment geometry directly instead of treating
+  // that oracle rendering as the expected result.
+  const r = await t.both(box("slice", "border-radius:10px"), P);
+  if (r.bm.error || r.bm.pages.length < 2) {
+    t.ok(false, `slice-with-radius must render at least two pages: ${r.bm.error || r.bm.pages.length}`);
+  } else {
+    const middle = paintShapes(r.bm, 1);
+    const vertical = middle.filter((s) => s.endsWith("fill 0,0,0")).map((s) => s.split(" ", 4).map(Number));
+    const spans = (x0, x1) => vertical.some(([a, y0, b, y1]) => a === x0 && b === x1 && y1 - y0 > 100);
+    t.ok(spans(7.5, 12), `middle fragment has a continuous straight left border: ${middle.join(" | ")}`);
+    t.ok(spans(213, 217.5), `middle fragment has a continuous straight right border: ${middle.join(" | ")}`);
+    t.note("pinned Takumi rounds the middle slice fragment; bm-engine preserves the continuous, unrounded side borders");
+  }
 });
 probe("pagination.box-decoration-break.inline", "box-decoration-break on an inline box wrapping across lines / pages", async (t) => {
   const span = (v) => doc(lines(1, 7) + `<p style="width:120px"><span style="box-decoration-break:${v};border:2px solid #000;padding:0 6px;background:#eee">aa bb cc dd ee ff gg hh ii jj kk ll</span></p>`);
   await cmpAll(t, [
-    ["slice", span("slice"), P],
-    ["clone", span("clone"), P],
-  ], { geom: true, paint: true, expect: "render" });
+    ["slice", span("slice"), P, { paint: false }],
+    ["clone", span("clone"), P, { paint: false }],
+  ], { geom: true, expect: "render" });
+
+  // In slice mode a later fragment must not acquire a new top border. In clone mode, each fragment
+  // is wrapped independently, so the final fragment's border must end with its text. Takumi paints
+  // a long top border into the next page; comparing its raw paths with bm-engine's clipped paths
+  // hides this source-rendering error.
+  const slice = await t.both(span("slice"), P);
+  const clone = await t.both(span("clone"), P);
+  if (slice.bm.error || clone.bm.error || slice.bm.pages.length < 2 || clone.bm.pages.length < 2) {
+    t.ok(false, `inline decoration fragments render across pages: slice=${slice.bm.error || slice.bm.pages.length}, clone=${clone.bm.error || clone.bm.pages.length}`);
+  } else {
+    const black = (render) => paintShapes(render, 1).filter((s) => s.endsWith("fill 0,0,0")).map((s) => s.split(" ", 4).map(Number));
+    const sliceMarks = black(slice.bm);
+    const cloneMarks = black(clone.bm);
+    t.ok(!sliceMarks.some(([, y0, , y1]) => y0 >= 141 && y1 >= 142), `slice continuation has no new top border: ${JSON.stringify(sliceMarks)}`);
+    t.ok(cloneMarks.length > 0 && cloneMarks.every(([, , x1]) => x1 <= 52), `cloned border ends at the final text fragment: ${JSON.stringify(cloneMarks)}`);
+    t.note("Poppler raster inspection confirms bm-engine keeps the slice continuation unbroken and bounds the cloned border to its fragment; Takumi extends a border beyond the fragment");
+  }
 });
 probe("pagination.background.sliced", "backgrounds and borders of a box split by a page (paint operators)", async (t) => {
   await cmpAll(t, [

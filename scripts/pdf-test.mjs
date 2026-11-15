@@ -10,6 +10,7 @@
 // (poppler; skipped with a note if not installed); and checks that bm-engine/full (no `pdf` feature) rejects
 // renderPdf with the "not supported by this build" error, both from the JS wrapper and from the raw wasm export.
 import { spawnSync } from "node:child_process";
+import { findBin } from "../bench/pdf/lib/tools.mjs";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,13 +37,14 @@ async function rejects(promiseFn, re, msg) {
   catch (e) { check(re.test(String(e && e.message)), `${msg}: ${String(e && e.message).slice(0, 150)}`); }
 }
 
+const popplerText = findBin("poppler", "pdftotext") || "pdftotext";
 const tmp = mkdtempSync(path.join(os.tmpdir(), "bm-pdf-test-"));
 let pdftotextMissing = false;
 /** Opens the PDF with poppler's pdftotext: exit status 0 and nothing on stderr. */
 function pdftotext(bytes, name) {
   const file = path.join(tmp, name + ".pdf");
   writeFileSync(file, bytes);
-  const r = spawnSync("pdftotext", [file, "-"], { encoding: "utf8" });
+  const r = spawnSync(popplerText, [file, "-"], { encoding: "utf8", windowsHide: true });
   if (r.error && r.error.code === "ENOENT") { pdftotextMissing = true; return { skipped: true }; }
   return { ok: r.status === 0 && r.stderr.trim() === "", stderr: r.stderr.trim(), text: r.stdout };
 }
@@ -76,7 +78,8 @@ check(fullMod.features.pdf === false && fullMod.features.renderSvg === true, "fu
 
 const r = new PdfRenderer();
 // text is drawn now: a render whose text no registered font covers fails (uncoveredText "error")
-const refFont = (f) => new Uint8Array(readFileSync(path.join(root, "ref", "takumi", f)));
+const refRoot = path.join(root, "tests", "upstream", "takumi");
+const refFont = (f) => new Uint8Array(readFileSync(path.join(refRoot, f)));
 r.registerFont(refFont("assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf"));
 r.registerFont(refFont("assets/fonts/noto-sans/NotoSansTC-VariableFont_wght.woff2"));
 
@@ -138,7 +141,7 @@ isPdf(await r.render(`<div class="x">x</div>`, { viewport: { width: 100, height:
   const filtered = await r.render(box({ backgroundColor: "#e11d48", filter: "grayscale(1)" }), vp);
   has(filtered, "0.2902 0.2902 0.2902 rg", "colour filter folded into the fill");
   await rejects(() => r.render(box({ backgroundColor: "red", filter: "blur(2px)" }), vp), /A PDF cannot draw filter: blur\(2px\)/, "blur filter fails the render (takumi-pdf)");
-  const jpeg = readFileSync(path.join(root, "ref", "takumi", "takumi-pdf", "tests", "images", "checker.jpg"));
+  const jpeg = readFileSync(path.join(refRoot, "takumi-pdf", "tests", "images", "checker.jpg"));
   const photo = await r.render({ type: "image", src: "photo", width: 40, height: 40 }, { viewport: { width: 40, height: 40 }, images: [{ src: "photo", data: new Uint8Array(jpeg) }] });
   has(photo, "/Filter/DCTDecode", "JPEG embedded as is");
   check(latin1(photo).includes(latin1(jpeg.subarray(0, 64))), "the original JPEG bytes are in the file");
@@ -180,7 +183,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
   const pageText = (bytes, name, n) => {
     const file = path.join(tmp, name + ".pdf");
     writeFileSync(file, bytes);
-    const t = spawnSync("pdftotext", ["-f", String(n), "-l", String(n), "-enc", "UTF-8", file, "-"], { encoding: "utf8" });
+    const t = spawnSync(popplerText, ["-f", String(n), "-l", String(n), "-enc", "UTF-8", file, "-"], { encoding: "utf8", windowsHide: true });
     if (t.error && t.error.code === "ENOENT") { pdftotextMissing = true; return null; }
     return t.stdout.replace(/\s+/g, " ").trim();
   };
@@ -194,7 +197,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
       check(ok, `${name}: page ${i + 1} reads ${JSON.stringify(strings)}${ok ? "" : ` (missing ${JSON.stringify(missing)} in ${JSON.stringify(t.slice(0, 200))})`}`);
     });
   };
-  const fixture = (f) => readFileSync(path.join(root, "ref", "takumi", "takumi-pdf", "fixtures", f), "utf8");
+  const fixture = (f) => readFileSync(path.join(refRoot, "takumi-pdf", "fixtures", f), "utf8");
 
   // takumi-pdf's HTML fixtures through the public API (page counts as takumi's goldens)
   const invoice = await r.render(fixture("invoice.html"), { size: "a4", margin: { top: 36, right: 36, bottom: "auto", left: 36 }, footer: fixture("invoice-footer.html") });
@@ -521,7 +524,7 @@ await bad({ attachments: [{ name: "a", data: "x" }, { name: "a", data: "y" }] },
 await bad({ attachments: [{ name: "a", data: "x", mimeType: "plain" }] }, /Attachment mime type is not a type\/subtype pair: plain/, "bad mime type");
 await bad({ pdfa: "1b" }, /unknown variant `1b`/, "unknown pdfa level");
 // (pdfa / tagged / attachment / date / placeholder combinations: takumi fails them while writing; see the tagging section)
-await bad({ uncoveredText: "skip" }, /unknown uncoveredText: skip/, "unknown uncoveredText");
+await bad({ uncoveredText: "skip" }, /unknown variant `skip`, expected one of `error`, `placeholder`, `blank`/, "unknown uncoveredText");
 await bad({ tagged: "ua3" }, /untagged enum TaggedInput/, "bad tagged");
 await bad({ attachments: [{ name: "a" }] }, /missing field `data`/, "attachment without data");
 await rejects(() => r.render({ type: "container", style: { width: "banana" } }), /width/, "layout error surfaces");
@@ -698,21 +701,28 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
   const textOf = (bytes, name) => {
     const file = path.join(tmp, name + ".pdf");
     writeFileSync(file, bytes);
-    const t = spawnSync("pdftotext", ["-raw", "-enc", "UTF-8", file, "-"], { encoding: "utf8" });
+    const t = spawnSync(popplerText, ["-raw", "-enc", "UTF-8", file, "-"], { encoding: "utf8", windowsHide: true });
     if (t.error && t.error.code === "ENOENT") { pdftotextMissing = true; return null; }
     return t.stdout.replace(/\s+/g, " ").trim();
   };
   const inter = new Uint8Array(readFileSync(path.join(root, "assets", "fonts", "Inter-Regular.ttf")));
   const vp = { viewport: { width: 320, height: 120 } };
 
-  // 1. no font registered at all: takumi-pdf draws its bundled Geist font, bm-engine bundles none and fails
-  //    the render naming the characters (unless uncoveredText is "blank")
-  const noFont = /No font is registered to draw H \(U\+0048\), e \(U\+0065\), l \(U\+006C\), o \(U\+006F\)\. bm-engine bundles no font/;
-  await rejects(() => new PdfRenderer().render("<p>Hello</p>"), noFont, "no font: PdfRenderer.render fails");
-  await rejects(() => pdfMod.render("<p>Hello</p>"), noFont, "no font: module-level render fails");
-  await rejects(async () => new PdfRenderer().renderSync("<p>Hello</p>"), noFont, "no font: renderSync fails");
-  await rejects(() => new PdfRenderer().measure("<p>Hello</p>"), noFont, "no font: measure fails");
-  await rejects(() => new PdfRenderer().render("<p>x</p>", { footer: "<p>Hello</p>" }), noFont, "no font: text in a band fails");
+  // 1. no font registered: as takumi-pdf, the bundled last-resort Geist (Latin) draws the text; characters it
+  //    lacks (Vietnamese tone marks) fail the render naming them, unless uncoveredText says otherwise
+  {
+    const t = textOf(await new PdfRenderer().render("<p>Hello</p>", vp), "geist_default");
+    if (t !== null) check(t === "Hello", `no font: the bundled Geist draws the text (${JSON.stringify(t)})`);
+    isPdf(await pdfMod.render("<p>Hello</p>"), "no font: module-level render draws with Geist");
+    isPdf(new PdfRenderer().renderSync("<p>Hello</p>"), "no font: renderSync draws with Geist");
+    check((await new PdfRenderer().measure("<p>Hello</p>")).height > 0, "no font: measure uses Geist");
+    isPdf(await new PdfRenderer().render("<p>x</p>", { footer: "<p>Hello</p>" }), "no font: text in a band draws with Geist");
+    const cleared = new PdfRenderer();
+    cleared.registerFont({ name: "Inter", data: inter });
+    cleared.clearFonts();
+    isPdf(await cleared.render("<p>Hello</p>", vp), "clearFonts goes back to the bundled Geist");
+    await rejects(() => new PdfRenderer().render("<p>Phạm Đức</p>", vp), /No font the text can use draws ạ \(U\+1EA1\), Đ \(U\+0110\)/, "no font: Vietnamese that Geist lacks fails, naming the characters");
+  }
   isPdf(await new PdfRenderer().render("<p>Hello</p>", { ...vp, uncoveredText: "blank" }), "no font: uncoveredText blank draws nothing");
   isPdf(await new PdfRenderer().render(`<div style="width:10px;height:10px;background:red"> </div>`, vp), "no font: a document without text renders");
 
@@ -858,7 +868,84 @@ isPdf(rendererAfterErrors, "renderer still works after errors", [30, 30]);
   } else console.log(`SKIP  ${fullPath} predates bm_render_pdf (rebuild it: npm run build:full, or set BM_FULL_WASM)`);
 }
 
+// ---- resource discovery: pinned takumi-pdf-js prepare.test.ts, with extra cascade/failure cases
+{
+  const inter = new Uint8Array(readFileSync(path.join(root, "assets/fonts/Inter-Regular.ttf")));
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8AAQv8ZQASIBQBDzgf5kLRQ3gAAAABJRU5ErkJggg==", "base64");
+  const called = [];
+  const r = new PdfRenderer();
+  const fetch = async (url) => { called.push(url); return new Response(png); };
+  const prepared = await r.prepare(`<style>.used{width:10px;height:10px;background-image:url(https://example.com/body.png)}.unused{background:url(https://example.com/unused.png)}@font-face{font-family:Unused;src:url(https://example.com/unused.woff2)}</style><div class="used"></div><div style="display:none"><img src="https://example.com/hidden.png"></div>`, {
+    header: `<img src="https://example.com/header.png" width="10" height="10">`, images: { fetch },
+  });
+  check(called.sort().join("|") === ["https://example.com/body.png", "https://example.com/header.png"].join("|"), "prepare needs: fetches drawn body/band images and skips unmatched/hidden resources and unused font files");
+  isPdf(await r.render(prepared), "prepare discovered resources");
+  r.free();
+
+  const subsetCalls = [0, 0, 0];
+  const subset = (index, range) => ({ name: "Band Subset", key: String(index), unicodeRange: [range], data: () => { subsetCalls[index]++; return inter; } });
+  const subsets = new PdfRenderer();
+  const p = await subsets.prepare("<p>a</p>", { footer: "<p>Ж</p>", pages: { first: { header: "<p>α</p>" } }, fonts: [subset(0, [0x400, 0x4ff]), subset(1, [0x370, 0x3ff]), subset(2, [0x530, 0x58f])] });
+  check(subsetCalls.join(",") === "1,1,0", "prepare needs: loads only subsets used by body and every band's text");
+  isPdf(await subsets.render(p), "prepare band font subsets");
+  check(subsetCalls.join(",") === "1,1,0", "prepared render reuses loaded subsets");
+  subsets.free();
+
+  const files = new PdfRenderer();
+  const fontCalls = [];
+  const fp = await files.prepare(`<style>@font-face{font-family:Remote;src:url(https://example.com/broken.woff2),url(https://example.com/font.ttf)}p{font-family:Remote}</style><p>Font fallback file</p>`, {
+    images: { fetch: async (url) => { fontCalls.push(url); return new Response(url.includes("broken") ? new Uint8Array([0]) : inter); } },
+  });
+  check(fontCalls.join("|") === "https://example.com/broken.woff2|https://example.com/font.ttf", "prepare needs: font files retry the next src after invalid bytes");
+  isPdf(await files.render(fp), "prepare CSS font face fallback");
+  files.free();
+
+  const cached = new PdfRenderer();
+  const cache = new Map(); let downloads = 0;
+  const cachedOptions = { images: { fetchCache: cache, fetch: async () => { downloads++; return new Response(png); } } };
+  await Promise.all([cached.prepare('<img src="https://example.com/cache.png">', cachedOptions), cached.prepare('<img src="https://example.com/cache.png">', cachedOptions)]);
+  check(downloads === 1, "prepare fetchCache: concurrent requests share one download");
+  await cached.prepare('<img src="https://example.com/cache.png">', cachedOptions);
+  check(downloads === 1, "prepare fetchCache: later preparation reuses cached bytes");
+  let attempts = 0;
+  const retryOptions = { images: { fetchCache: cache, throwOnError: false, fetch: async () => new Response(++attempts === 1 ? "failed" : png, { status: attempts === 1 ? 500 : 200 }) } };
+  await cached.prepare('<img src="https://example.com/retry.png">', retryOptions);
+  check(!cache.has("https://example.com/retry.png"), "prepare fetchCache: failed download is evicted");
+  await cached.prepare('<img src="https://example.com/retry.png">', retryOptions);
+  check(attempts === 2, "prepare fetchCache: failed URL can be retried");
+  const abort = new AbortController();
+  const pending = cached.prepare('<img src="https://example.com/pending.png">', { signal: abort.signal, images: { fetch: () => new Promise(() => {}) } });
+  abort.abort(new Error("resource preparation cancelled"));
+  await rejects(() => pending, /resource preparation cancelled/, "prepare aborts while custom fetch is pending");
+  cached.free();
+
+  const svgFonts = new PdfRenderer(); let greek = 0; let unused = 0;
+  await svgFonts.prepare('<img src="https://example.com/text.svg">', {
+    images: { fetch: async () => new Response('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="30"><text y="20">α</text></svg>') },
+    fonts: [
+      { name: "SVG Subset", unicodeRange: "U+0370-03FF", data: () => { greek++; return inter; } },
+      { name: "Unused Subset", unicodeRange: "U+0530-058F", data: () => { unused++; return inter; } },
+    ],
+  });
+  check(greek === 1 && unused === 0, "prepare needs: downloaded SVG text adds only its required font subset");
+  const needsSvg = `<svg xmlns="http://www.w3.org/2000/svg"><style>.used{font-family:'SVG Face';font-weight:700}</style><defs><text id="used" class="used">α</text><text>Ա</text><g id="cycle"><use href="#cycle"/></g></defs><g display="none"><text>Ա</text></g><text visibility="hidden">Ա<tspan visibility="visible">β</tspan></text><use href="#used"/><use href="#cycle"/></svg>`;
+  const needsRenderer = new pdfMod.Renderer();
+  const svgNeeds = needsRenderer.needsPdfSync('<img src="text.svg">', { images: [{ src: 'text.svg', data: new TextEncoder().encode(needsSvg) }] });
+  check(svgNeeds.text.includes('α') && svgNeeds.text.includes('β') && !svgNeeds.text.includes('Ա'), "SVG needs: resolve use, skip unused defs/hidden text, allow visible descendants, bound cycles");
+  check(svgNeeds.requests.some(request => request.text === 'α' && request.families.includes('SVG Face') && request.weight === 700), "SVG needs: use cascaded font family and weight");
+  needsRenderer.free();
+  const svgFetches = [];
+  await svgFonts.prepare(`<style>@font-face{font-family:'SVG Face';font-weight:700;src:url(https://example.com/svg-font.ttf)}</style><img src="https://example.com/face.svg">`, {
+    images: { fetch: async url => {
+      svgFetches.push(url);
+      return new Response(url.endsWith('.svg') ? needsSvg : inter);
+    } },
+  });
+  check(svgFetches.join('|') === 'https://example.com/face.svg|https://example.com/svg-font.ttf', `prepare SVG: downloaded text requests font-face files without font subsets (${svgFetches.join('|')})`);
+  svgFonts.free();
+}
+
 rmSync(tmp, { recursive: true, force: true });
-if (pdftotextMissing) console.log("NOTE  pdftotext not found on PATH: the poppler checks were skipped");
+check(!pdftotextMissing, "Poppler text checks ran (pdftotext required)");
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);

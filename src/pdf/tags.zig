@@ -196,6 +196,14 @@ fn isTable(d: style.computed.Display) bool {
 /// Whether the node is a block-level box (a paragraph boundary). Flex / grid items, floats and
 /// out-of-flow boxes are blockified, as takumi's computed display is.
 fn isBlock(f: *const Frame, n: *const Node) bool {
+    // Image-only generated content keeps the block boundary used by tagged
+    // output. In a mixed inline list, the text paragraph owns the image's
+    // reading-order position, so do not introduce a second paragraph boundary.
+    if (n.kind == .image and n.el != none and f.dom.at(n.el).generated) {
+        if (n.parent == none) return true;
+        const p = &f.nodes.items[n.parent];
+        if (p.kind != .anon_box or p.para == null or Frame.paragraphText(p.para.?).len == 0) return true;
+    }
     if (n.kind == .anon_text or n.kind == .anon_box) return true;
     if (n.cs.float != .none or n.cs.position == .absolute or n.cs.position == .fixed) return true;
     if (n.parent != none) switch (f.nodes.items[n.parent].cs.display) {
@@ -426,6 +434,7 @@ fn tagId(a: Allocator, f: *const Frame, node: u32) Error![]const u8 {
 pub fn emptyInlineBlock(f: *const Frame, id: u32) bool {
     const n = &f.nodes.items[id];
     if (n.kind != .container or n.el == none) return false;
+    if (f.dom.at(n.el).control_text) return true;
     switch (n.cs.display) {
         .block, .flow_root, .inline_block, .list_item, .table_cell, .table_caption => {},
         else => return false,
@@ -953,9 +962,9 @@ fn listNumbering(f: *const Frame, n: *const Node) Numbering {
         .none, .string => .none,
         .ident => |s| blk: {
             const table = [_]struct { []const u8, Numbering }{
-                .{ "disc", .disc },               .{ "circle", .circle },           .{ "square", .square },
+                .{ "disc", .disc },               .{ "circle", .circle },                .{ "square", .square },
                 .{ "decimal", .decimal },         .{ "decimal-leading-zero", .decimal }, .{ "lower-alpha", .lower_alpha },
-                .{ "lower-latin", .lower_alpha }, .{ "upper-alpha", .upper_alpha }, .{ "upper-latin", .upper_alpha },
+                .{ "lower-latin", .lower_alpha }, .{ "upper-alpha", .upper_alpha },      .{ "upper-latin", .upper_alpha },
                 .{ "lower-roman", .lower_roman }, .{ "upper-roman", .upper_roman },
             };
             for (table) |e| if (eq(s, e[0])) break :blk e[1];

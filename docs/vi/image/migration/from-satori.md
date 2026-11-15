@@ -52,25 +52,17 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 | `loadAdditionalAsset` (font / emoji động) | không có callback: đăng ký sẵn các font fallback ([chuỗi fallback](../recipes.md#i18n-chuỗi-font-fallback)); emoji màu lấy từ một font emoji đã đăng ký trên `full` |
 | `graphemeImages` | không có tương đương; dùng node `image` |
 | `debug: true` | `drawDebugBorder` được chấp nhận và bị bỏ qua |
-| prop `tw` (hỗ trợ Tailwind của satori) | `tw` trên node, profile `standard` / `full`; độ phủ class theo bảng của takumi, không theo satori |
+| prop `tw` (hỗ trợ Tailwind của satori) | `tw` trên node, profile `standard` / `full`; xem [utility được hỗ trợ](../html-and-tailwind.md) |
 
 ## Chuyển đổi JSX
 
 satori nhận React element. bm-engine nhận object node thuần. Chọn một trong các cách:
 
-1. **Biên dịch các file card với [factory `h()`](../frameworks/index.md#node-tree-không-cần-jsx).**
-   Với esbuild `--jsx-factory=h --jsx-fragment=Fragment`, TypeScript `"jsxFactory": "h"`, hoặc pragma
-   `/** @jsx h */`, `<div style={...}>` thành node container, chuỗi thành node text và `<img src>` thành
-   node image. Đã kiểm chứng với esbuild 0.28.2. Function component hoạt động (được gọi với props của
-   chúng); hook và context thì không.
-2. **Chuyển đổi React element** bằng `fromJsx()` của takumi trong `@takumi-rs/helpers`, hàm này còn ánh
-   xạ các phần tử HTML sang preset mặc định của takumi (xem [Chuyển từ takumi → JSX](./from-takumi.md#jsx)).
-3. **Render ra HTML** bằng `react-dom/server` rồi truyền chuỗi vào (`standard` / `full`); đầu vào HTML
-   có user-agent style cho `h1`, `p`, ... như trình duyệt. Xem [HTML và Tailwind](../html-and-tailwind.md).
+2. **Dùng cây node thuần** khi muốn chia sẻ mẫu mà không phụ thuộc React. Xem [checklist tích hợp](checklist.md).
 
 ### `display: flex` ở mọi nơi
 
-satori (và do đó `next/og`) coi mọi phần tử là flex container. bm-engine theo CSS và takumi: mọi node là
+satori (và do đó `next/og`) coi mọi phần tử là flex container. bm-engine dùng mặc định CSS: mọi node là
 `display: inline` cho tới khi bạn đặt khác, và container inline bỏ qua `width` / `height`. Template viết
 cho satori thường dựa vào mặc định flex này, nên hoặc thêm `display: "flex"` ở chỗ cần, hoặc áp mặc định
 của satori cho cả cây:
