@@ -10,15 +10,18 @@
 // and point TAKUMI_PDF_REF at that directory. Without it every comparison with the reference is reported as
 // "unverified" instead of pass / fail, and the bm-only checks still run.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { structureParts } from "../pdf-structure.mjs";
 import { interchangeParts } from "../pdf-interchange.mjs";
+import { REVISION } from "../takumi-test-corpus.mjs";
+import { findBin } from "../../bench/pdf/lib/tools.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-export const takumiSrc = path.join(root, "ref", "takumi");
+export const takumiSrc = path.join(root, "tests", "upstream", "takumi");
 export const outDir = path.join(root, "bench", "out", "pdf-audit");
 mkdirSync(outDir, { recursive: true });
 
@@ -27,13 +30,19 @@ mkdirSync(outDir, { recursive: true });
 export const bmMod = await import(pathToFileURL(path.join(root, "js", "node-pdf.mjs")).href);
 
 const refDir = process.env.TAKUMI_PDF_REF || "";
-const refEntry = refDir ? path.join(refDir, "node_modules", "takumi-pdf", "bundlers", "node.mjs") : "";
+const pinnedEntry = process.env.TAKUMI_PDF_REF_ENTRY;
+const refEntry = pinnedEntry ? path.resolve(pinnedEntry) : refDir ? path.join(refDir, "node_modules", "takumi-pdf", "bundlers", "node.mjs") : "";
+const pinnedProvenance = pinnedEntry ? JSON.parse(readFileSync(path.join(path.dirname(refEntry), "wasm-provenance.json"), "utf8")) : null;
+if (pinnedProvenance && pinnedProvenance.revision !== REVISION) throw new Error("The probe reference revision does not match the pinned corpus");
+if (pinnedProvenance) for (const [file, expected] of [["wasm/takumi_pdf_wasm_bg.wasm", pinnedProvenance.wasmSha256], ["export.mjs", pinnedProvenance.wrapperSha256]]) {
+  if (!expected || createHash("sha256").update(readFileSync(path.join(path.dirname(refEntry), file))).digest("hex") !== expected) throw new Error(`The pinned oracle artifact changed: ${file}`);
+}
 /** The takumi-pdf module (its documented JS API), or null when TAKUMI_PDF_REF is not set / not installed. */
 export const refMod = refEntry && existsSync(refEntry) ? await import(pathToFileURL(refEntry).href) : null;
-export const refVersion = refMod ? JSON.parse(readFileSync(path.join(refDir, "node_modules", "takumi-pdf", "package.json"), "utf8")).version : null;
+export const refVersion = refMod ? pinnedProvenance ? `${pinnedProvenance.version} source ${pinnedProvenance.revision}` : JSON.parse(readFileSync(path.join(refDir, "node_modules", "takumi-pdf", "package.json"), "utf8")).version : null;
 
 const fontCache = new Map();
-/** Font bytes by a path relative to the repo root (e.g. "assets/fonts/Inter-Regular.ttf") or to ref/takumi. */
+/** Font bytes by a path relative to the repo root or to tests/upstream/takumi. */
 export function font(rel) {
   if (!fontCache.has(rel)) {
     const a = path.join(root, rel); const b = path.join(takumiSrc, rel);
@@ -211,9 +220,14 @@ export function pdftotext(bytes, name = "probe", args = []) {
   if (pdftotextMissing) return { skipped: true, text: "" };
   const file = path.join(outDir, name.replace(/[^\w.-]+/g, "_") + ".pdf");
   writeFileSync(file, bytes);
-  const r = spawnSync("pdftotext", [...args, file, "-"], { encoding: "utf8" });
+  const executable = findBin("poppler", "pdftotext") || "pdftotext";
+  const r = spawnSync(executable, [...args, file, "-"], { encoding: "utf8", windowsHide: true });
   if (r.error && r.error.code === "ENOENT") { pdftotextMissing = true; return { skipped: true, text: "" }; }
-  return { ok: r.status === 0 && r.stderr.trim() === "", stderr: r.stderr.trim(), text: r.stdout };
+  const stderr = r.stderr?.trim() || "";
+  // Poppler's bbox exporter reports this for genuinely blank pages. The
+  // geometry parser still requires page elements, so missing output fails.
+  const blankPageWarning = args.includes("-bbox") && stderr.split(/\r?\n/).every(line => line === "no word list");
+  return { ok: r.status === 0 && (!stderr || blankPageWarning), stderr, text: r.stdout || "" };
 }
 
 /** Everything a probe usually looks at in a rendered file. */
@@ -233,7 +247,11 @@ export function describe(bytes) {
     /** per page: the decoded content stream text */
     content: (i) => { const c = pdf.pages[i].dict.Contents; const list = Array.isArray(c) ? c : [c]; return list.map((r) => { const o = pdf.obj(r); return o && o.data ? o.data.toString("latin1") : ""; }).join("\n"); },
     /** text per page through pdftotext (form feed separated) */
-    get text() { const t = pdftotext(u8, "t" + Math.random().toString(36).slice(2, 8)); return t.text; },
+    get text() {
+      const t = pdftotext(u8, "t" + Math.random().toString(36).slice(2, 8));
+      if (t.skipped || !t.ok) throw new Error(`Cannot verify PDF text: ${t.skipped ? "pdftotext is missing" : t.stderr}`);
+      return t.text;
+    },
     get textPages() { return this.text.split("\f").slice(0, -1).map((s) => s.trim()); },
     get structure() { return structureParts(pdf, { Name, Ref }); },
     get interchange() { return interchangeParts(pdf, { Name, Ref }); },
@@ -283,7 +301,7 @@ export async function runProbes(filter = []) {
       note(text) { row.notes.push(text); },
     };
     try { await p.fn(t); } catch (e) { row.fail++; row.failures.push("probe threw: " + ((e && e.stack) || e)); }
-    row.status = row.fail ? "FAIL" : row.unverified && !row.pass ? "UNVERIFIED" : "PASS";
+    row.status = row.fail ? "FAIL" : row.unverified ? "UNVERIFIED" : "PASS";
     rows.push(row);
   }
   return rows;

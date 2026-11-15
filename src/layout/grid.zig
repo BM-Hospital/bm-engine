@@ -912,6 +912,7 @@ noinline fn layoutItems(t: anytype, g: *G, node: u32, s: *const st.Style) Error!
             pos[1] += orElse(t.dim(cs.inset.top, area[1]), -orElse(t.dim(cs.inset.bottom, area[1]), 0));
         }
         t.setLayout(it.node, pos.*, o, b);
+        if (comptime st.frag_enabled) t.layouts.items[it.node].grid_block_start = ay[0];
         t.accumContent(&g.content, it.node);
     }
 

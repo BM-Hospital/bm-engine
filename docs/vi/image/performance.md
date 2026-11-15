@@ -10,27 +10,6 @@ giữ bộ nhớ ổn định và chia việc cho các worker thread. Số liệ
 ([tóm tắt](../benchmark.md), [báo cáo đầy đủ](../../BENCHMARK.md)); mã nguồn là
 `docs/examples/performance.mjs` và chạy đúng như trình bày.
 
-## Các con số
-
-Đo trên Intel Core i3-10100, Windows 11, Node 26.13, profile `full`, so với `@takumi-rs/wasm` 2.20.0
-(lượt chạy cuối của 0.1.0 trừ khi có ghi chú):
-
-| Chỉ số | bm-engine | takumi-wasm |
-|:--|--:|--:|
-| Cold start: init + đăng ký một font + PNG og-card đầu tiên | **78.1 ms** | 193.8 ms |
-| Compile + instantiate wasm (lượt chạy cold start, Node) | 8.0 ms | 33.9 ms |
-| Compile + instantiate dạng streaming trong Edge 157 headless | 20.4 ms | — |
-| Render `raw`, trung bình nhân trên 250 fixture | **0.64 ms** | 1.01 ms |
-| Render `png` (render + mã hoá), trung bình nhân | **1.33 ms** | 2.95 ms |
-| PNG og-card / blog-card / stress (3000 × 2000) | 14.51 / 30.48 / 83.20 ms | 22.26 / 49.99 / 143.20 ms |
-| Bộ nhớ wasm sau 50 lần render PNG og-card | 11.6 MiB | 10.6 MiB |
-| Peak RSS của tiến trình | 92.3 MiB | 105.0 MiB |
-| Dung lượng tải wasm, brotli: core / standard / full | 194.3 / 398.0 / 470.8 KiB | 1 409.3 KiB |
-
-Mọi số liệu ở trang này là của bản **wasm**. Thời gian tuyệt đối phụ thuộc máy; các tỉ lệ ổn định hơn. Trên
-250 fixture, render PNG nhanh hơn takumi-wasm ở 248/250 ca (0.45× thời gian của nó) và render raw ở 229/250
-ca (0.63×). Addon native còn nhanh hơn nữa: xem [Native và WebAssembly](../native-vs-wasm.md).
-
 ## Tạo renderer một lần
 
 Một `Renderer` sở hữu các font đã đăng ký, một cache glyph và một cache ảnh đã giải mã. Tạo renderer rất
@@ -76,8 +55,7 @@ request nhân bội việc parse font và bộ nhớ; nếu thật sự cần re
 
 Trên Node.js, các điểm vào `bm-engine` đọc và instantiate binary một cách đồng bộ **ngay khi import**, nên
 `new Renderer()` đầu tiên có thể theo ngay sau. Cold start là tổng của việc instantiate module, đăng ký font
-và lần render đầu (lần này còn lấp đầy cache glyph) — tổng cộng 78.1 ms với fixture og-card trong benchmark,
-so với 193.8 ms của takumi-wasm.
+và lần render đầu (lần này còn lấp đầy cache glyph) — tổng cộng 78.1 ms với fixture og-card trong benchmark,.
 
 - Trong hàm serverless, hãy import, `new Renderer()` và `registerFont` ở **phạm vi module**, không đặt
   trong handler, để các lần gọi khi đã "ấm" bỏ qua được chúng.
@@ -203,14 +181,14 @@ const asJpeg = renderer.renderSync(prepared, { format: "jpeg", quality: 80 });
 console.log(asPng.length, asJpeg.length);
 ```
 
-Khác takumi, `prepare` không bao giờ tải gì về; hãy tự fetch byte (xem [Ảnh](./images.md)).
+`prepare` không bao giờ tải gì về; hãy tự fetch byte (xem [Ảnh](./images.md)).
 
 ## Bộ nhớ
 
 Mọi renderer của cùng một điểm vào dùng chung một vùng nhớ tuyến tính WebAssembly, và **bộ nhớ
 WebAssembly chỉ tăng chứ không bao giờ co lại**. bm-engine dùng lại bộ nhớ giữa các lần render (arena cho
 mỗi lần render, cache có ngân sách cố định), nên một tải ổn định sẽ chững lại: 11.6 MiB bộ nhớ wasm sau 50
-lần render og-card trong benchmark (takumi: 10.6 MiB). Thứ làm nó tăng là thứ lớn nhất bạn từng render:
+lần render og-card trong benchmark. Thứ làm nó tăng là thứ lớn nhất bạn từng render:
 
 <!-- @example performance#memory -->
 ```js
@@ -221,15 +199,14 @@ renderCard("Back to normal", "small canvas");
 console.log(renderer.memoryBytes());     // ... and stays that size: wasm memory never shrinks
 ```
 
-Trong benchmark giai đoạn 1, instance kết thúc toàn bộ lượt chạy (có một canvas 3000 × 2000) ở 65.8 MiB
-(takumi: 66.4 MiB). Quy tắc kinh nghiệm:
+Trong benchmark giai đoạn 1, instance kết thúc toàn bộ lượt chạy (có một canvas 3000 × 2000) ở 65.8 MiB. Quy tắc kinh nghiệm:
 
 - Một canvas tốn `width × height × 4` byte, cộng các layer cho hiệu ứng như nhóm opacity, filter và mask.
   Canvas 3000 × 2000 đã là 24 MB trước khi có layer nào.
 - Tách các lần render khổng lồ thỉnh thoảng mới có ra khỏi instance phục vụ lưu lượng thường ngày — chạy
   chúng trong một worker riêng, có thể terminate để lấy lại bộ nhớ.
 - Ngân sách cố định cho mỗi renderer: ảnh đã giải mã tối đa 96 MiB, mặt nạ glyph tối đa 8 MiB. Các tuỳ chọn
-  constructor `cacheMaxBytes` / `fontCacheMaxBytes` được nhận để tương thích takumi nhưng bị bỏ qua.
+  constructor `cacheMaxBytes` / `fontCacheMaxBytes` được nhận để tương thích API nhưng bị bỏ qua.
 - `renderer.memoryBytes()` (hoặc `Renderer.memoryBytes()`) báo kích thước hiện tại; hãy ghi log nó nếu nghi
   bộ nhớ tăng.
 
@@ -265,7 +242,7 @@ Với backend native (được `import "bm-engine"` dùng trên Node.js khi đã
 thức async (`render()`, `measure()`, ...) chạy trên thread pool của libuv và không chặn event loop. Khi đó
 xử lý song song đến từ nhiều instance `Renderer` (mỗi cái chạy một lần gọi một lúc) và kích thước của pool
 đó, `UV_THREADPOOL_SIZE`, thay vì từ worker thread. Xem
-[Native và WebAssembly → Mô hình thread](../native-vs-wasm.md#mô-hình-thread) để biết chi tiết và thông lượng
+[Native và WebAssembly → Mô hình thread](../native-vs-wasm.md) để biết chi tiết và thông lượng
 đo được. Phần còn lại của mục này áp dụng cho backend wasm.
 :::
 

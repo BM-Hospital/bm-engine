@@ -85,8 +85,9 @@ behind them.
 | Evidence | Before the audit (main `664fb3f`) | Now |
 |:--|:--|:--|
 | Probes vs published takumi-pdf 0.20.0 (`scripts/pdf-audit/run.mjs`, 1458) | 1168 pass / 290 fail | 1347 pass / 111 fail (every remaining failure is a row below) |
-| Golden fixtures (`scripts/pdf-compare.mjs`, 136) | 105 identical / 2 close / 29 differ / 0 errors | 118 identical / 7 close / 11 differ / 0 errors |
-| `npm run test:pdf` | 367 passed | 373 passed (wasm and native) |
+| Latest full probe audit (2026-11-15, pinned takumi-pdf source `ff9a5d4`, `scripts/pdf-audit/run.mjs --strict`) | — | 1571 probes: 1548 pass / 23 strict parity differences (the same on the wasm build and the native addon); these include intentional CSS/API differences and are not a count of bm-engine defects |
+| Golden fixtures (`scripts/pdf-compare.mjs`, 136) | 105 identical / 2 close / 29 differ / 0 errors | 125 identical / 10 close / 1 differ / 0 errors (`list-marker-pagination`, deliberate) |
+| `npm run test:pdf` | 367 passed | 393 passed on each backend (WASM and native) |
 
 What was missing at the start of this audit and is ported now: pages of different widths (`@page :first` /
 `:left` / `:right` and named pages of other sizes), the `@page` cascade (inside `@media` / `@layer` /
@@ -111,7 +112,6 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | `at-page-first-left-right` | close | pages of different widths now laid out at their own width (was 1944 / 1734 ops); numbers within 0.01 |
 | `svg-filters-masks-and-patterns` | close | numbers within 0.01 (was a raster fallback) |
 | `color-glyph-text-shadow` | differ | only a form `/BBox` (124.51 vs 124.546): takumi measures it on tiny-skia's stroked outline |
-| `named-pages` | differ | 3220 / 3356 ops: takumi's page 2 also paints the first border pieces of the wide table that starts page 3, outside its clip (invisible); in bm-engine page 3 is another frame laid out at its own width |
 | `inline-span-background-image` | differ | inline-span background extents: 3 gradient fragments vs 2 |
 | `inline-span-background-clip-text-nested` | differ | the glyphs of a nested span inside the outer span's text mask sit 41/64 px further left in takumi; the visible text is identical |
 | `background-clip-text-reach` | differ | 1723 / 1102 ops: how far the clip-text mask reaches past the box |
@@ -129,7 +129,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | Source kinds: HTML string, node tree, `Prepared` | ported+equivalent | `api.input.*` |
 | JSX / React element as document and as band | ported+differs | converted to HTML; components run once without a React dispatcher, so hooks other than plain reads do not work |
 | `{ json }` source | extension | bm-engine's node-tree source; takumi-pdf has no such kind (`api.input.kinds` keeps failing on purpose) |
-| `fonts` option (bytes, URL, loader, promise) | ported+differs | bm-engine bundles no fallback font; takumi-pdf falls back to Geist (`api.fonts.option`, `api.renderer.fonts`) |
+| `fonts` option (bytes, URL, loader, promise) | ported+equivalent | the PDF builds bundle takumi-pdf's last-resort Geist (Latin subset; no Vietnamese tone marks) |
 | `images` option | ported+equivalent | data that is no image now fails the render, as takumi's eager decode |
 | `css`, `stylesheets`, `<style>` pooled across document and bands | ported+equivalent | `bands.styles` |
 | `cssVariables` | extension | declared in takumi-pdf's d.ts but ignored by its Rust options; bm-engine applies it (`api.css`) |
@@ -137,7 +137,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | `lang` (validated and canonicalised like `Lang::parse`) | ported+equivalent | |
 | `signal` (render and prepare; `measure` ignores it as takumi) | ported+equivalent | `api.signal` |
 | `prepare` | ported+differs | fetches the images the document and bands name (`images.fetch` or `fetch`); found by scanning the source in JS, not by takumi's native `needs` pass; fonts are not downloaded |
-| `uncoveredText: error / placeholder / blank` | ported+differs | same rules; with no font at all takumi draws Geist, bm-engine errors (`text.uncovered`) |
+| `uncoveredText: error / placeholder / blank` | ported+equivalent | with no font registered the bundled Geist draws, as in takumi-pdf |
 | `backgroundColor` | ported+equivalent | first component only, transparent painted, `currentColor` rejected |
 | Error messages | ported+differs | same text with a `bm-engine: ` prefix (`file.error-prefix`, `page.error-prefix`); serde type errors only need to reject (wording differs) |
 | Option validation of wrong types / NaN | ported+differs | all rejected except a NaN `margin`, which `JSON.stringify` turns into `null` (default margin) where takumi errors (`page.margin.nan`) |
@@ -157,7 +157,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | `@page :first`, `:left`, `:right` (same width) | ported+equivalent | |
 | `@page :first` / `:left` / `:right` of **another width** | ported+equivalent | was missing; `src/pdf/paged.zig` `laySegments` lays each run of same-width pages out at its own width, a paragraph broken across the change is cut at the same glyph and re-wraps; golden `at-page-first-left-right` close (1734/1734 ops, structure identical) |
 | Named pages (`page` property, `@page name`, `name:first`) | ported+equivalent | breaks between blocks, flex items and table rows |
-| Named pages of **another width** | ported+differs | was missing; now laid out at their own width, structure tree identical; golden `named-pages` differs only by 136 border operators takumi paints outside page 2's clip (invisible) |
+| Named pages of **another width** | ported+equivalent | was missing; now laid out at their own width, structure tree identical; golden `named-pages` identical: the last page of a width run also paints what the next run's first page reaches up into it (the collapsed borders above a table starting that page, `paintUnder`) |
 | A page boundary inside a table row or a flex line across a width change | ported+differs | the continued row / line keeps the previous width |
 | `@page` inside `@media` / `@layer` / `@supports`; `!important`, layer and specificity cascade | ported+equivalent | was missing; `src/css/sheet.zig`, `src/pdf/page_rules.zig` follow `PageRule::cascade` |
 | `@page` lengths: any unit, `calc()` / `min()` / `max()` / `clamp()`, viewport units, `em` / `ex` / `ch` / `rem`, unitless px | ported+equivalent | was partial |
@@ -180,16 +180,17 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | `box-decoration-break` of inline boxes reaching the next page by their border | ported+differs | |
 | Tables: repeated `thead` / `tfoot`, row splitting, rowspan, cell re-alignment at a cut row | ported+equivalent | was differing |
 | Table captions across pages | ported+differs | takumi drops caption lines on page 1 (looks like a takumi bug) |
-| Collapsed table borders per fragment | ported+differs | each fragment ends with its own bottom border; small offsets remain for 4 px borders and repeated headers |
+| Collapsed table borders per fragment | ported+differs | repeated header/footer borders replay at their fragment `dy`, and rows cut by a page window paint their winning block-start/end edges; bm-engine retains a row separator between rows at a page break where takumi omits it; repeated-header borders rasterize equivalently within 1 CSS px |
 | Flex rows across pages (align-items, perfect breaks) | ported+equivalent | an item whose margin overflows the page: takumi keeps it on the page (its own test says the opposite) |
-| Grid rows across pages | ported+differs | an `align-items: end` item that breaks before its row: bm-engine has no grid-row fragments |
-| Floats across pages | ported+differs | lines do not re-flow beside a float that moved to another page (post-layout model; infeasible without laying lines out again) |
+| Grid rows across pages | ported+differs | basic rows, forced breaks, and aligned items resuming from an empty first fragment pass (`pagination.grid`, `pagination.continuation.grid-aligned-*`); arbitrary spanning-row / track continuation remains incomplete (`docs/PDF_FRAGMENT_DESIGN.md`) |
+| Floats across pages | ported+differs | whole floats deferred to a later page trigger full layout retries so following lines re-flow; tested nested / RTL / variable page-size cases and split-float extents pass (`pagination.float.*`). Split floats still lack a general page-local exclusion model, especially for arbitrary continuations across width runs (`docs/PDF_FRAGMENT_DESIGN.md`) |
 | Absolute / fixed boxes across pages | ported+equivalent | an absolute box without a positioned ancestor uses the first page area |
 | Content transformed / relatively moved past the last page (extra pages) | ported+equivalent | goldens `paged-transform-past-the-last-page`, `paged-translated-text-*` identical |
-| Rotated / skewed boxes cut by a page boundary | ported+differs | takumi slices them per fragment with a per-fragment transform origin; bm-engine paints the box whole in its first page's pass (goldens `paged-transforms`, `paged-rotated-text`) |
+| Rotated / skewed boxes cut by a page boundary | ported+equivalent | goldens `paged-transforms` (194 operators) and `paged-rotated-text` (203 operators) compare CLOSE with matching page counts and interchange trees; nested non-translation transforms remain a follow-up case |
 | List markers of an item split across pages | ported+differs | deliberate: the marker stays on the item's first line (Chrome); takumi puts it on the first line of the last fragment |
 | Overflow clips across pages | ported+equivalent | golden `paged-overflow-clip-stitched` identical |
 | Marked-content regions of boxes cut by a page boundary | ported+differs | bm-engine opens an extra empty region on the neighbouring page in some cases (`tagging.paged.*`); no single rule found that matches both these probes and the goldens |
+| Tall translucent images crossing page boundaries | ported+equivalent | fixed duplicate draws from adjacent fragment passes; native and WASM regression probe checks one image draw per intersecting page, and a 4-page alpha raster matches Takumi pixel-for-pixel |
 | Long documents: linear time and bounded memory | ported+differs | time per page flat (3.1 ms/page at 100 and 500 pages, wasm), files 0.81-0.87x takumi's; engine memory 260 MiB at 500 pages on wasm vs 76 MiB for takumi-pdf (layout passes and page drawing are freed now; the laid-out document itself remains) |
 
 ## Painting
@@ -218,7 +219,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | Relative colour syntax (`rgb(from ...)`) | missing | style parser |
 | Form controls (`input` value / placeholder / password, `textarea`, `select`) | partial | boxes and borders are painted; value / placeholder text and textarea lines are missing, the select text is offset |
 | `::before` / `::after` content | ported+equivalent | an empty pseudo block opens an empty `P` region in bm-engine (`paint.pseudo.before-after`) |
-| `content: url()` | missing | |
+| `content: url()` | ported+differs | generated URL items in mixed `::before` content stay inline with surrounding text; `paint.pseudo.content-url-mixed` checks that following pseudo text does not gain an extra block line. Takumi's box split differs from browser inline flow (it makes the URL item a block: inside an `inline-block` pseudo the text before and after it lands on separate lines and in separate `P` elements, `tagging.generated.mixed-image`) |
 | List markers (counter styles, symbols, inside / outside, `start`, `reversed`, `value`, `Lbl`) | ported+equivalent | |
 | `list-style-image` | missing | the counter style is drawn instead |
 
@@ -231,8 +232,8 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | TTC face selection with a family override; TTC `FontBBox` | ported+differs | takumi picks the last face and writes −220 as the descender bound |
 | WOFF1 fonts | extension | takumi-pdf rejects them |
 | WOFF2 | ported+equivalent | |
-| Truncated / no-cmap fonts | ported+differs | takumi accepts them, bm-engine rejects (`fonts.broken`) |
-| Fallback font | ported+differs | bm-engine bundles none (takumi: Geist); affects `fonts.fallback`, `fonts.uncovered`, `text.transform.full-width`, `text.ligature.combining-marks`, `text.color-glyph.emoji-only-font` |
+| Truncated / no-cmap fonts | ported+equivalent | registered as a family drawing nothing when the table directory reads (text falls back), as takumi; bytes that are no font: "Unsupported font format" |
+| Fallback font | ported+equivalent | the PDF builds bundle the same last-resort Geist file as takumi-pdf (src/pdf/geist), tried after every registered family; `clearFonts()` goes back to it |
 | Default-ignorable characters as invisible glyphs (ZWSP, ZWJ, marks, U+FEFF) | ported+equivalent | ToUnicode / ActualText like HarfBuzz |
 | Control characters raising the uncovered-text error | ported+equivalent | was differing |
 | Fill text, synthetic bold (`2 Tr` stroke) and oblique, `font-synthesis` | ported+equivalent | |
@@ -241,7 +242,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | SVG-in-OpenType glyphs | ported+differs | drawn as their outline |
 | Text shadows (per run, blurred, colour glyphs) | ported+equivalent | golden `color-glyph-text-shadow` differs only by a form BBox (124.51 vs 124.546) measured on tiny-skia's stroker |
 | Decorations (underline / overline / line-through, styles, thickness incl. `from-font`, offset, skip-ink, propagation through inline boxes) | ported+equivalent | run ends at origin + exact advance (goldens `report-*` close) |
-| `background-clip: text` (blocks and inline spans, decorations in the mask) | ported+equivalent | a per-layer clip list is accepted by bm-engine and rejected by takumi |
+| `background-clip: text` (blocks and inline spans, decorations in the mask) | ported+differs | each background layer keeps its own clip; mixed `text,border-box` paints the box color and sends only the text layer through glyph coverage (`text.background-clip.border-box-and-text`); Takumi paints this case as a gradient box and omits the box color |
 | `text-overflow: ellipsis`, `line-clamp` | ported+differs | the ellipsis takes the block's colour (takumi: the last span's); RTL ellipsis paint order |
 | Tabs, `pre-wrap` spaces, soft hyphen | ported+differs | same glyphs and positions; takumi splits them into runs of their own (TJ grouping, extracted text of a soft hyphen) |
 | `unicode-bidi: bidi-override` | missing | parsed but not used by the shared text engine |
@@ -276,10 +277,10 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | Info dictionary, XMP (dates, custom schemas, UA / A identification) | ported+equivalent | `metadata.*` |
 | Outline from headings (`outline: true`) | ported+equivalent | |
 | Links (external, internal, `TargetPageNumber`), anchors, repeated table header links | ported+equivalent | annotations in tree order (was paint order) |
-| Inline link rectangle in a padded block | ported+differs | deliberate: takumi's rectangle is offset by the block's padding and misses the text |
+| Inline link rectangle in a padded block | ported+differs | `links.inline-rect-in-padded-block` checks tagged and untagged PDF bounds against Poppler's text bbox; bm-engine covers the linked text, while takumi offsets the rectangle into the block padding |
 | Tagged PDF: structure tree, roles, `Lbl`, tables, figures with alt, artifacts, `ActualText` | ported+equivalent | `tagging.*` |
 | Inline role elements (`b`, `strong`, `em`, `code` ...) ending the paragraph run | ported+equivalent | was missing (invoice `P` vs `P, P`) |
-| Marked content of boxes straddling a page boundary | ported+differs | an extra empty region on the adjacent page in some cases (`tagging.paged.*`, `links.outline.paged`) |
+| Marked content of boxes straddling a page boundary | ported+equivalent | a box sliced by a page boundary ends at the page height truncated to 1/64 px (takumi's fragmentainer), so its fragment no longer opens an empty region on the next page (`links.outline.paged`, `tagging.paged.*`) |
 | PDF/UA-1, PDF/UA-2 (incl. structure destinations in outline items, as takumi-pdf 0.20.0 writes them) | ported+equivalent | |
 | PDF/A-2a/2b/2u, 3a/3b/3u, 4, 4f validation (krilla rules incl. string / name / nesting limits) | ported+equivalent | `conformance.*` (100 probes) |
 | Attachments (PDF/A-3 / 4f associated files) | ported+equivalent | compressed size differs (encoder) |
@@ -304,7 +305,6 @@ Forms, encryption, digital signatures, linearization and page-margin boxes are n
 
 | Item | Why |
 |:--|:--|
-| Bundled fallback font (Geist) | bm-engine ships no font by design (size); register one. |
 | `unicode-bidi` overrides, `offset-path`, relative colour syntax, `content: url()`, `list-style-image`, form-control text | features of the shared CSS / text engine that the image renderer lacks too; porting them is engine work, not PDF work |
 | Page CSS inside inline `<svg>` | inline SVG is parsed as its own document by the shared SVG code |
 | takumi-pdf 0.20.0 single-pass `2 Tr` stroked text | the goldens (newer takumi) draw separate passes; bm-engine follows the goldens |

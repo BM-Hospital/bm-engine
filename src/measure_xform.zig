@@ -110,6 +110,7 @@ pub fn local(cs: *const CS, w: f32, h: f32) Affine {
     if (tx != 0 or ty != 0) m = mul(m, Affine.translate(tx, ty));
     if (cs.rotate != 0) m = mul(m, rotation(cs.rotate));
     if (cs.scale[0] != 1 or cs.scale[1] != 1) m = mul(m, Affine.scale(cs.scale[0], cs.scale[1]));
+    if (@import("style/motion_path.zig").transform(cs, w, h)) |motion| m = mul(m, motion);
     if (cs.transform.len > 0) {
         var list: Affine = .{};
         for (cs.transform) |op| {
@@ -196,10 +197,9 @@ pub fn writeExact(a: std.mem.Allocator, out: *std.ArrayList(u8), v_in: f32) erro
 test "writeExact prints the float's exact value" {
     const a = std.testing.allocator;
     const cases = [_]struct { f32, []const u8 }{
-        .{ 0, "0" },             .{ 1, "1" },                    .{ -7, "-7" },
-        .{ 0.5, "0.5" },         .{ 8.984375, "8.984375" },      .{ 132, "132" },
-        .{ -0.25, "-0.25" },     .{ 0.1, "0.100000001490116119384765625" },
-        .{ 1.0e-8, "0.00000000999999993922529029077850282192230224609375" },
+        .{ 0, "0" },         .{ 1, "1" },                               .{ -7, "-7" },
+        .{ 0.5, "0.5" },     .{ 8.984375, "8.984375" },                 .{ 132, "132" },
+        .{ -0.25, "-0.25" }, .{ 0.1, "0.100000001490116119384765625" }, .{ 1.0e-8, "0.00000000999999993922529029077850282192230224609375" },
     };
     for (cases) |cse| {
         var out: std.ArrayList(u8) = .empty;

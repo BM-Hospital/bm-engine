@@ -19,7 +19,7 @@
 //   --allow-missing    skip targets whose .node is not built instead of failing
 //
 // Generated fields come from the root package.json (version, license, author, homepage, repository, bugs) and
-// the table below; nothing is invented (the root's OWNER / AUTHOR_NAME placeholders are copied as they are).
+// the table below; nothing is invented.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -55,7 +55,7 @@ const EXECUTED = new Set(["win32-x64-msvc"]);
  */
 export const NAPI_VERSION = 6;
 export const NODE_RANGE = ">=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0";
-const LICENSE_FILES = ["LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "THIRD-PARTY-NOTICES.md"];
+const LICENSE_FILES = ["LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md"];
 
 const readJson = (f) => JSON.parse(readFileSync(f, "utf8"));
 const writeJson = (f, v) => writeFileSync(f, JSON.stringify(v, null, 2) + "\n");
@@ -114,7 +114,7 @@ Requires Node-API ${NAPI_VERSION} (\`engines.node\`: \`${NODE_RANGE}\`); \`bm-en
 ${p.cpu === "x64" ? "\nThe x64 binary needs an x86-64-v2 CPU (SSE4.2, 2009+); on older CPUs it refuses to load and `bm-engine` uses wasm.\n" : ""}
 ${status}
 
-License: ${rootPkg.license}. See LICENSE-MIT, LICENSE-APACHE, NOTICE and THIRD-PARTY-NOTICES.md.
+License: ${rootPkg.license}. See LICENSE, NOTICE and THIRD-PARTY-NOTICES.md.
 `;
 }
 

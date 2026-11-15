@@ -9,7 +9,7 @@
  *  these send it to the closest real page instead of a 404 (vercel.json has the same redirects for direct hits). */
 export const CROSS_LOCALE = {
   "/benchmark-report": "/benchmark",
-  "/vi/results-full": "/results-full",
+  "/vi/results-full": "/vi/benchmark",
   "/vi/NATIVE": "/NATIVE",
   "/vi/dev/architecture": "/dev/architecture",
   "/vi/dev/takumi-notes": "/dev/takumi-notes",
@@ -47,6 +47,12 @@ export const REDIRECTS = (() => {
   for (const loc of ["", "/vi"]) {
     for (const p of IMAGE_PAGES) m[`${loc}/${p}`] = `${loc}/image/${p}`;
     for (const [o, n] of Object.entries(PDF_PAGES)) if (o !== "pdf") m[`${loc}/${o}`] = loc + n;
+    for (const product of ["image", "pdf"]) m[`${loc}/${product}/differences-from-takumi`] = `${loc}/${product}/limitations`;
+    m[`${loc}/differences-from-takumi`] = `${loc}/image/limitations`;
+    m[`${loc}/image/migration/from-takumi`] = `${loc}/image/migration/checklist`;
+    m[`${loc}/migration/from-takumi`] = `${loc}/image/migration/checklist`;
+    m[`${loc}/benchmark-report`] = `${loc}/benchmark`;
+    m[`${loc}/results-full`] = `${loc}/benchmark`;
     // product index without the trailing slash (a folder route in VitePress)
     m[`${loc}/pdf`] = `${loc}/pdf/`;
     m[`${loc}/image`] = `${loc}/image/`;

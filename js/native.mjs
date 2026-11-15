@@ -164,7 +164,7 @@ export function nativeError() {
 
 /** Bit of the `pdf` feature in the addon's `features` (src/config.zig `feature_bits`, js/engine.mjs FEATURE_NAMES). */
 const PDF_BIT = 1 << 18;
-const PDF_OPS = new Set(["pdf", "pdfMeasure"]);
+const PDF_OPS = new Set(["pdf", "pdfMeasure", "pdfNeeds"]);
 
 /** Whether the addon was built with PDF output (the published ones are). */
 export function nativeHasPdf(addon) {

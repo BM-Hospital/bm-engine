@@ -3,8 +3,7 @@
 [English](pagination.md) · [Tiếng Việt](../../vi/pdf/pagination.md)
 
 A paged PDF lays the document out at the width of the page area and then cuts it into pages with
-the break rules of Chromium (takumi-core ports Blink's block fragmentation, and bm-engine ports
-takumi-core's). This page shows how content flows from page to page, how to force and forbid breaks
+CSS fragmentation rules. This page shows how content flows from page to page, how to force and forbid breaks
 with CSS, Tailwind or a node tree, how tables repeat their header and footer, what `@page` can set, and
 how to keep only some pages. It needs the [`pdf` profile](index.md); the break properties are ignored by
 every other profile. Every Node.js snippet is a section of `docs/examples/pdf-pagination.mjs` in the
@@ -79,7 +78,7 @@ In HTML, Tailwind v4 break utilities are accepted in the `tw` attribute (not in 
 profile: `break-before-auto`, `break-before-avoid`, `break-before-page` (also `break-before-all`),
 `break-before-avoid-page`, `break-before-left`, `break-before-right`, `break-before-column`, the same
 for `break-after-*`, and `break-inside-auto`, `break-inside-avoid`, `break-inside-avoid-page`,
-`break-inside-avoid-column`. takumi-pdf has no such utilities; they are a bm-engine extension and mean what Tailwind defines.
+`break-inside-avoid-column`. These utilities use Tailwind’s meanings.
 
 <!-- @example pdf-pagination#tailwind -->
 ```js
@@ -164,7 +163,7 @@ const table = await pdf.render(
 // the header group is drawn again at the top of every page, the footer group at the bottom of every page
 ```
 
-Rows are split across pages when they do not fit, and a cell that spans several rows (`rowspan`) is cut with its rows. Collapsed borders end each fragment with its own bottom border; with 4 px borders and repeated headers small offsets from takumi-pdf remain.
+Rows are split across pages when they do not fit, and a cell that spans several rows (`rowspan`) is cut with its rows. Collapsed borders end each fragment with its own bottom border. Check collapsed borders with repeated headers at the intended print size.
 
 ## Page rules
 
@@ -215,8 +214,7 @@ The root element, for `em`, `var()` and `direction`, is the `<body>` of a whole 
 the `<html>` element); the custom properties of a fragment with several top-level elements are not read.
 A page whose margins leave no page area keeps the geometry of the options.
 
-Not supported: rule objects in `css`. Page-margin boxes such as `@top-center` are skipped (takumi does not
-draw them either); the descriptors around them still apply.
+Not supported: rule objects in `css`. Page-margin boxes such as `@top-center` are skipped; the descriptors around them still apply.
 
 ### Named pages
 
@@ -240,7 +238,7 @@ const named = await pdf.render(
 // the used page name changes twice, so there is a break before and after the annex
 ```
 
-Each page lays its content out at its own page-area width, as takumi does. A named page of another width
+Each page lays its content out at its own page-area width does. A named page of another width
 re-flows the content it holds, and so does a page whose `:first`, `:left` or `:right` rule changes the
 width: when a paragraph breaks across the change, its lines after the break wrap at the new width. Tables,
 flex and grid containers that continue on a page of another width are laid out again at that width.
@@ -289,8 +287,8 @@ That has consequences:
 - A box with a definite `height` keeps it even when its content is pushed across a page; other boxes grow by
   what a break pushed down.
 - Lines do not re-flow around a float that moved to another page: the layout is paginated once, not laid out again per fragment.
-- A rotated or skewed box cut by a page boundary is painted whole in the page where it starts; takumi-pdf slices it per fragment.
-- The marker of a list item split across pages stays on the first line of the item, as in Chrome (takumi-pdf puts it on the last fragment).
+- A rotated or skewed box cut by a page boundary is painted whole in the page where it starts.
+- The marker of a list item split across pages stays on the first line of the item, as in Chrome.
 - A page that starts in the middle of a table row or a flex line keeps the width of the page before it when
   its own width differs (see [Named pages](#named-pages)).
 - A background or border of a box that spans a page edge is cut by the page. With `box-decoration-break: slice`

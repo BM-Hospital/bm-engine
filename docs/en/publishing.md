@@ -20,9 +20,9 @@ design is in [docs/NATIVE.md](../NATIVE.md), the user-facing behaviour in
 
 ## One-time setup
 
-1. Replace the `OWNER` / `AUTHOR_NAME` placeholders in the root `package.json` (`author`, `homepage`,
-   `repository`, `bugs`), then run `npm run build:npm` to copy them into `npm/*/package.json`.
-   `npm run verify` refuses to pass while placeholders remain.
+1. `author`, `homepage`, `repository` and `bugs` are set in the root `package.json` (hunghg255,
+   https://github.com/BM-Hospital/bm-engine). After changing any of them, run `npm run build:npm` to
+   copy them into `npm/*/package.json`.
 2. An npm account with two-factor authentication. The first `npm publish` of each name creates the
    package and makes you its owner; add co-maintainers to **all nine** with `npm owner add <user> <pkg>`.
    On 2026-11-12 none of the nine names existed on the registry (`npm view <name>` returned 404).

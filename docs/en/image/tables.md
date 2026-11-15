@@ -2,7 +2,7 @@
 
 [English](tables.md) · [Tiếng Việt](../../vi/image/tables.md)
 
-bm-engine lays out tables with a port of takumi's (and therefore Chromium's) table algorithm and supports
+bm-engine lays out tables with a CSS table layout algorithm and supports
 CSS floats with text flowing around them. Both are optional features of the **standard** and **full**
 profiles (`features.tables`, `features.floats`); on `core` a table lays out as plain blocks and `float`
 is ignored. This page shows HTML tables and the equivalent node trees, column sizing, spans, borders,
@@ -259,7 +259,7 @@ These were checked with small probe renders while writing this page:
 ## RTL tables
 
 `dir="rtl"` on a `<table>` (or `direction: "rtl"` on a `display: "table"` node) mirrors the column order,
-as in browsers and takumi:
+as in browsers:
 
 <!-- @example tables#rtl -->
 ```js
@@ -358,9 +358,7 @@ If your inputs may contain tables (for example user-provided HTML, which needs `
 
 ## What is approximate
 
-From [CSS support](./css-support.md#layout) and the benchmark: tables are equivalent to takumi on all 8
-table fixtures and 339 of 352 layout oracle cases; floats on 138 / 138 oracle cases. Known gaps in
-0.1.0:
+See [CSS support](css-support.md#layout) for the available table and float features and their minimum profile.
 
 - Paint order of floats follows CSS 2.1 Appendix E in PNG / JPEG / WebP / raw output: a float paints
   after the backgrounds of in-flow blocks and before in-flow inline content (text), so text that

@@ -68,7 +68,7 @@ deploy lên một adapter edge (chỉ các PNG tĩnh được đưa lên).
 
 ## Render một Svelte component
 
-Hướng dẫn SvelteKit của takumi render một component bằng `svelte/server` rồi truyền `head + body` dưới
+Bạn có thể render một component bằng `svelte/server` rồi truyền `head + body` dưới
 dạng HTML. Cách này cũng chạy với đầu vào HTML của bm-engine, vốn cần profile `standard` hoặc `full`
 (phân tích HTML, cộng với tính năng `css` cho khối `<style>` được chèn vào). Font vẫn đến từ renderer:
 đăng ký chúng một lần thay vì truyền URL font theo mỗi response:

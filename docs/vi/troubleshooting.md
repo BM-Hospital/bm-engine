@@ -3,7 +3,7 @@
 [English](../en/troubleshooting.md) · [Tiếng Việt](troubleshooting.md)
 
 Những triệu chứng bạn dễ gặp với bm-engine 0.1.0, nguyên nhân và cách khắc phục. Phần lớn xuất phát từ
-hai quyết định thiết kế kế thừa từ takumi (`display` mặc định là `inline`; đầu vào không bao giờ được tải
+hai mặc định của thư viện (`display` mặc định là `inline`; đầu vào không bao giờ được tải
 về) và một quyết định riêng của bm-engine (không kèm font).
 
 - [Chữ không hiện, hoặc hiện thành ô vuông](#chữ-không-hiện-hoặc-hiện-thành-ô-vuông)
@@ -36,7 +36,7 @@ về) và một quyết định riêng của bm-engine (không kèm font).
 
 ## Khối chứa bị co về chiều cao 0
 
-`display` mặc định là `inline` cho mọi node, giống takumi và CSS. Một container inline bỏ qua
+`display` mặc định là `inline` cho mọi node. Một container inline bỏ qua
 `width` / `height`, nên hai con có kích thước bên trong một block container sẽ nằm trên một dòng rỗng:
 
 ```js
@@ -44,7 +44,7 @@ r.measureSync({ type: "container", style: { display: "block" }, children: [
   { type: "container", style: { width: 50, height: 50 } },
   { type: "container", style: { width: 50, height: 50 } },
 ] }, { width: 200, height: 200 });
-// -> { width: 200, height: 0, ... }   (takumi cho cùng kết quả)
+// -> { width: 200, height: 0, ... }
 ```
 
 Hãy đặt `display: "flex"`, `"block"` hoặc `"grid"` tường minh cho các container. Con của flex hoặc grid
@@ -168,14 +168,7 @@ const png = renderer.renderSync(node, { width: 2400, height: 1260, devicePixelRa
 
 ## Tiếng Việt
 
-- Dùng font phủ đủ tiếng Việt (Inter, Noto Sans, Roboto, Be Vietnam Pro, ...). Chữ dựng sẵn bị thiếu
-  (`ắ`, `ợ`, ...) sẽ hiện thành ô vuông.
-- Chuẩn hoá đầu vào của người dùng về NFC (`text.normalize("NFC")`). Chữ dựng sẵn hiển thị đúng trên mọi
-  profile; chữ tổ hợp (NFD) phụ thuộc vào định vị dấu (mark positioning) của font, và chỉ profile `full`
-  tự chuẩn hoá giúp bạn.
-- Ngắt dòng theo UAX #14 và ngắt tại dấu cách, đúng như tiếng Việt cần; `text-wrap: balance`
-  (standard / full) cho tiêu đề cân đối hơn.
-- Các fixture `text-vietnamese*` trong repository render tương đương takumi.
+- Chọn font có glyph tiếng Việt; kiểm tra cả chữ dựng sẵn và chữ có dấu tổ hợp khi nhận nội dung người dùng.
 
 ## Emoji không có màu
 
@@ -188,20 +181,19 @@ duyệt mọi family đã đăng ký.
 ## Một style bị bỏ qua
 
 - Khoá của `style` inline phải là **camelCase**: `backgroundColor`, không phải `"background-color"` (khoá
-  kebab-case bị bỏ qua im lặng, giống takumi). Trong stylesheet, HTML và `tw` thì dùng cú pháp CSS bình
+  kebab-case bị bỏ qua im lặng). Trong stylesheet, HTML và `tw` thì dùng cú pháp CSS bình
   thường.
 - Thuộc tính cần profile lớn hơn (ví dụ `float`, `clipPath` hay `mixBlendMode` trên `core` được chấp
   nhận nhưng bị bỏ qua).
 - Khai báo trong stylesheet hoặc Tailwind có giá trị không hợp lệ bị loại im lặng. Hãy thử nó dưới dạng
   style inline, vốn ném lỗi với giá trị không hợp lệ.
 - Các variant Tailwind ngoài breakpoint, variant cấu trúc và `before:` / `after:` (`hover:`, `dark:`,
-  `group-*:`) không bao giờ được áp dụng — giống takumi. Utility `animate-*` cần profile `full`.
+  `group-*:`) không bao giờ được áp dụng —. Utility `animate-*` cần profile `full`.
 - Xem danh sách [thuộc tính parse được nhưng chưa cài đặt](image/css-support.md#phụ-lục-danh-sách-thuộc-tính-được-hỗ-trợ).
 
 ## "invalid value for style property"
 
-Một giá trị trong `style` (hoặc `preset`) inline không parse được; toàn bộ lần render ném lỗi, giống
-takumi. Nguyên nhân thường gặp: gõ sai (`"10 px"`), transform 3D (`rotateX()`), cú pháp màu tương đối,
+Một giá trị trong `style` (hoặc `preset`) inline không parse được; toàn bộ lần render ném lỗi. Nguyên nhân thường gặp: gõ sai (`"10 px"`), transform 3D (`rotateX()`), cú pháp màu tương đối,
 hàm màu hiện đại trên `core`. Khai báo trong stylesheet không ném lỗi; chúng bị loại bỏ.
 
 ## Các lỗi khác

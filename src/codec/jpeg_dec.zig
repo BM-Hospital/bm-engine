@@ -731,8 +731,10 @@ fn upsampleRow(c: *const Component, sx: u32, sy: u32, y: u32, w: u32, buf: []u8,
             i += 8;
         }) {
             const t = @as(V8i, colsum[i..][0..8].*) * @as(V8i, @splat(3));
-            const e: @Vector(8, u8) = @intCast((t + @as(V8i, colsum[i - 1 ..][0..8].*) + vbe) >> vsh);
-            const od: @Vector(8, u8) = @intCast((t + @as(V8i, colsum[i + 1 ..][0..8].*) + vbo) >> vsh);
+            // (`@truncate` of the 0..255 results: an `@intCast` narrowing of the i32 vectors
+            // miscompiled on x86-64-v2 (SSE4.2) and gave the native addon other pixels than wasm)
+            const e: @Vector(8, u8) = @truncate(@as(@Vector(8, u32), @bitCast((t + @as(V8i, colsum[i - 1 ..][0..8].*) + vbe) >> vsh)));
+            const od: @Vector(8, u8) = @truncate(@as(@Vector(8, u32), @bitCast((t + @as(V8i, colsum[i + 1 ..][0..8].*) + vbo) >> vsh)));
             buf[x..][0..16].* = @shuffle(u8, e, od, interleave_mask);
         }
     }

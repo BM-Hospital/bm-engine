@@ -2,7 +2,7 @@
 
 [English](../../en/pdf/index.md) · [Tiếng Việt](index.md)
 
-bm-engine có thể ghi file PDF. Bộ ghi PDF là bản port của `takumi-pdf`: chính engine layout đã vẽ PNG và SVG
+bm-engine có thể ghi file PDF. Chính engine layout dùng cho PNG và SVG
 dàn trang tài liệu, ngắt nó thành các trang rồi ghi ra dưới dạng đồ họa vector với chữ thật, bôi chọn được và
 font con (subset) được nhúng. Nó cũng ghi header và footer, liên kết, bookmark, metadata, tệp đính kèm, PDF có
 thẻ (tagged PDF) và PDF/A. Bộ ghi PDF chỉ có trong **profile build `pdf`** (`bm-engine/pdf`); `bm-engine` và
@@ -194,4 +194,4 @@ entry này theo cùng cách.
 | Addon native, WebAssembly, kích thước profile `pdf` | [Native và WebAssembly](native-and-wasm.md) |
 | Mọi export, phương thức và tùy chọn | [Tham chiếu API PDF](api.md) |
 | CSS làm gì trong PDF | [CSS trong PDF](css-support.md) |
-| So với takumi-pdf | [Khác biệt với takumi-pdf](differences-from-takumi.md) |
+| Hạn chế đã biết | [Hạn chế đã biết](limitations.md) |

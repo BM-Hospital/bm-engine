@@ -1,17 +1,48 @@
 // Links, destinations and the outline: annotation dictionaries, destinations, /Names /Dests, outline tree.
-import { probe } from "./lib.mjs";
+import { probe, pdftotext } from "./lib.mjs";
 import { outcome, annots, outlineText, catalogText, sameText, sameWithin, deep, META, PNG1 } from "./filelayer.util.mjs";
 
 /** Compares annotations (rect to 0.01pt), the outline, /Names and the structure tree for one input. */
-async function link(t, html, options = {}, { structure = true, id = "" } = {}) {
+async function link(t, html, options = {}, { structure = true, annotations = true, id = "" } = {}) {
   const r = await t.both(html, options);
   const p = id ? id + " " : "";
   if (!t.same(p + "outcome", outcome(r.bm), outcome(r.ref)) || !r.ref || r.bm.error) return r;
-  sameWithin(t, p + "annotations per page (numbers within 0.02pt)", annots(r.bm), annots(r.ref));
+  if (annotations) sameWithin(t, p + "annotations per page (numbers within 0.02pt)", annots(r.bm), annots(r.ref));
   sameWithin(t, p + "outline", outlineText(r.bm), outlineText(r.ref));
   sameText(t, p + "catalog /Names /Dests /OpenAction /PageMode", catalogText(r.bm, ["Names", "Dests", "OpenAction", "PageMode", "Outlines"]), catalogText(r.ref, ["Names", "Dests", "OpenAction", "PageMode", "Outlines"]));
   if (structure) sameText(t, p + "structure tree", r.bm.structure.tree, r.ref.structure.tree);
   return r;
+}
+
+/** A padded block must not shift an inline link annotation away from the linked text. */
+function assertInlineTextLinkRect(t, d, id) {
+  const extracted = pdftotext(d.bytes, `inline-link-${id}`, ["-bbox"]);
+  if (extracted.skipped || !extracted.ok) {
+    t.ok(false, `${id}: Poppler bbox extraction ${extracted.skipped ? "unavailable" : extracted.stderr}`);
+    return;
+  }
+  const word = extracted.text.match(/<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">padded<\/word>/);
+  const page = d.pdf.pages[0];
+  const refs = d.pdf.resolve(page.dict.Annots) || [];
+  const annotation = refs.length > 0 ? d.pdf.resolve(refs[0]) : null;
+  const rect = annotation ? d.pdf.resolve(annotation.Rect) : null;
+  if (!word || !rect || rect.length !== 4) {
+    t.ok(false, `${id}: extract linked text and annotation bounds`);
+    return;
+  }
+  const [x0, y0, x1, y1] = word.slice(1).map(Number);
+  const [left, bottom, right, top] = rect;
+  const media = d.pages[0].media;
+  const pageHeight = media[3] - media[1];
+  const textBottom = pageHeight - y1;
+  const textTop = pageHeight - y0;
+  const tolerance = 0.03;
+  t.ok(
+    left <= x0 + tolerance && bottom <= textBottom + tolerance &&
+      right >= x1 - tolerance && top >= textTop - tolerance,
+    `${id}: annotation covers linked text bounds`,
+  );
+  t.differs(`${id}: Takumi shifts the inline rectangle into the block padding`);
 }
 
 const CASES = {
@@ -60,8 +91,17 @@ const CASES = {
 
 for (const [name, [html]] of Object.entries(CASES)) {
   probe("links." + name, "link annotations: " + name, async (t) => {
-    await link(t, html, {}, { id: "tagged" });
-    await link(t, html, { tagged: false }, { id: "untagged", structure: false });
+    const paddedInline = name === "inline-rect-in-padded-block";
+    const tagged = await link(t, html, {}, { id: "tagged", annotations: !paddedInline });
+    const untagged = await link(t, html, { tagged: false }, {
+      id: "untagged",
+      structure: false,
+      annotations: !paddedInline,
+    });
+    if (paddedInline && tagged.bm && untagged.bm && !tagged.bm.error && !untagged.bm.error) {
+      assertInlineTextLinkRect(t, tagged.bm, "tagged");
+      assertInlineTextLinkRect(t, untagged.bm, "untagged");
+    }
   });
 }
 
@@ -84,10 +124,46 @@ const PAGED = {
   "landscape-and-custom-size": [`<p><a href="https://example.com/">l</a> <a href="#x">x</a></p><div style="height:900px"></div><p id="x">x</p>`, { size: { width: 400, height: 300 }, margin: 10 }],
   "target-page-number": [`<p><a href="#r"><span>Results</span> <span class="targetPageNumber"></span></a></p><h1 id="r" style="break-before:page">Results</h1>`, A5],
 };
+
+function assertHeaderLinkTracksText(t, d, id) {
+  if (!d || d.error) return;
+  const boxes = pdftotext(d.bytes, `repeated-thead-${id}`, ["-bbox"]);
+  if (boxes.skipped || !boxes.ok) {
+    t.ok(false, `${id}: Poppler bbox extraction ${boxes.skipped ? "unavailable" : boxes.stderr}`);
+    return;
+  }
+  const pageText = [...boxes.text.matchAll(/<page\b[^>]*>([\s\S]*?)<\/page>/g)].map((m) => m[1]);
+  const pages = d.pdf.pages;
+  const checks = pages.map((page, i) => {
+    const annots = d.pdf.resolve(page.dict.Annots) || [];
+    const links = annots.map((ref) => d.pdf.resolve(ref)).filter((a) => d.pdf.resolve(a.A)?.URI);
+    const words = [...(pageText[i] || "").matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]+)<\/word>/g)]
+      .filter((m) => m[5] === "head" || m[5] === "link");
+    if (links.length !== 1 || words.length !== 2) return false;
+    const rect = d.pdf.resolve(links[0].Rect);
+    const height = d.pages[i].media[3];
+    const textRect = [
+      Math.min(...words.map((m) => Number(m[1]))),
+      height - Math.max(...words.map((m) => Number(m[4]))),
+      Math.max(...words.map((m) => Number(m[3]))),
+      height - Math.min(...words.map((m) => Number(m[2]))),
+    ];
+    return rect.length === 4 && rect.every((v, k) => Math.abs(v - textRect[k]) <= 0.03);
+  });
+  t.ok(pages.length === 4 && checks.every(Boolean), `${id}: repeated link rectangles match visible header text bounds on all pages`);
+}
+
 for (const [name, [html, o]] of Object.entries(PAGED)) {
   probe("links.paged." + name, "links across pages: " + name, async (t) => {
-    await link(t, html, o, { id: "tagged" });
-    await link(t, html, { ...o, tagged: false }, { id: "untagged", structure: false });
+    if (name === "link-in-repeated-thead") {
+      const tagged = await link(t, html, o, { id: "tagged", annotations: false });
+      const plain = await link(t, html, { ...o, tagged: false }, { id: "untagged", structure: false, annotations: false });
+      assertHeaderLinkTracksText(t, tagged.bm, "tagged");
+      assertHeaderLinkTracksText(t, plain.bm, "untagged");
+    } else {
+      await link(t, html, o, { id: "tagged" });
+      await link(t, html, { ...o, tagged: false }, { id: "untagged", structure: false });
+    }
   });
 }
 

@@ -217,8 +217,16 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
         mk0 = tl.lines[li].marker0;
         mk1 = tl.lines[li].marker1;
     }
-    var i = run.g0;
-    while (i < run.g1) {
+    // An RTL overflow marker is visually first but follows the surviving content in
+    // logical paint/text order, just as a line's final ellipsis item does in Takumi.
+    const marker_prefix = mk1 > mk0 and run.g0 == mk0 and mk1 <= run.g1;
+    var marker_pending = marker_prefix;
+    var i = if (marker_prefix) mk1 else run.g0;
+    while (i < run.g1 or marker_pending) {
+        if (i >= run.g1) {
+            i = run.g0;
+            marker_pending = false;
+        }
         const g0 = &tl.glyphs[i];
         const in_marker = i >= mk0 and i < mk1;
         const stop = if (in_marker) mk1 else if (mk1 > mk0 and i < mk0) mk0 else run.g1;
@@ -251,6 +259,7 @@ fn glyphPass(e: *Emitter, n: *const Node, tl: *const font.TextLayout, x: f32, y:
         };
         try emitTextRun(e, &tr);
         i = j;
+        if (marker_prefix and !marker_pending) break;
     }
 }
 
@@ -284,14 +293,21 @@ fn mapItem(e: *const Emitter, it: LineItem, x0: f32, x1: f32) LineItem {
             return .{ @min(@min(c[0], c[1]), @min(c[2], c[3])), @max(@max(c[0], c[1]), @max(c[2], c[3])) };
         }
     }.f;
-    const tb = ext(t, x0, x1, it.top, it.bottom);
-    const lb = ext(t, x0, x1, it.l0, it.l1);
-    return .{ .baseline = yAt(t, (x0 + x1) / 2, it.baseline), .top = tb[0], .bottom = tb[1], .l0 = lb[0], .l1 = lb[1] };
+    const span = e.line_span orelse [2]f32{ x0, x1 };
+    const tb = ext(t, span[0], span[1], it.top, it.bottom);
+    const lb = ext(t, span[0], span[1], it.l0, it.l1);
+    return .{ .baseline = yAt(t, (span[0] + span[1]) / 2, it.baseline), .top = tb[0], .bottom = tb[1], .l0 = lb[0], .l1 = lb[1] };
 }
 
 /// takumi `Window::disowns`: the line belongs to another page.
 fn disowns(e: *const Emitter, it: LineItem) bool {
-    return it.baseline < e.window.lines_top or it.baseline >= e.window.lines_bottom;
+    // If overflow clips away the baseline, the visible part of the item owns its text.
+    // Otherwise a line cut at a page edge can disappear from every page's text layer.
+    const height = if (it.baseline < e.clip_y[0] or it.baseline >= e.clip_y[1])
+        (@max(it.top, e.clip_y[0]) + @min(it.bottom, e.clip_y[1])) / 2
+    else
+        it.baseline;
+    return height < e.window.lines_top or height >= e.window.lines_bottom;
 }
 
 /// takumi `Window::shows_line_item`: this page draws the item (on the page owning its line, and
@@ -859,6 +875,29 @@ fn paintFragment(e: *Emitter, cs: *const CS, face: font.FaceId, x0: f32, x1: f32
     }
     pm.scaleRadii(&g.radii, g.bx.w, g.bx.h);
     g.rounded = pm.hasAnyRadius(g.radii);
+    const saved_strip = e.background_strip;
+    defer e.background_strip = saved_strip;
+    e.background_strip = null;
+    if (mask) |fm| if (cs.box_decoration_break == .slice) {
+        var width: f32 = 0;
+        var before: f32 = 0;
+        var current = false;
+        for (fm.tl.boxes) |*fr| {
+            if (fm.n.box_base + fr.box != fm.box) continue;
+            const fi = e.f.boxFragment(fm.n, fr) orelse continue;
+            const b = fragmentBox(e, cs, fr.face, fi.x0, fi.x1, fr.baseline, fi.left, fi.right);
+            if (fr.line == fm.line and !current) current = true;
+            if (!current) before += b.r.w;
+            width += b.r.w;
+        }
+        var strip = g;
+        strip.bx.x = if (cs.direction == .rtl) fx + fw + before - width else fx - before;
+        strip.bx.w = width;
+        strip.bw = cs.usedBorderWidths();
+        for (cs.padding, 0..) |p, k| strip.pad[k] = p.resolve(cs.font_size);
+        if (plain) strip.bx = pm.snapRect(strip.bx.x, strip.bx.y, strip.bx.w, strip.bx.h);
+        e.background_strip = strip;
+    };
     try e.paintBackground(cs, &g, g.bx.x, g.bx.y);
     if (mask) |fm| if (emit.textClipped(cs)) try e.paintTextClip(0, cs, &g, g.bx.x, g.bx.y, fm);
     try border.paintBorder(&e.d, cs, &g);
@@ -897,6 +936,11 @@ fn paintInlineOutlines(e: *Emitter, n: *const Node, tl: *const font.TextLayout, 
 /// the runs this page shows (pagination).
 pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!void {
     const f = e.f;
+    const saved_span = e.line_span;
+    defer e.line_span = saved_span;
+    const box = f.tree.layout(n.lid);
+    const left = x - box.border.left - box.padding.left;
+    e.line_span = .{ left, left + box.w };
     const tl = (try f.textLayout(f.nodeId(n), cw)) orelse {
         if (e.tagged and textRegions(e, n, null, x, y).shows) etag.end(e, etag.begin(e, f.nodeId(n))); // [tagging]
         return;
@@ -906,7 +950,15 @@ pub fn paintText(e: *Emitter, n: *const Node, x: f32, y: f32, cw: f32) Error!voi
     const regions: TextRegions = if (e.tagged) textRegions(e, n, tl, x, y) else .{ .shows = false };
     for (0..regions.before) |_| etag.end(e, etag.begin(e, f.nodeId(n)));
     const began = if (regions.shows) etag.begin(e, f.nodeId(n)) else false;
-    defer for (0..regions.after) |_| etag.end(e, etag.begin(e, f.nodeId(n)));
+    // (the text belongs to an earlier fragment's line: the later fragments' empty regions follow
+    // the line's last atomic inline, else this text)
+    var trailing = regions.after;
+    if (regions.deferred > 0) {
+        if (lastAtomicInline(e, n, tl)) |child| {
+            try e.pending_regions.append(e.a, .{ .node = f.nodeId(n), .child = child, .count = regions.deferred });
+        } else trailing += regions.deferred;
+    }
+    defer for (0..trailing) |_| etag.end(e, etag.begin(e, f.nodeId(n)));
     defer etag.end(e, began);
     // a symbol list marker paints its shape, no glyph (takumi `TextFragmentPainter::Paint`)
     if (markers.ofNode(f, f.nodeId(n))) |mk| if (mk.shape) |shape| return paintSymbol(e, n, tl, x, y, mk, shape);
@@ -1063,13 +1115,103 @@ fn shadowReach(cs: *const CS) [2]f32 {
     return r;
 }
 
-const TextRegions = struct { shows: bool, before: u32 = 0, after: u32 = 0 };
+/// The regions of a paragraph on this page: `before` empty ones, the text's (`shows`), `after`
+/// empty ones, then `deferred` empty ones that open after the paragraph's atomic inlines paint.
+const TextRegions = struct { shows: bool, before: u32 = 0, after: u32 = 0, deferred: u32 = 0 };
+
+/// The last in-flow atomic inline of line container `n` (none: null).
+fn lastAtomicInline(e: *Emitter, n: *const Node, tl: *const font.TextLayout) ?u32 {
+    if (n.kind != .anon_box) return null;
+    var last: ?u32 = null;
+    var last_index: u32 = 0;
+    for (tl.objects) |obj| {
+        if (last != null and obj.id < last_index) continue;
+        var child = n.first_child;
+        var index: u32 = 0;
+        while (child != none and index < obj.id) : (index += 1) child = e.f.nodes.items[child].next;
+        if (child == none) continue;
+        const cn = &e.f.nodes.items[child];
+        if (cn.lid == none or cn.cs.position == .absolute or cn.cs.position == .fixed or cn.cs.float != .none) continue;
+        last = child;
+        last_index = obj.id;
+    }
+    return last;
+}
+
+/// The page (of paginated `pg`) the line box holding glyph `g` starts on.
+fn linePage(e: *Emitter, pg: anytype, tl: *const font.TextLayout, y: f32, g: u32) ?usize {
+    for (tl.lines) |ln| {
+        if (g >= ln.glyph_start and g < ln.glyph_end) return pg.pageAt(y - e.plain_dy + ln.top);
+    }
+    return null;
+}
+
+/// Inline decorations belong to their line's fragment, while their paint bounds can reach
+/// a neighbouring page. Such a visit still opens that fragment's (empty) content region.
+fn inlineRegionBounds(e: *Emitter, n: *const Node, tl: *const font.TextLayout, y: f32, page: ?usize, lo: *f32, hi: *f32) void {
+    const pg = e.f.paginated();
+    // Atomic inlines belong to the fragment where their margin box starts. An
+    // oversized object's paint can reach later pages even when its line's text
+    // baseline belongs there; both fragment content visits still own regions.
+    if (n.kind == .anon_box) for (tl.objects) |obj| {
+        var child = n.first_child;
+        var index: u32 = 0;
+        while (child != none and index < obj.id) : (index += 1) child = e.f.nodes.items[child].next;
+        if (child == none) continue;
+        const cn = &e.f.nodes.items[child];
+        if (cn.lid == none or cn.cs.position == .absolute or cn.cs.position == .fixed or cn.cs.float != .none) continue;
+        if (page) |wanted| if (pg == null or pg.?.pageAt(y - e.plain_dy + obj.y) != wanted) continue;
+        const l = e.f.tree.layout(cn.lid);
+        const top = y + obj.y + l.margin.top;
+        lo.* = @min(lo.*, top);
+        hi.* = @max(hi.*, top + l.h);
+    };
+    for (tl.boxes) |*fr| {
+        if (page) |wanted| if (pg == null or pg.?.pageAt(y - e.plain_dy + fr.baseline) != wanted) continue;
+        const fi = e.f.boxFragment(n, fr) orelse continue;
+        if (!border.hasInlineOutline(fi.cs)) continue;
+        const box = fragmentBox(e, fi.cs, fr.face, fi.x0, fi.x1, fr.baseline, fi.left, fi.right).r;
+        const reach = @max(0, @trunc(fi.cs.outline_width) + @trunc(fi.cs.outline_offset));
+        lo.* = @min(lo.*, y + box.y - reach);
+        hi.* = @max(hi.*, y + box.y + box.h + reach);
+    }
+}
+
+/// An anonymous image-only generated line hands its content region directly to
+/// the image; there is no separate empty paragraph to open or reopen around it.
+pub fn onlyGeneratedImages(f: *const render.Frame, n: *const Node) bool {
+    if (n.kind != .anon_box) return false;
+    const para = n.para orelse return false;
+    if (render.Frame.paragraphText(para).len != 0) return false;
+    var child = n.first_child;
+    var any = false;
+    while (child != none) : (child = f.nodes.items[child].next) {
+        const c = &f.nodes.items[child];
+        if (c.cs.display == .none) continue;
+        if (c.kind != .image or c.el == none or !f.dom.at(c.el).generated) return false;
+        any = true;
+    }
+    return any;
+}
 
 fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f32, y: f32) TextRegions {
+    if (onlyGeneratedImages(e.f, n)) return .{ .shows = false };
     if (!e.window.paged() or !e.plain()) return .{ .shows = true };
     const l = e.f.tree.layout(n.lid);
-    var top = y - l.border.top - l.padding.top;
-    var bottom = top + l.h;
+    var region_top = y - l.border.top - l.padding.top;
+    var region_height = l.h;
+    // The sole anonymous paragraph stands for the cell's own inline layout.
+    // Its content can finish before the row's remaining block space; those cell
+    // fragments still own empty content regions, just as the original cell does.
+    if (n.parent != none and e.f.nodes.items[n.parent].cs.display == .table_cell and
+        @import("tags.zig").standsForParent(e.f, e.f.nodeId(n)))
+    {
+        const parent = e.f.tree.layout(e.f.nodes.items[n.parent].lid);
+        region_top -= l.y;
+        region_height = parent.h;
+    }
+    var top = region_top;
+    var bottom = top + region_height;
     var run_shows = false;
     if (tl_in) |tl| {
         var it: render.RunIter = .{ .tl = tl };
@@ -1082,6 +1224,7 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
             top = @min(top, y + r.baseline - @as(f32, @floatFromInt(lm.ascent)) * sc);
             bottom = @max(bottom, y + r.baseline + @as(f32, @floatFromInt(lm.descent)) * sc);
         }
+        inlineRegionBounds(e, n, tl, y, null, &top, &bottom);
     }
     const ext = shadowReach(n.cs);
     top = @floor(top + ext[0]);
@@ -1094,8 +1237,8 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     // (the fragments of the layout box: a translated box's are where its layout box is, `dy`
     // above where they paint)
     const dy = e.plain_dy;
-    const box_top = y - dy - l.border.top - l.padding.top;
-    const box_bottom = box_top + l.h;
+    const box_top = region_top - dy;
+    const box_bottom = box_top + region_height;
     // (only the pages the box reaches: a scan of every page made each box cost the page count)
     const p0: usize = pg.pageAt(box_top);
     const p1: usize = @min(pg.pages.len, @as(usize, pg.pageAt(box_bottom)) + 1);
@@ -1109,10 +1252,25 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
     const here = cur orelse return .{ .shows = true };
     if (count <= 1) return .{ .shows = true };
     var out: TextRegions = .{ .shows = true };
+    // the fragment whose line box holds the runs this page shows (a monolithic line placed on an
+    // earlier page that overflows onto this one)
+    var text_page: ?usize = null;
+    if (tl_in) |tl| {
+        var it: render.RunIter = .{ .tl = tl };
+        while (it.next()) |r| {
+            if (!runOnPage(e, tl, x, y, r).shows) continue;
+            const lp = linePage(e, pg, tl, y, r.g0) orelse continue;
+            text_page = if (text_page) |tp| @min(tp, lp) else lp;
+        }
+    }
+    var lead: u32 = 0;
+    var text_before = false;
     for (pg.pages[p0..p1], p0..) |p, i| {
         if (i == here or box_bottom <= p.top or box_top >= p.top + p.height) continue;
         var lo = @max(box_top, p.top) + dy;
-        var hi = @min(box_bottom, p.top + p.height) + dy;
+        // (a page breaks its content at the page height truncated to 1/64 px, takumi's
+        // `LayoutUnit` fragmentainer size: a box sliced there ends at that height on this page)
+        var hi = @min(box_bottom, p.top + @floor(p.height * 64) / 64) + dy;
         if (tl_in) |tl| {
             var it: render.RunIter = .{ .tl = tl };
             while (it.next()) |r| {
@@ -1124,9 +1282,21 @@ fn textRegions(e: *Emitter, n: *const Node, tl_in: ?*const font.TextLayout, x: f
                 lo = @min(lo, y + r.baseline - @as(f32, @floatFromInt(lm.ascent)) * sc);
                 hi = @max(hi, y + r.baseline + @as(f32, @floatFromInt(lm.descent)) * sc);
             }
+            inlineRegionBounds(e, n, tl, y, i, &lo, &hi);
         }
         if (e.window.excludes(@floor(lo + ext[0]), @ceil(hi + ext[1])) or e.clipExcludes(@floor(lo + ext[0]), @ceil(hi + ext[1]))) continue;
         if (i < here) out.before += 1 else out.after += 1;
+        if (text_page) |tp| {
+            if (i < tp) lead += 1;
+            if (i == tp) text_before = true;
+        }
+    }
+    if (text_before and text_page.? < here) {
+        // empty regions of the fragments before the text's, the text's, then the rest (this
+        // page's own fragment included) after the line's atomic inlines
+        out.deferred = (out.before - lead - 1) + 1 + out.after;
+        out.before = lead;
+        out.after = 0;
     }
     return out;
 }
@@ -1196,10 +1366,10 @@ fn hasDeco(list: []const *const CS, cs: *const CS) bool {
 /// `background-clip: text` (takumi `fill_text_clip`): `fills` seen through the glyphs of node
 /// `id` (border box at `x`, `y`) and of its descendants, no own paint.
 pub fn paintClipText(e: *Emitter, id: u32, x: f32, y: f32, fills: []const text.GlyphBackground) Error!void {
-    return clipNode(e, id, x, y, fills, 0);
+    return clipNode(e, id, id, x, y, fills, 0);
 }
 
-fn clipNode(e: *Emitter, id: u32, x: f32, y: f32, fills: []const text.GlyphBackground, depth: u32) Error!void {
+fn clipNode(e: *Emitter, owner: u32, id: u32, x: f32, y: f32, fills: []const text.GlyphBackground, depth: u32) Error!void {
     const f = e.f;
     const n = &f.nodes.items[id];
     if (depth > 64 or (n.kind != .anon_text and n.cs.display == .none)) return;
@@ -1223,7 +1393,12 @@ fn clipNode(e: *Emitter, id: u32, x: f32, y: f32, fills: []const text.GlyphBackg
     }
     var c = n.first_child;
     while (c != none) : (c = f.nodes.items[c].next) {
+        if (!e.reachesTextClip(c, owner)) continue;
+        const cn = &f.nodes.items[c];
+        // An inline formatting context contributes only its inline content boxes; floats
+        // and positioned boxes met among its runs are not part of that content mask.
+        if (n.para != null and (cn.cs.float != .none or cn.cs.position == .absolute or cn.cs.position == .fixed)) continue;
         const cl = f.tree.layout(f.nodes.items[c].lid);
-        try clipNode(e, c, x + cl.x, y + cl.y, fills, depth + 1);
+        try clipNode(e, owner, c, x + cl.x, y + cl.y, fills, depth + 1);
     }
 }

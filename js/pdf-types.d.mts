@@ -1,7 +1,19 @@
 // PDF option types of bm-engine (takumi-pdf `PdfRenderOptions` and friends; names and shapes follow
 // takumi-pdf-js 's dts-header.d.ts / export.ts). Re-exported by bm-engine/pdf (pdf.d.mts); the `Renderer`
 // methods `renderPdf` / `measurePdf` of every entry use them (they throw on builds without the `pdf` feature).
-import type { ByteBuf, CssInput, FontLoader, ImagesInput, Node, Prepared } from "./index.mjs";
+import type { ByteBuf, CssInput, FontLoader, ImageSource, ImagesInput, Node, Prepared } from "./index.mjs";
+
+/** Image entries and the fetch policy used by PDF resource preparation. */
+export type PdfImagesInput = ImagesInput | {
+  sources?: ImageSource[];
+  fetch?: typeof globalThis.fetch;
+  fetchCache?: { get(url: string): Promise<ArrayBuffer> | undefined; set(url: string, value: Promise<ArrayBuffer>): unknown; delete(url: string): unknown };
+  throwOnError?: boolean;
+  timeout?: number;
+  maxBytes?: number;
+  allowUrl?: (url: string) => boolean;
+  signal?: AbortSignal;
+};
 
 /** A page size keyword CSS Paged Media defines, matched case-insensitively. Portrait. */
 export type PageSizeName = "a3" | "a4" | "a5" | "b4" | "b5" | "jis-b4" | "jis-b5" | "ledger" | "legal" | "letter";
@@ -156,14 +168,14 @@ export type PdfRenderOptions = (PagedOptions | ViewportOptions) &
      */
     fonts?: FontLoader[] | Promise<FontLoader[]>;
     /** Pre-fetched images for `src` URLs in the tree (and its bands), e.g. `[{ src: "https://…/logo.png", data: bytes }]`. */
-    images?: ImagesInput;
+    images?: PdfImagesInput;
     /** CSS to apply before layout (the `css` feature: standard / full / pdf). */
     css?: CssInput | readonly CssInput[];
     /** CSS custom properties for `:root`. A name without the `--` prefix gains it. */
     cssVariables?: Record<string, string>;
     /** Per-render font stack: ordered family names used as the fallback chain. */
     fontFamilies?: string[];
-    /** @internal The `@font-face` files `prepare` failed to download (bm-engine's `prepare` fetches nothing). */
+    /** @internal The `@font-face` files `prepare` failed to download or decode. */
     failedFontFiles?: string[];
     /** Default BCP-47 language tag applied to the root. */
     lang?: string;

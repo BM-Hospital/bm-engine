@@ -55,6 +55,21 @@ function isBinary(v) {
   return v instanceof Uint8Array || v instanceof ArrayBuffer || ArrayBuffer.isView(v);
 }
 
+function normalizeUnicodeRange(value) {
+  if (value == null) return null;
+  const input = Array.isArray(value) ? value : typeof value === "string" ? value.split(",").map((part) => {
+    const m = /^\s*U\+([0-9a-f?]{1,6})(?:-([0-9a-f]{1,6}))?\s*$/i.exec(part);
+    if (!m) throw new TypeError(`bm-engine: invalid unicodeRange: ${part}`);
+    return [parseInt(m[1].replaceAll("?", "0"), 16), parseInt(m[2] ?? m[1].replaceAll("?", "f"), 16)];
+  }) : null;
+  if (!input) throw new TypeError("bm-engine: unicodeRange must be ranges or a CSS unicode-range string");
+  return input.map((range) => {
+    if (!Array.isArray(range) || range.length !== 2 || !Number.isInteger(range[0]) || !Number.isInteger(range[1]) ||
+        range[0] < 0 || range[1] > 0x10ffff || range[0] > range[1]) throw new TypeError("bm-engine: invalid unicodeRange bounds");
+    return [range[0], range[1]];
+  });
+}
+
 function unsupported(what) {
   return new Error(`bm-engine: ${what} is not supported in bm-engine`);
 }
@@ -232,7 +247,7 @@ export function createBinding(defaultWasm, external) {
 
   /** Source ops: the export taking (handle, kind, source, options); [1] = pre-`*_src` export (JSON only). */
   const SOURCE_OPS = { render: ["bm_render_src", "bm_render"], measure: ["bm_measure_src", "bm_measure"], svg: ["bm_render_svg"],
-    pdf: ["bm_render_pdf"], pdfMeasure: ["bm_measure_pdf"] };
+    pdf: ["bm_render_pdf"], pdfMeasure: ["bm_measure_pdf"], pdfNeeds: ["bm_needs_pdf"] };
 
   const backend = external || {
     name: "wasm",
@@ -268,9 +283,13 @@ export function createBinding(defaultWasm, external) {
       if (op === "registerFont") {
         const [ptr, len] = copyIn(atts[1]);
         const [nptr, nlen, ncap] = copyInString(input);
+        const [optr, olen, ocap] = copyInString(options || "");
         // Ownership of the font bytes moves to the renderer (zero-copy parsing inside wasm).
-        const status = wasm.bm_register_font(h, ptr, len, nptr, nlen, arg0, arg1);
+        const status = wasm.bm_register_font_options
+          ? wasm.bm_register_font_options(h, ptr, len, nptr, nlen, arg0, arg1, optr, olen)
+          : wasm.bm_register_font(h, ptr, len, nptr, nlen, arg0, arg1);
         wasm.bm_free(nptr, ncap);
+        wasm.bm_free(optr, ocap);
         check(status);
         return take(h, text, false);
       }
@@ -395,7 +414,9 @@ export function createBinding(defaultWasm, external) {
         bytes = woffDecoder(bytes);
       }
       const italic = details.style == null ? -1 : /italic|oblique/.test(String(details.style)) ? 1 : 0;
-      return JSON.parse(backend.run(h, "registerFont", (details.weight | 0) >>> 0, italic >>> 0, details.name || "", null, ["", bytes, 0, 0, 0], true));
+      const unicodeRange = normalizeUnicodeRange(details.unicodeRange);
+      const fontOptions = unicodeRange == null ? null : JSON.stringify({ unicodeRange });
+      return JSON.parse(backend.run(h, "registerFont", (details.weight | 0) >>> 0, italic >>> 0, details.name || "", fontOptions, ["", bytes, 0, 0, 0], true));
     }
 
     /** takumi-compatible alias. */
@@ -523,7 +544,7 @@ export function createBinding(defaultWasm, external) {
       let sub = "";
       if (f !== null && typeof f === "object" && !(typeof URL !== "undefined" && f instanceof URL) && typeof f.then !== "function") {
         obj = isBinary(f) || f.data == null || (typeof f.data !== "object" && typeof f.data !== "function") ? f : f.data;
-        if (obj !== f) sub = JSON.stringify([f.name ?? "", f.weight ?? null, f.style ?? null, f.key ?? null]);
+        if (obj !== f) sub = JSON.stringify([f.name ?? "", f.weight ?? null, f.style ?? null, f.key ?? null, f.unicodeRange ?? null]);
         map = this.#fontsSeen.get(obj);
         if (!map) this.#fontsSeen.set(obj, (map = new Map()));
       } else if (typeof f === "string" || (typeof URL !== "undefined" && f instanceof URL)) sub = String(f);
@@ -640,7 +661,7 @@ export function createBinding(defaultWasm, external) {
       if ((options.css != null && options.css.length !== 0) || (options.stylesheets != null && options.stylesheets.length !== 0)) requireFeature("css");
       let text;
       const [json, kind] = this.#prepareSource(node, options, () => (text = this.#pdfOptionsText(options)));
-      return { op: which === "render" ? "pdf" : "pdfMeasure", kind, text: json, opts: text, atts: this.#atts };
+      return { op: which === "render" ? "pdf" : which === "needs" ? "pdfNeeds" : "pdfMeasure", kind, text: json, opts: text, atts: this.#atts };
     }
 
     /**
@@ -668,6 +689,11 @@ export function createBinding(defaultWasm, external) {
     async measurePdf(node, options = {}) {
       [node, options] = unwrap(node, options, "render");
       return JSON.parse(await this.#runAsync(this.#callPdf("measure", node, await this.#extras(options)), true));
+    }
+
+    /** Internal cascade-only resource discovery; no font loaders or image fetches run here. */
+    needsPdfSync(node, options = {}) {
+      return JSON.parse(this.#run(this.#callPdf("needs", node, options), true));
     }
 
     /** Lay out only. Returns `{ width, height, transform, children, runs }` like takumi's `measure`. */

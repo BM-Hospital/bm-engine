@@ -399,7 +399,9 @@ fn unPaeth(comptime b: usize, cur: []u8, prev: []const u8) void {
         const pc = @abs(a + bb - c - c);
         const pred = @select(i16, (pa <= pb) & (pa <= pc), a, @select(i16, pb <= pc, bb, c));
         const x: @Vector(b, u8) = cur[i..][0..b].*;
-        const r = x +% @as(@Vector(b, u8), @intCast(pred));
+        // Predictors are unsigned bytes. Narrow their bit patterns rather than a signed
+        // vector cast (which can select signed saturation for values above 127).
+        const r = x +% @as(@Vector(b, u8), @truncate(@as(@Vector(b, u16), @bitCast(pred))));
         cur[i..][0..b].* = r;
         a = @as(@Vector(b, u8), r);
         c = bb;
@@ -1074,7 +1076,10 @@ test "png encode -> decode round trip (all modes)" {
                     const dec = try decode(testing.allocator, png, .{});
                     defer dec.deinit(testing.allocator);
                     try testing.expectEqual(sz[0], dec.width);
-                    try testing.expectEqualSlices(u8, img, dec.data);
+                    testing.expectEqualSlices(u8, img, dec.data) catch |err| {
+                        std.debug.print("PNG round trip: {d}x{d}, kind {d}, filter {s}, palette {}\n", .{ sz[0], sz[1], kind, @tagName(s), pal });
+                        return err;
+                    };
                 }
             }
         }

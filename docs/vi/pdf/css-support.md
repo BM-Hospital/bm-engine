@@ -53,12 +53,12 @@ Cấu trúc cho khả năng truy cập và các chuẩn PDF/A, PDF/UA được m
 trữ](accessibility.md).
 
 Một số CSS không có tương đương trong PDF. `filter` kiểu `blur()` hoặc `drop-shadow()` làm lần render lỗi với
-`A PDF cannot draw filter: blur(2px)` (thông báo nêu tên filter), như ở takumi-pdf. `backdrop-filter` bị bỏ qua.
+`A PDF cannot draw filter: blur(2px)` (thông báo nêu tên filter). `backdrop-filter` bị bỏ qua.
 
 ## Khác biệt so với đầu ra ảnh
 
 **Ký hiệu danh sách** chỉ được vẽ trong đầu ra PDF (nhiều trang và `viewport`), kèm phần tử cấu trúc `Lbl`; đầu ra
-PNG, JPEG, WebP và SVG không vẽ. Xem [Khác biệt với takumi-pdf](differences-from-takumi.md#hạn-chế-đã-biết).
+PNG, JPEG, WebP và SVG không vẽ. Xem [Hạn chế đã biết](limitations.md).
 
 Dấu **`text-overflow`** được vẽ, nhưng nó không phải là chữ: khi trích chữ của trang (copy và paste, tìm kiếm,
 `pdftotext`) bạn nhận được các ký tự được vẽ trước dấu đó, không có dấu và không có phần bị cắt. Đã kiểm tra bằng
@@ -106,4 +106,4 @@ try {
 ```
 
 **Độ nhoè của box shadow** được mô phỏng bằng hình vector (tám dải lan toả nhạt dần quanh bóng), nên bóng mềm
-trông hơi khác bản PNG, giống takumi-pdf.
+trông hơi khác bản PNG.

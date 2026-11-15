@@ -158,10 +158,10 @@ const Geo = struct {
         return g.pages.pageNamed(i, name);
     }
     fn margins(g: *const Geo, i: usize, name: ?[]const u8) opt.Rect {
-        return g.margin[g.entry(name)][@intFromEnum(g.pages.kindOf(i))];
+        return g.margin[g.entry(name)][@backingInt(g.pages.kindOf(i))];
     }
     fn area(g: *const Geo, i: usize, name: ?[]const u8) [2]f32 {
-        return g.areas[g.entry(name)][@intFromEnum(g.pages.kindOf(i))];
+        return g.areas[g.entry(name)][@backingInt(g.pages.kindOf(i))];
     }
     fn sameMargins(g: *const Geo, o: *const Geo) bool {
         if (g.margin.len != o.margin.len or g.pages.rtl != o.pages.rtl) return false;
@@ -251,21 +251,60 @@ fn laySegments(cx: *const Ctx, a: Allocator, g: *Geo, subst: *counters.Subst, se
     var width = g.area(0, null)[0];
     var base: u32 = 0;
     var start: ?layout.fragment.Start = null;
-    var cut: ?bands.Cut = null;
+    var cuts: []const bands.Cut = &.{};
+    var row_minimums: []const layout.fragment.RowMinimum = &.{};
+    var float_shifts: []const f32 = &.{};
+    var float_extents: []const f32 = &.{};
+    var assigned_rows: []const layout.fragment.RowMinimum = &.{};
+    var rows_recorded = false;
     var start_top: f32 = 0;
     var retried = false;
     while (true) {
-        const f = try bands.buildFrameCut(cx.doc.r, a, cx.doc.o, cx.doc.css, cx.kind, cx.source, null, .{ width, g.area(base, null)[1] }, subst, cut);
+        const f = try bands.buildFrameCuts(cx.doc.r, a, cx.doc.o, cx.doc.css, cx.kind, cx.source, null, .{ width, g.area(base, null)[1] }, subst, cuts, row_minimums, float_shifts, float_extents);
         g.names = f.tree.paged.page_names;
         if (segs.items.len > 0 and !sameNodes(segs.items[0].frame, f)) return extendLast(segs);
-        if (start) |*s| if (cut) |c| {
-            s.line = lineStarting(f, c.node, c.glyph) orelse return extendLast(segs);
-        };
+        if (start) |*s| {
+            if (s.branches.len > 0) {
+                const points = try a.dupe(layout.fragment.ResumePoint, s.branches);
+                for (points) |*p| {
+                    if (p.finished or p.line == no_node.line) continue;
+                    for (cuts) |c| if (c.node == f.lid_node.items[p.node]) {
+                        p.line = lineStarting(f, c.node, c.glyph) orelse return extendLast(segs);
+                        break;
+                    };
+                }
+                s.branches = points;
+            } else if (s.line != no_node.line) {
+                for (cuts) |cut| if (cut.node == f.lid_node.items[s.node]) {
+                    s.line = lineStarting(f, cut.node, cut.glyph) orelse return extendLast(segs);
+                    break;
+                };
+            }
+            const side = try a.dupe(layout.fragment.ResumePoint, s.side_flows);
+            for (side) |*point| {
+                if (point.finished or point.line == no_node.line) continue;
+                for (cuts) |cut| if (cut.node == f.lid_node.items[point.node]) {
+                    point.line = lineStarting(f, cut.node, cut.glyph) orelse return extendLast(segs);
+                    break;
+                };
+            }
+            s.side_flows = side;
+        }
         const sc = try a.create(SegCtx);
         sc.* = .{ .g = g, .base = base, .fake = @intFromBool(start != null) };
+        var assigned: std.ArrayList(layout.fragment.RowMinimum) = .empty;
+        if (!rows_recorded) for (f.tree.table_geoms.items) |table| {
+            const spanning = for (table.cells) |cell| {
+                if (cell.rowspan > 1) break true;
+            } else false;
+            if (!spanning) continue;
+            for (table.rows) |row| if (row.node != no_node.node) try assigned.append(a, .{ .node = row.node, .height = row.h });
+        };
         const pages = try f.paginate(.{ .page_height = g.area(base, null)[1], .page_height_fn = SegCtx.height, .ctx = @ptrCast(sc), .start = start, .start_top = if (start != null) start_top else null, .record_starts = true, .max_pages = max_pages + 1 });
         // (page 1 must start where the run before stopped, else the run before goes on)
-        if (start) |s| if (pages.start_page == 0 or pages.pages.len < 2 or pages.starts[1].node != s.node or pages.starts[1].line != s.line) return extendLast(segs);
+        if (start) |s| if (pages.start_page == 0 or pages.pages.len < 2 or !sameStart(pages.starts[1], s)) {
+            return extendLast(segs);
+        };
         const fake = pages.start_page;
         // (the first run is as wide as the first page, which may be a named page)
         if (base == 0 and !retried) {
@@ -276,12 +315,19 @@ fn laySegments(cx: *const Ctx, a: Allocator, g: *Geo, subst: *counters.Subst, se
                 continue;
             }
         }
+        if (!rows_recorded) {
+            assigned_rows = try assigned.toOwnedSlice(a);
+            rows_recorded = true;
+        }
         var stop: ?u32 = null;
         var i: u32 = fake + 1;
         while (i < pages.pages.len) : (i += 1) {
-            if (g.area(base + i - fake, g.nameOf(pages.names[i]))[0] == width) continue;
+            const candidate_width = g.area(base + i - fake, g.nameOf(pages.names[i]))[0];
+            if (candidate_width == width) continue;
             const tok = pages.starts[i];
-            if (tok.node == no_node.node) continue;
+            // A rowspan may be the only flow left on this page boundary: the main-flow token has
+            // no node, while the spanning cell's paragraphs continue independently in side_flows.
+            if (tok.node == no_node.node and tok.side_flows.len == 0) continue;
             if (tok.line != no_node.line and lineGlyph(f, tok.node, tok.line) == null) continue;
             stop = i;
             break;
@@ -293,16 +339,163 @@ fn laySegments(cx: *const Ctx, a: Allocator, g: *Geo, subst: *counters.Subst, se
             return error.Invalid;
         }
         const s_i = stop orelse return;
-        const tok = pages.starts[s_i];
+        var tok = pages.starts[s_i];
+        // (a row broken inside whose cells' content ends on the run's last page: their fragments
+        // reach past it by their block-end decorations, which the row's rest no longer holds)
+        if (tok.branches.len > 0 and tok.row_height > 0 and s_i > 0) {
+            var ext: std.ArrayList(layout.fragment.Extend) = .empty;
+            const cut = try cellOverflow(a, f, pages.pages, tok.node, pages.pages[s_i - 1].top, pages.pages[s_i].top, &ext);
+            if (ext.items.len > 0) {
+                tok.row_height -= cut;
+                segs.items[segs.items.len - 1].extends = ext.items;
+            }
+        }
         width = g.area(base + s_i - fake, g.nameOf(pages.names[s_i]))[0];
         base += s_i - fake;
         // (the run goes on where this one's pages end, in the same block coordinates: takumi's
         // pages stack in one space)
         start_top = pages.pages[s_i].top;
         start = tok;
-        cut = null;
-        if (tok.line != no_node.line) cut = .{ .node = f.lid_node.items[tok.node], .glyph = lineGlyph(f, tok.node, tok.line).? };
+        float_shifts = f.tree.paged.float_shifts;
+        float_extents = f.tree.paged.float_extents;
+        var rows: std.ArrayList(layout.fragment.RowMinimum) = .empty;
+        try rows.appendSlice(a, assigned_rows);
+        for (f.tree.table_geoms.items) |table| for (table.rows) |row| {
+            for (assigned_rows) |minimum| {
+                if (row.node != minimum.node) continue;
+                var absolute_top: f32 = 0;
+                var ancestor = row.node;
+                while (ancestor < f.tree.nodes.items.len) : (ancestor = f.tree.nodes.items[ancestor].parent) absolute_top += f.tree.layout(ancestor).y;
+                if (absolute_top <= start_top + 1.0 / 64.0) try rows.append(a, .{ .node = row.node, .height = minimum.height, .top = row.y });
+                break;
+            }
+        };
+        if (tok.branches.len > 0 and tok.row_height > 0) {
+            try rows.append(a, .{ .node = tok.node, .height = tok.row_height });
+        }
+        row_minimums = try rows.toOwnedSlice(a);
+        var next_cuts: std.ArrayList(bands.Cut) = .empty;
+        if (tok.branches.len > 0) {
+            for (tok.branches) |p| {
+                if (p.finished) {
+                    const node = f.lid_node.items[p.node];
+                    if (f.nodes.items[node].para) |para| if (para.glyphs.len > 0) {
+                        try next_cuts.append(a, .{ .node = node, .glyph = @intCast(para.glyphs.len) });
+                    };
+                    continue;
+                }
+                if (p.line == no_node.line) continue;
+                const glyph = lineGlyph(f, p.node, p.line) orelse return extendLast(segs);
+                try next_cuts.append(a, .{ .node = f.lid_node.items[p.node], .glyph = glyph });
+            }
+        } else if (tok.line != no_node.line) try next_cuts.append(a, .{ .node = f.lid_node.items[tok.node], .glyph = lineGlyph(f, tok.node, tok.line).? });
+        for (tok.side_flows) |point| {
+            const id = f.lid_node.items[point.node];
+            if (point.finished) {
+                if (f.nodes.items[id].para) |paragraph| try next_cuts.append(a, .{ .node = id, .glyph = @intCast(paragraph.glyphs.len) });
+            } else if (point.line != no_node.line) {
+                const glyph = lineGlyph(f, point.node, point.line) orelse return extendLast(segs);
+                try next_cuts.append(a, .{ .node = id, .glyph = glyph });
+            }
+        }
+        cuts = next_cuts.items;
     }
+}
+
+/// takumi lays a table cell out at its row's block size and never breaks before its block-end
+/// border and padding (`should_prevent_break_before_block_end_decorations`): a cell whose content
+/// ends on the page that ends at `at` (and starts at `top`) takes `max(space left, intrinsic block
+/// size)` of it (Blink `FinishFragmentation`), so its fragment reaches past `at` by the decorations
+/// that do not fit, as do its row's fragment (its largest cell's) and the boxes around the row
+/// that `at` cuts; the row consumes that much more of its block size, the rest of it starts at the
+/// next page all the same. Fills `out` with those fragments, the outermost box first and the cells
+/// last (their paint order), and returns how much less of the row's block size is left past `at`
+/// (0: nothing reaches past it, `out` unchanged): the row's fragment on the last page it reaches
+/// (`pages`: the frame's) still holds its finished cells' block-end decorations (a finished cell's
+/// fragment is at least as tall as them, and the row grows to it). Not for a row that ends there,
+/// a collapsed-border table (the table draws its cells' borders) or a cell laid out as one text leaf.
+fn cellOverflow(a: Allocator, f: *const Frame, pages: []const layout.fragment.Page, row: u32, top: f32, at: f32, out: *std.ArrayList(layout.fragment.Extend)) Error!f32 {
+    const t = &f.tree;
+    const eps = 1.0 / 64.0;
+    const depth = layout.max_depth + 8;
+    var anc = t.nodes.items[row].parent;
+    var guard: u32 = 0;
+    while (anc < t.nodes.items.len and guard < depth) : (guard += 1) {
+        if (t.tableGeom(anc)) |tg| {
+            if (tg.collapse) return 0;
+            break;
+        }
+        if (anc == f.lroot) break;
+        anc = t.nodes.items[anc].parent;
+    }
+    const row_top = absTop(f, row);
+    var cells: std.ArrayList(layout.fragment.Extend) = .empty;
+    var over: f32 = 0;
+    var tail: f32 = 0;
+    var c = t.nodes.items[row].first_child;
+    while (c != rt.none) : (c = t.nodes.items[c].next_sibling) {
+        const s = &t.nodes.items[c].style;
+        if (s.display == .none or s.position.isOut()) continue;
+        if (t.nodes.items[c].measured) continue;
+        const cl = t.layout(c);
+        const cell_top = row_top + cl.y;
+        // (a cell is a formatting context: its content's block-end margins stay in it)
+        var content_end = cell_top + cl.border.top + cl.padding.top;
+        var k = t.nodes.items[c].first_child;
+        while (k != rt.none) : (k = t.nodes.items[k].next_sibling) {
+            const ks = &t.nodes.items[k].style;
+            if (ks.display == .none or ks.position.isOut()) continue;
+            const kl = t.layout(k);
+            content_end = @max(content_end, cell_top + kl.y + kl.h + kl.margin.bottom);
+        }
+        // (content broken inside: the block-end decorations go with its rest)
+        if (content_end > at + eps) continue;
+        tail = @max(tail, cl.border.bottom + cl.padding.bottom);
+        const reach = @min(@max(content_end, top) + cl.border.bottom + cl.padding.bottom, cell_top + cl.h);
+        if (!(reach > at + eps)) continue;
+        try cells.append(a, .{ .node = c, .at = at, .bottom = reach });
+        over = @max(over, reach - at);
+    }
+    const row_bottom = row_top + t.layout(row).h;
+    if (over == 0 or !(row_bottom > at + over + eps)) return 0;
+    var bottom = row_bottom - over;
+    var last_top = at;
+    for (pages) |p| if (p.top > last_top and p.top < bottom - eps) {
+        last_top = p.top;
+    };
+    bottom = @min(row_bottom, @max(bottom, last_top + tail));
+    const mark = out.items.len;
+    var n = row;
+    guard = 0;
+    while (n < t.nodes.items.len and guard < depth) : (guard += 1) {
+        const nt = absTop(f, n);
+        if (nt < at and nt + t.layout(n).h > at) try out.append(a, .{ .node = n, .at = at, .bottom = at + over });
+        if (n == f.lroot) break;
+        n = t.nodes.items[n].parent;
+    }
+    std.mem.reverse(layout.fragment.Extend, out.items[mark..]);
+    try out.appendSlice(a, cells.items);
+    return row_bottom - bottom;
+}
+
+/// Block offset of layout node `n`'s border box in the frame's stitched space.
+fn absTop(f: *const Frame, n: u32) f32 {
+    var y: f32 = 0;
+    var cur = n;
+    var guard: u32 = 0;
+    while (cur < f.tree.nodes.items.len and guard < layout.max_depth + 8) : (guard += 1) {
+        y += f.tree.layout(cur).y;
+        if (cur == f.lroot) break;
+        cur = f.tree.nodes.items[cur].parent;
+    }
+    return y;
+}
+
+fn sameStart(a: layout.fragment.Start, b: layout.fragment.Start) bool {
+    if (a.node != b.node or a.line != b.line or a.forced != b.forced or a.branches.len != b.branches.len or a.side_flows.len != b.side_flows.len) return false;
+    for (a.branches, b.branches) |x, y| if (!std.meta.eql(x, y)) return false;
+    for (a.side_flows, b.side_flows) |x, y| if (!std.meta.eql(x, y)) return false;
+    return true;
 }
 
 const max_pages = 20_000;
@@ -422,13 +615,24 @@ pub fn rootContext(f: *const Frame) page_rules.Context {
         } else if (tag.len == 0) props = false;
     }
     const cs = f.nodes.items[id].cs;
+    var ex: f32 = 0.5;
+    var ch: f32 = 0.5;
+    var font_ids: [64]@import("../font/collection.zig").FaceId = undefined;
+    const matched = f.r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &font_ids);
+    if (matched.len > 0) {
+        const face = f.r.fonts.font(matched[0]);
+        const upem = @max(face.unitsPerEm(), 1);
+        const xh = face.xHeight();
+        if (xh > 0) ex = @as(f32, @floatFromInt(xh)) / @as(f32, @floatFromInt(upem));
+        ch = @as(f32, @floatFromInt(face.advanceWidth(face.glyphIndex('0')))) / @as(f32, @floatFromInt(upem));
+    }
     const Get = struct {
         fn custom(ctx: *const anyopaque, name: []const u8) ?[]const u8 {
             const c: *const style.ComputedStyle = @ptrCast(@alignCast(ctx));
             return c.customProperty(name);
         }
     };
-    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = f.nodes.items[f.root].cs.font_size, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
+    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = f.nodes.items[f.root].cs.font_size, .ex = ex, .ch = ch, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
 }
 
 /// Lays the paged document `o_in` (geometry `p_in`) out: `@page` rules, bands, margins, the content
@@ -538,6 +742,26 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
             };
             if (i == sg.first and local > 0) box.prev_win = own.win(paged.pages[local - 1]);
             if (i + 1 == sg.first + sg.count and seg_i + 1 < content.segs.len and local + 1 < paged.pages.len) box.next_win = own.win(paged.pages[local + 1]);
+            // (fragments of the page before, laid out in the run before, that reach this page)
+            if (i + 1 == sg.first + sg.count and seg_i + 1 < content.segs.len) box.extends = sg.extends;
+            // (the next run's first page, in the same block coordinates: what reaches up here)
+            if (i + 1 == sg.first + sg.count and seg_i + 1 < content.segs.len) {
+                const nx = content.segs[seg_i + 1];
+                const nx_pages = nx.frame.paginated().?;
+                if (nx.first == i + 1 and nx.local0 < nx_pages.pages.len) {
+                    box.under_frame = nx.frame;
+                    box.under_win = own.win(nx_pages.pages[nx.local0]);
+                }
+            }
+            if (i == sg.first and seg_i > 0) {
+                const pv = content.segs[seg_i - 1];
+                const pv_pages = pv.frame.paginated().?;
+                if (pv.extends.len > 0 and pv.first + pv.count == i and pv.local0 + pv.count >= 1 and pv.local0 + pv.count - 1 < pv_pages.pages.len) {
+                    box.over_frame = pv.frame;
+                    box.over_extends = pv.extends;
+                    box.over_win = own.win(pv_pages.pages[pv.local0 + pv.count - 1]);
+                }
+            }
         }
         if (header) |*s| box.header = try bands.forPage(band_doc, s, i, n, pp.width, pp.height);
         if (footer) |*s| box.footer = try bands.forPage(band_doc, s, i, n, pp.width, pp.height);

@@ -1,49 +1,32 @@
 # bm-engine documentation
 
-[English](README.md) · [Tiếng Việt](../vi/README.md)
+bm-engine is a Zig library that turns node trees or HTML + CSS into images and PDF documents. It uses a native addon on Node.js when available and WebAssembly in browsers and other runtimes.
 
-User documentation for bm-engine 0.1.0, a Zig port of the takumi renderer. One package has two products:
-**Image** (PNG, JPEG, WebP, SVG and animations; `bm-engine`) and **PDF** (paged documents;
-`bm-engine/pdf`). Each has its own folder ([image/](image/index.md), [pdf/](pdf/index.md)); the pages that apply to both
-are at the top of this folder. Start with [Getting started](getting-started.md), then the quick start of
-your product.
+## Where to start
 
-## Package (both products)
+1. [Install](getting-started.md) the package and choose your runtime.
+2. Create your [first image](image/index.md) or [first PDF](pdf/index.md).
+3. Change an example in the [Image Playground](image/playground.md) or [PDF Playground](pdf/playground.md).
 
-| Page | What it covers |
+## Choose an output
+
+| Your task | Guide |
 |:--|:--|
-| [Getting started](getting-started.md) | Install, native addon and WebAssembly, package entry points, CommonJS, bundlers, Workers / Deno / Bun, choosing a profile |
-| [Native vs WebAssembly](native-vs-wasm.md) | Which Node.js backend you get, threading model, output identity, platform support, speed / memory / cold start compared with wasm and takumi |
-| [Profiles and size](profiles-and-size.md) | What `core` / `standard` / `full` / `pdf` contain, sizes, per-feature cost, custom builds, the WOFF add-on |
-| [Image, PDF and Paint compared](outputs-compared.md) | The three outputs of takumi and what bm-engine covers |
-| [Benchmark](benchmark.md) | Speed, size, memory and pixel equivalence against takumi 2.20, and how to reproduce |
-| [Troubleshooting](troubleshooting.md) | Missing text, collapsed containers, profile errors, images, wasm loading, memory, DPR, Vietnamese, emoji |
-| [Building from source](building-from-source.md) | Zig toolchain, build / test / fuzz commands, repository layout, contributing |
-| [Publishing (maintainers)](publishing.md) | Releasing the nine npm packages: one-time setup, release procedure, recovering from failures, prereleases and dist-tags, CI |
+| Social cards, thumbnails, banners | [Images](image/index.md) |
+| Multi-page invoices, reports, tickets | [PDF](pdf/index.md) |
+| Choose PNG, JPEG, WebP, SVG or PDF | [Choosing an output](outputs-compared.md) |
+| Reduce the WebAssembly download | [Profiles and size](profiles-and-size.md) |
+| Understand backends and parallel rendering | [Native and WebAssembly](native-vs-wasm.md) |
 
-## Image
+## Find a guide
 
-| Page | What it covers |
+| Topic | Guides |
 |:--|:--|
-| [Image quick start](image/index.md) | A first render in Node.js and in a browser, fonts, images, output formats |
-| [Concepts](image/concepts.md) · [Playground](image/playground.md) | The node model, sizes and units; the in-browser playground |
-| [Styles](image/styles.md) · [HTML and Tailwind](image/html-and-tailwind.md) · [Fonts](image/fonts.md) · [Typography](image/typography.md) · [Images](image/images.md) · [Tables](image/tables.md) · [Charts](image/charts.md) · [Effects](image/effects.md) | Content, with runnable examples and their output |
-| [Output formats](image/formats.md) · [Animation](image/animation.md) · [Performance](image/performance.md) | Rendering |
-| [Frameworks](image/frameworks/index.md) | Next.js, Nuxt / Nitro, SvelteKit, Astro, TanStack Start, Hono / Express, Cloudflare Workers, Deno / Bun, Vite |
-| [API reference](image/api.md) | `init`, `features`, `Renderer` and every method, node format, render options, errors, limits, memory model, WOFF add-on |
-| [measure()](image/measure.md) · [CSS and feature support](image/css-support.md) · [Recipes](image/recipes.md) · [Templates](image/templates.md) | Reference |
-| [From takumi](image/migration/from-takumi.md) · [From Satori](image/migration/from-satori.md) · [Differences from takumi](image/differences-from-takumi.md) | Migration |
-
-## PDF
-
-| Page | What it covers |
-|:--|:--|
-| [PDF quick start](pdf/index.md) | `bm-engine/pdf`, a first document in Node.js and in a browser, `measure`, the options |
-| [Page size, margins and viewport](pdf/page-size-and-viewport.md) · [Native and WebAssembly](pdf/native-and-wasm.md) | Page geometry and one-page documents; backends and the `pdf` profile's size |
-| [Pagination](pdf/pagination.md) · [Headers, footers and counters](pdf/headers-footers.md) · [Links, bookmarks, metadata, attachments](pdf/links-metadata.md) · [Fonts in PDF](pdf/fonts.md) · [Accessibility and archival](pdf/accessibility.md) | Guides |
-| [Recipes](pdf/recipes.md) · [Serving PDFs from a framework](pdf/frameworks.md) | Invoice, report, ticket; HTTP handlers |
-| [PDF API reference](pdf/api.md) · [CSS in PDF](pdf/css-support.md) · [Differences from takumi-pdf](pdf/differences-from-takumi.md) | Reference |
-
-Developer documents (in the parent folder): [ARCHITECTURE.md](../ARCHITECTURE.md),
-[TAKUMI_NOTES.md](../TAKUMI_NOTES.md), [CONVENTIONS.md](../CONVENTIONS.md),
-[BENCHMARK.md](../BENCHMARK.md) (full benchmark report, Vietnamese), [RESULTS_FULL.md](../RESULTS_FULL.md).
+| Image content and layout | [Concepts](image/concepts.md), [styles and layout](image/styles.md), [HTML and Tailwind](image/html-and-tailwind.md) |
+| Text and images | [Fonts](image/fonts.md), [typography](image/typography.md), [images](image/images.md) |
+| Application integration | [Frameworks](image/frameworks/index.md), [integration checklist](image/migration/checklist.md) |
+| Multi-page documents | [Pagination](pdf/pagination.md), [headers and footers](pdf/headers-footers.md), [PDF fonts](pdf/fonts.md) |
+| Reference | [Image API](image/api.md), [image CSS](image/css-support.md), [PDF API](pdf/api.md), [PDF CSS](pdf/css-support.md) |
+| Unexpected results | [Troubleshooting](troubleshooting.md), [image limitations](image/limitations.md), [PDF limitations](pdf/limitations.md) |
+| Measurements and comparisons | [Benchmark](benchmark.md) |
+| Library development | [Building from source](building-from-source.md), [publishing](publishing.md) |

@@ -100,6 +100,17 @@ pub const ClipPath = struct {
     box: GeometryBox = .border_box,
     url: []const u8 = "",
 };
+pub const MotionRay = struct {
+    angle: f32,
+    size: enum { closest_side, closest_corner, farthest_side, farthest_corner, sides } = .closest_side,
+    at: ?[2]LP = null,
+};
+pub const MotionPath = struct {
+    ray: ?MotionRay = null,
+    measured: ?*const @import("../raster/path_measure.zig").Measure = null,
+    reference: [2]f32,
+};
+pub const OffsetRotate = struct { mode: enum { auto, reverse, fixed } = .auto, angle: f32 = 0 };
 pub const MaskMode = enum(u8) { match_source, alpha, luminance };
 pub const MaskType = enum(u8) { luminance, alpha };
 pub const Isolation = enum(u8) { auto, isolate };
@@ -165,7 +176,7 @@ pub const BreakBetween = enum(u8) {
 
     /// forces a page break in paged output (Blink's IsForcedBreakValue)
     pub fn forcesPage(b: BreakBetween) bool {
-        return @intFromEnum(b) >= @intFromEnum(BreakBetween.page);
+        return @backingInt(b) >= @backingInt(BreakBetween.page);
     }
     /// avoids a page break (Blink's IsAvoidBreakValue)
     pub fn avoidsPage(b: BreakBetween) bool {
@@ -268,7 +279,8 @@ pub const TransformOp = union(enum) {
 pub const FontStyle = enum(u8) { normal, italic, oblique };
 pub const LineHeight = union(enum) { normal, number: f32, px: f32 };
 pub const TextAlign = enum(u8) { start, end, left, right, center, justify };
-pub const TextTransform = enum(u8) { none, uppercase, lowercase, capitalize };
+/// Low two bits select case; full-width and full-size-kana compose with it.
+pub const TextTransform = enum(u8) { none, uppercase, lowercase, capitalize, full_width = 4, full_size_kana = 8, _ };
 pub const DecorationLine = packed struct(u8) { underline: bool = false, overline: bool = false, line_through: bool = false, _pad: u5 = 0 };
 pub const DecorationStyle = enum(u8) { solid, double, dotted, dashed, wavy };
 pub const WhiteSpaceCollapse = enum(u8) { collapse, preserve, preserve_breaks, preserve_spaces, break_spaces };
@@ -380,6 +392,11 @@ pub const ComputedStyle = struct {
     rotate: f32 = 0,
     scale: [2]f32 = .{ 1, 1 },
     transform_origin: [2]LP = center2,
+    offset_path: ?*const MotionPath = null,
+    offset_distance: LP = .{},
+    offset_anchor: ?[2]LP = null,
+    offset_position: ?[2]LP = null,
+    offset_rotate: OffsetRotate = .{},
     object_fit: ObjectFit = .fill,
     object_position: [2]LP = center2,
     mix_blend_mode: BlendMode = .normal,
@@ -609,7 +626,7 @@ pub const ComputedStyle = struct {
         if (num.slashed_zero) add(&buf, &n, "zero");
         const ea = s.font_variant_east_asian;
         const forms = [_]*const [4]u8{ "jp78", "jp83", "jp90", "jp04", "smpl", "trad" };
-        if (ea.form != .normal) add(&buf, &n, forms[@intFromEnum(ea.form) - 1]);
+        if (ea.form != .normal) add(&buf, &n, forms[@backingInt(ea.form) - 1]);
         switch (ea.width) {
             .full => add(&buf, &n, "fwid"),
             .proportional => add(&buf, &n, "pwid"),

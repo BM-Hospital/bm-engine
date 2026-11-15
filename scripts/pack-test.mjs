@@ -178,8 +178,8 @@ assert.equal(count(pdf), 19, "pdf = full + pdf");
 assert.equal(pdf.features.pdf, true); assert.equal(full.features.pdf, false); assert.equal(pdf.profile, "pdf");
 assert.match(import.meta.resolve("bm-engine/pdf"), /\/js\/node-pdf\.mjs$/);
 {
-  // (bm-engine bundles no font: text with none registered fails the render)
-  await assert.rejects(new pdf.PdfRenderer().render(node, { size: "a4" }), /No font is registered to draw b \(U\+0062\)/);
+  // (with no font registered the bundled last-resort Geist draws the text, as in takumi-pdf)
+  assert.equal(new TextDecoder("latin1").decode((await new pdf.PdfRenderer().render(node, { size: "a4" })).subarray(0, 5)), "%PDF-");
   const rp = new pdf.PdfRenderer();
   rp.registerFont({ name: "Inter", data: font });
   const bytes = await rp.render(node, { size: "a4" });
@@ -581,7 +581,7 @@ else {
     try { info = JSON.parse(r.out.slice(r.out.indexOf("[")))[0]; } catch {}
     if (!r.ok || !info) { problems.push(`${name}: npm pack failed ${tail(r.out, 3)}`); continue; }
     const files = info.files.map((f) => f.path).sort();
-    const want = ["LICENSE-APACHE", "LICENSE-MIT", "NOTICE", "README.md", "THIRD-PARTY-NOTICES.md", `bm-engine.${name}.node`, "package.json"].sort();
+    const want = ["LICENSE", "NOTICE", "README.md", "THIRD-PARTY-NOTICES.md", `bm-engine.${name}.node`, "package.json"].sort();
     if (JSON.stringify(files) !== JSON.stringify(want)) problems.push(`${name}: files ${files.join(",")}`);
     const pj = JSON.parse(readFileSync(path.join(npmOut, name, "package.json"), "utf8"));
     if (pj.version !== pkg.version || pkg.optionalDependencies?.[pj.name] !== pkg.version) problems.push(`${name}: version ${pj.version} / optionalDependency ${pkg.optionalDependencies?.[pj.name]} != ${pkg.version}`);

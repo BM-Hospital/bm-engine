@@ -23,8 +23,9 @@
 //!   strokes the shape (`paintSymbol`, Blink's `PaintSymbol`).
 //!
 //! An outside marker of an item whose first content is a block joins that block's first line (takumi
-//! aligns it with that block's first baseline, still hung off the item). Not covered: marker images
-//! (`list-style-image`: the counter style draws), `::marker` rules (takumi matches none), an
+//! aligns it with that block's first baseline, still hung off the item). URL marker images use
+//! their intrinsic dimensions; missing/gradient images fall back to counters. Not covered: `::marker`
+//! rules (takumi matches none), an
 //! outside marker of an item whose first content is a flex / grid / table / replaced box (no
 //! marker), floats intruding on the marker (`list_marker_intruded_float_offset`).
 const std = @import("std");
@@ -63,6 +64,7 @@ pub const Info = struct {
     /// the marker's text on its baseline, and the side of the square it fills
     shape: ?Shape = null,
     symbol_w: f32 = 0,
+    image_width: ?f32 = null,
     off_x: f32 = 0,
     off_y: f32 = 0,
     side: f32 = 0,
@@ -489,7 +491,18 @@ fn attach(f: *Frame, item: u32, ordinal: i32) Error!void {
     const ics = e.cs;
     const rtl = ics.direction == .rtl;
     const k = kindOf(ics.list_style_type);
-    var text = (try markerText(a, ics.list_style_type, ordinal, rtl)) orelse return;
+    const image: ?struct { url: []const u8, width: f32 } = blk: {
+        if (ics.list_style_image != .url) break :blk null;
+        const url = ics.list_style_image.url;
+        if (f.r.resolveImage(url)) |pm| break :blk .{ .url = url, .width = @as(f32, @floatFromInt(pm.width)) * f.opts.dpr };
+        if (f.r.resolveSvg(url)) |source| {
+            const doc = @import("../svg/svg.zig").parse(a, source) catch break :blk null;
+            const sz = render.svgIntrinsic(&doc, f.opts.dpr);
+            break :blk .{ .url = url, .width = if (sz.w > 0) sz.w else 300 * f.opts.dpr };
+        }
+        break :blk null;
+    };
+    var text = (try markerText(a, ics.list_style_type, ordinal, rtl)) orelse if (image != null) "" else return;
     // A counter style beyond takumi's twelve is drawn when the item's fonts have its glyphs;
     // without them the marker is the decimal one takumi-pdf shows for such a list (it drops the
     // declaration), not a render failed for characters the document never wrote.
@@ -505,8 +518,9 @@ fn attach(f: *Frame, item: u32, ordinal: i32) Error!void {
         else => return,
     };
     var info: Info = .{ .item = item, .host = host, .outside = outside, .inset = hp.inset };
-    const symbolic = isSymbolic(k);
+    const symbolic = image == null and isSymbolic(k);
     var box_text = text;
+    if (image) |im| info.image_width = im.width;
     if (symbolic) {
         const asc = primaryAscent(f, ics);
         const disclosure = k == .disclosure_closed or k == .disclosure_open;
@@ -543,6 +557,9 @@ fn attach(f: *Frame, item: u32, ordinal: i32) Error!void {
         cs.white_space_collapse = .preserve;
         cs.text_wrap_mode = .nowrap;
         if (symbolic) cs.width = .{ .lp = .{ .px = info.symbol_w } };
+    } else if (image != null) {
+        cs.display = .@"inline";
+        cs.margin[if (rtl) 3 else 1] = .{ .lp = .{ .px = marker_gap_px } };
     } else if (symbolic) {
         // (an inside symbol: a box of the symbol's width with Blink's `InlineMarginsForInside`)
         cs.display = .inline_block;
@@ -561,7 +578,12 @@ fn attach(f: *Frame, item: u32, ordinal: i32) Error!void {
     }
 
     const ps: u32 = @intCast(f.pseudos.items.len);
-    try f.pseudos.append(a, .{ .cs = cs, .text = box_text });
+    const parts: ?[]const @import("../generated_content.zig").Part = if (image) |im| blk: {
+        const seq = try a.alloc(@import("../generated_content.zig").Part, 1);
+        seq[0] = .{ .url = im.url };
+        break :blk seq;
+    } else null;
+    try f.pseudos.append(a, .{ .cs = cs, .text = box_text, .parts = parts });
     const st = blk: {
         if (stateOf(f)) |s| break :blk s;
         const s = try a.create(State);
@@ -602,7 +624,10 @@ pub fn onBuilt(f: *Frame, p: u32, id: u32) Error!void {
     const side: usize = if (rtl) 1 else 3;
     var width: f32 = undefined;
     var start: f32 = undefined;
-    if (info.shape != null) {
+    if (info.image_width) |w| {
+        width = w;
+        start = -width - marker_gap_px;
+    } else if (info.shape != null) {
         width = info.symbol_w;
         start = info.symbol_start;
     } else {
@@ -677,7 +702,7 @@ test "list markers: ordinals, texts, and boxes hung outside the line" {
     const gpa = T.allocator;
     const r = render.Renderer.create(gpa) orelse return error.OutOfMemory;
     defer r.destroy();
-    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("../font/testdata/Inter-Regular.ttf")), "", 0, -1);
+    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("../font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
     r.beginCall();
     const a = r.arena.allocator();
     var f: Frame = .{ .r = r, .a = a, .opts = .{}, .tree = render.LTree.init(a), .ctx = undefined };

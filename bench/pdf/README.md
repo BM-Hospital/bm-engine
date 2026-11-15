@@ -5,6 +5,23 @@ Tooling that checks `bm-engine/pdf` from the outside and measures it against
 command line on whatever build is in the checkout it runs in (the repository root is resolved from the scripts'
 location) and exits non-zero on failure, so each script can serve as a gate.
 
+The upstream tests, fonts, images and all 136 golden PDFs are vendored at a pinned commit:
+
+```sh
+npm run test:pdf:takumi:fetch
+npm run build:pdf
+npm run test:pdf:takumi
+```
+
+The reference lives in tracked `tests/upstream/takumi`; the fetch command verifies this corpus offline.
+`npm run test:takumi:verify` checks every imported file against its SHA-256 manifest.
+`scripts/pdf-compare.mjs` writes per-fixture results to `bench/out/pdf-compare/results.json` and fails for
+missing inputs, unknown fixture names, render errors or upstream goldens without a translated input.
+Use `--strict` to also fail on differences in page content or interchange data; small numeric differences
+are accepted. For example, `node scripts/pdf-compare.mjs --strict paged-rotated-text` checks the rotated
+text regression. Set `BM_ENGINE_BACKEND=wasm` to test the PDF wasm build explicitly; rebuild the native
+addon before selecting `native`. The validation and visual corpus loads all 136 inputs as well.
+
 ```sh
 node bench/pdf/setup.mjs       # npm deps into bench/pdf/node_modules + external tools into bench/pdf/tools/ (verified)
 node bench/pdf/validate.mjs    # -> bench/out/pdf/validation.json + VALIDATION.md
@@ -23,7 +40,7 @@ only and says so. The wasm build is `js/bm_engine.pdf.wasm` (`npm run build:pdf`
 |:--|:--|
 | `setup.mjs`, `tools.json` | Reproducible setup: exact versions, URLs, SHA-256 of every external tool; publisher checksums verified at download |
 | `engines.mjs` | `bm-native`, `bm-wasm`, `takumi-pdf` adapters with one call shape (`registerFont`, `render`, `renderSync`, `renderImage`, `memoryBytes`) |
-| `corpus/` | `golden.mjs`: the inputs of takumi-pdf's 89 goldens, sliced at run time from `scripts/pdf-compare.mjs` (+ `pdf-interchange.mjs`, `pdf-tagging-fixtures.mjs`), so they never drift; `docs.mjs`: the guide documents (invoice, report with a repeating table header, ticket, multi-page text, header/footer page rules, links + outline, PNG/JPEG/SVG images, gradients/shadows, RTL/CJK/emoji, PDF/UA-1/-2, PDF/A 2b/2u/2a/3b/3u/3a/4/4f, attachments) and the stress documents (1/10/100/500 pages of text, tables and images) |
+| `corpus/` | `golden.mjs`: the inputs of takumi-pdf's 136 goldens, sliced at run time from `scripts/pdf-compare.mjs` (+ `pdf-interchange.mjs`, `pdf-tagging-fixtures.mjs`, `pdf-compare-more.mjs`), so they never drift; `docs.mjs`: the guide documents (invoice, report with a repeating table header, ticket, multi-page text, header/footer page rules, links + outline, PNG/JPEG/SVG images, gradients/shadows, RTL/CJK/emoji, PDF/UA-1/-2, PDF/A 2b/2u/2a/3b/3u/3a/4/4f, attachments) and the stress documents (1/10/100/500 pages of text, tables and images) |
 | `lib/build.mjs` | Renders the corpus with every engine into `bench/out/pdf/pdfs/<engine>/` + `manifest.json` (byte identity bm-native == bm-wasm and bm-native sync == async recorded per document; documents of 100+ pages render in a fresh process each, so an engine running out of memory cannot end the run). `node bench/pdf/lib/build.mjs` rebuilds; the other scripts reuse the last build unless `--rebuild` |
 | `lib/pdfjs.mjs`, `lib/raster.mjs` | pdf.js inspection (text, links, outline, attachments, structure tree, metadata, warnings) and three rasterisers (PDFium wasm, MuPDF wasm, pdf.js on Skia) |
 | `bench/*.mjs` | Child processes of `bench.mjs` (speed pass, cold start, scaling, memory, event loop, throughput + worker pool) |

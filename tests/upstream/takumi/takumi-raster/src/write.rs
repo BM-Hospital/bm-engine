@@ -1,0 +1,1676 @@
+#[cfg(feature = "rayon")]
+use std::collections::VecDeque;
+use std::{
+  borrow::{Borrow, Cow},
+  io::{self, Write},
+  iter::once,
+  slice::ChunksExact,
+};
+
+use gif::{Encoder as GifEncoder, Frame as GifFrame, Repeat};
+use jpeg_encoder::{ColorType as JpegColorType, Encoder as JpegEncoder, SamplingFactor};
+use png::{
+  ColorType, Filter,
+  chunk::{IDAT, acTL, fcTL, fdAT},
+};
+use takumi_core::resources::image_buffer::rgba_len;
+use typed_builder::TypedBuilder;
+
+/// Encode a sequence of RGBA frames into an animated WebP and write to `destination`.
+pub use crate::webp::write_animated_webp;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::webp::write_webp_lossy;
+use crate::{
+  Result,
+  error::Error,
+  palette::Palette,
+  render::{FrameSpan, SequentialScene, frame_spans, prepare_scenes, render_frame},
+  scanline::{Pixels, Scanlines},
+  webp::{encode_animated_webp, has_any_alpha_pixel, write_webp_lossless},
+  zlib::compress_segmented,
+};
+
+/// Lossy-encoding quality, clamped to the `0..=100` range (higher means better
+/// quality and larger output).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Quality(u8);
+
+impl Quality {
+  /// Creates a quality value, clamping out-of-range input into `0..=100`.
+  pub const fn new(value: u8) -> Self {
+    Self(if value > 100 { 100 } else { value })
+  }
+
+  /// The raw quality value in `0..=100`.
+  pub const fn get(self) -> u8 {
+    self.0
+  }
+}
+
+impl Default for Quality {
+  /// `75`, a balanced default for lossy formats.
+  fn default() -> Self {
+    Self(75)
+  }
+}
+
+/// Output format for rendered images. Format-specific encoding parameters live on
+/// the variant that supports them, so e.g. a quality value cannot be supplied for
+/// the lossless [`Png`](OutputFormat::Png) format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OutputFormat {
+  /// PNG: lossless, widely supported, and the fastest format to encode.
+  Png,
+
+  /// JPEG: lossy, does not support transparency.
+  Jpeg {
+    /// Encoding quality.
+    quality: Quality,
+  },
+
+  /// Lossy WebP (VP8). Native-only — the wasm `image-webp` backend cannot encode
+  /// lossy WebP; use [`WebPLossless`](OutputFormat::WebPLossless) there.
+  #[cfg(not(target_arch = "wasm32"))]
+  WebP {
+    /// Encoding quality.
+    quality: Quality,
+  },
+
+  /// Lossless WebP (VP8L). Available on every target.
+  WebPLossless,
+
+  /// ICO: favicons and application icons.
+  Ico,
+}
+
+impl OutputFormat {
+  /// Returns the MIME type for the image output format.
+  pub fn content_type(&self) -> &'static str {
+    match self {
+      #[cfg(not(target_arch = "wasm32"))]
+      OutputFormat::WebP { .. } => "image/webp",
+      OutputFormat::WebPLossless => "image/webp",
+      OutputFormat::Png => "image/png",
+      OutputFormat::Jpeg { .. } => "image/jpeg",
+      OutputFormat::Ico => "image/x-icon",
+    }
+  }
+}
+
+/// A rendered RGBA raster image: the output of [`render`](crate::render).
+///
+/// Encode it with [`write_image`], or reach the raw bytes via [`as_raw`](Bitmap::as_raw) /
+/// [`into_raw`](Bitmap::into_raw).
+#[derive(Debug, Clone)]
+pub struct Bitmap {
+  width: u32,
+  height: u32,
+  data: Vec<u8>,
+}
+
+impl Bitmap {
+  /// Width in pixels.
+  pub fn width(&self) -> u32 {
+    self.width
+  }
+
+  /// Height in pixels.
+  pub fn height(&self) -> u32 {
+    self.height
+  }
+
+  /// Borrows the raw RGBA bytes, row-major, 4 bytes per pixel.
+  pub fn as_raw(&self) -> &[u8] {
+    &self.data
+  }
+
+  /// Consumes the bitmap into its raw RGBA byte buffer.
+  pub fn into_raw(self) -> Vec<u8> {
+    self.data
+  }
+
+  /// Builds a bitmap from raw RGBA bytes, row-major, 4 bytes per pixel. Returns
+  /// `None` when `data.len()` is not `width * height * 4`.
+  pub fn from_raw(width: u32, height: u32, data: Vec<u8>) -> Option<Self> {
+    (data.len() == rgba_len(width, height)?).then_some(Self {
+      width,
+      height,
+      data,
+    })
+  }
+
+  /// A transparent black bitmap.
+  #[cfg(test)]
+  pub(crate) fn new(width: u32, height: u32) -> Self {
+    Self::from_pixel(width, height, [0; 4])
+  }
+
+  /// A bitmap filled with `pixel`.
+  #[cfg(test)]
+  pub(crate) fn from_pixel(width: u32, height: u32, pixel: [u8; 4]) -> Self {
+    let len = rgba_len(width, height).expect("the bitmap fits in memory");
+
+    Self {
+      width,
+      height,
+      data: pixel.repeat(len / 4),
+    }
+  }
+
+  /// A bitmap whose pixel at `(x, y)` is `pixel(x, y)`.
+  #[cfg(test)]
+  pub(crate) fn from_fn(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Self {
+    let data = (0..height)
+      .flat_map(|y| (0..width).map(move |x| (x, y)))
+      .flat_map(|(x, y)| pixel(x, y))
+      .collect();
+
+    Self {
+      width,
+      height,
+      data,
+    }
+  }
+
+  pub(crate) fn dimensions(&self) -> (u32, u32) {
+    (self.width, self.height)
+  }
+
+  /// Bytes in one row.
+  pub(crate) fn stride(&self) -> usize {
+    self.width as usize * 4
+  }
+
+  /// The rows of RGBA bytes, top to bottom.
+  pub(crate) fn rows(&self) -> ChunksExact<'_, u8> {
+    // A zero-width bitmap holds no bytes, so any nonzero chunk size yields no rows.
+    self.data.chunks_exact(self.stride().max(4))
+  }
+
+  /// Row `y`'s RGBA bytes.
+  pub(crate) fn row(&self, y: usize) -> &[u8] {
+    &self.data[y * self.stride()..(y + 1) * self.stride()]
+  }
+
+  /// The pixels, row-major.
+  pub(crate) fn pixels(&self) -> impl Iterator<Item = &[u8; 4]> {
+    self.data.as_chunks().0.iter()
+  }
+
+  /// The pixels with their coordinates, row-major.
+  #[cfg(test)]
+  pub(crate) fn enumerate_pixels(&self) -> impl Iterator<Item = (u32, u32, &[u8; 4])> {
+    let width = self.width.max(1);
+
+    self
+      .pixels()
+      .enumerate()
+      .map(move |(index, pixel)| (index as u32 % width, index as u32 / width, pixel))
+  }
+
+  #[cfg(test)]
+  pub(crate) fn as_raw_mut(&mut self) -> &mut [u8] {
+    &mut self.data
+  }
+
+  #[cfg(test)]
+  pub(crate) fn get_pixel(&self, x: u32, y: u32) -> &[u8; 4] {
+    let index = self.index(x, y);
+
+    &self.data.as_chunks().0[index]
+  }
+
+  #[cfg(test)]
+  pub(crate) fn get_pixel_mut(&mut self, x: u32, y: u32) -> &mut [u8; 4] {
+    let index = self.index(x, y);
+
+    &mut self.data.as_chunks_mut().0[index]
+  }
+
+  #[cfg(test)]
+  pub(crate) fn put_pixel(&mut self, x: u32, y: u32, pixel: [u8; 4]) {
+    let index = self.index(x, y);
+
+    self.data.as_chunks_mut().0[index] = pixel;
+  }
+
+  /// The `width` by `height` region whose top-left pixel is `(x, y)`.
+  #[cfg(any(test, target_arch = "wasm32"))]
+  pub(crate) fn crop(&self, x: u32, y: u32, width: u32, height: u32) -> Self {
+    let row_bytes = width as usize * 4;
+    let data = (y..y + height)
+      .flat_map(|row| {
+        let start = self.index(x, row) * 4;
+
+        &self.data[start..start + row_bytes]
+      })
+      .copied()
+      .collect();
+
+    Self {
+      width,
+      height,
+      data,
+    }
+  }
+
+  #[cfg(any(test, target_arch = "wasm32"))]
+  fn index(&self, x: u32, y: u32) -> usize {
+    debug_assert!(x < self.width && y < self.height);
+
+    y as usize * self.width as usize + x as usize
+  }
+}
+
+/// Represents a single frame of an animated image.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct AnimationFrame {
+  /// The image data for the frame.
+  pub image: Bitmap,
+  /// The duration of the frame in milliseconds.
+  /// Maximum value is 0xffffff (24-bit), overflow will be clamped.
+  pub duration_ms: u32,
+}
+
+impl AnimationFrame {
+  /// Creates a new animation frame.
+  pub fn new(image: Bitmap, duration_ms: u32) -> Self {
+    Self { image, duration_ms }
+  }
+}
+
+/// Encoding options for animated WebP output.
+#[derive(Debug, Clone, Copy, TypedBuilder)]
+#[builder(field_defaults(default))]
+#[non_exhaustive]
+pub struct AnimatedWebpOptions {
+  /// Whether frames should be alpha-blended with previous content.
+  #[builder(default = true)]
+  pub blend: bool,
+  /// Whether frame disposal clears to background before the next frame.
+  #[builder(default = false)]
+  pub dispose: bool,
+  /// Number of times to loop; `None` means infinite loop.
+  pub loop_count: Option<u16>,
+  /// Encode losslessly. When `true`, `quality` is ignored.
+  pub lossless: bool,
+  /// Quality in range `0..=100` for lossy encoding; ignored when `lossless`.
+  #[builder(default = 75)]
+  pub quality: u8,
+  /// Encoding speed in range `0..=6`; `0` is fastest (lowest compression), `6` is
+  /// slowest (best compression). `None` uses the default speed of `1`.
+  ///
+  /// Only effective on native targets (libwebp). Ignored on WASM.
+  pub speed: Option<u8>,
+}
+
+impl Default for AnimatedWebpOptions {
+  fn default() -> Self {
+    Self {
+      blend: true,
+      dispose: false,
+      loop_count: None,
+      lossless: true,
+      quality: 75,
+      speed: None,
+    }
+  }
+}
+
+/// Encoding options for animated PNG output.
+#[derive(Debug, Clone, Copy, Default, TypedBuilder)]
+#[builder(field_defaults(default))]
+#[non_exhaustive]
+pub struct AnimatedPngOptions {
+  /// Number of times to loop; `None` means infinite loop.
+  pub loop_count: Option<u16>,
+}
+
+/// Encoding options for animated GIF output.
+#[derive(Debug, Clone, Copy, Default, TypedBuilder)]
+#[builder(field_defaults(default))]
+#[non_exhaustive]
+pub struct AnimatedGifOptions {
+  /// Number of times to loop; `None` means infinite loop.
+  pub loop_count: Option<u16>,
+}
+
+fn duration_ms_to_gif_delay(duration_ms: u32) -> u16 {
+  if duration_ms == 0 {
+    0
+  } else {
+    duration_ms.div_ceil(10).min(u16::MAX as u32) as u16
+  }
+}
+
+#[derive(Clone, Copy)]
+struct PngEncoding {
+  level: u8,
+  filter: Filter,
+  /// Segments the image data deflates in at once.
+  segments: usize,
+}
+
+/// Flat art deflates best unfiltered, where long runs repeat across rows.
+const FLAT_PNG: PngEncoding = PngEncoding {
+  level: 7,
+  filter: Filter::NoFilter,
+  segments: 1,
+};
+
+/// Photographs deflate best filtered, and level 3 already captures most of it.
+const PHOTO_PNG: PngEncoding = PngEncoding {
+  level: 3,
+  filter: Filter::Adaptive,
+  segments: 1,
+};
+
+/// Compressed bytes each segment should come to, so the block header and flush a segment adds stay
+/// a small share of it.
+const SEGMENT_OUTPUT: usize = 2048;
+
+/// Most segments an image splits into. It does not follow the machine's cores, so every machine
+/// writes the same bytes.
+const MAX_SEGMENTS: usize = 8;
+
+/// Rows between the ones a [`PngEncoding`] samples.
+const ROW_STRIDE: usize = 32;
+
+impl PngEncoding {
+  /// Picks the encoding that makes a 1-in-32 row sample of `rgba` smaller, and the segments the
+  /// sample's size says the whole image deflates in.
+  fn pick(rgba: &[u8], width: u32) -> Self {
+    let Some(band) = RowSample::rgba(rgba, width) else {
+      return FLAT_PNG;
+    };
+    let (encoding, sample) = match (band.encoded_len(FLAT_PNG), band.encoded_len(PHOTO_PNG)) {
+      (Some(flat), Some(photo)) if photo < flat => (PHOTO_PNG, photo),
+      (Some(flat), _) => (FLAT_PNG, flat),
+      _ => return FLAT_PNG,
+    };
+
+    encoding.with_segments(sample)
+  }
+
+  /// Flat art's encoding for palette `indices`, which deflate best unfiltered too, with the
+  /// segments a 1-in-32 row sample of them says the image deflates in.
+  fn indexed(indices: &[u8], width: u32) -> Self {
+    RowSample::indexed(indices, width)
+      .and_then(|band| band.encoded_len(FLAT_PNG))
+      .map_or(FLAT_PNG, |sample| FLAT_PNG.with_segments(sample))
+  }
+
+  /// This encoding in the segments a 1-in-32 row sample deflating to `sample` bytes calls for.
+  fn with_segments(self, sample: usize) -> Self {
+    PngEncoding {
+      segments: (sample * ROW_STRIDE / SEGMENT_OUTPUT).clamp(1, MAX_SEGMENTS),
+      ..self
+    }
+  }
+
+  /// The zlib stream `rows` rows of `pixels` deflate to under this encoding, in its segments at
+  /// once.
+  fn deflate(self, pixels: Pixels<'_>, rows: usize) -> Result<Vec<u8>> {
+    let scanlines = Scanlines::new(pixels, matches!(self.filter, Filter::Adaptive));
+
+    compress_segmented(
+      rows,
+      scanlines.len(),
+      u32::from(self.level),
+      self.segments,
+      |rows, out| scanlines.append(rows, out),
+    )
+  }
+}
+
+/// Most pixels a JPEG gets optimized Huffman tables for. jpeg-encoder keeps every block of the
+/// image to count its symbols first, about 9 bytes a pixel at 4:4:4, where standard tables stream.
+const OPTIMIZED_JPEG_MAX_PIXELS: u64 = 1 << 22;
+
+/// Every 32nd row of an image, stacked into a band for an encoding to be tried on.
+enum RowSample {
+  Rgba(Bitmap),
+  Indexed { indices: Vec<u8>, width: usize },
+}
+
+impl RowSample {
+  /// The sample of RGBA `rgba` rows `width` pixels wide, or `None` when it has under two rows.
+  fn rgba(rgba: &[u8], width: u32) -> Option<Self> {
+    let band = sample_rows(rgba, width as usize * 4)?;
+    let height = band.len() / (width as usize * 4);
+
+    Bitmap::from_raw(width, height as u32, band).map(Self::Rgba)
+  }
+
+  /// The sample of palette `indices` rows `width` pixels wide, or `None` when it has under two
+  /// rows.
+  fn indexed(indices: &[u8], width: u32) -> Option<Self> {
+    let width = width as usize;
+
+    sample_rows(indices, width).map(|indices| Self::Indexed { indices, width })
+  }
+
+  /// The bytes the sample's image data deflates to under `encoding`, as `write_image` writes it.
+  fn encoded_len(&self, encoding: PngEncoding) -> Option<usize> {
+    let (pixels, rows) = match self {
+      Self::Rgba(image) => (
+        Pixels::Rgba {
+          image,
+          keep_alpha: true,
+        },
+        image.height() as usize,
+      ),
+      Self::Indexed { indices, width } => (
+        Pixels::Indexed {
+          indices,
+          width: *width,
+        },
+        indices.len() / width,
+      ),
+    };
+
+    encoding
+      .deflate(pixels, rows)
+      .ok()
+      .map(|stream| stream.len())
+  }
+}
+
+/// Every [`ROW_STRIDE`]th row of `data`, rows `row_bytes` long, or `None` under two rows.
+fn sample_rows(data: &[u8], row_bytes: usize) -> Option<Vec<u8>> {
+  if row_bytes == 0 {
+    return None;
+  }
+
+  let band: Vec<u8> = data
+    .chunks_exact(row_bytes)
+    .step_by(ROW_STRIDE)
+    .flatten()
+    .copied()
+    .collect();
+
+  (band.len() >= 2 * row_bytes).then_some(band)
+}
+
+/// Longest chunk payload PNG allows.
+const MAX_CHUNK_LEN: usize = i32::MAX as usize;
+
+/// Writes a zlib `stream` as the image's `IDAT` chunks.
+fn write_idat<W: Write>(writer: &mut png::Writer<W>, stream: &[u8]) -> Result<()> {
+  for chunk in stream.chunks(MAX_CHUNK_LEN) {
+    writer.write_chunk(IDAT, chunk).map_err(Error::encode)?;
+  }
+
+  Ok(())
+}
+
+/// Clamps a frame duration to the 16-bit APNG delay numerator, in milliseconds.
+fn duration_ms_to_apng_delay(duration_ms: u32) -> u16 {
+  duration_ms.min(u16::MAX as u32) as u16
+}
+
+/// Writes a single rendered image to `destination` using `format`.
+pub fn write_image<T: Write>(
+  image: &Bitmap,
+  destination: &mut T,
+  format: OutputFormat,
+) -> Result<()> {
+  match format {
+    OutputFormat::Jpeg { quality } => {
+      let mut encoder = JpegEncoder::new(destination, quality.get());
+
+      // 4:2:0 blurs colored text edges, and zune-jpeg 0.5 misreads the
+      // optimized Huffman tables jpeg-encoder writes alongside it.
+      encoder.set_sampling_factor(SamplingFactor::R_4_4_4);
+      encoder.set_optimized_huffman_tables(
+        u64::from(image.width()) * u64::from(image.height()) <= OPTIMIZED_JPEG_MAX_PIXELS,
+      );
+      encoder
+        .encode(
+          image.as_raw(),
+          u16::try_from(image.width()).map_err(Error::encode)?,
+          u16::try_from(image.height()).map_err(Error::encode)?,
+          JpegColorType::Rgba,
+        )
+        .map_err(Error::encode)?;
+    }
+    OutputFormat::Png => {
+      let mut encoder = png::Encoder::new(destination, image.width(), image.height());
+      let palette = Palette::of(image);
+      let (encoding, pixels) = match &palette {
+        Some(palette) => {
+          encoder.set_color(ColorType::Indexed);
+          encoder.set_palette(palette.rgb());
+          if let Some(alphas) = palette.alphas() {
+            encoder.set_trns(alphas);
+          }
+          (
+            PngEncoding::indexed(&palette.indices, image.width()),
+            Pixels::Indexed {
+              indices: &palette.indices,
+              width: image.width() as usize,
+            },
+          )
+        }
+        None => {
+          let keep_alpha = has_any_alpha_pixel(image);
+
+          encoder.set_color(if keep_alpha {
+            ColorType::Rgba
+          } else {
+            ColorType::Rgb
+          });
+          (
+            PngEncoding::pick(image.as_raw(), image.width()),
+            Pixels::Rgba { image, keep_alpha },
+          )
+        }
+      };
+
+      let mut writer = encoder.write_header().map_err(Error::encode)?;
+
+      write_idat(
+        &mut writer,
+        &encoding.deflate(pixels, image.height() as usize)?,
+      )?;
+      writer.finish().map_err(Error::encode)?;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    OutputFormat::WebP { quality } => {
+      write_webp_lossy(Cow::Borrowed(image), destination, quality)?;
+    }
+    OutputFormat::WebPLossless => {
+      write_webp_lossless(Cow::Borrowed(image), destination)?;
+    }
+    OutputFormat::Ico => write_ico(image, destination)?,
+  }
+
+  Ok(())
+}
+
+/// Writes `image` as an ICO holding one PNG-compressed icon, as the ICO format allows from
+/// Windows Vista on. <https://learn.microsoft.com/en-us/previous-versions/ms997538(v=msdn.10)>
+fn write_ico(image: &Bitmap, destination: &mut impl Write) -> Result<()> {
+  let side = |length: u32| match length {
+    1..=255 => Ok(length as u8),
+    256 => Ok(0),
+    _ => Err(Error::encode(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      format!("ICO images are 1 to 256 pixels on a side, not {length}"),
+    ))),
+  };
+  let (width, height) = (side(image.width())?, side(image.height())?);
+  let mut png = Vec::new();
+
+  write_image(image, &mut png, OutputFormat::Png)?;
+
+  let size = u32::try_from(png.len()).map_err(Error::encode)?;
+  // ICONDIR (reserved, type 1 for icons, one image), then its ICONDIRENTRY: size, no palette,
+  // 32 bits per pixel, and the PNG's length and offset past these 22 bytes.
+  let header = [
+    &[0, 0, 1, 0, 1, 0, width, height, 0, 0, 0, 0, 32, 0][..],
+    &size.to_le_bytes(),
+    &22_u32.to_le_bytes(),
+  ]
+  .concat();
+
+  destination.write_all(&header)?;
+  destination.write_all(&png)?;
+
+  Ok(())
+}
+
+/// Encode a sequence of RGBA frames into an animated GIF and write to `destination`.
+pub fn write_animated_gif<W: Write>(
+  frames: Cow<'_, [AnimationFrame]>,
+  destination: &mut W,
+  options: AnimatedGifOptions,
+) -> Result<()> {
+  ensure_uniform_frame_dimensions(&frames)?;
+  encode_animated_gif(
+    frames.into_owned().into_iter().map(Ok),
+    destination,
+    options,
+  )
+}
+
+/// Rejects mismatched frame dimensions up front, so a slice-based encoder writes
+/// nothing before failing. The streaming encoders check each frame as it arrives.
+fn ensure_uniform_frame_dimensions(frames: &[AnimationFrame]) -> Result<()> {
+  let Some(first) = frames.first() else {
+    return Ok(());
+  };
+  let (width, height) = (first.image.width(), first.image.height());
+  for frame in &frames[1..] {
+    if frame.image.width() != width || frame.image.height() != height {
+      return Err(Error::MixedAnimationFrameDimensions);
+    }
+  }
+  Ok(())
+}
+
+/// Streams frames into an animated GIF, encoding each as it arrives so only one
+/// raw frame is held at a time.
+pub(crate) fn encode_animated_gif<W, I>(
+  mut frames: I,
+  destination: &mut W,
+  options: AnimatedGifOptions,
+) -> Result<()>
+where
+  W: Write,
+  I: Iterator<Item = Result<AnimationFrame>>,
+{
+  let Some(first) = frames.next().transpose()? else {
+    return Err(Error::EmptyAnimationFrames);
+  };
+
+  let width = first.image.width();
+  let height = first.image.height();
+  if width > u16::MAX as u32 || height > u16::MAX as u32 {
+    return Err(Error::GifFrameDimensionsTooLarge {
+      width,
+      height,
+      max: u16::MAX,
+    });
+  }
+
+  let width = width as u16;
+  let height = height as u16;
+  let mut encoder = GifEncoder::new(destination, width, height, &[]).map_err(Error::encode)?;
+  encoder
+    .set_repeat(options.loop_count.map_or(Repeat::Infinite, Repeat::Finite))
+    .map_err(Error::encode)?;
+
+  let quantize = |frame: Result<AnimationFrame>| -> Result<GifFrame<'static>> {
+    let frame = frame?;
+
+    if frame.image.width() != u32::from(width) || frame.image.height() != u32::from(height) {
+      return Err(Error::MixedAnimationFrameDimensions);
+    }
+
+    let mut pixels = frame.image.into_raw();
+    let mut gif_frame = GifFrame::from_rgba_speed(width, height, &mut pixels, 28);
+
+    gif_frame.delay = duration_ms_to_gif_delay(frame.duration_ms);
+    Ok(gif_frame)
+  };
+  let frames = once(Ok(first)).chain(frames);
+
+  // Each frame quantizes to its own palette, so a batch quantizes at once and is written in order.
+  #[cfg(feature = "rayon")]
+  {
+    use rayon::prelude::*;
+
+    let mut frames = frames;
+
+    loop {
+      let batch: Vec<_> = frames.by_ref().take(frame_batch_len()).collect();
+
+      if batch.is_empty() {
+        return Ok(());
+      }
+
+      let quantized: Vec<_> = batch.into_par_iter().map(quantize).collect();
+
+      for gif_frame in quantized {
+        encoder.write_frame(&gif_frame?).map_err(Error::encode)?;
+      }
+    }
+  }
+
+  #[cfg(not(feature = "rayon"))]
+  {
+    for frame in frames {
+      encoder
+        .write_frame(&quantize(frame)?)
+        .map_err(Error::encode)?;
+    }
+    Ok(())
+  }
+}
+
+/// Encode a sequence of RGBA frames into an animated PNG and write to `destination`.
+pub fn write_animated_png<W: Write>(
+  frames: &[AnimationFrame],
+  destination: &mut W,
+  options: AnimatedPngOptions,
+) -> Result<()> {
+  if frames.is_empty() {
+    return Err(Error::EmptyAnimationFrames);
+  }
+  ensure_uniform_frame_dimensions(frames)?;
+
+  encode_animated_png(
+    frames.iter().map(Ok),
+    frames.len() as u32,
+    destination,
+    options,
+  )
+}
+
+/// Streams frames into an animated PNG. `frame_count` is passed in because APNG
+/// writes it into the header before the first frame.
+pub(crate) fn encode_animated_png<W, F, I>(
+  mut frames: I,
+  frame_count: u32,
+  destination: &mut W,
+  options: AnimatedPngOptions,
+) -> Result<()>
+where
+  W: Write,
+  F: Borrow<AnimationFrame>,
+  I: Iterator<Item = Result<F>>,
+{
+  let Some(first) = frames.next().transpose()? else {
+    return Err(Error::EmptyAnimationFrames);
+  };
+  let first_image = &first.borrow().image;
+  let (width, height) = (first_image.width(), first_image.height());
+  let encoding = PngEncoding::pick(first_image.as_raw(), width);
+  let mut encoder = png::Encoder::new(destination, width, height);
+
+  encoder.set_color(ColorType::Rgba);
+
+  let mut writer = encoder.write_header().map_err(Error::encode)?;
+  let mut animation_control = [0; 8];
+
+  animation_control[..4].copy_from_slice(&frame_count.to_be_bytes());
+  animation_control[4..].copy_from_slice(&u32::from(options.loop_count.unwrap_or(0)).to_be_bytes());
+  writer
+    .write_chunk(acTL, &animation_control)
+    .map_err(Error::encode)?;
+
+  let mut sequence = 0_u32;
+  let mut written = 0_u32;
+
+  for frame in once(Ok(first)).chain(frames) {
+    let frame = frame?;
+    let frame = frame.borrow();
+
+    if frame.image.width() != width || frame.image.height() != height {
+      return Err(Error::MixedAnimationFrameDimensions);
+    }
+    if written == frame_count {
+      return Err(frame_count_mismatch());
+    }
+
+    writer
+      .write_chunk(
+        fcTL,
+        &frame_control(sequence, width, height, frame.duration_ms),
+      )
+      .map_err(Error::encode)?;
+    sequence += 1;
+
+    let stream = encoding.deflate(
+      Pixels::Rgba {
+        image: &frame.image,
+        keep_alpha: true,
+      },
+      height as usize,
+    )?;
+
+    if written == 0 {
+      write_idat(&mut writer, &stream)?;
+    } else {
+      // Each `fdAT` leads with its own sequence number.
+      for chunk in stream.chunks(MAX_CHUNK_LEN - 4) {
+        let mut frame_data = Vec::with_capacity(4 + chunk.len());
+
+        frame_data.extend_from_slice(&sequence.to_be_bytes());
+        frame_data.extend_from_slice(chunk);
+        writer
+          .write_chunk(fdAT, &frame_data)
+          .map_err(Error::encode)?;
+        sequence += 1;
+      }
+    }
+    written += 1;
+  }
+
+  if written != frame_count {
+    return Err(frame_count_mismatch());
+  }
+
+  writer.finish().map_err(Error::encode)
+}
+
+fn frame_count_mismatch() -> Error {
+  Error::encode(io::Error::other("APNG frames do not match the frame count"))
+}
+
+/// An `fcTL` for a whole-canvas frame shown for `duration_ms`, replacing what came before it, as
+/// the png crate writes one by default.
+fn frame_control(sequence: u32, width: u32, height: u32, duration_ms: u32) -> [u8; 26] {
+  let mut control = [0; 26];
+
+  control[..4].copy_from_slice(&sequence.to_be_bytes());
+  control[4..8].copy_from_slice(&width.to_be_bytes());
+  control[8..12].copy_from_slice(&height.to_be_bytes());
+  control[20..22].copy_from_slice(&duration_ms_to_apng_delay(duration_ms).to_be_bytes());
+  control[22..24].copy_from_slice(&1000_u16.to_be_bytes());
+  control
+}
+
+/// Output format and per-format options for [`write_animation`].
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy)]
+pub enum AnimationFormat {
+  /// Animated WebP.
+  WebP(AnimatedWebpOptions),
+  /// Animated PNG.
+  Apng(AnimatedPngOptions),
+  /// Animated GIF.
+  Gif(AnimatedGifOptions),
+}
+
+impl AnimationFormat {
+  /// Shortest per-frame duration, in milliseconds, the format encodes without
+  /// decoders clamping it. Browsers bump any frame of 10ms or less to 100ms; GIF
+  /// stores delays in centiseconds, so its shortest honored step is 20ms.
+  const fn min_frame_duration_ms(self) -> u32 {
+    match self {
+      AnimationFormat::Gif(_) => 20,
+      AnimationFormat::WebP(_) | AnimationFormat::Apng(_) => 11,
+    }
+  }
+
+  /// Highest frame rate this format encodes faithfully. Above it, per-frame
+  /// durations fall to or below [`min_frame_duration_ms`](Self::min_frame_duration_ms)
+  /// and decoders clamp them to 100ms, stalling playback.
+  pub const fn max_fps(self) -> u32 {
+    1000 / self.min_frame_duration_ms()
+  }
+}
+
+/// Renders a timeline at `fps` and streams each frame straight into `format`,
+/// holding one raw frame at a time instead of the whole animation.
+///
+/// Every scene must render to the same frame size. `write_animation` encodes each
+/// frame as it renders it, so it cannot reject mismatched sizes up front: a
+/// timeline whose scenes use different viewports may write partial GIF or APNG
+/// output before failing with
+/// [`MixedAnimationFrameDimensions`](Error::MixedAnimationFrameDimensions).
+///
+/// `fps` must not exceed [`AnimationFormat::max_fps`]. Above that ceiling frames
+/// fall to a duration decoders clamp to 100ms, so `write_animation` rejects it
+/// with [`AnimationFrameRateTooHigh`](Error::AnimationFrameRateTooHigh) before
+/// rendering anything.
+///
+/// [`render_animation`](crate::render_animation) plus a `write_animated_*` call is
+/// the eager alternative. It holds every frame at once but rejects mismatched
+/// dimensions before writing.
+pub fn write_animation<W: Write>(
+  scenes: &[SequentialScene<'_>],
+  fps: u32,
+  format: AnimationFormat,
+  destination: &mut W,
+) -> Result<()> {
+  let max_fps = format.max_fps();
+  if fps > max_fps {
+    return Err(Error::AnimationFrameRateTooHigh { fps, max_fps });
+  }
+
+  let spans = frame_spans(scenes, fps);
+  if spans.is_empty() {
+    return Err(Error::EmptyAnimationFrames);
+  }
+
+  #[cfg(feature = "rayon")]
+  {
+    encode_frames(
+      ChunkedFrames::new(scenes, &spans),
+      &spans,
+      format,
+      destination,
+    )
+  }
+  #[cfg(not(feature = "rayon"))]
+  {
+    let prepared = prepare_scenes(scenes);
+    encode_frames(
+      spans.iter().map(|&span| render_frame(&prepared, span)),
+      &spans,
+      format,
+      destination,
+    )
+  }
+}
+
+fn encode_frames<W: Write>(
+  frames: impl Iterator<Item = Result<AnimationFrame>>,
+  spans: &[FrameSpan],
+  format: AnimationFormat,
+  destination: &mut W,
+) -> Result<()> {
+  match format {
+    AnimationFormat::WebP(options) => encode_animated_webp(frames, destination, options),
+    AnimationFormat::Gif(options) => encode_animated_gif(frames, destination, options),
+    AnimationFormat::Apng(options) => {
+      encode_animated_png(frames, spans.len() as u32, destination, options)
+    }
+  }
+}
+
+/// Frames rendered or quantized at once: one for each `rayon` thread.
+#[cfg(feature = "rayon")]
+fn frame_batch_len() -> usize {
+  rayon::current_num_threads().max(1)
+}
+
+/// Frames rendered a chunk at a time in parallel, `next()` rendering a chunk once the last is used.
+#[cfg(feature = "rayon")]
+struct ChunkedFrames<'a, 'g> {
+  scenes: &'a [SequentialScene<'g>],
+  spans: &'a [FrameSpan],
+  next: usize,
+  ready: VecDeque<Result<AnimationFrame>>,
+}
+
+#[cfg(feature = "rayon")]
+impl<'a, 'g> ChunkedFrames<'a, 'g> {
+  fn new(scenes: &'a [SequentialScene<'g>], spans: &'a [FrameSpan]) -> Self {
+    Self {
+      scenes,
+      spans,
+      next: 0,
+      ready: VecDeque::new(),
+    }
+  }
+}
+
+#[cfg(feature = "rayon")]
+impl Iterator for ChunkedFrames<'_, '_> {
+  type Item = Result<AnimationFrame>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    use rayon::prelude::*;
+
+    if self.ready.is_empty() && self.next < self.spans.len() {
+      let chunk = &self.spans[self.next..(self.next + frame_batch_len()).min(self.spans.len())];
+      self.next += chunk.len();
+
+      // `PreparedScene` is not `Send`: each worker prepares and reuses its own copy.
+      self.ready = chunk
+        .par_iter()
+        .map_init(
+          || prepare_scenes(self.scenes),
+          |prepared, &span| render_frame(prepared, span),
+        )
+        .collect();
+    }
+
+    self.ready.pop_front()
+  }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+  use std::{assert_matches, borrow::Cow, io::Cursor, mem::MaybeUninit, slice::from_raw_parts};
+
+  use gif::{ColorOutput, DecodeOptions};
+  use jpeg_encoder::{ColorType as JpegColorType, Encoder as JpegEncoder, SamplingFactor};
+  use libwebp_sys::{WEBP_CSP_MODE::MODE_RGBA, *};
+  use takumi_core::Error;
+
+  use super::{
+    AnimatedGifOptions, AnimatedPngOptions, AnimatedWebpOptions, AnimationFrame, Bitmap, Filter,
+    MAX_SEGMENTS, OutputFormat, PngEncoding, Quality, write_animated_gif, write_animated_png,
+    write_animated_webp, write_image,
+  };
+
+  fn band(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
+    let pixel = &pixel;
+    (0..height)
+      .flat_map(|y| (0..width).flat_map(move |x| pixel(x, y)))
+      .collect()
+  }
+
+  #[test]
+  fn flat_art_encodes_unfiltered() {
+    let rgba = band(256, 64, |x, _| {
+      if x < 128 {
+        [20, 40, 60, 255]
+      } else {
+        [200, 40, 60, 255]
+      }
+    });
+
+    assert!(matches!(
+      PngEncoding::pick(&rgba, 256).filter,
+      Filter::NoFilter
+    ));
+  }
+
+  #[test]
+  fn small_flat_art_deflates_in_one_segment() {
+    let rgba = band(256, 64, |x, _| {
+      if x < 128 {
+        [20, 40, 60, 255]
+      } else {
+        [200, 40, 60, 255]
+      }
+    });
+
+    assert_eq!(PngEncoding::pick(&rgba, 256).segments, 1);
+  }
+
+  #[test]
+  fn detailed_flat_art_deflates_in_segments() {
+    // Dark marks scattered over white, like a page of text.
+    let rgba = band(1200, 630, |x, y| {
+      if ((x / 2).wrapping_mul(2654435761) ^ (y / 3).wrapping_mul(97)) % 7 == 0 {
+        [20, 40, 60, 255]
+      } else {
+        [255, 255, 255, 255]
+      }
+    });
+    let encoding = PngEncoding::pick(&rgba, 1200);
+
+    assert!(matches!(encoding.filter, Filter::NoFilter));
+    assert_eq!(encoding.segments, MAX_SEGMENTS);
+  }
+
+  #[test]
+  fn photographic_content_encodes_filtered() {
+    let rgba = band(256, 64, |x, y| {
+      let noise = (x.wrapping_mul(2654435761) ^ y.wrapping_mul(40503)) as u8;
+      [
+        (x as u8).wrapping_add(noise / 8),
+        (y as u8).wrapping_add(noise / 4),
+        noise,
+        255,
+      ]
+    });
+
+    assert!(matches!(
+      PngEncoding::pick(&rgba, 256).filter,
+      Filter::Adaptive
+    ));
+  }
+
+  fn mk_frame(image: Bitmap, duration_ms: u32) -> AnimationFrame {
+    AnimationFrame { image, duration_ms }
+  }
+
+  #[test]
+  fn write_animated_png_writes_per_frame_delays() {
+    let frames = vec![
+      mk_frame(Bitmap::from_pixel(2, 2, [255, 0, 0, 255]), 120),
+      mk_frame(Bitmap::from_pixel(2, 2, [0, 255, 0, 255]), 30),
+    ];
+
+    let mut bytes = Vec::new();
+    let encode_result =
+      write_animated_png(&frames, &mut bytes, AnimatedPngOptions { loop_count: None });
+    assert!(encode_result.is_ok(), "failed to encode animated png");
+
+    let decode_result = png::Decoder::new(Cursor::new(&bytes)).read_info();
+    assert!(decode_result.is_ok(), "failed to decode animated png");
+    let mut reader = match decode_result {
+      Ok(reader) => reader,
+      Err(_) => return,
+    };
+
+    let Some(first) = reader.info().frame_control else {
+      panic!("missing frame control for the first png frame");
+    };
+    assert_eq!((first.delay_num, first.delay_den), (120, 1000));
+
+    let second = reader.next_frame_info();
+    assert!(second.is_ok(), "missing frame control for the second frame");
+    let Ok(second) = second else {
+      return;
+    };
+    assert_eq!((second.delay_num, second.delay_den), (30, 1000));
+  }
+
+  #[test]
+  fn write_animated_gif_writes_valid_animation_and_delays() {
+    let frame_a = mk_frame(
+      Bitmap::from_fn(2, 2, |x, y| {
+        if x == 0 && y == 0 {
+          [255, 0, 0, 255]
+        } else {
+          [0, 0, 0, 0]
+        }
+      }),
+      45,
+    );
+    let frame_b = mk_frame(
+      Bitmap::from_fn(2, 2, |x, y| {
+        if x == 1 && y == 1 {
+          [0, 255, 0, 255]
+        } else {
+          [0, 0, 0, 0]
+        }
+      }),
+      10,
+    );
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_gif(
+      Cow::Owned(vec![frame_a, frame_b]),
+      &mut bytes,
+      AnimatedGifOptions {
+        loop_count: Some(7),
+      },
+    );
+    assert!(encode_result.is_ok(), "failed to encode animated gif");
+
+    let mut decoder_options = DecodeOptions::new();
+    decoder_options.set_color_output(ColorOutput::RGBA);
+    let decode_result = decoder_options.read_info(Cursor::new(&bytes));
+    assert!(decode_result.is_ok(), "failed to decode animated gif");
+
+    let mut decoder = match decode_result {
+      Ok(decoder) => decoder,
+      Err(_) => return,
+    };
+    let frame_one = decoder.read_next_frame();
+    assert!(frame_one.is_ok(), "missing first decoded gif frame");
+    let frame_one = match frame_one {
+      Ok(frame_one) => frame_one,
+      Err(_) => return,
+    };
+    assert!(frame_one.is_some(), "missing first decoded gif frame");
+    let Some(frame_one) = frame_one else {
+      return;
+    };
+    assert_eq!(frame_one.delay, 5);
+
+    let frame_two = decoder.read_next_frame();
+    assert!(frame_two.is_ok(), "missing second decoded gif frame");
+    let frame_two = match frame_two {
+      Ok(frame_two) => frame_two,
+      Err(_) => return,
+    };
+    assert!(frame_two.is_some(), "missing second decoded gif frame");
+    let Some(frame_two) = frame_two else {
+      return;
+    };
+    assert_eq!(frame_two.delay, 1);
+
+    let frame_three = decoder.read_next_frame();
+    assert!(frame_three.is_ok(), "unexpected decoder error");
+    assert!(
+      frame_three.unwrap_or(None).is_none(),
+      "only two frames should be encoded"
+    );
+
+    assert!(
+      bytes
+        .windows(b"NETSCAPE2.0".len())
+        .any(|chunk| chunk == b"NETSCAPE2.0"),
+      "encoded gif should contain application extension for loop count"
+    );
+    assert!(
+      bytes
+        .windows(5)
+        .any(|chunk| chunk == [0x03, 0x01, 0x07, 0x00, 0x00]),
+      "encoded gif should store loop count = 7"
+    );
+  }
+
+  #[test]
+  fn write_animated_gif_rejects_mismatched_frame_dimensions() {
+    let frame_a = mk_frame(Bitmap::from_fn(2, 2, |_, _| [255, 0, 0, 255]), 10);
+    let frame_b = mk_frame(Bitmap::from_fn(3, 2, |_, _| [0, 255, 0, 255]), 10);
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_gif(
+      Cow::Owned(vec![frame_a, frame_b]),
+      &mut bytes,
+      AnimatedGifOptions::default(),
+    );
+    assert!(encode_result.is_err(), "mismatched frames should error");
+    assert!(
+      bytes.is_empty(),
+      "encoder should not write bytes before validating frame dimensions"
+    );
+  }
+
+  #[test]
+  fn a_large_jpeg_streams_with_standard_huffman_tables() {
+    let (width, height) = (2048_u16, 2049_u16);
+    let data: Vec<u8> = (0..u32::from(width) * u32::from(height) * 4)
+      .map(|index| (index.wrapping_mul(2_654_435_761) >> 24) as u8 | 0x80)
+      .collect();
+    let image = Bitmap::from_raw(width.into(), height.into(), data.clone()).unwrap();
+    let mut written = Vec::new();
+    let mut standard = Vec::new();
+    let mut encoder = JpegEncoder::new(&mut standard, Quality::default().get());
+
+    write_image(
+      &image,
+      &mut written,
+      OutputFormat::Jpeg {
+        quality: Quality::default(),
+      },
+    )
+    .unwrap();
+    encoder.set_sampling_factor(SamplingFactor::R_4_4_4);
+    encoder
+      .encode(&data, width, height, JpegColorType::Rgba)
+      .unwrap();
+
+    assert!(written == standard);
+  }
+
+  #[test]
+  fn write_png_rejects_an_empty_image() {
+    for (width, height) in [(0, 1), (1, 0), (0, 0)] {
+      let image = Bitmap::from_raw(width, height, Vec::new()).unwrap();
+
+      assert!(write_image(&image, &mut Vec::new(), OutputFormat::Png).is_err());
+    }
+  }
+
+  #[test]
+  fn write_animated_gif_rejects_empty_frames() {
+    let mut bytes = Vec::new();
+    let result = write_animated_gif(
+      Cow::Owned(Vec::new()),
+      &mut bytes,
+      AnimatedGifOptions::default(),
+    );
+
+    assert_matches!(result, Err(Error::EmptyAnimationFrames));
+  }
+
+  #[test]
+  fn write_animated_png_rejects_empty_frames() {
+    let mut bytes = Vec::new();
+    let result = write_animated_png(&[], &mut bytes, AnimatedPngOptions::default());
+
+    assert_matches!(result, Err(Error::EmptyAnimationFrames));
+  }
+
+  #[test]
+  fn write_animated_png_rejects_mismatched_frame_dimensions() {
+    let frames = vec![
+      mk_frame(Bitmap::from_pixel(2, 2, [255, 0, 0, 255]), 100),
+      mk_frame(Bitmap::from_pixel(3, 2, [0, 255, 0, 255]), 100),
+    ];
+
+    let mut bytes = Vec::new();
+    let result = write_animated_png(&frames, &mut bytes, AnimatedPngOptions::default());
+
+    assert_matches!(result, Err(Error::MixedAnimationFrameDimensions));
+  }
+
+  /// A byte length past `usize` is rejected rather than wrapped.
+  #[test]
+  fn from_raw_rejects_an_overflowing_size() {
+    assert!(Bitmap::from_raw(u32::MAX, u32::MAX, Vec::new()).is_none());
+  }
+
+  /// A crop keeps the region's rows, each starting at its left column.
+  #[test]
+  fn crop_keeps_the_region() {
+    let image = Bitmap::from_fn(4, 3, |x, y| [x as u8, y as u8, 0, 255]);
+    let cropped = image.crop(1, 1, 2, 2);
+
+    assert_eq!(cropped.dimensions(), (2, 2));
+    assert_eq!(
+      cropped.as_raw(),
+      [
+        [1, 1, 0, 255],
+        [2, 1, 0, 255],
+        [1, 2, 0, 255],
+        [2, 2, 0, 255]
+      ]
+      .concat()
+    );
+  }
+
+  /// One icon directory entry pointing at a PNG of the image right after the header.
+  #[test]
+  fn write_image_ico_wraps_one_png() {
+    let image = Bitmap::from_pixel(16, 16, [255, 0, 0, 255]);
+    let mut encoded = Vec::new();
+
+    write_image(&image, &mut encoded, OutputFormat::Ico).unwrap();
+
+    let (header, png) = encoded.split_at(22);
+    let size = u32::from_le_bytes(header[14..18].try_into().unwrap());
+
+    assert_eq!(header[..6], [0, 0, 1, 0, 1, 0]);
+    assert_eq!(header[6..14], [16, 16, 0, 0, 0, 0, 32, 0]);
+    assert_eq!(size as usize, png.len());
+    assert_eq!(header[18..22], 22_u32.to_le_bytes());
+
+    let mut decoder = png::Decoder::new(Cursor::new(png));
+
+    decoder.set_transformations(png::Transformations::EXPAND);
+
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+
+    assert_eq!((info.width, info.height), (16, 16));
+    assert!(
+      pixels
+        .chunks_exact(info.color_type.samples())
+        .all(|pixel| pixel[..3] == [255, 0, 0])
+    );
+  }
+
+  #[test]
+  fn write_image_ico_rejects_dimensions_over_256() {
+    let image = Bitmap::from_pixel(257, 16, [255, 0, 0, 255]);
+    let mut encoded = Vec::new();
+    let result = write_image(&image, &mut encoded, OutputFormat::Ico);
+
+    let err = result.err();
+    assert!(err.is_some(), "expected oversized ico image to fail");
+    let Some(err) = err else {
+      return;
+    };
+    assert!(
+      err
+        .to_string()
+        .contains("ICO images are 1 to 256 pixels on a side, not 257")
+    );
+  }
+
+  #[test]
+  fn write_animated_webp_respects_blend_dispose_and_loop_count() {
+    let frame_a = mk_frame(
+      Bitmap::from_fn(2, 2, |x, y| {
+        if x == 0 && y == 0 {
+          [255, 0, 0, 255]
+        } else {
+          [0, 0, 0, 0]
+        }
+      }),
+      120,
+    );
+    let frame_b = mk_frame(
+      Bitmap::from_fn(2, 2, |x, y| {
+        if x == 1 && y == 1 {
+          [0, 255, 0, 255]
+        } else {
+          [0, 0, 0, 0]
+        }
+      }),
+      240,
+    );
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_webp(
+      Cow::Owned(vec![frame_a, frame_b]),
+      &mut bytes,
+      AnimatedWebpOptions {
+        blend: true,
+        dispose: true,
+        loop_count: Some(7),
+        lossless: true,
+        quality: 75,
+        speed: None,
+      },
+    );
+    assert!(encode_result.is_ok(), "failed to encode animated webp");
+
+    let webp_data = WebPData {
+      bytes: bytes.as_ptr(),
+      size: bytes.len(),
+    };
+    let mut state = WebPDemuxState::WEBP_DEMUX_PARSING_HEADER;
+    // SAFETY: `webp_data` points into `bytes`, which outlives `demux`.
+    let demux =
+      unsafe { WebPDemuxInternal(&webp_data, 1, &mut state, WEBP_DEMUX_ABI_VERSION as i32) };
+    assert!(!demux.is_null(), "demux should parse encoded animation");
+
+    // SAFETY: `demux` is a live demuxer.
+    let loop_count = unsafe { WebPDemuxGetI(demux, WebPFormatFeature::WEBP_FF_LOOP_COUNT) };
+    assert_eq!(loop_count, 7);
+
+    let mut iter = MaybeUninit::<WebPIterator>::zeroed();
+    // SAFETY: `demux` is live, and `iter` is valid for writes.
+    let has_frame = unsafe { WebPDemuxGetFrame(demux, 1, iter.as_mut_ptr()) };
+    assert_eq!(has_frame, 1, "first frame should be available");
+
+    // SAFETY: an all-zero `WebPIterator` is valid, and `WebPDemuxGetFrame` filled it in.
+    let mut iter = unsafe { iter.assume_init() };
+    assert_eq!(
+      iter.dispose_method,
+      WebPMuxAnimDispose::WEBP_MUX_DISPOSE_BACKGROUND
+    );
+    assert_eq!(iter.blend_method, WebPMuxAnimBlend::WEBP_MUX_BLEND);
+
+    // SAFETY: `iter` came from `demux`, and both are released once, after their last use.
+    unsafe {
+      WebPDemuxReleaseIterator(&mut iter);
+      WebPDemuxDelete(demux);
+    }
+  }
+
+  #[test]
+  fn write_animated_webp_lossy_produces_valid_animation() {
+    // With allow_mixed=1 libwebp may choose VP8L even at quality<100 when it
+    // produces a smaller file (trivial 2×2 solid-colour images always compress
+    // better losslessly). We verify the output is a parseable animated WebP.
+    let frame = mk_frame(Bitmap::from_fn(2, 2, |_, _| [20, 80, 220, 255]), 100);
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_webp(
+      Cow::Owned(vec![frame]),
+      &mut bytes,
+      AnimatedWebpOptions {
+        lossless: false,
+        quality: 70,
+        ..Default::default()
+      },
+    );
+    assert!(
+      encode_result.is_ok(),
+      "failed to encode lossy animated webp"
+    );
+
+    assert!(
+      bytes
+        .windows(4)
+        .any(|chunk| chunk == b"VP8 " || chunk == b"VP8L"),
+      "animation should contain a VP8 or VP8L bitstream chunk"
+    );
+
+    // Verify it parses as a valid animated WebP
+    let webp_data = WebPData {
+      bytes: bytes.as_ptr(),
+      size: bytes.len(),
+    };
+    let mut state = WebPDemuxState::WEBP_DEMUX_PARSING_HEADER;
+    // SAFETY: `webp_data` points into `bytes`, which outlives `demux`.
+    let demux =
+      unsafe { WebPDemuxInternal(&webp_data, 1, &mut state, WEBP_DEMUX_ABI_VERSION as i32) };
+    assert!(!demux.is_null(), "lossy animation should be parseable");
+    // SAFETY: `demux` came from `WebPDemuxInternal` and is deleted once.
+    unsafe { WebPDemuxDelete(demux) };
+  }
+
+  #[test]
+  fn write_animated_webp_merges_consecutive_identical_frames() {
+    let image_a = Bitmap::from_fn(2, 2, |_, _| [120, 30, 10, 255]);
+    let image_b = Bitmap::from_fn(2, 2, |_, _| [5, 200, 20, 255]);
+    let frame_a = mk_frame(image_a.clone(), 50);
+    let frame_b = mk_frame(image_a, 70);
+    let frame_c = mk_frame(image_b, 30);
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_webp(
+      Cow::Owned(vec![frame_a, frame_b, frame_c]),
+      &mut bytes,
+      AnimatedWebpOptions::default(),
+    );
+    assert!(
+      encode_result.is_ok(),
+      "failed to encode animated webp with repeated frames"
+    );
+
+    let webp_data = WebPData {
+      bytes: bytes.as_ptr(),
+      size: bytes.len(),
+    };
+    let mut state = WebPDemuxState::WEBP_DEMUX_PARSING_HEADER;
+    // SAFETY: `webp_data` points into `bytes`, which outlives `demux`.
+    let demux =
+      unsafe { WebPDemuxInternal(&webp_data, 1, &mut state, WEBP_DEMUX_ABI_VERSION as i32) };
+    assert!(!demux.is_null(), "demux should parse encoded animation");
+
+    // SAFETY: `demux` is a live demuxer.
+    let frame_count = unsafe { WebPDemuxGetI(demux, WebPFormatFeature::WEBP_FF_FRAME_COUNT) };
+    assert_eq!(
+      frame_count, 2,
+      "identical consecutive frames should be merged"
+    );
+
+    let mut iter = MaybeUninit::<WebPIterator>::zeroed();
+    // SAFETY: `demux` is live, and `iter` is valid for writes.
+    let has_frame = unsafe { WebPDemuxGetFrame(demux, 1, iter.as_mut_ptr()) };
+    assert_eq!(has_frame, 1, "first frame should be available");
+    // SAFETY: an all-zero `WebPIterator` is valid, and `WebPDemuxGetFrame` filled it in.
+    let mut iter = unsafe { iter.assume_init() };
+    assert_eq!(
+      iter.duration, 120,
+      "merged frame should keep total duration"
+    );
+
+    // SAFETY: `iter` came from `demux`, and both are released once, after their last use.
+    unsafe {
+      WebPDemuxReleaseIterator(&mut iter);
+      WebPDemuxDelete(demux);
+    }
+  }
+
+  #[test]
+  fn write_animated_webp_rejects_zero_sized_frames() {
+    let invalid = mk_frame(Bitmap::new(0, 1), 10);
+
+    let mut bytes = Vec::new();
+    let result = write_animated_webp(
+      Cow::Owned(vec![invalid]),
+      &mut bytes,
+      AnimatedWebpOptions::default(),
+    );
+    let err = result.err();
+    assert!(err.is_some(), "zero-sized frame should be rejected");
+    let Some(err) = err else {
+      return;
+    };
+    assert!(
+      err
+        .to_string()
+        .contains("WebP animation frame dimensions must be in 1..=16777216"),
+      "unexpected error message: {err}"
+    );
+  }
+
+  #[test]
+  fn write_animated_webp_preserves_parallel_frame_order() {
+    let frames = vec![
+      mk_frame(Bitmap::from_pixel(2, 2, [255, 0, 0, 255]), 10),
+      mk_frame(Bitmap::from_pixel(2, 2, [0, 255, 0, 255]), 20),
+      mk_frame(Bitmap::from_pixel(2, 2, [0, 0, 255, 255]), 30),
+      mk_frame(Bitmap::from_pixel(2, 2, [255, 255, 0, 255]), 40),
+    ];
+
+    let mut bytes = Vec::new();
+    let encode_result = write_animated_webp(
+      Cow::Owned(frames),
+      &mut bytes,
+      AnimatedWebpOptions::default(),
+    );
+    assert!(
+      encode_result.is_ok(),
+      "failed to encode animated webp in parallel"
+    );
+
+    let webp_data = WebPData {
+      bytes: bytes.as_ptr(),
+      size: bytes.len(),
+    };
+    let mut state = WebPDemuxState::WEBP_DEMUX_PARSING_HEADER;
+    // SAFETY: `webp_data` points into `bytes`, which outlives `demux`.
+    let demux =
+      unsafe { WebPDemuxInternal(&webp_data, 1, &mut state, WEBP_DEMUX_ABI_VERSION as i32) };
+    assert!(!demux.is_null(), "demux should parse encoded animation");
+
+    // SAFETY: `WebPDecoderConfig` is a plain C struct, valid when all zero.
+    let mut decoder_config = unsafe { MaybeUninit::<WebPDecoderConfig>::zeroed().assume_init() };
+    // SAFETY: `decoder_config` is valid for writes.
+    let init_ok = unsafe { WebPInitDecoderConfig(&raw mut decoder_config) };
+    assert!(init_ok, "decoder config should initialize");
+    decoder_config.output.colorspace = MODE_RGBA;
+
+    let expected_dominant_channels = [
+      [true, false, false],
+      [false, true, false],
+      [false, false, true],
+      [true, true, false],
+    ];
+    let expected_durations = [10, 20, 30, 40];
+
+    let mut iter = MaybeUninit::<WebPIterator>::zeroed();
+    // SAFETY: `demux` is live, and `iter` is valid for writes.
+    let has_frame = unsafe { WebPDemuxGetFrame(demux, 1, iter.as_mut_ptr()) };
+    assert_eq!(has_frame, 1, "first frame should be available");
+    // SAFETY: an all-zero `WebPIterator` is valid, and `WebPDemuxGetFrame` filled it in.
+    let mut iter = unsafe { iter.assume_init() };
+
+    for (expected_dominant_channels, expected_duration) in
+      expected_dominant_channels.iter().zip(expected_durations)
+    {
+      // SAFETY: `iter.fragment` points at a frame inside `bytes`, which is still alive.
+      let decode_status = unsafe {
+        WebPDecode(
+          iter.fragment.bytes,
+          iter.fragment.size,
+          &raw mut decoder_config,
+        )
+      };
+      assert_eq!(
+        decode_status,
+        VP8StatusCode::VP8_STATUS_OK,
+        "frame payload should decode"
+      );
+
+      // SAFETY: a successful `WebPDecode` leaves `size` RGBA bytes at `rgba`, in `output`.
+      let rgba = unsafe {
+        from_raw_parts(
+          decoder_config.output.u.RGBA.rgba,
+          decoder_config.output.u.RGBA.size,
+        )
+      };
+      let channel_flags = [rgba[0] >= 250, rgba[1] >= 250, rgba[2] >= 250];
+      assert_eq!(channel_flags, *expected_dominant_channels);
+      assert!(rgba[3] >= 250, "decoded frame should remain opaque");
+      assert_eq!(iter.duration, expected_duration);
+
+      // SAFETY: `rgba` is no longer read, and the buffer is freed once per decode.
+      unsafe { WebPFreeDecBuffer(&raw mut decoder_config.output) };
+      if expected_duration != expected_durations[expected_durations.len() - 1] {
+        // SAFETY: `iter` belongs to the live `demux`.
+        let has_next = unsafe { WebPDemuxNextFrame(&mut iter) };
+        assert_eq!(has_next, 1, "next frame should be available");
+      }
+    }
+
+    // SAFETY: `iter` came from `demux`, and both are released once, after their last use.
+    unsafe {
+      WebPDemuxReleaseIterator(&mut iter);
+      WebPDemuxDelete(demux);
+    }
+  }
+
+  #[test]
+  fn animated_webp_builder_blend_matches_default() {
+    let built = AnimatedWebpOptions::builder().build();
+
+    assert!(built.blend);
+    assert_eq!(built.blend, AnimatedWebpOptions::default().blend);
+    assert_eq!(built.dispose, AnimatedWebpOptions::default().dispose);
+  }
+}

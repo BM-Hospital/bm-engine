@@ -17,6 +17,8 @@ pub const AxisValue = ttf.AxisValue;
 /// for a variable-font instance.
 pub const FaceId = u16;
 
+pub const UnicodeRange = struct { start: u21, end: u21 };
+
 /// First id used for variable-font instances.
 pub const instance_base: FaceId = 0x8000;
 /// Capacity of the instance cache (distinct (face, coordinates) pairs alive at once).
@@ -35,6 +37,11 @@ pub const RegisterOptions = struct {
     face_index: ?u32 = null,
     /// Overrides the width (CSS font-stretch percentage; pins a `wdth` axis).
     width: ?f32 = null,
+    /// CSS `unicode-range` for a registered subset; null means the whole Unicode range.
+    unicode_range: ?[]const UnicodeRange = null,
+    /// A last-resort face (takumi's bundled Geist, `FontResource::last_resort`): matched by its
+    /// own family name, otherwise tried after every other registered family.
+    last_resort: bool = false,
 };
 
 pub const Face = struct {
@@ -64,6 +71,10 @@ pub const Face = struct {
     can_italic: bool = false,
     /// Instances: the registered face they were derived from.
     base: FaceId = no_base,
+    /// Null means unrestricted; a present empty list matches no character.
+    unicode_range: ?[]UnicodeRange = null,
+    /// See `RegisterOptions.last_resort`.
+    last_resort: bool = false,
 };
 
 /// Request for `FontCollection.matchEx`.
@@ -160,6 +171,7 @@ pub const FontCollection = struct {
         while (self.faces.items.len > len) {
             const f = self.faces.pop().?;
             if (f.active) alloc.free(f.family);
+            if (f.unicode_range) |ranges| alloc.free(ranges);
         }
     }
 
@@ -173,6 +185,7 @@ pub const FontCollection = struct {
             .weight = parsed.weightClass(),
             .italic = opts.italic orelse parsed.isItalic(),
             .index = index,
+            .last_resort = opts.last_resort,
         };
         const wc = parsed.widthClass();
         if (wc >= 1 and wc <= 9) fc.width = width_classes[wc - 1];
@@ -217,6 +230,10 @@ pub const FontCollection = struct {
         }
         fc.family = try alloc.dupe(u8, fam);
         errdefer alloc.free(fc.family);
+        if (opts.unicode_range) |ranges| {
+            fc.unicode_range = try alloc.dupe(UnicodeRange, ranges);
+            errdefer alloc.free(fc.unicode_range.?);
+        }
         try self.faces.append(alloc, fc);
     }
 
@@ -243,6 +260,8 @@ pub const FontCollection = struct {
         f.active = false;
         alloc.free(f.family);
         f.family = &.{};
+        if (f.unicode_range) |ranges| alloc.free(ranges);
+        f.unicode_range = null;
     }
 
     /// Unregisters every face of a family (ASCII case-insensitive name). Returns whether
@@ -334,6 +353,13 @@ pub const FontCollection = struct {
         return &self.faces.items[i];
     }
 
+    /// Whether a face is permitted to serve `cp` by its registered CSS unicode-range.
+    pub fn allows(self: *const FontCollection, id: FaceId, cp: u21) bool {
+        const ranges = self.face(id).unicode_range orelse return true;
+        for (ranges) |r| if (cp >= r.start and cp <= r.end) return true;
+        return false;
+    }
+
     /// Marks the start of a new render / measure pass for the instance cache: instances
     /// handed out before this call may be evicted (their ids reused) once the cache
     /// (`max_instances`) is full; instances handed out after it are never evicted before the
@@ -379,15 +405,39 @@ pub const FontCollection = struct {
         var n: usize = 0;
         for (req.families) |fam| {
             if (n >= out.len) break;
-            if (self.bestInFamily(fam, &req)) |id| n = push(out, n, self.resolve(id, &req));
+            n = self.pushFamily(out, n, fam, &req);
         }
-        for (self.faces.items, 0..) |f, i| {
+        // (every other family in registration order, the last-resort ones after them)
+        for ([_]bool{ false, true }) |last| for (self.faces.items, 0..) |f, i| {
             if (n >= out.len) break;
-            if (!f.active or !self.firstOfFamily(i)) continue;
-            const id = self.bestInFamily(f.family, &req) orelse continue;
-            n = push(out, n, self.resolve(id, &req));
-        }
+            if (!f.active or f.last_resort != last or !self.firstOfFamily(i)) continue;
+            n = self.pushFamily(out, n, f.family, &req);
+        };
         return out[0..n];
+    }
+
+    /// Pushes the face of `family` that best matches `req`, together with every other face of the
+    /// family registered with the same descriptors: such faces make one composite face (CSS
+    /// `unicode-range` subsets registered under one name, weight and style), and a character the
+    /// first one lacks is looked up in the others. As in takumi (and CSS Fonts 4 for overlapping
+    /// ranges), the face registered last is tried first.
+    fn pushFamily(self: *const FontCollection, out: []FaceId, n0: usize, family: []const u8, req: *const MatchRequest) usize {
+        const best = self.bestInFamily(family, req) orelse return n0;
+        const b = self.faces.items[best];
+        var n = n0;
+        var i = self.faces.items.len;
+        while (i > 0 and n < out.len) {
+            i -= 1;
+            const f = self.faces.items[i];
+            if (!f.active or !std.ascii.eqlIgnoreCase(f.family, family) or !sameDescriptors(f, b)) continue;
+            n = push(out, n, self.resolve(@intCast(i), req));
+        }
+        return n;
+    }
+
+    fn sameDescriptors(a: Face, b: Face) bool {
+        return a.weight_min == b.weight_min and a.weight_max == b.weight_max and a.italic == b.italic and
+            a.can_italic == b.can_italic and a.width_min == b.width_min and a.width_max == b.width_max;
     }
 
     fn push(out: []FaceId, n: usize, id: FaceId) usize {

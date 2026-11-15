@@ -60,7 +60,7 @@ dụng hãy chọn một entry.
 ### Tự nạp wasm
 
 `init()` nhận byte, chuỗi URL, `URL`, `Request`, `Response`, promise của bất kỳ thứ nào kể trên, một
-`WebAssembly.Module` đã compile, hoặc object `{ module_or_path }` kiểu takumi. `initSync()` nhận byte
+`WebAssembly.Module` đã compile, hoặc object `{ module_or_path }`. `initSync()` nhận byte
 hoặc một `WebAssembly.Module`. Một `Response` được phục vụ với `application/wasm` sẽ được compile bằng
 `WebAssembly.instantiateStreaming`; mọi content type khác đi qua `arrayBuffer()`.
 
@@ -76,7 +76,6 @@ initSync(bytes);
 // 3. a precompiled module (Cloudflare Workers, Vercel Edge `?module` imports)
 initSync(wasmModule);
 
-// takumi's form also works
 await init({ module_or_path: "/assets/bm_engine.wasm" });
 ```
 
@@ -129,13 +128,13 @@ export function card({ title, description }) {
 }
 ```
 
-`display: "flex"` ở node gốc không phải tùy chọn: giống takumi, mọi node mặc định là `display: inline`
+`display: "flex"` ở node gốc không phải tùy chọn:, mọi node mặc định là `display: inline`
 (xem [Xử lý sự cố](../../troubleshooting.md#khối-chứa-bị-co-về-chiều-cao-0)). Các trang theo framework
 import `getRenderer` và `card` từ file này.
 
 ::: tip Render chặn luồng
 Một lần render là công việc WebAssembly đồng bộ (một card 1200 × 630 có gradient mất khoảng 14 ms trong
-recipe render hàng loạt trên máy thử). `render()` trả về promise để tương thích với takumi, nhưng công việc
+recipe render hàng loạt trên máy thử). `render()` trả về promise để trả kết quả bất đồng bộ, nhưng công việc
 vẫn diễn ra trên luồng gọi nó. Với server nặng CPU, hãy render trong một worker pool
 (xem [Recipes](../recipes.md#pool-worker-threads)).
 :::
@@ -191,7 +190,7 @@ export async function GET(request) {
 }
 ```
 
-Khác biệt so với `ImageResponse` của takumi / `next/og`, để không ai bất ngờ:
+Khi tự tạo HTTP response, lưu ý:
 
 - Đây là một hàm trả về `Promise<Response>`, không phải class con của `Response`; hãy await hoặc trả
   thẳng promise đó (mọi framework ở đây đều chấp nhận handler trả về promise).
@@ -199,7 +198,7 @@ Khác biệt so với `ImageResponse` của takumi / `next/og`, để không ai 
   body streaming hỏng giữa chừng, cũng không có promise `ready` nào phải await).
 - Không có tùy chọn `emoji` và không có gì được tải về: font và ảnh phải được đăng ký sẵn hoặc truyền
   qua `images` (xem [Nạp font](#các-cách-nạp-font)).
-- Renderer là tường minh. Renderer dùng chung mặc định của takumi tương ứng với `getRenderer()` ở trên.
+- Renderer là tường minh. Tái sử dụng renderer trả về từ `getRenderer()` ở trên.
 
 ## Header cache
 
@@ -303,6 +302,4 @@ export const Card = ({ title }) => (
   style.
 - Một `Fragment` ở gốc trả về một mảng, đó không phải nguồn hợp lệ; hãy bọc nó trong một container.
 
-Nếu bạn đã có React component, `@takumi-rs/helpers` (package của takumi) chuyển một React element thành
-node tree của takumi bằng `fromJsx()`; [hướng dẫn chuyển đổi](../migration/from-takumi.md#jsx) có chi tiết
-và trạng thái kiểm chứng.
+Với React component, render thành chuỗi HTML trên server rồi truyền vào profile `standard` hoặc `full`. Với mẫu tĩnh, bạn cũng có thể dùng hàm dựng node ở trên.

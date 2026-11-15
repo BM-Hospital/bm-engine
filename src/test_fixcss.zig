@@ -8,7 +8,7 @@ fn newRenderer() !*Renderer {
     const gpa = std.testing.allocator;
     const r = Renderer.create(gpa) orelse return error.OutOfMemory;
     errdefer r.destroy();
-    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
     return r;
 }
 

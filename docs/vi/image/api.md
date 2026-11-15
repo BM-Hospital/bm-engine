@@ -2,15 +2,7 @@
 
 [English](../../en/image/api.md) · [Tiếng Việt](api.md)
 
-Toàn bộ API công khai của bm-engine 0.1.0: các hàm của module (`init`, `initSync`, `features`, ...), lớp
-`Renderer`, định dạng node, tùy chọn render, lỗi, giới hạn và mô hình bộ nhớ. API bám theo
-`@takumi-rs/wasm` 2.20 để cùng một đầu vào render ra như nhau trên cả hai engine; các khác biệt được ghi
-ngay tại chỗ và tổng hợp ở [Khác biệt với takumi](differences-from-takumi.md). Typings đi kèm là
-`js/index.d.mts` (cùng `core.d.mts`, `standard.d.mts`, `full.d.mts`, `addons.d.mts`, `wasm.d.mts`; đã
-kiểm thử với TypeScript 5.0 và 5.9). Kết quả dạng byte có kiểu `OutputBytes`, một `Uint8Array` mới sở
-hữu buffer riêng (`Uint8Array<ArrayBuffer>` trên TypeScript ≥ 5.7), nên có thể truyền thẳng vào
-`new Response()` hoặc `new Blob()`.
-Mọi hành vi mô tả ở đây đều đã được kiểm tra bằng cách chạy thật; thông báo lỗi được trích nguyên văn.
+Tham chiếu API bm-engine: khởi tạo, `Renderer`, định dạng node, tùy chọn render, lỗi và bộ nhớ. Khai báo kiểu nằm trong `js/index.d.mts` và các file `.d.mts` của từng profile. Kết quả dạng byte là một `Uint8Array` mới, có thể truyền vào `Response` hoặc `Blob`.
 
 - [Các export của module](#các-export-của-module): [`init`](#init), [`initSync`](#initsync), [`features`](#features), [`profile` / `wasmUrl`](#profile-và-wasmurl), [`setGlyphCacheMaxBytes`](#setglyphcachemaxbytes)
 - [`Renderer`](#renderer): [hàm khởi tạo](#hàm-khởi-tạo), [`registerFont`](#registerfont), [`unregisterFont`](#unregisterfont), [`clearFonts`](#clearfonts), [`render`](#render--rendersync), [`renderAsDataUrl`](#renderasdataurl--renderasdataurlsync), [`renderSvg`](#rendersvg--rendersvgsync), [`measure`](#measure--measuresync), [`renderAnimation`](#renderanimation--renderanimationsync), [`prepare`](#prepare--prepareanimation), [`memoryBytes`](#memorybytes), [`free`](#free--symboldispose)
@@ -34,7 +26,7 @@ addon native thay vào đó, còn `bm-engine/native` thì luôn như vậy); `bm
 | `Renderer` | lớp |
 | `features` | `Readonly<Features>` |
 | `Prepared` | lớp mờ (opaque) của các handle do `prepare()` trả về (bạn không tự tạo được) |
-| `setGlyphCacheMaxBytes` | không làm gì, để tương thích takumi |
+| `setGlyphCacheMaxBytes` | không làm gì, để tương thích API |
 | `backend` | `"wasm" \| "native"`: bản build engine nào phục vụ điểm vào này (`"native"` chỉ với `bm-engine` / `bm-engine/native` trên Node.js khi đã cài platform package); API và output như nhau, xem [Native trên Node.js](../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác) |
 | `profile` | `"core" \| "standard" \| "full" \| "pdf"` (chỉ có ở điểm vào theo profile) |
 | `wasmUrl` | `() => URL` (chỉ có ở điểm vào theo profile) |
@@ -156,7 +148,7 @@ có gì đó bị gỡ.
 
 ### `clearFonts`
 
-`clearFonts(): void`: gỡ mọi font đã đăng ký. Khác takumi, sau đó không còn font tích hợp nào: chữ sẽ
+`clearFonts(): void`: gỡ mọi font đã đăng ký. Sau đó không còn font tích hợp nào: chữ sẽ
 không được vẽ cho tới khi bạn đăng ký lại font.
 
 ### `render` / `renderSync`
@@ -167,7 +159,7 @@ render(source: Source | Prepared, options?: RenderOptions): Promise<Uint8Array>
 ```
 
 `source` là một [node](#định-dạng-node), `{ json: string }` (cây node dưới dạng văn bản JSON), một
-**chuỗi HTML** (mọi chuỗi JS đều được coi là HTML, giống takumi; cần `features.html`) hoặc một handle
+**chuỗi HTML** (mọi chuỗi JS đều được coi là HTML; cần `features.html`) hoặc một handle
 `Prepared`. Trả về một `Uint8Array` mới: ảnh đã mã hoá, hoặc RGBA8 thẳng với `format: "raw"`. Xem
 [Tùy chọn render](#tùy-chọn-render).
 
@@ -190,7 +182,7 @@ Trả về một chuỗi tài liệu SVG (cần `features.renderSvg`, tức prof
 `<linearGradient>`/`<radialGradient>` (gradient conic thành các hình quạt), đổ bóng thành `<filter>`,
 ảnh được nhúng dưới dạng URL `data:`, chữ thành outline glyph (`<use>` trỏ tới path trong `<defs>`; không
 nhúng font, chữ không chọn/copy được). `format`, `quality` và `devicePixelRatio` bị bỏ qua (luôn là tỉ lệ 1,
-giống takumi).
+).
 
 ```js
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });
@@ -228,10 +220,7 @@ r.measureSync(
 //   { width: 20, height: 20, transform: [1,0,0,1,105.40625,10], children: [], runs: [] } ] }
 ```
 
-`transform` là ma trận 2D của node so với canvas (không tương đối với node cha); toạ độ của
-`runs` tương đối với content box của chính node đó. Khác với `measure` của takumi trong 0.1.0: run không có trường
-`text`, và chiều cao run là chiều cao dòng chứ không phải phạm vi glyph (takumi báo ví dụ
-`y: 0.5, height: 19.36` cho run ở trên). Kích thước hộp và vị trí khớp takumi (xem [Benchmark](../benchmark.md)). Chi tiết ở [measure()](./measure.md).
+`transform` là ma trận 2D tương đối với canvas. Vị trí `runs` tương đối với content box của node. Run không có trường `text`; chiều cao run là chiều cao dòng. Xem [measure()](measure.md).
 
 ### `renderAnimation` / `renderAnimationSync`
 
@@ -252,7 +241,7 @@ type RenderAnimationOptions = CommonOptions & {
 Cần `features.animation` (`full`). Mã hoá ra WebP động (lossless), APNG hoặc GIF (bảng màu lượng tử hoá
 theo từng khung).
 
-**Lịch khung hình** (giống hệt takumi-raster): với `total = sum(durationMs)`, animation có
+**Lịch khung hình**: với `total = sum(durationMs)`, animation có
 `ceil(total × fps / 1000)` khung; khung *i* bắt đầu ở `floor(i × 1000 / fps)` ms và kéo dài tới lúc khung
 kế tiếp bắt đầu (cắt ở `total`; khung dài 0 bị bỏ). Mỗi khung hiển thị scene đang hoạt động tại thời điểm
 bắt đầu của nó, render ở thời gian **cục bộ** của scene đó (CSS animation bắt đầu lại ở mỗi scene).
@@ -285,7 +274,7 @@ handle. `render*`, `renderAsDataUrl*`, `renderSvg*` và `measure*` nhận handle
 chọn riêng của chúng đè lên tùy chọn đã chuẩn bị; `renderAnimation*` nhận handle của `prepareAnimation`.
 Truyền nhầm loại sẽ ném `bm-engine: this prepared handle is for renderAnimation` (hoặc `... for render`).
 
-Khác takumi, `prepare` **không tải gì cả**: không có bước "needs" để tìm ảnh từ xa hay file
+`prepare` **không tải gì cả**: không có bước "needs" để tìm ảnh từ xa hay file
 `@font-face`. Hãy cung cấp bytes ảnh qua `images` và font qua `fonts` / `registerFont`.
 
 ```js
@@ -330,14 +319,14 @@ type Meta = {
 - `type` là bắt buộc (`bm-engine: node is missing \`type\``); node chữ cần `text`
   (`bm-engine: text node is missing \`text\``). Khoá lạ bị bỏ qua. Con là `null` / `undefined` bị bỏ qua.
 - **Khoá style viết camelCase** (`backgroundColor`, `WebkitLineClamp`). Khoá kebab-case
-  (`"background-color"`) và tên thuộc tính lạ bị bỏ qua mà không báo, giống takumi. Custom property giữ
+  (`"background-color"`) và tên thuộc tính lạ bị bỏ qua mà không báo. Custom property giữ
   nguyên dấu gạch: `{ "--accent": "#7c3aed", color: "var(--accent)" }`.
 - **Giá trị** là chuỗi CSS hoặc số. Số được hiểu là độ dài tính bằng px khi thuộc tính nhận độ dài
   (`width: 100`), và là số thuần trong các trường hợp khác (`opacity: 0.5`, `lineHeight: 1.4`,
   `fontWeight: 700`). `!important` bên trong chuỗi giá trị được tôn trọng.
 - **Thứ tự ưu tiên** (thấp → cao): `preset` < luật stylesheet (`css`) và utility `tw` < `style` inline;
   `!important` theo quy tắc CSS.
-- **Giá trị mặc định theo takumi**, vốn theo CSS/Blink: `display` là **`inline`** với mọi node (node gốc
+- **Giá trị mặc định:** `display` là **`inline`** với mọi node (node gốc
   và con của flex/grid được chuyển thành block); `boxSizing` là **`border-box`**; `objectFit` là `fill`;
   `transformOrigin` là `50% 50%`; canvas ban đầu hoàn toàn trong suốt.
 - Node chữ hoạt động như `<span>text</span>`. `width` / `height` của node ảnh là gợi ý trình bày (ưu
@@ -354,9 +343,9 @@ Trang [Hỗ trợ CSS](css-support.md) liệt kê mọi thuộc tính và giá t
 | `quality` | number | 75 | Chỉ cho JPEG, kẹp trong 1–100. |
 | `devicePixelRatio` | number | 1 | Nhân các độ dài px của CSS, cỡ chữ và kích thước gốc của ảnh; **không** đổi kích thước canvas. Giá trị ngoài khoảng (0, 64) bị bỏ qua. |
 | `images` | `ImageSource[] \| { sources: ImageSource[] }` | | Các cặp `{ src, data }` mà tham chiếu `src` / `url()` tra cứu. `data` có thể nạp lười (chỉ với API async). |
-| `css` | `(string \| rule object)[] \| string` | | Stylesheet (standard / full). Object luật theo takumi: `{ selector, style }`. |
+| `css` | `(string \| rule object)[] \| string` | | Stylesheet (standard / full). Rule object có dạng `{ selector, style }`. |
 | `stylesheets` | `string[]` | | Bí danh đã lỗi thời của `css` (dùng khi không có `css`). |
-| `keyframes` | `{ [name]: { [offset]: Style } }` hoặc danh sách luật của takumi | | Keyframes cấp cao nhất kiểu cũ của takumi (đã lỗi thời). |
+| `keyframes` | `{ [name]: { [offset]: Style } }` hoặc danh sách rule | | Keyframes cấp cao nhất kiểu cũ (đã lỗi thời). |
 | `timeMs` | number | 0 | Vị trí trên dòng thời gian CSS animation (làm tròn xuống ms). Khi bỏ trống, animation được áp dụng ở t = 0. Chỉ `full`. |
 | `fontFamilies` | `string[] \| string` | | Chồng `font-family` của node gốc. |
 | `lang` | string | | Ngôn ngữ gốc cho `:lang()` và hệ ngôn ngữ OpenType. |
@@ -390,7 +379,7 @@ an toàn cho cả ba profile.
 
 | Giới hạn | Giá trị |
 |:--|:--|
-| Độ sâu lồng node | 512 cấp (cấp 513 ném `node tree is nested too deeply`), giống takumi |
+| Độ sâu lồng node | 512 cấp (cấp 513 ném `node tree is nested too deeply`) |
 | Canvas | tối đa 16384 px mỗi cạnh và 40 megapixel (`canvas too large`) |
 | Nội dung rỗng mà không có `width`/`height` | ném `invalid viewport: content has zero size and no width/height was given` |
 | Xuất ICO | 1–256 px mỗi cạnh |

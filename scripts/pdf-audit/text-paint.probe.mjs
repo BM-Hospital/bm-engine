@@ -3,7 +3,7 @@
 // and takumi-pdf with the canonical pages / draw lists of paint.probe.mjs. Extracted text (pdftotext) is compared
 // as well where the reading order matters.
 import { INTER, INTER_BOLD, ARCHIVO, NOTO_TC, TWEMOJI, font, squash } from "./lib.mjs";
-import { cases, cmp, dataUri, probeAs, vp } from "./paint.probe.mjs";
+import { cases, canonPages, cmp, dataUri, flatten, probeAs, vp } from "./paint.probe.mjs";
 
 const named = (name, rel) => ({ name, data: font(rel) });
 const F = {
@@ -147,6 +147,13 @@ textCases("text.shadow", "text-shadow", [
 
 // ------------------------------------------------------------------------------------------------ spacing, overflow
 
+textCases('text.shadow.colr-ppem', 'COLR shadow outlines resolved at the requested font size',
+  [13, 27.5, 40, 63].flatMap(size => [0, 4].map(blur => [
+    `${size}-${blur}`,
+    p(`font-size:${size}px;font-family:Inter,Twemoji;text-shadow:6px 6px ${blur}px rgba(220,38,38,.8)`, 'Party 🎉🚀'),
+    [F.inter, F.twemoji], vp(420, 150),
+  ])), { text: true });
+
 textCases("text.spacing", "letter-spacing, word-spacing, alignment", [
   ["letter-spacing", p("letter-spacing:3px", "Spaced out")],
   ["letter-spacing-negative", p("letter-spacing:-1px", "Spaced out")],
@@ -158,12 +165,11 @@ textCases("text.spacing", "letter-spacing, word-spacing, alignment", [
   ["justify-last", p("text-align:justify;text-align-last:justify;width:150px", "Justified text")],
   ["center-right", p("text-align:center;width:200px", "centre") + p("text-align:right;width:200px", "right")],
   ["text-indent", p("text-indent:30px;width:150px", "Indented first line of text")],
-  ["tab-size", p("white-space:pre;tab-size:4", "a\tb\tc")],
-  ["pre-wrap", p("white-space:pre-wrap", "a   b\n  c")],
+  // tabs/pre-wrap/generated hyphens: text-semantics.probe.mjs checks viewer text and
+  // raster output. Splitting equivalent TJ runs is not a required byte-level behavior.
   ["kerning-none", p("font-kerning:none", "AVATAR Wave To")],
   ["kerning-normal", p("font-kerning:normal", "AVATAR Wave To")],
   ["line-height", p("line-height:3", "Tall")],
-  ["soft-hyphen", p("width:60px;hyphens:manual", "extra&shy;ordinary")],
   ["hyphens-auto", `<p lang="en" style="margin:10px;font:20px Inter;width:70px;hyphens:auto">extraordinary</p>`],
   ["word-break", p("width:60px;word-break:break-all", "extraordinary")],
   ["overflow-wrap", p("width:60px;overflow-wrap:anywhere", "extraordinary")],
@@ -209,8 +215,20 @@ textCases("text.background-clip", "background-clip: text", [
   ["bold-synthetic", clipText("linear-gradient(90deg,red,blue)", "font-weight:700")],
   ["emoji", p(`background:linear-gradient(90deg,red,blue);-webkit-background-clip:text;color:transparent;font-family:Inter,Twemoji`, "a\u{1F600}b"), [F.inter, F.twemoji]],
   ["with-filter", clipText("linear-gradient(90deg,red,blue)", "filter:grayscale(1)")],
-  ["border-box-and-text", p("background:linear-gradient(90deg,red,blue),#ff0;background-clip:text,border-box;color:transparent", "Gradient")],
 ], { text: true });
+
+probeAs("text.background-clip.border-box-and-text", "mixed background-clip layers paint the box color and clip only the text layer", async (t) => {
+  const html = p("background:linear-gradient(90deg,red,blue),#ff0;background-clip:text,border-box;color:transparent", "Gradient");
+  const r = await t.both(html, page, { fonts: [F.inter] });
+  t.ok(!r.bm.error, `bm-engine renders the mixed background layers${r.bm.error ? `: ${r.bm.error}` : ""}`);
+  if (r.bm.error) return;
+  const flat = flatten(canonPages(r.bm)[0] || []);
+  const joined = flat.map(String).join(" ");
+  t.ok(joined.includes("FILL rg 1 1 0"), "yellow border-box background color is painted");
+  t.ok(joined.includes("/PatternType") && joined.includes("/ShadingType"), "gradient layer remains available to the text glyph mask");
+  t.ok(squash(r.bm.text).includes("Gradient"), "text remains extractable");
+  t.differs("pinned Takumi paints the gradient as a box and omits the background color in this mixed-clip case; bm-engine follows each layer's clip");
+});
 
 // ------------------------------------------------------------------------------------------------ transform, variants
 
@@ -219,6 +237,12 @@ textCases("text.transform", "text-transform", [
   ["lowercase", p("text-transform:lowercase", "LOWER Case")],
   ["capitalize", p("text-transform:capitalize", "capital letters here")],
   ["full-width", p("text-transform:full-width;font-family:Inter,'Noto Sans TC'", "abc"), [F.inter, F.tc]],
+  ["full-width-preserved-space", p("text-transform:full-width;white-space:pre;font-family:Inter,'Noto Sans TC'", "a b"), [F.inter, F.tc]],
+  ["full-width-collapsed-space", p("text-transform:full-width;font-family:Inter,'Noto Sans TC'", "a b"), [F.inter, F.tc]],
+  ["full-width-uppercase", p("text-transform:full-width uppercase;font-family:Inter,'Noto Sans TC'", "abß"), [F.inter, F.tc]],
+  ["full-size-kana", p("text-transform:full-size-kana;font-family:'Noto Sans TC'", "ぁぃゕァィヵｧｨ"), [F.tc]],
+  ["full-width-kana", p("text-transform:full-size-kana full-width;font-family:'Noto Sans TC'", "ｧｨｶ"), [F.tc]],
+  ["transform-duplicate-invalid", p("text-transform:full-width full-width;font-family:Inter,'Noto Sans TC'", "abc"), [F.inter, F.tc]],
   ["span", p("", `a <span style="text-transform:uppercase">up</span> b`)],
 ], { text: true });
 

@@ -429,7 +429,7 @@ B["per-fixture"] = (res, lang) => {
 };
 
 // ------------------------------------------------------------------------------------------------ output
-export const DOCS = ["docs/BENCHMARK.md", "docs/en/benchmark.md", "docs/vi/benchmark.md", "docs/en/native-vs-wasm.md", "docs/vi/native-vs-wasm.md", "docs/en/profiles-and-size.md", "docs/vi/profiles-and-size.md"];
+export const DOCS = ["docs/BENCHMARK.md", "docs/en/benchmark.md", "docs/vi/benchmark.md"];
 const langOf = (file) => (/(^|\/)vi\//.test(file) || /BENCHMARK\.md$/.test(file) ? "vi" : "en");
 
 /** Rewrites every native-bench block of `text`; returns { text, blocks }. */

@@ -109,6 +109,7 @@ pub const PathOut = struct {
     /// (PDF builds) gvar-varied points rounded to whole font units, as skrifa draws an unscaled
     /// outline (krilla / takumi-pdf); the raster and SVG paths keep them exact
     round_points: if (enable_pdf) bool else void = if (enable_pdf) false else {},
+    point_quant: if (enable_pdf) ?PointQuant else void = if (enable_pdf) null else {},
 
     pub const Verb = enum(u8) { move, line, quad, cubic, close };
 
@@ -142,6 +143,22 @@ pub const PathOut = struct {
     }
     pub fn close(o: *const PathOut) void {
         o.emit(o.ctx, .close, &.{ 0, 0, 0, 0, 0, 0 });
+    }
+};
+
+/// Font-unit coordinates of a glyf outline resolved at a particular ppem.
+/// Quantize encoded points before constructing implied on-curve midpoints.
+pub const PointQuant = struct {
+    mul: f32,
+    div: f32,
+
+    pub fn apply(q: PointQuant, value: f32) f32 {
+        return @round(value * q.mul) / q.div;
+    }
+
+    pub fn midpoint(q: PointQuant, a: f32, b: f32) f32 {
+        // FreeType constructs implied points with integer 26.6 arithmetic.
+        return @trunc((@round(a * q.div) + @round(b * q.div)) * 0.5) / q.div;
     }
 };
 
@@ -824,9 +841,23 @@ pub const Font = struct {
 
     /// `outline`; `round_points` (PDF builds): varied points on whole font units (`PathOut`).
     pub fn outlineWith(f: *const Font, gid: u16, sink: anytype, comptime round_points: bool) bool {
+        return f.outlineQuant(gid, sink, round_points, null);
+    }
+
+    /// Outline in font units, resolved as Skrifa's unhinted ppem outline.
+    /// CFF retains floating-point coordinates; glyf uses its 26.6 point grid.
+    pub fn outlineResolved(f: *const Font, gid: u16, size: f32, sink: anytype) bool {
+        if (!(size > 0) or !std.math.isFinite(size)) return false;
+        const divisor = size * 64 / @as(f32, @floatFromInt(@max(1, f.units_per_em)));
+        if (!(divisor > 0) or !std.math.isFinite(divisor)) return false;
+        return f.outlineQuant(gid, sink, true, .{ .mul = if (size < 30000) scale26_6(size, f.units_per_em) else divisor, .div = divisor });
+    }
+
+    fn outlineQuant(f: *const Font, gid: u16, sink: anytype, comptime round_points: bool, quant: ?PointQuant) bool {
         if ((enable_cff and f.cff.len != 0) or (enable_variations and f.varied and f.gvar.len != 0)) {
             var po = PathOut.of(sink);
             if (comptime enable_pdf and round_points) po.round_points = true;
+            if (comptime enable_pdf) po.point_quant = quant;
             if (f.outlineErased(gid, &po)) |drawn| return drawn;
         }
         var budget: u32 = 256;
@@ -836,15 +867,15 @@ pub const Font = struct {
             const sh = @as(i32, rdi16(g, 2)) - f.leftSideBearing(gid);
             if (sh != 0) xf = .{ .e = @floatFromInt(-sh), .ident = false };
         }
-        return f.outlineRec(gid, xf, 0, &budget, sink, comptime enable_pdf and round_points);
+        return f.outlineRec(gid, xf, 0, &budget, sink, comptime enable_pdf and round_points, quant);
     }
 
     /// `ft_start` (PDF builds): contours start where FreeType / skrifa start them (`simpleOutlineFt`).
-    fn outlineRec(f: *const Font, gid: u16, xf: Xf, depth: u32, budget: *u32, sink: anytype, comptime ft_start: bool) bool {
+    fn outlineRec(f: *const Font, gid: u16, xf: Xf, depth: u32, budget: *u32, sink: anytype, comptime ft_start: bool, quant: ?PointQuant) bool {
         const g = f.glyphData(gid);
         if (g.len < 10) return false;
         const nc = rdi16(g, 0);
-        if (nc >= 0) return if (ft_start) simpleOutlineFt(g, @intCast(nc), xf, sink) else simpleOutline(g, @intCast(nc), xf, sink);
+        if (nc >= 0) return if (ft_start) simpleOutlineFtQuant(g, @intCast(nc), xf, sink, quant) else simpleOutline(g, @intCast(nc), xf, sink);
         if (depth >= 8) return false;
         var any = false;
         var off: u32 = 10;
@@ -895,7 +926,7 @@ pub const Font = struct {
                 .f = xf.b * dx + xf.d * dy + xf.f,
                 .ident = false,
             };
-            if (f.outlineRec(child, m, depth + 1, budget, sink, ft_start)) any = true;
+            if (f.outlineRec(child, m, depth + 1, budget, sink, ft_start, quant)) any = true;
             if (flags & 0x20 == 0) break;
         }
         return any;
@@ -1036,6 +1067,7 @@ const GlyfPoints = struct {
     rep: u32 = 0,
     x: i32 = 0,
     y: i32 = 0,
+    quant: ?PointQuant = null,
 
     const Point = struct { p: Pt, on: bool };
 
@@ -1068,6 +1100,7 @@ const GlyfPoints = struct {
         }
         var p: Pt = .{ .x = @floatFromInt(d.x), .y = @floatFromInt(d.y) };
         if (!xf.ident) p = .{ .x = xf.a * p.x + xf.c * p.y + xf.e, .y = xf.b * p.x + xf.d * p.y + xf.f };
+        if (d.quant) |q| p = .{ .x = q.apply(p.x), .y = q.apply(p.y) };
         return .{ .p = p, .on = fl & 1 != 0 };
     }
 };
@@ -1079,6 +1112,10 @@ const GlyfPoints = struct {
 /// the first two), with the path operators in the order takumi-pdf writes them. PDF builds only
 /// (`Font.outlineWith(.., true)`).
 pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
+    return simpleOutlineFtQuant(g, nc, xf, sink, null);
+}
+
+fn simpleOutlineFtQuant(g: []const u8, nc: u32, xf: Xf, sink: anytype, quant: ?PointQuant) bool {
     if (nc == 0) return false;
     const end_pts: u32 = 10;
     const npts: u32 = @as(u32, rd16(g, end_pts + (nc - 1) * 2)) + 1;
@@ -1108,7 +1145,7 @@ pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
     }
     if (fo + x_bytes + y_bytes > g.len) return false;
 
-    var d: GlyfPoints = .{ .g = g, .fo = flags_off, .xo = fo, .yo = fo + x_bytes };
+    var d: GlyfPoints = .{ .g = g, .fo = flags_off, .xo = fo, .yo = fo + x_bytes, .quant = quant };
     var pi: u32 = 0;
     var ci: u32 = 0;
     var any = false;
@@ -1133,7 +1170,7 @@ pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
                 if (last.on) {
                     start = last.p;
                     walk -= 1;
-                } else start = midPt(first.p, last.p);
+                } else start = midPtResolved(first.p, last.p, quant);
             }
         }
         sink.moveTo(start.x, start.y);
@@ -1145,7 +1182,7 @@ pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
                 pending = null;
             } else {
                 if (pending) |c| {
-                    const m = midPt(c, q.p);
+                    const m = midPtResolved(c, q.p, quant);
                     sink.quadTo(c.x, c.y, m.x, m.y);
                 }
                 pending = q.p;
@@ -1162,6 +1199,11 @@ pub fn simpleOutlineFt(g: []const u8, nc: u32, xf: Xf, sink: anytype) bool {
 
 inline fn midPt(a: Pt, b: Pt) Pt {
     return .{ .x = (a.x + b.x) * 0.5, .y = (a.y + b.y) * 0.5 };
+}
+
+inline fn midPtResolved(a: Pt, b: Pt, quant: ?PointQuant) Pt {
+    const q = quant orelse return midPt(a, b);
+    return .{ .x = q.midpoint(a.x, b.x), .y = q.midpoint(a.y, b.y) };
 }
 
 /// Encodes `cp` as UTF-8 into `out`, returning the length (1..4).
@@ -1251,6 +1293,12 @@ pub fn testSimpleOutlineFt(glyph: []const u8, sink: anytype) bool {
     const nc = rdi16(glyph, 0);
     if (nc <= 0) return false;
     return simpleOutlineFt(glyph, @intCast(nc), .{}, sink);
+}
+
+pub fn testSimpleOutlineResolved(glyph: []const u8, quant: PointQuant, sink: anytype) bool {
+    const nc = rdi16(glyph, 0);
+    if (nc <= 0) return false;
+    return simpleOutlineFtQuant(glyph, @intCast(nc), .{}, sink, quant);
 }
 
 pub fn testSimpleOutline(glyph: []const u8, sink: anytype) bool {

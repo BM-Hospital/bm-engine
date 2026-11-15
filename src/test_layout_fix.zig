@@ -12,7 +12,7 @@ const T = struct {
         const gpa = testing.allocator;
         const r = render.Renderer.create(gpa).?;
         errdefer r.destroy();
-        _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+        _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
         return .{ .r = r };
     }
     fn deinit(t: T) void {

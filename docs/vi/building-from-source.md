@@ -2,9 +2,7 @@
 
 [English](../en/building-from-source.md) · [Tiếng Việt](building-from-source.md)
 
-Cách build ba profile wasm và add-on WOFF, chạy unit test, benchmark tương đương với takumi, test trình
-duyệt và fuzzer, cùng cấu trúc của repository. Bạn chỉ cần trang này khi muốn sửa engine hoặc tự build
-bản riêng; package npm đã kèm sẵn binary build sẵn.
+Trang này hướng dẫn build thư viện, chạy kiểm tra và tìm mã nguồn theo chức năng. Chỉ cần build khi sửa engine hoặc tùy chỉnh profile; package npm đã có binary sẵn.
 
 ## Yêu cầu
 
@@ -58,7 +56,6 @@ sẽ ưu tiên file `zig-out/bin/bm_engine.wasm` vừa build hơn file `js/bm_en
 | Một module | `zig test src/<module>/<module>.zig` | module import module anh em được test qua một file gốc `src/test_*.zig` |
 | Smoke test package | `npm run test:pack` | `scripts/pack-test.mjs`: đóng gói tarball npm rồi import nó |
 | Thăm dò tính năng theo profile | `node bench/probe/profiles.mjs` | mỗi binary xử lý đầu vào của tính năng bị thiếu ra sao; thất bại nếu có trap |
-| Tương đương + benchmark với takumi | `cd bench && npm install --ignore-scripts && node run.mjs` | xem [Benchmark](benchmark.md#tái-lập-kết-quả) |
 | Trình duyệt thật | `cd bench && npm run browser:quick` | Edge / Chrome headless qua puppeteer-core; đầu ra raw phải trùng với Node |
 | Fuzz (toàn pipeline) | xem bên dưới | chạy trên bản build có kiểm tra an toàn |
 
@@ -71,47 +68,19 @@ cd bench
 BM_WASM=/tmp/bmsafe/bin/bm_engine.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
 ```
 
-## Cách harness kiểm tra tương đương hoạt động
+## Kiểm tra kết quả
 
-`bench/` render mọi fixture trong `bench/fixtures/*.mjs` bằng takumi-wasm 2.20 (oracle), takumi-native
-(sàn nhiễu) và bm-engine, từ cùng cây node, font và ảnh. Với mỗi ca, đầu ra `raw` được so sánh
-(`bench/lib/metrics.mjs`): trùng byte, pixelmatch có và không có dung sai khử răng cưa, sai khác kênh
-trung bình / lớn nhất, PSNR và SSIM (độ sáng và RGB). Kết luận là identical / equivalent / close /
-different như định nghĩa ở [Benchmark](benchmark.md#điều-kiện-đo). Phần đo thời gian chạy xen kẽ các
-engine theo từng ca; cold start và bộ nhớ chạy trong tiến trình con mới. Adapter của các engine nằm trong
-`bench/engines/`, đầu ra trong `bench/out/` (`results.json`, `RESULTS.md`, PNG và ảnh diff của từng ca).
-Các oracle cấp module (cây layout, bề rộng chữ, màu, luật thắng trong cascade, đầu ra Tailwind, SVG,
-khung animation) nằm trong `bench/probe/`.
+Xem [Benchmark](benchmark.md) để thiết lập và chạy các phép so sánh. Các ví dụ trong `docs/examples/` kiểm tra hành vi API được mô tả trong hướng dẫn.
 
-## Cấu trúc thư mục
+## Cấu trúc mã nguồn
 
-```
-src/wasm.zig          wasm exports (C ABI), the only entry of the binary
-src/config.zig        compile-time feature flags (set from build.zig profiles / -D flags)
-src/render.zig        pipeline: source -> DOM -> style -> layout -> paint -> encode; options, caches
-src/dom.zig           node tree from JSON, preset / css / tw / style cascade per element
-src/json.zig          JSON parser
-src/style/            CSS value parsing -> ComputedStyle (props.zig = property table), colours, gradients, calc
-src/css/              stylesheet tokenizer / parser, selectors, cascade, @media / @supports
-src/tw/               Tailwind compiler + palette
-src/html/             HTML tokenizer / tree builder, UA presets, entities
-src/layout/           block, inline, flex, grid, table, float layout
-src/font/             sfnt / CFF / variations, shaping (GSUB / GPOS, Arabic, Indic), bidi, colour glyphs
-src/woff/             WOFF / WOFF2 + brotli;  src/addon_woff.zig = the add-on module
-src/raster/           paths, scan conversion (tiny-skia-exact AA), stroking, blur, blending, images
-src/paint*.zig        painter (Blink paint order), borders, effects, text, tables, SVG images
-src/svg/              SVG parser + renderer (for SVG images)
-src/svg_out*.zig      renderSvg (node tree -> SVG document)
-src/animate.zig       CSS animation sampling
-src/codec/            PNG, JPEG, WebP (lossless + VP8), GIF, ICO, animation encoders, deflate / inflate
-src/bump.zig, pages.zig  allocators (per-render bump arena, page allocator)
-js/                   ESM wrapper (engine.mjs + entries), typings, prebuilt wasm, build manifest
-scripts/              build.mjs (release build, manifest), pack-test.mjs
-bench/                fixtures shared with takumi, benchmark / equivalence harness, probes, browser test
-docs/                 user docs (en/, vi/), developer docs (ARCHITECTURE, TAKUMI_NOTES, CONVENTIONS, BENCHMARK),
-                      VitePress site config (.vitepress/), browser playground source (playground-app/)
-ref/takumi/           local clone of takumi used as a read-only reference (not in git)
-```
+| Thư mục | Nội dung |
+|:--|:--|
+| `src/` | Layout, chữ, vẽ, codec và PDF |
+| `js/` | API JavaScript, khai báo kiểu và WebAssembly |
+| `scripts/` | Build và kiểm tra package |
+| `bench/` | Fixture, đo hiệu năng và kiểm tra kết quả |
+| `docs/` | Hướng dẫn, ví dụ và trang tài liệu |
 
 ## Trang tài liệu
 
@@ -131,8 +100,6 @@ hay biến môi trường nào).
 ## Tài liệu cho nhà phát triển
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md): thiết kế, sơ đồ module, pipeline render, ABI của wasm.
-- [TAKUMI_NOTES.md](../TAKUMI_NOTES.md): ngữ nghĩa của takumi mà bản port tái hiện (giá trị mặc định, đơn
-  vị, DPR, font dự phòng, bộ mã hoá), kèm tham chiếu mã nguồn.
 - [CONVENTIONS.md](../CONVENTIONS.md): quy tắc kỹ thuật (không `std.Io` / libc trong mã thư viện, kỷ luật
   với đầu vào không tin cậy, kỷ luật kích thước, quyền sở hữu file).
 - [BENCHMARK.md](../BENCHMARK.md), [RESULTS_FULL.md](../RESULTS_FULL.md), [results.json](../results.json):
@@ -145,6 +112,4 @@ hay biến môi trường nào).
   wasm chỉ 1 MiB), và báo cáo chi phí kích thước wasm của mình.
 - Mọi tính năng tùy chọn phải được bảo vệ bằng một cờ trong `src/config.zig` để có thể loại khỏi các
   profile nhỏ; chạy `node bench/probe/profiles.mjs` sau khi động vào ranh giới tính năng.
-- Một thay đổi về render phải giữ benchmark ở mức 0 fixture "different"; thêm fixture vào
-  `bench/fixtures/` cho hành vi mới, so với takumi và ghi kết quả vào `docs/BENCHMARK.md`.
-- `ref/takumi` là bản clone của bên thứ ba chỉ để đọc; không chạy bất cứ thứ gì trong đó.
+- Khi đổi hành vi render, thêm fixture tái hiện và chạy kiểm tra tương ứng. Xem [Benchmark](benchmark.md) để đo lại kết quả.

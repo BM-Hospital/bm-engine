@@ -6,7 +6,7 @@ import { Name, Ref, fmt, pdfText, errNorm, isSerdeMessage } from "./lib.mjs";
  * The error message, or "ok". bm-engine prefixes every message with "bm-engine: " (js/engine.mjs); the prefix is removed here so
  * that the rest of the text is compared (the prefix itself is checked once, by file.error-prefix).
  */
-export const outcome = (r) => (r ? (r.error ? "ERR: " + String(r.error).replace(/^bm-engine: /, "") : "ok") : null);
+export const outcome = (r) => (r ? (r.error ? "ERR: " + errNorm(r.error) : "ok") : null);
 
 /**
  * The outcomes of both engines, `[bm, takumi]`, for `t.same(label, ...outcomes(bm, ref))`. As lib.mjs `sameError`
@@ -236,7 +236,7 @@ export function attachmentsText(d) {
       key: pdfText(arr[i]),
       spec: Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, k === "EF" ? Object.keys(d.pdf.resolve(v)).join(",") : k === "F" || k === "UF" || k === "Desc" ? pdfText(v) : fmt(v)])),
       stream: so ? Object.fromEntries(Object.entries(so.dict).map(([k, v]) => [k, k === "Length" ? "N" : k === "Params" ? deep(d, v, 0, 1) : fmt(v)])) : null,
-      data: so ? so.data.toString("latin1").slice(0, 200) : null,
+      data: so ? so.data.toString("latin1") : null,
       rawLen: so ? so.raw.length : null,
     });
   }

@@ -167,9 +167,7 @@ const indent = renderer.renderSync(
 
 ![Four paragraphs: indented by 24 px, by 10 %, outdented by 16 px, and with a 24 px hanging indent](/img/guide/typography-indent.png)
 
-Only the first line of the block is indented, as in Chrome; takumi also indents the first line of the
-text that follows a block-level child (see [Differences from takumi](./differences-from-takumi.md#deliberate-differences-bm-engine-follows-chrome)).
-`textAlignLast` is parsed but has no effect.
+Only the first line of the block is indented.
 
 ## Truncation: ellipsis and line clamp
 
@@ -243,7 +241,7 @@ const balance = renderer.renderSync(
 
 ![Greedy wrapping leaves "browser" alone on the last line; balance gives three even lines](/img/guide/typography-balance.png)
 
-`textWrap: "pretty"` follows takumi's implementation, which gives the same lines as normal wrapping in
+`textWrap: "pretty"` gives the same lines as normal wrapping in
 this example (the last line still holds a single word). Balancing falls back to normal wrapping in
 paragraphs that contain inline boxes or atomic inlines, or sit beside a float.
 
@@ -297,7 +295,7 @@ const effects = renderer.renderSync(
   transparent `color`. `background-clip: text` needs `standard` or `full`.
 
 ::: info `paint-order` is ignored
-`paintOrder: "stroke"` is parsed, but the stroke is always painted over the fill, as in takumi 2.20. A
+`paintOrder: "stroke"` is parsed, but the stroke is always painted over the fill. A
 thick stroke therefore eats into the letters; keep strokes thin or use a `textShadow` outline.
 :::
 
@@ -455,14 +453,13 @@ on user input to be safe. Lines break at spaces, which is what Vietnamese needs.
 The `full` profile runs the Unicode bidirectional algorithm (UAX #9) and the complex shapers for Arabic,
 Hebrew, Devanagari, Bengali and Thai. Base direction comes from `direction: "rtl"` in the style or
 `dir: "rtl"` on a node. CJK text breaks between characters. Fonts for these scripts are not in this
-repository; the example uses WOFF2 files from takumi's test assets (OFL):
+repository; the example uses WOFF2 files from font files you provide:
 
 <!-- @example typography#scripts -->
 ```js
 // Arabic (Scheherazade New) and Traditional Chinese (Noto Sans TC) WOFF2 fonts from
-// takumi's test assets (OFL). Registering them is enough: per-character fallback finds them.
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/sil/scheherazade-new-v17-arabic-regular.woff2"));
-renderer.registerFont(readFileSync("ref/takumi/assets/fonts/noto-sans/NotoSansTC-VariableFont_wght.woff2"));
+renderer.registerFont(readFileSync("./fonts/ScheherazadeNew.woff2"));
+renderer.registerFont(readFileSync("./fonts/NotoSansTC.woff2"));
 
 const scripts = page({ flexDirection: "column", gap: 6, fontSize: 24 }, [
   text("Mixed: Hello مرحبا بالعالم 123 world"),
@@ -500,7 +497,7 @@ supported, and hanging spaces of RTL text with `white-space: pre-wrap` are not h
 
 Parsed and accepted, without visible effect: `textAlignLast`, `hyphens` (except soft hyphens in the
 text), `lineBreak`, `writingMode`, `fontSynthesisWeight` / `fontSynthesisStyle` and the weight / style parts
-of `fontSynthesis` (bold and italic are always synthesised), and `paintOrder` on text (ignored as in takumi 2.20; SVG images
+of `fontSynthesis` (bold and italic are always synthesised), and `paintOrder` on text (ignored; SVG images
 honour it). The full list of supported properties is in
 [CSS support](./css-support.md#text).
 

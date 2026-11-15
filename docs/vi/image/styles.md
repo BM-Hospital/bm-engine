@@ -3,7 +3,7 @@
 [English](../../en/image/styles.md) · [Tiếng Việt](styles.md)
 
 bm-engine style phần tử bằng CSS thật: cùng thuộc tính, giá trị, cascade và thuật toán layout như trình
-duyệt (port từ takumi, vốn port từ Blink). Trang này trình bày ba cách gắn style — object `style`
+duyệt. Trang này trình bày ba cách gắn style — object `style`
 inline, stylesheet qua option `css`, và class Tailwind trong `tw` — cách chúng kết hợp với nhau, một ví
 dụ hoàn chỉnh cho từng chế độ layout (flex, grid, luồng block / inline, định vị absolute, float), rồi
 đến đơn vị và màu sắc. Danh sách đầy đủ các thuộc tính và trạng thái của chúng nằm ở
@@ -79,7 +79,7 @@ expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 p
 ```
 
 ::: warning Key kebab-case bị bỏ qua
-`{ "background-color": "red" }` bị bỏ qua lặng lẽ, giống takumi. Hãy dùng `backgroundColor`. Tiền tố
+`{ "background-color": "red" }` bị bỏ qua lặng lẽ. Hãy dùng `backgroundColor`. Tiền tố
 vendor viết hoa chữ đầu: `WebkitLineClamp`, `WebkitTextStroke`.
 :::
 
@@ -144,7 +144,7 @@ Tóm tắt những gì engine stylesheet hỗ trợ (danh sách đầy đủ ở
 
 ::: warning Pseudo-class cấu trúc trên node text
 Node `text` không có `tagName` không phải là phần tử đối với `:first-child`, `:nth-child()`, `+` / `~` và
-các variant Tailwind `first:` / `odd:` / ..., giống takumi: nó không được tính vào các anh em, nên khi
+các variant Tailwind `first:` / `odd:` / ...: nó không được tính vào các anh em, nên khi
 nhiều node text trần đứng cạnh nhau thì **node nào** cũng khớp `first:`, `last:` và `odd:`. Hãy đặt
 `tagName` cho node (`{ type: "text", tagName: "div", ... }`) hoặc đặt chữ vào trong một `container` khi
 vị trí là quan trọng. Node text rỗng hoặc chỉ có khoảng trắng bị bỏ đi (luôn luôn trong flex và grid
@@ -153,13 +153,12 @@ container, ở chỗ khác thì trừ khi có nội dung inline đứng trước
 
 ### Rule object {#rule-objects}
 
-Thay vì văn bản, bạn có thể truyền rule object kiểu takumi, `{ selector, style }` với `style` dạng
+Thay vì văn bản, bạn có thể truyền rule object, `{ selector, style }` với `style` dạng
 camelCase. Chúng tiện khi giá trị đến từ dữ liệu, vì không có gì bị nối vào chuỗi CSS. Thứ tự trong
 mảng chính là thứ tự cascade:
 
 <!-- @example styles#rule-objects -->
 ```js
-// takumi rule objects: data stays data, no string concatenation
 const theme = { brand: "#16a34a" };
 const ruleObjects = renderer.renderSync(tagged, {
   width: 560,
@@ -174,7 +173,7 @@ const ruleObjects = renderer.renderSync(tagged, {
 
 ![Cùng thẻ đó với màu thương hiệu xanh lá và nền xanh lá](/img/guide/styles-rule-objects.png)
 
-Các dạng rule object khác của takumi (`{ media, rules }`, `{ keyframes, steps }`, ...) cũng được chấp
+Các dạng rule object khác (`{ media, rules }`, `{ keyframes, steps }`, ...) cũng được chấp
 nhận; `{ selector, style }` và `{ media, rules }` đã được kiểm tra ở đây.
 
 ### Selector và tagName {#selectors-and-tagname}
@@ -198,7 +197,7 @@ vậy hãy dùng trường `preset`, hoặc một [source HTML](./html-and-tailw
 ## Tailwind: `tw` {#tailwind-tw}
 
 Trường `tw` nhận class utility Tailwind v4 và biên dịch chúng ngay trong engine — không cần bước build.
-Đây là cùng trình biên dịch của takumi, với cùng tập con; xem
+Các utility được hỗ trợ được liệt kê tại
 [HTML và Tailwind](./html-and-tailwind.md#tailwind) về variant, giá trị tùy ý và những gì chưa hỗ trợ.
 
 <!-- @example styles#tailwind -->
@@ -229,7 +228,7 @@ Từ ưu tiên thấp đến cao:
    có tiền tố `!` như `!w-20` < rule `!important` trong layer có tên; tất cả đều thắng khai báo inline
    thường
 
-Đây là thứ tự của takumi. Nó cũng khớp với Tailwind v4 trên trình duyệt đối với các layer khai báo trước
+Thứ tự này khớp với Tailwind v4 trên trình duyệt đối với các layer khai báo trước
 `@layer utilities` (như `base`).
 
 <!-- @example styles#precedence -->
@@ -251,7 +250,7 @@ widthWith({ type: "container", preset: { display: "block", width: 30 }, style: {
 
 ## Các chế độ layout {#layout-modes}
 
-Mọi chế độ layout CSS mà takumi hỗ trợ đều có trên mọi profile, trừ float và bảng cần `standard`. Bảng
+Các chế độ layout CSS trong tài liệu này đều có trên mọi profile, trừ float và bảng cần `standard`. Bảng
 có trang riêng: [Bảng và float](./tables.md).
 
 ### Flexbox {#flexbox}
@@ -385,9 +384,7 @@ inline được vẽ trên từng phần (bỏ mép ở chỗ bị tách).
 
 ### `display: contents` {#display-contents}
 
-`display: "contents"` bỏ hộp của chính phần tử: các con của nó được dàn như thể là con của phần tử cha,
-còn padding, viền và nền của nó không được vẽ. Cách này theo Chrome; takumi không hỗ trợ giá trị này (ném
-lỗi với inline style và bỏ qua trong stylesheet).
+`display: contents` không tạo hộp riêng cho phần tử. Các phần tử con tham gia trực tiếp vào layout của phần tử cha.
 
 <!-- @example styles#contents -->
 ```js

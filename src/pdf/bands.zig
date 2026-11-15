@@ -81,10 +81,14 @@ pub fn buildFrame(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.V
 
 /// A paragraph continued on a page of another width (paged.zig): render node `node`'s paragraph
 /// ends a line before its shaped glyph `glyph`.
-pub const Cut = struct { node: u32, glyph: u32 };
+pub const Cut = @import("../layout/fragment.zig").ParagraphCut;
 
 /// `buildFrame`, the paragraph `cut` names broken there.
 pub fn buildFrameCut(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, pre: ?json.Value, area: ?[2]f32, subst: ?*counters.Subst, cut: ?Cut) Error!*Frame {
+    return buildFrameCuts(r, a, o, css, kind, source, pre, area, subst, if (cut) |c| &.{c} else &.{}, &.{}, &.{}, &.{});
+}
+
+pub fn buildFrameCuts(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, pre: ?json.Value, area: ?[2]f32, subst: ?*counters.Subst, cuts: []const Cut, rows: []const @import("../layout/fragment.zig").RowMinimum, float_shifts: []const f32, float_extents: []const f32) Error!*Frame {
     var ro: rt.Options = .{ .lang = o.lang, .font_families = o.font_families };
     switch (o.geometry) {
         .viewport => |v| {
@@ -104,10 +108,10 @@ pub fn buildFrameCut(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?jso
         .viewport => {},
     };
     if (area) |ar| f.setPaged(ar[0], ar[1]);
-    if (cut) |c| {
-        f.tree.paged.cut_node = c.node;
-        f.tree.paged.cut_glyph = c.glyph;
-    }
+    f.tree.paged.cuts = try a.dupe(Cut, cuts);
+    f.tree.paged.row_minimums = rows;
+    f.tree.paged.float_shifts = try a.dupe(f32, float_shifts);
+    f.tree.paged.float_extents = try a.dupe(f32, float_extents);
     if (subst) |s| s.install(f);
     try f.prepare(kind, source);
     try @import("text.zig").requireFont(f, o.uncovered_text == .blank);
@@ -117,8 +121,7 @@ pub fn buildFrameCut(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?jso
 /// The laid-out height of a band frame: its root's margin box (takumi lays the band out inside a
 /// page-wide flow root and takes that root's height).
 pub fn frameHeight(f: *const Frame) f32 {
-    const l = f.tree.layout(f.nodes.items[f.root].lid);
-    return @max(0, l.y + l.h + l.margin.bottom);
+    return @max(0, f.rootBlockEnd());
 }
 
 /// The header (or footer) of a document: its templates and their measurement.

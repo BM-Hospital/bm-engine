@@ -1,5 +1,5 @@
 //! CSS colour parsing: hex, rgb()/rgba(), hsl()/hsla(), hwb(), named colours, transparent, currentColor.
-//! Modern colour spaces (lab/lch/oklab/oklch/color()/color-mix()) are NOT supported -> InvalidStyleValue.
+//! Modern spaces and keyword-only relative colours are enabled by the modern_color build feature.
 const std = @import("std");
 const tok = @import("tokenizer.zig");
 const cmath = @import("cmath.zig");
@@ -54,6 +54,23 @@ pub fn fromToken(t: Token) ?ColorValue {
 
 const max_color_depth = 8;
 
+test "relative colors substitute channels, preserve alpha and reject unsupported slots" {
+    if (comptime !modern_color) return;
+    try expectColor("rgb(from #336699 r g b)", 51, 102, 153, 255);
+    try expectColor("rgb(from red r g 200)", 255, 0, 200, 255);
+    try expectColor("rgb(from rgb(10 20 30 / .5) r g b / .25)", 10, 20, 30, 64);
+    try expectColor("rgb(from rgb(10 20 30 / .5) b r g / alpha)", 30, 10, 20, 128);
+    try expectColor("hsl(from red 120deg s l)", 0, 255, 0, 255);
+    try expectColor("hwb(from red h 20% 10%)", 230, 51, 51, 255);
+    for ([_][]const u8{ "lab", "lch", "oklab", "oklch" }) |space| {
+        var buf: [100]u8 = undefined;
+        const source = try std.fmt.bufPrint(&buf, "{s}(from #336699 l {s} / alpha)", .{ space, if (std.mem.endsWith(u8, space, "lch")) "c h" else "a b" });
+        try expectColor(source, 51, 102, 153, 255);
+    }
+    for ([_][]const u8{ "rgb(from red calc(r + 1) g b)", "rgb(from currentColor r g b)", "hsl(from red 10% s l)", "rgb(from red r g b junk)" }) |invalid|
+        try std.testing.expectError(error.InvalidStyleValue, parse(invalid));
+}
+
 /// Build switch `modern_color` (src/config.zig via the root module; on in standalone tests): without
 /// it lab()/lch()/oklab()/oklch()/color()/color-mix()/light-dark() are invalid colours.
 pub const modern_color = blk: {
@@ -68,6 +85,17 @@ fn colorOf(t: Token, depth: u32) ?Color {
         .function => {
             const n = t.text;
             const fi = tok.matchPacked(n, func_names) orelse return null;
+            var args = Lexer.init(t.args);
+            if (args.next().isIdent("from")) {
+                if (comptime !modern_color) return null;
+                if (depth >= max_color_depth) return null;
+                const space: Space = switch (fi) {
+                    0, 1 => .srgb, 2, 3 => .hsl, 4 => .hwb,
+                    5 => .lab, 6 => .lch, 7 => .oklab, 8 => .oklch,
+                    else => return null,
+                };
+                return parseRelative(&args, space, depth + 1);
+            }
             return switch (fi) {
                 0, 1 => parseFunc(t.args, .rgb),
                 2, 3 => parseFunc(t.args, .hsl),
@@ -610,6 +638,52 @@ fn modernComp(t: Token, pct_scale: f64, hue: bool) ?struct { v: f64, none: bool 
         .ident => return if (std.ascii.eqlIgnoreCase(t.text, "none")) .{ .v = 0, .none = true } else null,
         else => return null,
     }
+}
+
+/// Pinned Takumi's keyword-only relative colours. Origins are computed rgba8 colours;
+/// calc() channels and color(from ...) are outside that implementation's syntax.
+fn parseRelative(l: *Lexer, space: Space, depth: u32) ?Color {
+    const origin = colorOf(l.next(), depth) orelse return null;
+    var values = convert(.srgb, space, .{
+        @as(f64, @floatFromInt(origin.r)) / 255,
+        @as(f64, @floatFromInt(origin.g)) / 255,
+        @as(f64, @floatFromInt(origin.b)) / 255,
+    });
+    const scales: [3]f64 = switch (space) {
+        .srgb => .{ 255, 255, 255 },
+        .hsl, .hwb => .{ 1, 100, 100 },
+        else => .{ 1, 1, 1 },
+    };
+    for (&values, scales) |*v, scale| v.* *= scale;
+    const channels: [3][]const u8 = switch (space) {
+        .srgb => .{ "r", "g", "b" }, .hsl => .{ "h", "s", "l" },
+        .hwb => .{ "h", "w", "b" }, .lab, .oklab => .{ "l", "a", "b" },
+        .lch, .oklch => .{ "l", "c", "h" }, else => unreachable,
+    };
+    const pct: [3]f64 = switch (space) {
+        .srgb => .{ 255, 255, 255 }, .hsl, .hwb => .{ 100, 100, 100 },
+        .lab => .{ 100, 125, 125 }, .lch => .{ 100, 150, 1 },
+        .oklab => .{ 1, 0.4, 0.4 }, .oklch => .{ 1, 0.4, 1 }, else => unreachable,
+    };
+    const alpha: f64 = @as(f64, @floatFromInt(origin.a)) / 255;
+    const slot = struct {
+        fn read(t: Token, ns: [3][]const u8, vs: [3]f64, a: f64, percentage: f64, hue: bool) ?f64 {
+            if (t.isIdent("alpha")) return a;
+            if (t.kind == .ident) for (ns, vs) |name, v| {
+                if (t.isIdent(name)) return v;
+            };
+            return (modernComp(t, percentage, hue) orelse return null).v;
+        }
+    }.read;
+    var out: [3]f64 = undefined;
+    for (&out, 0..) |*v, i| v.* = (slot(l.next(), channels, values, alpha, pct[i], hueIndex(space) == i) orelse return null) / scales[i];
+    var a = alpha;
+    const end = l.next();
+    if (end.kind == .slash) {
+        a = slot(l.next(), channels, values, alpha, 1, false) orelse return null;
+        if (!l.atEnd()) return null;
+    } else if (end.kind != .eof) return null;
+    return toColor(space, out, std.math.clamp(a, 0, 1));
 }
 
 /// `c1 c2 c3 [/ alpha]` with per-slot percentage scales; slot 2 is a hue when `hue2`.

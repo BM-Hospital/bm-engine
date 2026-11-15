@@ -20,6 +20,7 @@
 const std = @import("std");
 const render = @import("../render.zig");
 const config = @import("../config.zig");
+const font = @import("../font/font.zig");
 
 pub const Error = render.Error;
 
@@ -86,6 +87,7 @@ pub const table = [_]Op{
     // (appended: the index is not ABI, JavaScript reads `ops`, but existing indices stay put)
     .{ .name = "pdf", .images = true, .run = pdfOp },
     .{ .name = "pdfMeasure", .images = true, .run = pdfMeasureOp },
+    .{ .name = "pdfNeeds", .images = true, .run = pdfNeedsOp },
 };
 
 /// `arg0` of the source-taking ops: 0 = JSON node tree, 1 = HTML markup (as the wasm ABI).
@@ -119,6 +121,9 @@ fn pdfOp(c: *Call) Error!void {
 fn pdfMeasureOp(c: *Call) Error!void {
     c.result = try c.r.?.measurePdf(sourceKind(c), c.input, c.options);
 }
+fn pdfNeedsOp(c: *Call) Error!void {
+    c.result = try c.r.?.needsPdf(sourceKind(c), c.input, c.options);
+}
 
 /// input = `{scenes, width, height, fps, ...}` JSON; result = encoded WebP / APNG / GIF.
 fn animationOp(c: *Call) Error!void {
@@ -130,9 +135,24 @@ fn animationOp(c: *Call) Error!void {
 /// `RegisteredFamily[]` JSON.
 fn registerFont(c: *Call) Error!void {
     if (c.attachments.len != 1) return c.fail("registerFont expects font bytes");
+    const FontOptions = struct { unicodeRange: ?[]const [2]u32 = null };
+    var parsed: ?std.json.Parsed(FontOptions) = null;
+    defer if (parsed) |p| p.deinit();
+    var ranges: ?[]font.collection.UnicodeRange = null;
+    defer if (ranges) |r| c.gpa.free(r);
+    if (c.options.len > 0 and !std.mem.eql(u8, c.options, "null")) {
+        parsed = std.json.parseFromSlice(FontOptions, c.gpa, c.options, .{}) catch return c.fail("invalid font options");
+        if (parsed.?.value.unicodeRange) |source| {
+            ranges = c.gpa.alloc(font.collection.UnicodeRange, source.len) catch return error.OutOfMemory;
+            for (source, 0..) |r, i| {
+                if (r[0] > r[1] or r[1] > 0x10ffff) return c.fail("invalid unicodeRange");
+                ranges.?[i] = .{ .start = @intCast(r[0]), .end = @intCast(r[1]) };
+            }
+        }
+    }
     // the renderer takes ownership of the bytes (and frees them on failure)
     const data = try c.gpa.dupe(u8, c.attachments[0].data);
-    c.result = try c.r.?.registerFont(data, c.input, @intCast(@min(c.arg0, 1000)), @bitCast(c.arg1));
+    c.result = try c.r.?.registerFont(data, c.input, @intCast(@min(c.arg0, 1000)), @bitCast(c.arg1), ranges);
 }
 
 /// input = family name; result = one byte, 1 when a face was removed.

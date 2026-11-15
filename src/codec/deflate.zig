@@ -20,6 +20,9 @@ pub const Level = enum {
     default,
     /// chain 512, lazy, nice 258.
     best,
+    /// `fast`'s greedy parse under `default`'s zlib header (0x789C, what krilla's miniz level 6
+    /// writes): PDF content streams.
+    text,
 };
 
 const Cfg = struct {
@@ -44,6 +47,7 @@ fn cfgOf(level: Level) Cfg {
         .fast => .{ .chain = 8, .nice = 258, .lazy = 0, .max_insert = 258 },
         .default => .{ .chain = 32, .nice = 258, .lazy = 258, .max_insert = 258, .run_insert = 16, .good = 8 },
         .best => .{ .chain = 512, .nice = 258, .lazy = 258, .max_insert = 258, .min3 = true, .hash_len = 3 },
+        .text => cfgOf(.fast),
     };
 }
 
@@ -57,6 +61,9 @@ pub const Options = struct {
     /// Bytes hashed for match candidates (3..6); 0 = the level default (4, or 3 for `.best`).
     /// 6 suits low-entropy data such as palette indices: shorter chains of better candidates.
     hash_len: u8 = 0,
+    /// Total input size when known (0: unknown). A small input gets a smaller hash table:
+    /// clearing 128 KB of heads costs more than compressing a few hundred bytes (PDF streams).
+    size_hint: usize = 0,
 };
 
 /// zlib-wrapped DEFLATE of `input`.
@@ -112,7 +119,8 @@ pub const Stream = struct {
     /// `out_cap`: initial output capacity guess. `prefix`: bytes reserved at the start of the
     /// output for the caller (e.g. PNG chunks before the IDAT data); compressed data follows.
     pub fn init(alloc: std.mem.Allocator, opts: Options, out_cap: usize, prefix: usize, zlib: bool) Error!Stream {
-        const head = try alloc.alloc(u32, 1 << hash_bits);
+        const bits = hashBits(opts.size_hint);
+        const head = try alloc.alloc(u32, @as(usize, 1) << bits);
         errdefer alloc.free(head);
         const prev = try alloc.alloc(u32, wsize);
         errdefer alloc.free(prev);
@@ -128,12 +136,12 @@ pub const Stream = struct {
             w.buf[prefix + 1] = switch (opts.level) {
                 .fastest => 0x01,
                 .fast => 0x5E,
-                .default => 0x9C,
+                .default, .text => 0x9C,
                 .best => 0xDA,
             };
             w.pos += 2;
         }
-        var st = State{ .src = win[0..0], .cfg = cfgOf(opts.level), .hints = opts.dist_hints, .head = head, .prev = prev, .syms = syms };
+        var st = State{ .src = win[0..0], .cfg = cfgOf(opts.level), .hints = opts.dist_hints, .head = head, .prev = prev, .syms = syms, .hshift = @intCast(64 - @as(u32, bits)) };
         if (opts.hash_len >= 3 and opts.hash_len <= 6) st.cfg.hash_len = opts.hash_len;
         if (st.cfg.min3) st.mask = 0xFFFFFF;
         st.hmask = (@as(u64, 1) << @intCast(8 * st.cfg.hash_len)) - 1;
@@ -172,7 +180,7 @@ pub const Stream = struct {
     pub fn reset(s: *Stream) void {
         @memset(s.st.head, 0);
         const o = s.st;
-        s.st = .{ .src = s.win[0..0], .cfg = o.cfg, .hints = o.hints, .head = o.head, .prev = o.prev, .syms = o.syms, .mask = o.mask, .hmask = o.hmask };
+        s.st = .{ .src = s.win[0..0], .cfg = o.cfg, .hints = o.hints, .head = o.head, .prev = o.prev, .syms = o.syms, .mask = o.mask, .hmask = o.hmask, .hshift = o.hshift };
         s.w.pos = 0;
         s.w.bits = 0;
         s.w.nbits = 0;
@@ -327,6 +335,13 @@ const fixed_lit_lens: [288]u8 = blk: {
 // ------------------------------------------------------------------ LZ77
 
 const hash_bits = 15;
+
+/// Hash table bits for an input of `size` bytes (0: unknown, the full table).
+fn hashBits(size: usize) u5 {
+    if (size == 0) return hash_bits;
+    const need: u32 = std.math.log2_int_ceil(usize, @max(size, 2));
+    return @intCast(std.math.clamp(need, 10, hash_bits));
+}
 const wsize = 32768;
 const wmask = wsize - 1;
 const block_syms = 1 << 14;
@@ -336,8 +351,8 @@ inline fn read32(s: []const u8, i: usize) u32 {
 }
 
 /// Hash of the low bytes of the 8 at `i` selected by `m` (needs i + 8 <= s.len).
-inline fn hashAt(s: []const u8, i: usize, m: u64) u32 {
-    return @intCast(((bytes.le64(s, i) & m) *% 0x9E3779B97F4A7C15) >> (64 - hash_bits));
+inline fn hashAt(s: []const u8, i: usize, m: u64, shift: u6) u32 {
+    return @intCast(((bytes.le64(s, i) & m) *% 0x9E3779B97F4A7C15) >> shift);
 }
 
 inline fn matchLen(s: []const u8, a: usize, b: usize, max: usize) usize {
@@ -367,9 +382,10 @@ const State = struct {
     base: usize = 0, // absolute stream offset of src[0]
     mask: u32 = 0xFFFFFFFF, // 0xFFFFFF when 3-byte matches are enabled
     hmask: u64 = 0xFFFFFFFF, // bytes hashed (Cfg.hash_len)
+    hshift: u6 = 64 - hash_bits, // 64 - log2(head.len)
 
     inline fn insert(st: *State, p: usize) u32 {
-        const h = hashAt(st.src, p, st.hmask);
+        const h = hashAt(st.src, p, st.hmask, st.hshift);
         const cand = st.head[h];
         st.head[h] = @intCast(p + 1);
         st.prev[p & wmask] = cand;

@@ -14,8 +14,8 @@ benchmark nói gì về tốc độ và dung lượng file. Tài liệu PDF có 
 | `format` | Alpha | `quality` | Profile | Ghi chú |
 |:--|:-:|:-:|:--|:--|
 | `"png"` (mặc định) | có | bỏ qua | tất cả | lossless; tự chọn palette / RGB / RGBA |
-| `"jpeg"` (bí danh `"jpg"`) | không — bị bỏ, vùng trong suốt thành **đen** (giống takumi) | 1–100, mặc định 75 | tất cả | JPEG baseline; hãy cho node gốc một nền đặc |
-| `"webp"` | có | bỏ qua | tất cả | luôn **lossless** (giống bản wasm của takumi); `lossless` cũng bị bỏ qua |
+| `"jpeg"` (bí danh `"jpg"`) | không — bị bỏ, vùng trong suốt thành **đen** | 1–100, mặc định 75 | tất cả | JPEG baseline; hãy cho node gốc một nền đặc |
+| `"webp"` | có | bỏ qua | tất cả | luôn **lossless**; `lossless` cũng bị bỏ qua |
 | `"raw"` | có | bỏ qua | tất cả | `width × height × 4` byte RGBA8 dạng straight (không premultiply) |
 | `"ico"` | có | bỏ qua | `full` | một ảnh PNG trong container ICO, mỗi cạnh 1–256 px |
 | `renderSvg()` | có | — | `full` | một chuỗi tài liệu SVG |
@@ -61,10 +61,7 @@ const png = renderer.renderSync(card, { width: 400, height: 200 }); // format de
 
 ![Card xuất ra PNG](/img/guide/formats-png.png)
 
-Bộ mã hoá tự chọn kiểu điểm ảnh cho từng ảnh: ảnh phẳng ít màu được ghi thành PNG dạng chỉ mục (palette),
-ảnh có gradient như trên thành RGBA 8 bit. Bạn không cần cấu hình gì, và cũng không có tuỳ chọn mức nén.
-Trong benchmark, file PNG của bm-engine trung bình bằng 0.78× dung lượng của takumi (trung bình nhân trên
-191 fixture, xem [Benchmark](../benchmark.md)).
+PNG nén không mất dữ liệu. Dung lượng file phụ thuộc nội dung ảnh.
 
 ## So sánh dung lượng
 
@@ -140,8 +137,7 @@ const onWhite = renderer.renderSync(
 | ![JPEG có góc đen](/img/guide/formats-jpeg-black-corners.jpg) | ![JPEG trên nền trắng](/img/guide/formats-jpeg-on-white.jpg) |
 
 ::: tip
-Bộ mã hoá JPEG chỉ đơn giản bỏ kênh alpha, không trộn với màu nào, và không có tuỳ chọn màu nền — takumi
-cũng vậy. Điểm ảnh trong suốt hoàn toàn thành
+Bộ mã hoá JPEG chỉ đơn giản bỏ kênh alpha, không trộn với màu nào, và không có tuỳ chọn màu nền. Điểm ảnh trong suốt hoàn toàn thành
 màu đen, còn điểm ảnh bán trong suốt giữ nguyên màu với cường độ đầy đủ: canvas tô `rgba(255, 0, 0, 0.5)`
 ra màu đỏ đặc, và một bóng đổ mềm trên canvas trong suốt biến thành một khối cứng màu của bóng. Luôn đặt
 một màu đặc cho node gốc khi xuất JPEG.
@@ -149,7 +145,7 @@ một màu đặc cho node gốc khi xuất JPEG.
 
 ## WebP
 
-Đầu ra WebP **luôn lossless**, giống hệt bản WebAssembly của takumi: `quality` và `lossless: false` được
+Đầu ra WebP **luôn lossless**: `quality` và `lossless: false` được
 chấp nhận nhưng bị bỏ qua. Kênh alpha được giữ.
 
 <!-- @example formats#webp -->
@@ -258,12 +254,7 @@ console.log(svg.slice(0, 90));
 
 SVG của ví dụ này nặng 7 118 byte. Cần biết:
 
-- **Chữ không còn là chữ.** Glyph được vẽ bằng đường viền; không nhúng font, không chọn hay tìm kiếm được
-  chữ. Đổi lại, SVG trông giống hệt dù máy xem không cài font của bạn.
-- `format`, `quality` và `devicePixelRatio` bị bỏ qua: đầu ra SVG luôn được dàn trang với tỉ lệ điểm
-  ảnh 1, giống takumi (dù sao tài liệu SVG cũng co giãn được).
-- Trong benchmark, SVG của cả hai engine được rasterize rồi so sánh: 175/179 fixture identical hoặc
-  equivalent với SVG của takumi.
+Chữ trong SVG được xuất thành đường nét. Hãy kiểm tra file bằng đúng trình xem mà ứng dụng sử dụng.
 
 ## Device pixel ratio
 
@@ -361,6 +352,4 @@ try {
 }
 ```
 
-Các bộ mã hoá là của riêng bm-engine, nên byte đầu ra khác takumi ngay cả khi điểm ảnh giống hệt;
-[Benchmark](../benchmark.md) so sánh điểm ảnh sau khi giải mã. Xem thêm [Hiệu năng](./performance.md) để
-chọn giữa raw và đầu ra đã mã hoá, và [Profile và kích thước](../profiles-and-size.md).
+Để kiểm tra kết quả ảnh, so sánh điểm ảnh sau khi giải mã. Hash của file nén không thể hiện đầy đủ mức giống nhau về hình ảnh.

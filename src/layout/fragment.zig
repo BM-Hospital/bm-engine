@@ -18,9 +18,9 @@
 //! `break-inside: avoid`, `orphans` / `widows`, monolithic content, margins truncated at unforced breaks,
 //! parallel flows for table cells / flex rows / grid rows / floats / overflowing content of boxes that end
 //! on the page). Blink lays every page out again from a break token; here one page at a time is "probed"
-//! on the finished layout (pure, no mutation: `probe`) and the break it finds is then applied (`apply`):
-//! the positions before a page's first break are those of the unfragmented layout, so no re-layout is
-//! needed (Blink's own flex and grid fragmentation works the same way: one layout, then per-page offsets).
+//! on the finished layout (pure, no mutation: `probe`) and the break it finds is then applied (`apply`).
+//! PDF pagination may rebuild the full layout when a deferred float moves or a split float gains exclusion
+//! extent; this is still whole-document re-layout, not incremental per-page layout.
 //!
 //! Usage (see tests_fragment.zig):
 //!   try t.compute(root, .{ .{ .definite = page_w }, .{ .definite = page_h } }, ctx, measure, opts);
@@ -30,10 +30,10 @@
 //!       // then for (pages.repeatsOf(i)) |r| paint the subtree of r.node translated by a further r.dy
 //!   }
 //!
-//! Limits of a post-layout pass (nothing is laid out again):
-//!  * lines do not re-flow beside a float that moved to another page; percentages and stretching never saw
-//!    a page size; a box with a definite `height` keeps it (its content overflows, as in Blink), any other
-//!    box grows by what a break pushed down;
+//! Limits of a post-layout fragmentation pass:
+//!  * float placement can trigger a whole-frame retry, but split floats do not yet have a general
+//!    page-local exclusion model; percentages and stretching never saw a page size; a box with a definite
+//!    `height` keeps it (its content overflows, as in Blink), any other box grows by what a break pushed down;
 //!  * the page inline size cannot change within one pagination (block sizes can: `Options.page_height_fn`);
 //!    pages of another width are a new layout at that width, paginated from where the content continues
 //!    (`Options.start`: page 0 then holds what earlier pages showed and ends exactly at the start, page 1
@@ -99,7 +99,19 @@ pub const Options = struct {
 /// keeps its block-start margin), or before line `line` of the text node `node`. `node == no_node`:
 /// not one point (parallel flows broken inside, a box broken in its block-end space, the first
 /// page, the pages below the end of the flow).
-pub const Start = struct { node: u32 = no_node, line: u32 = no_node, forced: bool = false };
+pub const ResumePoint = struct { node: u32, line: u32 = no_node, forced: bool = false, finished: bool = false };
+pub const Start = struct {
+    node: u32 = no_node,
+    line: u32 = no_node,
+    forced: bool = false,
+    /// Independent cell flows of a table row. Flex/grid keep their established track width.
+    branches: []const ResumePoint = &.{},
+    row_height: f32 = 0,
+    /// Rowspanning cell paragraphs continue independently of the current row.
+    side_flows: []const ResumePoint = &.{},
+};
+pub const ParagraphCut = struct { node: u32, glyph: u32 };
+pub const RowMinimum = struct { node: u32, height: f32, top: ?f32 = null };
 
 pub const Page = struct { top: f32, height: f32 };
 /// Lines `first_line..` of `node` (up to the next entry of the same node) are painted `dy` lower.
@@ -108,6 +120,11 @@ pub const LineShift = struct { node: u32, first_line: u32, dy: f32 };
 pub const Repeat = struct { node: u32, page: u32, dy: f32 };
 
 pub const BoxFragment = struct { y: f32, h: f32, from_prev: bool, to_next: bool };
+/// The fragment of layout node `node` on the page that ends at stitched offset `at` reaches down
+/// to `bottom` past it, its block-end edge still cut (takumi lays a table cell out without a break
+/// before its block-end decorations: a cell whose content ends on the page keeps its trailing
+/// border and padding in that fragment, and its row and their ancestors grow with it; src/pdf/paged.zig).
+pub const Extend = struct { node: u32, at: f32, bottom: f32 };
 
 pub const Pages = struct {
     pages: []Page = &.{},
@@ -125,6 +142,10 @@ pub const Pages = struct {
     pub fn deinit(p: *Pages, a: Allocator) void {
         a.free(p.pages);
         a.free(p.names);
+        for (p.starts) |s| {
+            a.free(s.branches);
+            a.free(s.side_flows);
+        }
         a.free(p.starts);
         a.free(p.line_shifts);
         a.free(p.repeats);
@@ -194,6 +215,9 @@ pub const Error = error{ OutOfMemory, TooManyPages, InvalidPageSize };
 /// Paged-layout state a tree carries with the PDF feature (`Tree.paged`; `void` without it, so the
 /// other builds do not change). Filled by the caller (render.zig `Frame.setPaged` / `paginate`).
 pub const PagedState = struct {
+    /// A rebuilt paragraph queries float exclusions at its fragmentainer
+    /// position, while its consumed prefix remains in stitched layout space.
+    inline_resume: ?struct { node: u32, from_y: f32, dy: f32 } = null,
     /// page area (content box) size in px when laid out for pages; 0 = not paged. `page_h` is also the
     /// block size of the initial containing block of `position: fixed` boxes (tree.zig)
     page_w: f32 = 0,
@@ -222,6 +246,14 @@ pub const PagedState = struct {
     /// (`font.Paragraph.cut`); `no_node`: none.
     cut_node: u32 = no_node,
     cut_glyph: u32 = 0,
+    cuts: []const ParagraphCut = &.{},
+    row_minimums: []const RowMinimum = &.{},
+    /// Placement shifts of whole floats deferred to another fragmentainer.
+    /// Recomputed inline layout consumes these through the BFC exclusion space.
+    float_shifts: []f32 = &.{},
+    /// Extra block extent introduced when pagination splits a float across a fragmentainer.
+    /// The BFC uses it on the next layout pass so following lines avoid the whole float.
+    float_extents: []f32 = &.{},
     /// What viewport units resolve against when set (a header / footer band: the whole page, takumi-pdf
     /// `band_viewport`'s unit reference), whatever the frame's own viewport.
     units: ?[2]f32 = null,
@@ -250,14 +282,14 @@ fn clipsY(s: anytype) bool {
 /// Blink's BreakAppeal, worst first.
 const Appeal = enum(u8) { last_resort, violating_avoid, violating_orphans_widows, perfect };
 inline fn rank(x: Appeal) u8 {
-    return @intFromEnum(x);
+    return @backingInt(x);
 }
 inline fn worse(x: Appeal, y: Appeal) Appeal {
     return if (rank(x) < rank(y)) x else y;
 }
 /// Blink's JoinFragmentainerBreakValues (the second value wins a tie).
 inline fn join(first: BB, second: BB) BB {
-    return if (@intFromEnum(second) >= @intFromEnum(first)) second else first;
+    return if (@backingInt(second) >= @backingInt(first)) second else first;
 }
 
 const eps: f32 = 1.0 / 128.0;
@@ -419,6 +451,10 @@ fn Engine(comptime T: type) type {
         main_done: bool = false,
 
         fn deinit(e: *Self) void {
+            for (e.starts.items) |s| {
+                e.a.free(s.branches);
+                e.a.free(s.side_flows);
+            }
             e.starts.deinit(e.a);
             for (e.seqs.items) |s| e.a.free(s.items);
             e.seqs.deinit(e.a);
@@ -446,7 +482,11 @@ fn Engine(comptime T: type) type {
         fn pageHeight(e: *Self, page: u32) Error!f32 {
             const name = if (!e.any_names) 0 else if (page == 0) e.startName(e.t.root, 0) else e.resumeName();
             try e.names.append(e.a, name);
-            if (e.opts.record_starts) try e.starts.append(e.a, if (page == 0 or e.main_done) .{} else e.startToken());
+            if (e.opts.record_starts) {
+                const token: Start = if (page == 0 or e.main_done) .{} else try e.startToken();
+                errdefer e.a.free(token.branches);
+                try e.starts.append(e.a, token);
+            }
             if (page == 0) if (e.start_h) |h0| return h0;
             const h = if (e.opts.page_height_fn) |f| f(e.opts.ctx, page, name) else e.opts.page_height;
             if (!(h >= 1) or !(h < 16_777_216)) return error.InvalidPageSize;
@@ -625,13 +665,24 @@ fn Engine(comptime T: type) type {
 
         /// Where the page that opens now starts (`Start`), down the chain of boxes broken inside, as
         /// `resumeName` walks it.
-        fn startToken(e: *Self) Start {
+        fn startToken(e: *Self) Error!Start {
             var cur = e.t.root;
             var guard: u32 = 0;
             while (guard < tr.max_depth + 8) : (guard += 1) {
                 const st = &e.st[cur];
-                if (!st.started or st.spanned) return .{};
+                if (!st.started) return .{};
                 const k = e.kindOf(cur);
+                if (st.spanned) {
+                    if (k != .row) return .{};
+                    var points: std.ArrayList(ResumePoint) = .empty;
+                    defer points.deinit(e.a);
+                    var child = e.t.nodes.items[cur].first_child;
+                    while (child != no_node) : (child = e.t.nodes.items[child].next_sibling) {
+                        if (e.style(child).display == .none or e.style(child).position.isOut()) continue;
+                        if (!try e.finishedPoints(child, &points, 0)) return .{};
+                    }
+                    return .{ .node = cur, .branches = try points.toOwnedSlice(e.a), .row_height = if (st.seq != no_node) e.seqs.items[st.seq].h0 else e.lay(cur).h };
+                }
                 if (k == .text) return .{ .node = cur, .line = st.@"resume" };
                 if (st.seq == no_node) return .{};
                 const sq = &e.seqs.items[st.seq];
@@ -640,18 +691,132 @@ fn Engine(comptime T: type) type {
                 if (!sq.items[st.@"resume"].flow) return .{};
                 if (!st.child_inside) return .{ .node = c, .forced = st.forced_resume };
                 // (parallel flows broken inside resume at more than one point)
-                if ((k == .row or k == .bands) and bandEnd(sq, st.@"resume") != st.@"resume" + 1) return .{};
+                if ((k == .row or k == .bands) and bandEnd(sq, st.@"resume") != st.@"resume" + 1) {
+                    if (k != .row) return .{};
+                    var points: std.ArrayList(ResumePoint) = .empty;
+                    defer points.deinit(e.a);
+                    const end = bandEnd(sq, st.@"resume");
+                    for (sq.items[st.@"resume"..end]) |item| {
+                        if (!item.flow or !try e.resumePoints(item.node, &points, 0)) return .{};
+                    }
+                    return .{ .node = cur, .branches = try points.toOwnedSlice(e.a), .row_height = sq.h0 };
+                }
                 cur = c;
             }
             return .{};
         }
+
+        /// Adds an in-progress float to the page-start token after its fragment breaks.
+        /// The main flow token and parallel float tokens are independent: a width change
+        /// rebuilds both from their own continuation points.
+        fn recordFloatResume(e: *Self, page: u32, n: u32) Error!void {
+            if (!e.opts.record_starts) return;
+            try e.need(page);
+            var points: std.ArrayList(ResumePoint) = .empty;
+            defer points.deinit(e.a);
+            if (!try e.resumePoints(n, &points, 0)) return;
+            for (points.items) |point| if (!point.finished) {
+                var merged: std.ArrayList(ResumePoint) = .empty;
+                errdefer merged.deinit(e.a);
+                const token = &e.starts.items[page];
+                try merged.appendSlice(e.a, token.side_flows);
+                var found = false;
+                for (merged.items) |*existing| if (existing.node == point.node) {
+                    existing.* = point;
+                    found = true;
+                    break;
+                };
+                if (!found) try merged.append(e.a, point);
+                const side_flows = try merged.toOwnedSlice(e.a);
+                e.a.free(token.side_flows);
+                token.side_flows = side_flows;
+            };
+        }
+
+        fn resumePoints(e: *Self, n: u32, points: *std.ArrayList(ResumePoint), depth: u32) Error!bool {
+            if (depth >= tr.max_depth) return false;
+            const st = &e.st[n];
+            if (st.done) {
+                return e.finishedPoints(n, points, depth);
+            }
+            if (!st.started) {
+                try points.append(e.a, .{ .node = n });
+                return true;
+            }
+            if (st.spanned) return e.finishedPoints(n, points, depth);
+            if (e.kindOf(n) == .text) {
+                try points.append(e.a, .{ .node = n, .line = if (st.@"resume" == 0) no_node else st.@"resume" });
+                return true;
+            }
+            if (st.seq == no_node) return false;
+            const sq = &e.seqs.items[st.seq];
+            if (st.@"resume" >= sq.items.len) {
+                try points.append(e.a, .{ .node = n, .finished = true });
+                return true;
+            }
+            const end = if (st.child_inside) bandEnd(sq, st.@"resume") else st.@"resume" + 1;
+            for (sq.items[st.@"resume"..end]) |item| {
+                if (!item.flow) return false;
+                if (st.child_inside) {
+                    if (!try e.resumePoints(item.node, points, depth + 1)) return false;
+                } else try points.append(e.a, .{ .node = item.node, .forced = st.forced_resume });
+            }
+            return true;
+        }
+
+        fn finishedPoints(e: *Self, n: u32, points: *std.ArrayList(ResumePoint), depth: u32) Error!bool {
+            if (depth >= tr.max_depth) return false;
+            const node = &e.t.nodes.items[n];
+            if (e.kindOf(n) == .text or node.first_child == no_node) {
+                try points.append(e.a, .{ .node = n, .finished = true });
+                return true;
+            }
+            var child = node.first_child;
+            while (child != no_node) : (child = e.t.nodes.items[child].next_sibling) {
+                if (e.style(child).display == .none or e.style(child).position.isOut()) continue;
+                if (!try e.finishedPoints(child, points, depth + 1)) return false;
+            }
+            return true;
+        }
+
         /// Whether `Options.start` asks for a break before the box `c` here (page 0).
         inline fn startsAt(e: *const Self, c: u32) bool {
             const s = e.opts.start orelse return false;
+            for (s.side_flows) |p| if (!p.finished and p.line == no_node and p.node == c) return e.start_h != null and e.page == 0;
+            if (s.branches.len > 0) {
+                if (e.start_h == null or e.page != 0) return false;
+                for (s.branches) |p| if (!p.finished and p.line == no_node and p.node == c) return true;
+                return false;
+            }
             return e.start_h != null and e.page == 0 and s.line == no_node and s.node == c;
+        }
+        fn startForced(e: *const Self, c: u32) bool {
+            const s = e.opts.start orelse return false;
+            for (s.side_flows) |p| if (!p.finished and p.node == c) return p.forced;
+            for (s.branches) |p| if (!p.finished and p.node == c) return p.forced;
+            return s.forced;
         }
         /// The block offset `Options.start` names (null: no point to break at).
         fn startY(e: *Self, s: Start) ?f32 {
+            var y = e.mainStartY(s);
+            for (s.side_flows) |p| {
+                if (p.finished) continue;
+                const side = e.mainStartY(.{ .node = p.node, .line = p.line, .forced = p.forced }) orelse return null;
+                y = if (y) |main| @max(main, side) else side;
+            }
+            return y;
+        }
+        fn mainStartY(e: *Self, s: Start) ?f32 {
+            if (s.branches.len > 0) {
+                var end: f32 = 0;
+                for (s.branches) |p| {
+                    if (p.finished) continue;
+                    if (p.node >= e.t.nodes.items.len) return null;
+                    const y = e.startY(.{ .node = p.node, .line = p.line, .forced = p.forced }) orelse return null;
+                    end = @max(end, y);
+                }
+                return end;
+            }
             if (s.node >= e.t.nodes.items.len) return null;
             const top = e.absTopOf(s.node);
             if (s.line != no_node) {
@@ -975,7 +1140,7 @@ fn Engine(comptime T: type) type {
                 if (!resumed and e.startsAt(it0.node)) {
                     // (`Options.start`: page 0 ends right before this box)
                     const r = try e.setBreak(n, .before, i, true, .perfect, known_fit, bottom0, pg.end);
-                    e.slot[n].trunc = !e.opts.start.?.forced;
+                    e.slot[n].trunc = !e.startForced(it0.node);
                     return r;
                 }
                 const band_top = e.bandTop(sq, i, j, top);
@@ -1068,7 +1233,7 @@ fn Engine(comptime T: type) type {
             const sl = &e.slot[n];
             var bottom = bottom0;
             const inset_b = l.padding.bottom + l.border.bottom;
-            if (k == .block and !e.bounded(n) and bottom > pg.end + eps and last_end > ninf) {
+            if (k == .block and e.style(n).display != .table_cell and !e.bounded(n) and bottom > pg.end + eps and last_end > ninf) {
                 // Blink's AdjustedMarginAfterFinalChildFragment: the last child's block-end margin stops
                 // at the page end
                 const ce = bottom - inset_b;
@@ -1115,6 +1280,7 @@ fn Engine(comptime T: type) type {
                 const c = it.node;
                 const ct = e.itemTop(sq, k, top);
                 const cl = e.lay(c);
+                const aligned_grid_item = tr.has(cl.grid_block_start) and cl.y > cl.grid_block_start + eps;
                 if (e.st[c].done) {
                     agg.end = @max(agg.end, ct + cl.h);
                     agg.mend = @max(agg.mend, ct + cl.h + @max(cl.margin.bottom, 0));
@@ -1137,6 +1303,7 @@ fn Engine(comptime T: type) type {
                     // parallel flows, whose block-start breakpoint is a class A one)
                     e.slot[c] = .{ .stamp = e.stamp, .kind = .push, .brk = true };
                     agg.brk = true;
+                    if (aligned_grid_item) agg.appeal = .last_resort;
                     end = pg.end;
                 } else if (rc.brk and !rc.par) {
                     agg.brk = true;
@@ -1151,6 +1318,7 @@ fn Engine(comptime T: type) type {
                         e.slot[c] = .{ .stamp = e.stamp, .kind = .push, .brk = true };
                         agg.brk = true;
                         agg.appeal = worse(agg.appeal, if (sep) .perfect else .last_resort);
+                        if (aligned_grid_item) agg.appeal = .last_resort;
                         end = pg.end;
                     }
                 }
@@ -1264,7 +1432,16 @@ fn Engine(comptime T: type) type {
             // (the lines' window: `box-decoration-break: clone`)
             const lpg = e.clonePg(n, pg);
             // (`Options.start`: page 0 ends right before one of these lines)
-            const cut_line: u32 = if (e.opts.start) |s| (if (e.start_h != null and e.page == 0 and s.node == n and s.line != no_node) s.line else no_node) else no_node;
+            const cut_line: u32 = blk: {
+                const s = e.opts.start orelse break :blk no_node;
+                if (e.start_h == null or e.page != 0) break :blk no_node;
+                for (s.side_flows) |p| if (!p.finished and p.node == n) break :blk p.line;
+                if (s.branches.len > 0) {
+                    for (s.branches) |p| if (!p.finished and p.node == n) break :blk p.line;
+                    break :blk no_node;
+                }
+                break :blk if (s.node == n) s.line else no_node;
+            };
             var i = start;
             while (i < lines.len) : (i += 1) {
                 if (i == cut_line and i > start) return try e.setBreak(n, .line, i, true, .perfect, false, bottom, pg.end);
@@ -1547,7 +1724,13 @@ fn Engine(comptime T: type) type {
                     const cs = e.slot[c];
                     if (cs.stamp == e.stamp and cs.brk and !cs.par) {
                         if (cs.kind == .push) {
-                            e.lay(c).y += @max(pg.next - ct, 0);
+                            // A grid item which broke before its first content has an empty
+                            // fragment on this page. Its continuation starts at the next
+                            // fragment's block start, without its original row alignment
+                            // offset (GridLayoutAlgorithm::PlaceGridItemsForFragmentation).
+                            const cl = e.lay(c);
+                            const resumed_grid_item = tr.has(cl.grid_block_start) and cl.y > cl.grid_block_start + eps;
+                            e.lay(c).y += if (resumed_grid_item) pg.next - ct else @max(pg.next - ct, 0);
                             cst.full = false;
                         } else _ = try e.apply(c, ct, pg);
                     } else cst.done = true;
@@ -1622,7 +1805,11 @@ fn Engine(comptime T: type) type {
                     if (cs.display == .none) continue;
                     if (cs.position.isOut() and (cs.position == .fixed or cs.inset.top != .auto or cs.inset.bottom != .auto)) continue;
                     const cl = e.lay(ch);
-                    if (cl.y + cl.h * 0.5 >= cut) cl.y += d;
+                    // Floats have their own parallel continuation. Move one with the text
+                    // only when its anchor starts after the break; its height must not make
+                    // a float anchored before the break look like a later inline box.
+                    const after_cut = if (floats_on and cs.float != .none) cl.y >= cut else cl.y + cl.h * 0.5 >= cut;
+                    if (after_cut) cl.y += d;
                 }
             }
             try e.shifts.append(e.a, .{ .node = n, .first_line = k, .dy = stt.shift });
@@ -1649,6 +1836,7 @@ fn Engine(comptime T: type) type {
                     break;
                 }
                 _ = try e.apply(f, top, pg);
+                if (floats_on and e.style(f).float != .none) try e.recordFloatResume(page + 1, f);
                 page += 1;
             }
             e.flush();
@@ -1733,6 +1921,9 @@ fn Engine(comptime T: type) type {
                     const pk = e.kindOf(ns[cur].parent);
                     const is_abs = s.position == .absolute;
                     const is_float = floats_on and !is_abs and s.float != .none and (pk == .block or pk == .text);
+                    const parent_seq = e.st[ns[cur].parent].seq;
+                    const row_height = if (parent_seq != no_node) e.seqs.items[parent_seq].h0 else e.lay(ns[cur].parent).h;
+                    const is_rowspan = pk == .row and e.lay(cur).h > row_height + eps;
                     var descend = s.display != .none and !ns[cur].measured and e.kindOf(cur) != .mono and (!clipsY(s) or e.st[cur].started);
                     // (an atomic inline box is monolithic)
                     if (pk == .text and !is_abs and !is_float) descend = false;
@@ -1749,7 +1940,7 @@ fn Engine(comptime T: type) type {
                             // (laid out against the first page: not moved by `Options.start_top`)
                             e.lay(cur).y -= e.shift;
                             descend = false;
-                        } else if (is_abs or is_float) {
+                        } else if (is_abs or is_float or is_rowspan) {
                             if (is_float) try e.pushFloat(cur);
                             if (!e.st[cur].started) try e.runFlow(cur);
                             try e.drain(&qi);
@@ -1804,7 +1995,13 @@ fn Engine(comptime T: type) type {
             for (out.pages, 0..) |*p, i| p.* = .{ .top = e.tops.items[i], .height = e.tops.items[i + 1] - e.tops.items[i] };
             out.names = try e.a.alloc(u32, count);
             for (out.names, 0..) |*nm, i| nm.* = e.names.items[i];
-            if (e.opts.record_starts) out.starts = try e.a.dupe(Start, e.starts.items[0..count]);
+            if (e.opts.record_starts) {
+                out.starts = try e.a.dupe(Start, e.starts.items[0..count]);
+                for (e.starts.items[0..count]) |*s| {
+                    s.branches = &.{};
+                    s.side_flows = &.{};
+                }
+            }
             out.start_page = @intFromBool(e.start_h != null);
             std.sort.heap(LineShift, e.shifts.items, {}, shiftLess);
             out.line_shifts = try e.a.dupe(LineShift, e.shifts.items);

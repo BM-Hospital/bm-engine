@@ -10,6 +10,17 @@ const D = doc(lines(1, 30));
 const foot = (inner, style = "") => `<div style="font:10px/20px Inter;${style}">${inner}</div>`;
 const PN = `<span class="pageNumber"></span>`; const TP = `<span class="totalPages"></span>`;
 
+probe('counters.flow.transforms', 'painted counter ownership and untransformed own flow edge', async t => {
+  await cmpAll(t, [
+    ['own translate', doc(lines(1, 3) + `<div class="l" style="transform:translateY(200px)">OWN${PN}</div>` + lines(4, 20)), SMALL],
+    ['ancestor translate', doc(lines(1, 3) + `<div style="transform:translateY(200px)"><div class="l">NESTED${PN}</div></div>` + lines(4, 20)), SMALL],
+    ['nested transforms', doc(lines(1, 3) + `<div style="transform:translateY(100px)"><div class="l" style="transform:translateY(100px)">NESTED${PN}</div></div>` + lines(4, 20)), SMALL],
+    ['rotation and translation', doc(lines(1, 3) + `<div class="l" style="transform:translateY(200px) rotate(5deg);transform-origin:0 0">ROTATED${PN}</div>` + lines(4, 20)), SMALL],
+    ['backward translation preserves flow cursor', doc(lines(1, 14) + `<div class="l" style="transform:translateY(-200px)">BACK${PN}</div>` + lines(15, 20)), SMALL],
+    ['transformed target', doc(`<a href="#transformed"><span class="targetPageNumber"></span></a>` + lines(1, 12) + `<div id="transformed" class="l" style="transform:translateY(180px)">TARGET</div>`), SMALL],
+  ], G);
+});
+
 probe("counters.class-hooks", "pageNumber / totalPages class hooks in a band", async (t) => {
   await cmpAll(t, [
     ["footer: P n / N", D, { size: S, footer: foot(`P${PN}/${TP}`) }],

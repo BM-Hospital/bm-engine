@@ -3,7 +3,7 @@
   "name": "bm-engine",
   "nameNote": "Unpublished name (npm view bm-engine -> E404 on 2026-11-12). The name appears only in package.json `name` (scripts/build.mjs copies it into js/build-manifest.json; the JS sources use it only in error messages and comments).",
   "version": "0.1.0",
-  "license": "(MIT OR Apache-2.0)",
+  "license": "MIT",
   "moduleFormat": "ESM only (\"type\": \"module\"). No CommonJS build. From CommonJS use `await import(\"bm-engine\")`; on Node.js >= 20.19 / >= 22.12 `require(\"bm-engine\")` also works through require(esm) because no entry uses top-level await.",
   "engines": {
     "node": ">=18"
@@ -141,16 +141,12 @@
   },
   "publishedFiles": [
     {
-      "path": "LICENSE-APACHE",
-      "bytes": 11699
-    },
-    {
-      "path": "LICENSE-MIT",
-      "bytes": 1201
+      "path": "LICENSE",
+      "bytes": 1193
     },
     {
       "path": "NOTICE",
-      "bytes": 1741
+      "bytes": 2360
     },
     {
       "path": "README.md",

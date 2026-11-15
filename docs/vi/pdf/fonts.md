@@ -21,7 +21,7 @@ trong repository và đã được chính file đó chạy.
 
 bm-engine không kèm font và trình xem PDF nào cũng không có font của bạn, nên mọi font mà trang dùng đều được
 nhúng. Nó được nhúng dưới dạng subset: chỉ các glyph mà tài liệu thực sự vẽ, được đánh số lại và ghi thành font
-CID-keyed. Bộ cắt subset là bản port của crate Rust `subsetter` (cái mà takumi-pdf dùng) và đọc font TrueType
+CID-keyed. Bộ cắt subset là bản port của crate Rust `subsetter` và đọc font TrueType
 (`glyf`), TrueType collection và font CFF (`.otf`); WOFF và WOFF2 được giải mã trước. Bảng `cmap` và các bảng layout
 bị bỏ khỏi đầu ra, vì chữ đã được shaping xong.
 
@@ -51,7 +51,7 @@ Font biến thiên CFF2 được ghi thành font TrueType. Hãy đăng ký font 
 
 <!-- @example pdf-fonts#variable -->
 ```js
-const archivo = readFileSync("ref/takumi/assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf");
+const archivo = readFileSync("./fonts/Archivo-Variable.ttf");
 pdf.registerFont({ name: "Archivo", data: archivo }); // no weight: the axes stay free
 
 const weights = await pdf.render(
@@ -90,6 +90,14 @@ pdf.registerFont({ name: "Noto Sans", data: readFileSync("assets/fonts/NotoSans-
 // "ⱥ" (U+2C65) is not in Inter but is in Noto Sans: every registered family is a fallback
 const mixed = pdf.renderSync(`<p style="font: 20px Inter">Inter text and ⱥ</p>`, { viewport: { width: 400 } });
 // Inter draws the Latin text and Noto Sans draws ⱥ: two font programs in the file
+```
+
+Dùng `unicodeRange` khi một file font chỉ chứa một phần của family. Có thể truyền các cặp mã Unicode
+hoặc chuỗi theo cú pháp CSS `unicode-range`; ký tự ngoài phạm vi sẽ tiếp tục đi qua chuỗi font dự phòng.
+Thuộc tính `unicode-range` trong CSS `@font-face` cũng có tác dụng tương tự:
+
+```js
+pdf.registerFont({ name: "Inter", data: inter, unicodeRange: "U+0000-00FF" });
 ```
 
 `fontFamilies: ["Inter", "Noto Sans"]` đặt font stack có thứ tự cho một lần render khi tài liệu không nêu tên font

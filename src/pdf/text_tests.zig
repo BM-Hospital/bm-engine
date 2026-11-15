@@ -1,5 +1,5 @@
 //! Tests of text.zig / font_objects.zig / type3.zig. The oracle is takumi-pdf's own output
-//! (ref/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs in tests/pdf_fixtures.rs):
+//! (tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs in tests/pdf_fixtures.rs):
 //! the same documents are laid out with bm-engine (Renderer + Frame), their text drawn through
 //! `drawFrameRun`, and the text operators / font objects compared. Tests that need files from
 //! ref/ skip when they are missing. Set BM_PDF_TEXT_OUT to a directory to also write the PDFs
@@ -89,7 +89,7 @@ fn renderDoc(a: Allocator, fonts: []const []const u8, kind: rt.SourceKind, sourc
     defer r.destroy();
     for (fonts) |data| {
         const copy = try testing.allocator.dupe(u8, data);
-        _ = try r.registerFont(copy, "", 0, -1);
+        _ = try r.registerFont(copy, "", 0, -1, null);
     }
     r.arena.reset();
     const fa = r.arena.allocator();
@@ -148,13 +148,11 @@ fn textBlocks(a: Allocator, content: []const u8) ![]const u8 {
 
 // ----------------------------------------------------------------------------- fixtures
 
-const ref_root = "../ref/takumi/";
-
-/// Reads a file of the takumi checkout (relative to the repository root, the test's cwd), or
+/// Reads a file of the vendored corpus (relative to the repository root, the test's cwd), or
 /// null when it is not there.
 fn readRef(a: Allocator, rel: []const u8) ?[]u8 {
     var buf: [512]u8 = undefined;
-    for ([_][]const u8{ "ref/takumi/", "../ref/takumi/", "D:/project/bm-engine/ref/takumi/" }) |pre| {
+    for ([_][]const u8{ "tests/upstream/takumi/", "../tests/upstream/takumi/" }) |pre| {
         const p = std.fmt.bufPrint(&buf, "{s}{s}", .{ pre, rel }) catch return null;
         return std.Io.Dir.cwd().readFileAlloc(testing.io, p, a, .limited(64 << 20)) catch continue;
     }
@@ -324,12 +322,12 @@ fn runFixture(fx: Fixture) !FixtureResult {
     defer arena.deinit();
     const a = arena.allocator();
     var datas: std.ArrayList([]const u8) = .empty;
-    for (fx.fonts) |p| try datas.append(a, readRef(a, p) orelse return error.SkipZigTest);
+    for (fx.fonts) |p| try datas.append(a, readRef(a, p) orelse return error.FileNotFound);
     const d = try renderDoc(a, datas.items, fx.kind, fx.source, fx.w, fx.h, fx.shadows, .@"error");
     maybeWrite(fx.name, d.pdf);
     try testing.expect(d.uncovered == null);
     var path_buf: [256]u8 = undefined;
-    const ref_pdf = readRef(a, try std.fmt.bufPrint(&path_buf, "takumi-pdf/tests/fixtures-generated/{s}.pdf", .{fx.ref orelse fx.name})) orelse return error.SkipZigTest;
+    const ref_pdf = readRef(a, try std.fmt.bufPrint(&path_buf, "takumi-pdf/tests/fixtures-generated/{s}.pdf", .{fx.ref orelse fx.name})) orelse return error.FileNotFound;
     const ours = try pdfObjects(a, d.pdf);
     const ref = try pdfObjects(a, ref_pdf);
     const ba = try btBlocks(a, try pageContent(a, ours));
@@ -474,9 +472,9 @@ test "pdf text fixture: font-weights" {
         const r = rt.Renderer.create(testing.allocator) orelse return error.OutOfMemory;
         defer r.destroy();
         for (paths, 0..) |p, i| {
-            const data = readRef(a, p) orelse return error.SkipZigTest;
+            const data = readRef(a, p) orelse return error.FileNotFound;
             const before = r.fonts.count();
-            _ = try r.registerFont(try testing.allocator.dupe(u8, data), "", 0, -1);
+            _ = try r.registerFont(try testing.allocator.dupe(u8, data), "", 0, -1, null);
             fams[i] = try a.dupe(u8, r.fonts.face(@intCast(before)).family);
         }
     }
@@ -509,9 +507,9 @@ test "pdf text fixture: font-formats" {
         const r = rt.Renderer.create(testing.allocator) orelse return error.OutOfMemory;
         defer r.destroy();
         for (paths, 0..) |p, i| {
-            const data = readRef(a, p) orelse return error.SkipZigTest;
+            const data = readRef(a, p) orelse return error.FileNotFound;
             const before = r.fonts.count();
-            _ = try r.registerFont(try testing.allocator.dupe(u8, data), "", 0, -1);
+            _ = try r.registerFont(try testing.allocator.dupe(u8, data), "", 0, -1, null);
             fams[i] = try a.dupe(u8, r.fonts.face(@intCast(before)).family);
         }
     }

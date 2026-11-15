@@ -79,13 +79,7 @@ const gradients = renderer.renderSync(grid([
 
 Notes:
 
-- Directions: angles (`135deg`, `0.25turn`) and keywords (`to right`, `to bottom left`). Radial
-  gradients take `circle` / `ellipse`, sizes (`closest-side`, `farthest-corner`, lengths, percentages)
-  and `at <position>`; conic gradients take `from <angle>` and `at <position>`.
-- `backgroundSize` and `backgroundRepeat` tile gradients like images (the checkerboard tile is a
-  `repeating-conic-gradient` at `30px 30px`).
-- Gradient interiors may differ from takumi by one colour level (benchmark: 7 / 7 gradient fixtures
-  equivalent).
+- Gradient rasterization can round color values at stop boundaries. Check the result at your intended output size.
 
 ### Colour spaces
 
@@ -282,7 +276,7 @@ const transforms = renderer.renderSync(grid([
 
 ::: warning No 3D transforms
 3D functions (`rotateX()`, `rotateY()`, `perspective()`, `matrix3d()`, `translateZ()`, ...) are invalid
-values, as in takumi. In an inline style they make the whole render throw:
+values. In an inline style they make the whole render throw:
 :::
 
 <!-- @example effects#transform-3d -->

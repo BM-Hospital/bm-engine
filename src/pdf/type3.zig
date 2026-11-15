@@ -67,7 +67,7 @@ pub fn drawColorGlyph(cx: *sf.Ctx, s: *sf.Surface, font: *const ttf.Font, ctx_co
     const ct = color.ColorTables.init(font);
     const kind = ct.kind(gid);
     if (kind == .colr_v0 or kind == .colr_v1) {
-        if (try buildColr(cx.a, font, &ct, gid, ctx_color)) |ins| {
+        if (try buildColr(cx.a, font, &ct, gid, ctx_color, null)) |ins| {
             s.pushTransform(base);
             s.pushTransform(Tf.scale(1, -1));
             s.pushTransform(Tf.scale(1, -1));
@@ -177,6 +177,8 @@ const Builder = struct {
     a: Allocator,
     font: *const ttf.Font,
     ctx_color: [3]u8,
+    /// Resolved shadow outlines use the requested ppem, unlike Type3 glyph programs.
+    outline_ppem: ?f32 = null,
     clips: std.ArrayList([]const Path) = .empty,
     stack: std.ArrayList(std.ArrayList(Ins)) = .empty,
     layers: std.ArrayList(u8) = .empty,
@@ -207,7 +209,14 @@ const Builder = struct {
         const b = self(ctx);
         const t = b.transforms.getLastOrNull() orelse return b.fail();
         var p: Path = .empty;
-        const ok = glyphPath(b.a, b.font, gid, t, &p) catch return b.fail();
+        const ok = if (b.outline_ppem) |size| blk: {
+            var raw: Path = .empty;
+            var sink: raster.PathSink = .{ .path = &raw, .alloc = b.a };
+            if (!b.font.outlineResolved(gid, size, &sink)) break :blk false;
+            if (sink.err) return b.fail();
+            geom.transformed(b.a, &raw, t, &p) catch return b.fail();
+            break :blk true;
+        } else glyphPath(b.a, b.font, gid, t, &p) catch return b.fail();
         if (!ok) return b.fail();
         b.pushClipPath(p);
     }
@@ -333,7 +342,7 @@ const Builder = struct {
     }
     fn pushL(ctx: *anyopaque, mode: color.CompositeMode) void {
         const b = self(ctx);
-        b.layers.append(b.a, @intFromEnum(mode)) catch return b.fail();
+        b.layers.append(b.a, @backingInt(mode)) catch return b.fail();
         b.stack.append(b.a, .empty) catch b.fail();
     }
     fn popL(ctx: *anyopaque) void {
@@ -342,7 +351,7 @@ const Builder = struct {
         var ins = b.stack.pop() orelse return b.fail();
         if (b.stack.items.len == 0) return b.fail();
         const top = &b.stack.items[b.stack.items.len - 1];
-        if (mode == @intFromEnum(color.CompositeMode.src_over) and ins.items.len > 0 and ins.items[ins.items.len - 1] == .layer) {
+        if (mode == @backingInt(color.CompositeMode.src_over) and ins.items.len > 0 and ins.items[ins.items.len - 1] == .layer) {
             const last = ins.pop().?.layer;
             top.append(b.a, .{ .composite = .{ .source = last.body, .mode = last.mode, .backdrop = ins.items } }) catch b.fail();
             return;
@@ -355,8 +364,8 @@ const Builder = struct {
 };
 
 /// Paints COLR glyph `gid` into an instruction list (null: no COLR data or an error).
-fn buildColr(a: Allocator, font: *const ttf.Font, ct: *const color.ColorTables, gid: u16, ctx_color: [3]u8) !?[]const Ins {
-    var b: Builder = .{ .a = a, .font = font, .ctx_color = ctx_color };
+fn buildColr(a: Allocator, font: *const ttf.Font, ct: *const color.ColorTables, gid: u16, ctx_color: [3]u8, outline_ppem: ?f32) !?[]const Ins {
+    var b: Builder = .{ .a = a, .font = font, .ctx_color = ctx_color, .outline_ppem = outline_ppem };
     try b.clips.append(a, &.{});
     try b.stack.append(a, .empty);
     try b.transforms.append(a, .identity);
@@ -378,7 +387,7 @@ fn buildColr(a: Allocator, font: *const ttf.Font, ct: *const color.ColorTables, 
 
 fn blendOf(mode: u8) ?sf.Blend {
     const M = color.CompositeMode;
-    return switch (@as(M, @enumFromInt(mode))) {
+    return switch (@as(M, @fromBackingInt(@intCast(mode)))) {
         .src_over => .normal,
         .screen => .screen,
         .overlay => .overlay,
@@ -428,7 +437,7 @@ fn interpret(cx: *sf.Ctx, s: *sf.Surface, ins: []const Ins) error{OutOfMemory}!v
 
 fn interpretComposite(cx: *sf.Ctx, s: *sf.Surface, source: []const Ins, mode: u8, backdrop: []const Ins) !void {
     const M = color.CompositeMode;
-    switch (@as(M, @enumFromInt(mode))) {
+    switch (@as(M, @fromBackingInt(@intCast(mode)))) {
         .clear => {},
         .src => {
             s.pushIsolated();
@@ -498,7 +507,7 @@ pub fn colrSilhouette(a: Allocator, font: *const ttf.Font, gid: u16, fg: [4]u8, 
     if (k != .colr_v0 and k != .colr_v1) return;
     const upem: f32 = @floatFromInt(@max(1, font.units_per_em));
     const place = Tf.translate(at[0], at[1]).pre(Tf.scale(size / upem, -size / upem));
-    const ins = (try buildColr(a, font, &ct, gid, .{ fg[0], fg[1], fg[2] })) orelse return;
+    const ins = (try buildColr(a, font, &ct, gid, .{ fg[0], fg[1], fg[2] }, size)) orelse return;
     try collectLayers(a, ins, place, fg[3], opaque_path, out);
 }
 

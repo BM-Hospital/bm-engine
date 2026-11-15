@@ -1945,6 +1945,14 @@ noinline fn rowMin(t: anytype, c: *S, ri: u32, sec_collapsed: bool) Error!void {
     }
     var collapsed = sec_collapsed;
     if (row.node != no_node) {
+        // A resumed row keeps the block size its first fragment's table assigned.
+        // Reflow at a wider page can end the cell text early; it does not discard
+        // the row's remaining block space (takumi RowLayoutAlgorithm::given_block_size).
+        if (comptime @import("style.zig").frag_enabled) for (t.paged.row_minimums) |minimum| {
+            if (minimum.node == row.node) {
+                max_h = @max(max_h, minimum.height);
+            }
+        };
         const rsty = styleOf(t, row.node);
         const rl = tableLen(q, rsty.size[1]);
         if (has(rl.pct)) {
@@ -2441,6 +2449,11 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out) Error!
             var first_nc = true;
             for (c.rows[sec.start .. sec.start + sec.n_rows]) |*row| {
                 if (!first_nc and !row.collapsed) off += sv;
+                if (comptime @import("style.zig").frag_enabled) for (t.paged.row_minimums) |minimum| {
+                    if (minimum.node == row.node) if (minimum.top) |settled| {
+                        off = @max(off, settled);
+                    };
+                };
                 row.y = off;
                 off += row.h;
                 first_nc = first_nc and row.collapsed;

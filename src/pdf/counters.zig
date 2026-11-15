@@ -23,6 +23,7 @@ const std = @import("std");
 const rt = @import("../render.zig");
 const dom_mod = @import("../dom.zig");
 const layout = @import("../layout/layout.zig");
+const mx = @import("../measure_xform.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = rt.Frame;
@@ -133,7 +134,7 @@ pub const CounterStyle = union(enum) {
             .lower_roman, .upper_roman => {
                 const numerals = [_]struct { usize, []const u8 }{
                     .{ 1000, "M" }, .{ 900, "CM" }, .{ 500, "D" }, .{ 400, "CD" }, .{ 100, "C" }, .{ 90, "XC" }, .{ 50, "L" },
-                    .{ 40, "XL" }, .{ 10, "X" },   .{ 9, "IX" },   .{ 5, "V" },    .{ 4, "IV" },   .{ 1, "I" },
+                    .{ 40, "XL" },  .{ 10, "X" },   .{ 9, "IX" },  .{ 5, "V" },    .{ 4, "IV" },  .{ 1, "I" },
                 };
                 var rem = value;
                 for (numerals) |nm| while (rem >= nm[0]) {
@@ -340,6 +341,52 @@ pub fn boxTop(f: *const Frame, lid: u32) f32 {
     return y;
 }
 
+const BoxPosition = struct { top: f32, flow_bottom: ?f32 };
+
+/// Interactive::BoxExtent: the first painted box owns the counter, while the
+/// flow it leaves behind excludes only that box's own transform. Ancestor
+/// transforms still affect both edges.
+fn boxPosition(f: *const Frame, id: u32) ?BoxPosition {
+    const n = &f.nodes.items[id];
+    var chain: [layout.max_depth + 8]u32 = undefined;
+    var len: usize = 0;
+    var cur = n.lid;
+    while (cur < f.tree.nodes.items.len and len < chain.len) {
+        chain[len] = cur;
+        len += 1;
+        if (cur == f.lroot) break;
+        cur = f.tree.nodes.items[cur].parent;
+    }
+    var matrix = mx.Affine.identity;
+    var flow = matrix;
+    var own_invertible = true;
+    while (len > 0) {
+        len -= 1;
+        const lid = chain[len];
+        const l = f.tree.layout(lid);
+        matrix = mx.mul(matrix, mx.Affine.translate(l.x, l.y));
+        if (lid == n.lid) flow = matrix;
+        if (lid < f.lid_node.items.len) {
+            const node = f.lid_node.items[lid];
+            if (node < f.nodes.items.len and f.nodes.items[node].kind != .anon_text) {
+                const local = mx.local(f.nodes.items[node].cs, l.w, l.h);
+                if (lid == n.lid) own_invertible = local.invert() != null;
+                matrix = mx.mul(matrix, local);
+            }
+        }
+    }
+    const l = f.tree.layout(n.lid);
+    var top = std.math.inf(f32);
+    var bottom = -std.math.inf(f32);
+    for ([4][2]f32{ .{ 0, 0 }, .{ l.w, 0 }, .{ 0, l.h }, .{ l.w, l.h } }) |p| {
+        top = @min(top, matrix.b * p[0] + matrix.d * p[1] + matrix.f);
+        bottom = @max(bottom, flow.b * p[0] + flow.d * p[1] + flow.f);
+    }
+    if (!std.math.isFinite(top)) return null;
+    const in_flow = n.cs.position != .absolute and n.cs.position != .fixed;
+    return .{ .top = top, .flow_bottom = if (own_invertible and std.math.isFinite(bottom) and in_flow) bottom else null };
+}
+
 /// Render node ids inside a repeating `position: fixed` subtree (`fixed`: the roots, from
 /// `emit.repeatingFixed`), as a mask over `f.nodes`.
 pub fn fixedMask(a: Allocator, f: *const Frame, fixed: []const u32) Allocator.Error![]bool {
@@ -373,9 +420,9 @@ pub fn elementBoxes(a: Allocator, f: *const Frame, pages: *const layout.fragment
         if (n.el == none or n.lid == none or n.el >= out.len) continue;
         if (mask) |m| if (m[id]) continue;
         if (n.cs.display == .none) continue;
-        const top = boxTop(f, n.lid);
-        const out_of_flow = n.cs.position == .absolute or n.cs.position == .fixed;
-        const next: ?u32 = if (out_of_flow) null else pages.pageAt(top + f.tree.layout(n.lid).h);
+        const position = boxPosition(f, @intCast(id)) orelse continue;
+        const top = position.top;
+        const next: ?u32 = if (position.flow_bottom) |bottom| pages.pageAt(bottom) else null;
         if (out[n.el]) |*b| {
             if (next) |x| b.next = if (b.next) |y| @max(x, y) else x;
         } else out[n.el] = .{ .start = pages.pageAt(top), .next = next };
@@ -387,9 +434,9 @@ pub fn elementBoxes(a: Allocator, f: *const Frame, pages: *const layout.fragment
 /// no box of its own. For a single lookup; `elementBoxes` maps every element at once.
 pub fn elementPage(f: *const Frame, el: u32) ?u32 {
     const pages = f.paginated() orelse return null;
-    for (f.nodes.items) |n| {
+    for (f.nodes.items, 0..) |n, id| {
         if (n.el != el or n.lid == none or n.cs.display == .none) continue;
-        return pages.pageAt(boxTop(f, n.lid));
+        return pages.pageAt((boxPosition(f, @intCast(id)) orelse continue).top);
     }
     return null;
 }
@@ -406,7 +453,7 @@ pub fn anchor(f: *const Frame, id: []const u8, mask: ?[]const bool) ?Anchor {
         if (n.el == none or n.lid == none or n.cs.display == .none) continue;
         if (mask) |m| if (m[k]) continue;
         if (!std.mem.eql(u8, f.dom.at(n.el).id, id)) continue;
-        const top = boxTop(f, n.lid);
+        const top = (boxPosition(f, @intCast(k)) orelse continue).top;
         return .{ .node = @intCast(k), .top = top, .page = pages.pageAt(top) };
     }
     return null;
@@ -441,7 +488,8 @@ pub fn percentDecode(a: Allocator, s: []const u8) Allocator.Error![]const u8 {
 /// A run of pages laid out at one width (paged.zig: one frame per run of page widths, every
 /// frame of the same document with the same render nodes): document pages `first ..< first +
 /// count` are pages `local0 ..` of `frame`'s pagination.
-pub const Seg = struct { frame: *Frame, first: u32, local0: u32, count: u32 };
+/// `extends`: the fragments of its last page reaching past that page's end (paged.zig `cellOverflow`).
+pub const Seg = struct { frame: *Frame, first: u32, local0: u32, count: u32, extends: []const layout.fragment.Extend = &.{} };
 
 /// The document page block offset `top` of segment `s`'s frame is on, null when that is not a page
 /// the segment shows (an earlier or a later segment shows it).
@@ -467,9 +515,9 @@ fn segBoxes(a: Allocator, segs: []const Seg, mask: ?[]const bool) Allocator.Erro
             if (n.el == none or n.lid == none or n.el >= out.len) continue;
             if (mask) |m| if (id < m.len and m[id]) continue;
             if (n.cs.display == .none) continue;
-            const top = boxTop(f, n.lid);
-            const out_of_flow = n.cs.position == .absolute or n.cs.position == .fixed;
-            const next: ?u32 = if (out_of_flow) null else segPage(segs, s, top + f.tree.layout(n.lid).h);
+            const position = boxPosition(f, @intCast(id)) orelse continue;
+            const top = position.top;
+            const next: ?u32 = if (position.flow_bottom) |bottom| segPage(segs, s, bottom) else null;
             if (out[n.el]) |*b| {
                 if (next) |x| b.next = if (b.next) |y| @max(x, y) else x;
             } else if (segPage(segs, s, top)) |p| {
@@ -489,7 +537,7 @@ fn segAnchorPage(segs: []const Seg, id: []const u8, mask: ?[]const bool) ?u32 {
             if (n.el == none or n.lid == none or n.cs.display == .none) continue;
             if (mask) |m| if (k < m.len and m[k]) continue;
             if (!std.mem.eql(u8, f.dom.at(n.el).id, id)) continue;
-            if (segPage(segs, s, boxTop(f, n.lid))) |p| return p;
+            if (segPage(segs, s, (boxPosition(f, @intCast(k)) orelse continue).top)) |p| return p;
             break;
         }
     }

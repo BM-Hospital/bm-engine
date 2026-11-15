@@ -51,26 +51,17 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 | `loadAdditionalAsset` (dynamic fonts / emoji) | no callback: register fallback fonts up front ([fallback chain](../recipes.md#i18n-font-fallback-chain)); colour emoji from a registered emoji font on `full` |
 | `graphemeImages` | no equivalent; use `image` nodes |
 | `debug: true` | `drawDebugBorder` is accepted and ignored |
-| `tw` prop (satori's Tailwind support) | `tw` on nodes, `standard` / `full` profile; class coverage follows takumi's table, not satori's |
+| `tw` prop (satori's Tailwind support) | `tw` on nodes, `standard` / `full` profile; see [supported utilities](../html-and-tailwind.md) |
 
 ## Converting JSX
 
 satori consumes React elements. bm-engine consumes plain node objects. Choose one:
 
-1. **Compile your card files with the [`h()` factory](../frameworks/index.md#node-trees-without-jsx).**
-   With esbuild `--jsx-factory=h --jsx-fragment=Fragment`, TypeScript `"jsxFactory": "h"`, or a
-   `/** @jsx h */` pragma, `<div style={...}>` becomes a container node, strings become text nodes and
-   `<img src>` an image node. Verified with esbuild 0.28.2. Function components work (they are called
-   with their props); hooks and context do not.
-2. **Convert React elements** with takumi's `fromJsx()` from `@takumi-rs/helpers`, which also maps HTML
-   elements to takumi's default presets (see [Migrating from takumi → JSX](./from-takumi.md#jsx)).
-3. **Render to HTML** with `react-dom/server` and pass the string (`standard` / `full`); HTML input gets
-   user-agent styles for `h1`, `p`, ... like a browser. See [HTML and Tailwind](../html-and-tailwind.md).
+2. **Use plain node objects** for templates you want to share without React. See the [integration checklist](checklist.md).
 
 ### `display: flex` everywhere
 
-satori (and therefore `next/og`) treats every element as a flex container. bm-engine follows CSS and
-takumi: every node is `display: inline` until you say otherwise, and inline containers ignore `width` /
+satori (and therefore `next/og`) treats every element as a flex container. bm-engine uses CSS defaults: every node is `display: inline` until you say otherwise, and inline containers ignore `width` /
 `height`. Templates written for satori often rely on the flex default, so either add `display: "flex"`
 where needed, or apply satori's default to the whole tree:
 

@@ -163,9 +163,10 @@ pub fn sourceBytes(r: *render.Renderer, a: std.mem.Allocator, src: []const u8) ?
 
 /// A JPEG source embedded as is (krilla `Image::from_jpeg`); null when `bytes` is no 8-bit
 /// JPEG with 1, 3 or 4 components.
-pub fn regJpeg(cx: *Ctx, bytes: []const u8) ?Ref {
+pub fn regJpeg(cx: *Ctx, bytes: []const u8, bytes_hash: u64) ?Ref {
     var h = sf.Hasher.init('J');
-    h.bytes(bytes);
+    h.u64_(bytes.len);
+    h.u64_(bytes_hash);
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return r;
     const info = jpegInfo(cx.a, bytes) orelse return null;
@@ -267,9 +268,10 @@ fn pngInfo(a: std.mem.Allocator, b: []const u8) ?Png {
 /// A PNG source whose IDAT stream is embedded as is (krilla `Image::from_png` / `PngRepr`):
 /// `/FlateDecode` with the PNG predictors, `/Indexed` over DeviceRGB for a palette image; null
 /// when the PNG cannot take that path (it is then decoded).
-pub fn regPng(cx: *Ctx, bytes: []const u8) ?Ref {
+pub fn regPng(cx: *Ctx, bytes: []const u8, bytes_hash: u64) ?Ref {
     var h = sf.Hasher.init('P');
-    h.bytes(bytes);
+    h.u64_(bytes.len);
+    h.u64_(bytes_hash);
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return r;
     const info = pngInfo(cx.a, bytes) orelse return null;
@@ -356,9 +358,10 @@ fn regSampled(cx: *Ctx, key: u64, wd: u32, ht: u32, luma: bool, bits: u8, color:
 const fail_prefix = "Writing the PDF failed: failed to process image: ";
 
 /// krilla `Image::from_png` + `decode_png` for a PNG it does not pass through.
-fn regPngDecoded(cx: *Ctx, bytes: []const u8) ?Drawn {
+fn regPngDecoded(cx: *Ctx, bytes: []const u8, bytes_hash: u64) ?Drawn {
     var h = sf.Hasher.init('Q');
-    h.bytes(bytes);
+    h.u64_(bytes.len);
+    h.u64_(bytes_hash);
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return .{ .ref = r };
     const md = pk.meta(cx.a, bytes) orelse return null;
@@ -372,9 +375,10 @@ fn regPngDecoded(cx: *Ctx, bytes: []const u8) ?Drawn {
 
 /// krilla `Image::from_webp`: the first frame, decoded, straight RGB plus the alpha channel when
 /// the file declares one (VP8X flag, VP8L header bit) and a pixel is not opaque.
-fn regWebp(cx: *Ctx, bytes: []const u8) ?Drawn {
+fn regWebp(cx: *Ctx, bytes: []const u8, bytes_hash: u64) ?Drawn {
     var h = sf.Hasher.init('W');
-    h.bytes(bytes);
+    h.u64_(bytes.len);
+    h.u64_(bytes_hash);
     const key = h.final();
     if (cx.doc.cacheGet(key)) |r| return .{ .ref = r };
     const body = webp.riffBody(bytes) orelse return null;
@@ -406,19 +410,22 @@ fn regWebp(cx: *Ctx, bytes: []const u8) ?Drawn {
 
 /// takumi-pdf `rasterized_image` for an image source `src` (bytes from `sourceBytes`, decoded
 /// pixmap `pmx`) under colour filter `filter`; `label` names the image in an error.
-pub fn draw(cx: *Ctx, bytes: ?[]const u8, pmx: ?*const raster.Pixmap, filter: ?PixelFilter, label: []const u8) Drawn {
+/// `bytes_hash`: XxHash64 of `bytes` seeded with their length (render.Renderer.contentHash), 0:
+/// computed here.
+pub fn draw(cx: *Ctx, bytes: ?[]const u8, bytes_hash: u64, pmx: ?*const raster.Pixmap, filter: ?PixelFilter, label: []const u8) Drawn {
     var key: u64 = 0;
     if (bytes) |b| {
+        const bh = if (bytes_hash != 0) bytes_hash else std.hash.XxHash64.hash(b.len, b);
         if (filter == null) {
             // takumi-pdf `embedded_image`: the bytes as krilla takes them
             // (an APNG is takumi-core's `AnimatedSource`, decoded by takumi: the pixmap path)
             if (std.mem.startsWith(u8, b, "\x89PNG\r\n\x1a\n") and @import("../codec/png.zig").apngFrameCount(b) == 0) {
-                if (regPng(cx, b)) |r| return .{ .ref = r };
-                if (regPngDecoded(cx, b)) |d| return d;
+                if (regPng(cx, b, bh)) |r| return .{ .ref = r };
+                if (regPngDecoded(cx, b, bh)) |d| return d;
             } else if (b.len >= 3 and b[0] == 0xFF and b[1] == 0xD8 and b[2] == 0xFF) {
-                if (regJpeg(cx, b)) |r| return .{ .ref = r };
+                if (regJpeg(cx, b, bh)) |r| return .{ .ref = r };
             } else if (b.len >= 12 and std.mem.eql(u8, b[0..4], "RIFF") and std.mem.eql(u8, b[8..12], "WEBP")) {
-                if (regWebp(cx, b)) |d| return d;
+                if (regWebp(cx, b, bh)) |d| return d;
             }
         }
         // takumi-core decodes PNG only in takumi-pdf: a JPEG or WebP cannot be drawn, a GIF is skipped
@@ -430,7 +437,7 @@ pub fn draw(cx: *Ctx, bytes: ?[]const u8, pmx: ?*const raster.Pixmap, filter: ?P
             .gif => return .none,
             else => {},
         }
-        key = std.hash.Wyhash.hash(7, b);
+        key = bh | 1;
     }
     const pm = pmx orelse return .none;
     return .{ .ref = regPixmap(cx, pm, key, filter) };
@@ -465,9 +472,25 @@ pub fn regPixmap(cx: *Ctx, pm: *const raster.Pixmap, key_in: u64, filter: ?Pixel
     const rgb = a.alloc(u8, n * 3) catch return oom(cx);
     const alpha = a.alloc(u8, n) catch return oom(cx);
     var translucent = false;
+    // (the filter is a pure function of the pixel: images repeat colours, so the results of
+    // recent ones are kept in a small direct-mapped table)
+    var memo_in: [256]u32 = undefined;
+    var memo_out: [256][4]u8 = undefined;
+    var memo_ok: [256]bool = @splat(false);
     for (0..n) |i| {
         var p: [4]u8 = px[i * 4 ..][0..4].*;
-        if (filter) |f| p = f.apply(f.ctx, p);
+        if (filter) |f| {
+            const k: u32 = @bitCast(p);
+            const slot = (k *% 0x9E37_79B1) >> 24;
+            if (memo_ok[slot] and memo_in[slot] == k) {
+                p = memo_out[slot];
+            } else {
+                p = f.apply(f.ctx, p);
+                memo_in[slot] = k;
+                memo_out[slot] = p;
+                memo_ok[slot] = true;
+            }
+        }
         rgb[i * 3 ..][0..3].* = p[0..3].*;
         alpha[i] = p[3];
         if (p[3] != 255) translucent = true;

@@ -63,7 +63,7 @@ A document can set its own page geometry with `@page` rules in an HTML `<style>`
 option (which also works for node trees). A document's `@page { size; margin }` wins over the `size` and
 `margin` options, as with Chromium's `preferCSSPageSize`. `:first`, `:left` and `:right` pages, named
 pages (the `page` property with `@page name`) and `@page` inside `@media`, `@layer` or `@supports` are
-supported; page-margin boxes (`@top-center`, ...) are skipped, as in takumi. Pages of different widths each
+supported; page-margin boxes (`@top-center`, ...) are skipped. Pages of different widths each
 lay their content out at their own width. [Pagination → Page rules](pagination.md#page-rules) has the
 examples and every supported descriptor, and [Named pages](pagination.md#named-pages) how pages of different
 widths work.

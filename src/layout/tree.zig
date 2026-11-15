@@ -132,6 +132,8 @@ pub const Out = struct {
 
 /// Computed geometry of a node.
 pub const Layout = struct {
+    /// Unaligned grid-area block start, relative to the grid, for PDF continuation.
+    grid_block_start: if (st.frag_enabled) f32 else void = if (st.frag_enabled) NONE else {},
     /// border-box position relative to the parent's border-box origin
     x: f32 = 0,
     y: f32 = 0,
@@ -243,6 +245,8 @@ const Node = struct {
     next_sibling: u32 = no_node,
     child_count: u32 = 0,
     measured: bool = false,
+    /// Replaced elements with auto width use their intrinsic width instead of filling a block.
+    replaced: bool = false,
     /// index into Tree.pending of the latest deferred absolute layout of this node
     pending: u32 = no_node,
     /// style contains percentages that resolve against the parent size (part of the cache key then)
@@ -475,7 +479,6 @@ pub const StaticPos = struct {
     mirrored: bool = false,
 };
 
-
 /// Compile-time feature selection: code of a disabled feature is not referenced (and so not emitted).
 /// With a feature off its display values degrade: table displays lay out as `block`, floats as in-flow
 /// blocks, `inline_row` as `block`.
@@ -597,6 +600,11 @@ pub fn TreeWith(comptime cfg: Config) type {
         /// Measured nodes are always treated as leaves.
         pub fn setMeasured(self: *Self, node: NodeId, measured: bool) void {
             if (node < self.nodes.items.len) self.nodes.items[node].measured = measured;
+        }
+
+        /// Marks a measured replaced element such as an image.
+        pub fn setReplaced(self: *Self, node: NodeId, replaced: bool) void {
+            if (node < self.nodes.items.len) self.nodes.items[node].replaced = replaced;
         }
 
         /// Style of `node` (the default style for an unknown id).
@@ -1099,6 +1107,10 @@ pub fn TreeWith(comptime cfg: Config) type {
             var size = in.known;
             const mn = b.min;
             const mx = b.max;
+            // The root can arrive with the initial containing block's width as a known size. That
+            // fills ordinary block boxes, but an auto-sized replaced element keeps its intrinsic
+            // width (subject to its min/max constraints) instead of inheriting that fill width.
+            if (n.replaced and !has(b.size[0])) size[0] = NONE;
             if (!in.content_sizing) {
                 for (0..2) |a| size[a] = orElse(size[a], b.size[a]);
             }
@@ -1319,6 +1331,7 @@ pub fn TreeWith(comptime cfg: Config) type {
                 const rx = rnd(o[0], k);
                 const ry = rnd(o[1], k);
                 const r: Layout = .{
+                    .grid_block_start = if (comptime st.frag_enabled) (if (has(l.grid_block_start)) rnd(cum[1] + l.grid_block_start, k) - rnd(cum[1], k) else NONE) else {},
                     .x = rx - rnd(cum[0], k),
                     .y = ry - rnd(cum[1], k),
                     .w = rnd(o[0] + l.w, k) - rx,

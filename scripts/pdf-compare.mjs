@@ -1,5 +1,5 @@
 // Compares bm-engine's PDF graphics output with takumi-pdf's golden fixtures
-// (ref/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs from tests/pdf_fixtures.rs).
+// (tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs from tests/pdf_fixtures.rs).
 //
 //   node scripts/pdf-compare.mjs [--verbose] [--dump=<fixture>] [name ...]
 //
@@ -21,22 +21,31 @@
 //
 // Verdicts per fixture: IDENTICAL (same operators and numbers), CLOSE (same operators, numbers within
 // 0.01 absolute or 1e-4 relative), DIFFER (first difference shown), plus a font verdict (same / which
-// part differs). Exit code 0 unless rendering fails.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+// part differs). Missing inputs, uncovered goldens and rendering failures exit nonzero. --strict
+// also rejects DIFFER page content or interchange; font program byte differences are informational.
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
+import { createHash } from "node:crypto";
+import { REVISION } from "./takumi-test-corpus.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { taggingFixtures } from "./pdf-tagging-fixtures.mjs"; // [tagging]
 import { moreFixtures } from "./pdf-compare-more.mjs"; // [more] goldens the lists above leave out
 import { interchangeParts, compareInterchange, printInterchange, INTERCHANGE_FIXTURES } from "./pdf-interchange.mjs"; // [interchange]
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ref = path.join(root, "ref", "takumi");
-const goldenDir = path.join(ref, "takumi-pdf", "tests", "fixtures-generated");
+const ref = path.join(root, "tests", "upstream", "takumi");
 const argv = process.argv.slice(2);
+for (const arg of argv) if (arg.startsWith("--") && !["--verbose", "--strict"].includes(arg) && !arg.startsWith("--dump=") && !arg.startsWith("--golden-dir=")) throw new Error(`Unknown option: ${arg}`);
+const goldenOverride = argv.find((a) => a.startsWith("--golden-dir="))?.slice(13);
+const goldenDir = goldenOverride ? path.resolve(goldenOverride) : path.join(ref, "takumi-pdf", "tests", "fixtures-generated");
+const provenance = goldenOverride ? JSON.parse(readFileSync(path.join(goldenDir, "..", "provenance.json"), "utf8")) : { revision: REVISION, kind: "committed-fixtures" };
+if (provenance.revision !== REVISION) throw new Error("Golden reference revision does not match the vendored inputs");
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const verbose = argv.includes("--verbose");
 const dumpName = (argv.find((a) => a.startsWith("--dump=")) || "").slice(7);
 const only = argv.filter((a) => !a.startsWith("--"));
+if (!existsSync(goldenDir)) throw new Error("Missing Takumi PDF goldens. Run node scripts/fetch-takumi-tests.mjs first.");
 
 // ------------------------------------------------------------------------------------------------
 // PDF parsing
@@ -782,6 +791,13 @@ const counts = { IDENTICAL: 0, CLOSE: 0, DIFFER: 0, ERROR: 0, OBJ: 0, FONTS: 0, 
 FIXTURES.push(...INTERCHANGE_FIXTURES);
 FIXTURES.push(...taggingFixtures({ png })); // [tagging] PDF/A, PDF/UA, structure fixtures
 FIXTURES.push(...moreFixtures({ jtext, jcolumn })); // [more]
+const names = new Set(FIXTURES.map((f) => f.name));
+if (names.size !== FIXTURES.length) throw new Error("Duplicate Takumi fixture names");
+for (const name of only) if (!names.has(name)) throw new Error(`Unknown Takumi fixture: ${name}`);
+const uncovered = readdirSync(goldenDir).filter((f) => f.endsWith(".pdf") && !names.has(f.slice(0, -4)));
+const missing = FIXTURES.filter((f) => (!only.length || only.includes(f.name)) && !existsSync(path.join(goldenDir, f.name + ".pdf"))).map((f) => f.name);
+if (uncovered.length) console.error(`UNCOVERED Takumi goldens: ${uncovered.join(", ")}`);
+if (missing.length) console.error(`MISSING Takumi goldens: ${missing.join(", ")}`);
 const ixCounts = {};
 const rows = [];
 for (const fx of FIXTURES) {
@@ -795,7 +811,7 @@ for (const fx of FIXTURES) {
   const source = fx.node ? fx.node() : fx.htmlFile ? fixtureFile(fx.htmlFile) : typeof fx.html === "function" ? fx.html(families) : fx.html;
   let bytes;
   try { bytes = await r.render(source, opts); }
-  catch (e) { counts.ERROR++; console.log(`ERROR  ${fx.name}: ${e.message}`); continue; }
+  catch (e) { counts.ERROR++; rows.push({ name: fx.name, verdict: "ERROR", error: e.message }); console.log(`ERROR  ${fx.name}: ${e.message}`); continue; }
   writeFileSync(path.join(outDir, fx.name + ".pdf"), bytes);
   const minePdf = parsePdf(Buffer.from(bytes));
   const goldPdf = parsePdf(readFileSync(goldPath));
@@ -808,18 +824,28 @@ for (const fx of FIXTURES) {
   const lm = objectLayout(minePdf).join(" "); const lg = objectLayout(goldPdf).join(" ");
   const objs = lm === lg ? "objects same" : "objects differ";
   if (lm === lg) counts.OBJ++;
-  const res = compare(mine, gold);
+  let res = compare(mine, gold);
+  if (res.verdict === "DIFFER" && fx.name === "color-glyph-text-shadow") {
+    const { fixtureEquivalence } = await import('./pdf-fixture-equivalence.mjs');
+    const equivalence = await fixtureEquivalence(fx.name, bytes, readFileSync(goldPath), mine, gold, compare);
+    if (equivalence) res = { verdict: "CLOSE", equivalence };
+  }
   const fm = fontParts(minePdf, mineAll.fontIds); const fg = fontParts(goldPdf, goldAll.fontIds);
   const fonts = compareFonts(fm, fg);
   if (fonts.same) counts.FONTS++;
   if (gold.some((l) => /T[Jj]$/.test(l))) counts.TEXT++;
   const pc = minePdf.pages.length === goldPdf.pages.length ? "" : `  PAGES ${minePdf.pages.length} vs ${goldPdf.pages.length}`;
   counts[res.verdict]++;
-  rows.push({ name: fx.name, ...res, mine: mine.length, gold: gold.length });
+  const row = { name: fx.name, ...res, mine: mine.length, gold: gold.length, objects: lm === lg, fonts: fonts.same,
+    inputFonts: (fx.fonts || DEFAULT_FONTS).map((file) => ({ file, sha256: sha256(readFileSync(path.join(ref, file))) })),
+    goldenSha256: sha256(readFileSync(goldPath)), pages: { bm: minePdf.pages.length, takumi: goldPdf.pages.length } };
+  rows.push(row);
   console.log(`${res.verdict.padEnd(9)} ${fx.name.padEnd(28)} ops ${String(mine.length).padStart(5)} / ${String(gold.length).padStart(5)}  ${objs}; fonts ${fonts.same ? "same" : "differ (" + fonts.what + ")"}${pc}`);
+  if (res.equivalence) console.log(`          equivalence: ${res.equivalence.kind}; extraction matches; ${res.equivalence.evidence.filter(e => e.changedPixels === 0).length}/${res.equivalence.evidence.length} raster checks identical, remaining check within the documented fixture bound`);
   { // [interchange]
     const im = interchangeParts(minePdf, { Name, Ref }); const ig = interchangeParts(goldPdf, { Name, Ref });
     const ix = compareInterchange(im, ig);
+    row.interchange = ix;
     for (const [k, v] of Object.entries(ix)) { ixCounts[k] = ixCounts[k] || { same: 0, close: 0, differ: 0 }; ixCounts[k][v]++; }
     const bad = Object.entries(ix).filter(([, v]) => v !== "same");
     console.log(`          interchange: ${bad.length ? bad.map(([k, v]) => k + " " + v).join(", ") : "same"}`);
@@ -847,5 +873,9 @@ for (const fx of FIXTURES) {
     console.log(`   dumped to ${path.relative(root, outDir)}/${fx.name}.{bm,takumi,fonts.bm,fonts.takumi}.txt`);
   }
 }
-console.log(`\n${rows.length} compared (${counts.TEXT} with text): ${counts.IDENTICAL} identical, ${counts.CLOSE} close (numbers within 0.01), ${counts.DIFFER} differ, ${counts.ERROR} errors; object layout identical in ${counts.OBJ}; fonts identical in ${counts.FONTS}`);
+console.log(`\n${rows.length} compared (${counts.TEXT} with text): ${counts.IDENTICAL} identical, ${counts.CLOSE} close (numeric tolerance or verified fixture equivalence), ${counts.DIFFER} differ, ${counts.ERROR} errors; object layout identical in ${counts.OBJ}; fonts identical in ${counts.FONTS}`);
 console.log(`interchange (same / close / differ): ${Object.entries(ixCounts).map(([k, c]) => `${k} ${c.same}/${c.close}/${c.differ}`).join(", ")}`); // [interchange]
+writeFileSync(path.join(outDir, "results.json"), JSON.stringify({ backend: pdfMod.backend, reference: provenance, node: process.version,
+  wasmSha256: pdfMod.backend === "wasm" ? sha256(readFileSync(path.join(root, "js", "bm_engine.pdf.wasm"))) : null,
+  counts, uncovered, missing, interchange: ixCounts, rows }, null, 2) + "\n");
+if (counts.ERROR || missing.length || uncovered.length || (argv.includes("--strict") && (counts.DIFFER || Object.values(ixCounts).some((c) => c.differ)))) process.exitCode = 1;

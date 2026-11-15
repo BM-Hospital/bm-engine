@@ -1,60 +1,40 @@
 ---
 layout: home
 title: bm-engine
-titleTemplate: Render HTML + CSS to images with WebAssembly
+titleTemplate: Node trees and HTML + CSS to images and PDF
 
 hero:
   name: bm-engine
-  text: Node trees, HTML and CSS to PNG, WebP, JPEG, SVG, animations and PDF
-  tagline: A dependency-free Zig → WebAssembly port of takumi. Same node format, 4–9× smaller binaries, faster rendering, and pixel-equivalent output on all 250 benchmark fixtures. Runs in Node.js, browsers, Bun, Deno and edge workers.
+  text: Node trees and HTML + CSS to images and PDF
+  tagline: A rendering library written in Zig for Node.js, browsers, Bun, Deno and edge workers. Create social cards, banners, invoices and reports with one package.
   actions:
     - theme: brand
-      text: Image docs
+      text: Get started
+      link: /getting-started
+    - theme: brand
+      text: Create images
       link: /image/
     - theme: brand
-      text: PDF docs
+      text: Create PDFs
       link: /pdf/
-    - theme: alt
-      text: Install
-      link: /getting-started
-    - theme: alt
-      text: Playground
-      link: /image/playground
 
 features:
-  - icon: 📦
-    title: 4–9× smaller than takumi
-    details: "<strong>core</strong> 489.6 KiB (8.7× smaller), <strong>standard</strong> 936.5 KiB (4.5×), <strong>full</strong> 1 143.6 KiB (3.7×) vs. 4 234.9 KiB for <code>@takumi-rs/wasm</code> 2.20. Brotli: 194.3 / 398.0 / 470.8 KiB."
-    link: /profiles-and-size
-    linkText: Profiles and size
-  - icon: ⚡
-    title: Faster rendering
-    details: "PNG render at <strong>0.45×</strong> takumi's time (1.33 vs 2.95 ms geomean, faster in 248/250 cases); raw at <strong>0.63×</strong> (faster in 229/250). Cold start 78.1 ms vs 193.8 ms (2.5× faster). Figures are for the wasm build; the native addon is faster still (see Native vs WebAssembly)."
-    link: /benchmark
-    linkText: Benchmark summary
-  - icon: 🎯
-    title: Pixel-equivalent to takumi
-    details: "All <strong>250</strong> shared fixtures are identical (81) or equivalent (169) to takumi 2.20: 0 close, 0 different, 0 errors."
-    link: /results-full
-    linkText: Per-fixture results
-  - icon: 🌐
-    title: Runs everywhere
-    details: "One <code>.wasm</code> plus a small ES module: Node.js, browsers, bundlers, Cloudflare Workers, Deno and Bun. No native addons, no postinstall."
-    link: /getting-started
-    linkText: Getting started
-  - icon: 🧩
-    title: Three profiles
-    details: "<code>core</code>: node trees, block / flex / grid layout, gradients, shadows, filters. <code>standard</code>: + stylesheets, HTML, Tailwind, SVG images, tables, floats. <code>full</code>: + emoji, complex scripts, animations, <code>renderSvg</code>. Optional 84.4 KiB WOFF add-on for <code>core</code>."
-    link: /image/css-support
-    linkText: CSS and feature support
-  - icon: 📄
-    title: Paged PDF output
-    details: "A separate <code>pdf</code> profile (1.5 MB) ports <code>takumi-pdf</code>: selectable text with subset fonts, pagination, headers and footers, links, bookmarks, attachments, tagged PDF and PDF/A."
+  - title: Images and graphics
+    details: Create PNG, JPEG, WebP, SVG and animations from node trees or HTML + CSS.
+    link: /image/
+  - title: PDF documents
+    details: Create multi-page documents with embedded fonts, headers, footers, links and bookmarks.
     link: /pdf/
-    linkText: PDF output
-  - icon: 🧪
-    title: Try it in the browser
-    details: "The playground runs the real engine in your browser: every profile, node JSON / HTML / Tailwind input and every output format."
+  - title: Choose your features
+    details: Pick core, standard, full or pdf for your application input and output.
+    link: /profiles-and-size
+  - title: Multiple runtimes
+    details: Native addon on Node.js and WebAssembly in browsers and edge runtimes.
+    link: /native-vs-wasm
+  - title: Try it in your browser
+    details: Edit content and inspect the rendered result in the playground.
     link: /image/playground
-    linkText: Open the playground
+  - title: Start step by step
+    details: Install the package, register a font and create your first result.
+    link: /getting-started
 ---

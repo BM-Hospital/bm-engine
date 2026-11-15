@@ -1,0 +1,189 @@
+//! End-to-end checks for the `takumi-svg` vector backend: render a node tree to
+//! SVG, rasterize the emitted SVG with takumi's own SVG renderer, and assert the pixels match what
+//! the box model should produce. This catches malformed SVG and gross
+//! positioning/color regressions without requiring pixel-exact parity with the
+//! raster backend.
+
+use std::fs;
+
+use takumi::prelude::{Length::*, *};
+use takumi_svg::{SvgOptions, render};
+
+use crate::test_utils::{rasterize_svg, repo_base_path};
+
+const W: u32 = 200;
+const H: u32 = 100;
+
+fn context() -> Fonts {
+  let mut fonts = Fonts::default();
+  let data = fs::read(repo_base_path(
+    "assets/fonts/archivo/Archivo-VariableFont_wdth,wght.ttf",
+  ))
+  .expect("read test font");
+  fonts
+    .register(FontResource::new(data))
+    .expect("load test font");
+  fonts
+}
+
+fn rasterize(node: Node, fonts: &Fonts) -> Bitmap {
+  let svg = render(
+    SvgOptions::builder()
+      .node(node)
+      .viewport(Viewport::new((W, H)))
+      .fonts(fonts)
+      .build(),
+  )
+  .expect("render svg");
+
+  rasterize_svg(svg, W, H)
+}
+
+/// Straight-alpha RGBA at a pixel.
+fn pixel(bitmap: &Bitmap, x: u32, y: u32) -> [u8; 4] {
+  bitmap.as_raw().as_chunks::<4>().0[(y * bitmap.width() + x) as usize]
+}
+
+#[track_caller]
+fn assert_close(actual: [u8; 4], expected: [u8; 4], tol: i32) {
+  let ok = actual
+    .iter()
+    .zip(expected.iter())
+    .all(|(a, b)| (*a as i32 - *b as i32).abs() <= tol);
+  assert!(ok, "pixel {actual:?} not within {tol} of {expected:?}");
+}
+
+/// A viewport-filling container carrying the given style declarations.
+fn full_container(
+  children: impl Into<Vec<Node>>,
+  decls: impl IntoIterator<Item = StyleDeclaration>,
+) -> Node {
+  let mut style = Style::default()
+    .with(StyleDeclaration::display(Display::Flex))
+    .with(StyleDeclaration::width(Percentage(100.0)))
+    .with(StyleDeclaration::height(Percentage(100.0)));
+  for declaration in decls {
+    style = style.with(declaration);
+  }
+  Node::container(children).with_style(style)
+}
+
+#[test]
+fn solid_background_renders_as_fill() {
+  let node = full_container(
+    [],
+    [StyleDeclaration::background_color(ColorInput::Value(
+      Color([255, 0, 0, 255]),
+    ))],
+  );
+  let bitmap = rasterize(node, &context());
+  assert_close(pixel(&bitmap, W / 2, H / 2), [255, 0, 0, 255], 2);
+}
+
+#[test]
+fn linear_gradient_endpoints_match_stops() {
+  let images = BackgroundImages::from_css_str("linear-gradient(to right, #ff0000, #0000ff)")
+    .expect("parse gradient");
+  let node = full_container([], [StyleDeclaration::background_image(Some(images))]);
+  let bitmap = rasterize(node, &context());
+  assert_close(pixel(&bitmap, 1, H / 2), [255, 0, 0, 255], 12);
+  assert_close(pixel(&bitmap, W - 2, H / 2), [0, 0, 255, 255], 12);
+}
+
+#[test]
+fn opacity_group_halves_alpha() {
+  let node = full_container(
+    [],
+    [
+      StyleDeclaration::background_color(ColorInput::Value(Color([255, 0, 0, 255]))),
+      StyleDeclaration::opacity(PercentageNumber(0.5)),
+    ],
+  );
+  let bitmap = rasterize(node, &context());
+  let [r, g, b, a] = pixel(&bitmap, W / 2, H / 2);
+  assert!((120..=135).contains(&a), "alpha {a} not ~128");
+  assert_close([r, g, b, 255], [255, 0, 0, 255], 4);
+}
+
+#[test]
+fn text_renders_visible_glyphs() {
+  let text = Node::text("Hello".to_string()).with_style(
+    Style::default()
+      .with(StyleDeclaration::color(ColorInput::Value(Color([
+        0, 0, 0, 255,
+      ]))))
+      .with(StyleDeclaration::font_size(FontSize::Length(Px(48.0)))),
+  );
+  let node = full_container(
+    [text],
+    [StyleDeclaration::background_color(ColorInput::Value(
+      Color([255, 255, 255, 255]),
+    ))],
+  );
+  let bitmap = rasterize(node, &context());
+  let dark = bitmap
+    .as_raw()
+    .as_chunks::<4>()
+    .0
+    .iter()
+    .filter(|&&[red, _, _, alpha]| alpha > 0 && red < 100)
+    .count();
+  assert!(dark > 0, "expected dark glyph pixels, found none");
+}
+
+#[test]
+fn underline_decoration_renders() {
+  let text = Node::text("Hello".to_string()).with_style(
+    Style::default()
+      .with(StyleDeclaration::color(ColorInput::Value(Color([
+        0, 0, 0, 255,
+      ]))))
+      .with(StyleDeclaration::font_size(FontSize::Length(Px(48.0))))
+      .text_decoration(
+        TextDecoration::builder()
+          .line(TextDecorationLines::UNDERLINE)
+          .color(ColorInput::Value(Color([255, 0, 0, 255])))
+          .build(),
+      ),
+  );
+  let node = full_container(
+    [text],
+    [StyleDeclaration::background_color(ColorInput::Value(
+      Color([255, 255, 255, 255]),
+    ))],
+  );
+  let bitmap = rasterize(node, &context());
+  let red = bitmap
+    .as_raw()
+    .as_chunks::<4>()
+    .0
+    .iter()
+    .filter(|&&[red, green, blue, _]| red > 150 && green < 90 && blue < 90)
+    .count();
+  assert!(red > 0, "expected red underline pixels, found none");
+}
+
+#[test]
+fn a_filter_url_to_a_fragment_emits_no_filter() {
+  let page = |filter: &str| {
+    Node::from_html(
+      &format!(
+        r#"<div style="width:40px;height:40px;background-color:rgb(10,120,200);{filter}"></div>"#
+      ),
+      FromHtmlOptions::default(),
+    )
+    .expect("parses")
+  };
+  let emit = |node| {
+    render(
+      SvgOptions::builder()
+        .node(node)
+        .viewport(Viewport::new((60, 60)))
+        .fonts(&context())
+        .build(),
+    )
+    .expect("render svg")
+  };
+
+  assert_eq!(emit(page("")), emit(page("filter:url(#missing)")));
+}

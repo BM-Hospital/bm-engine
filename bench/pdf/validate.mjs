@@ -306,7 +306,7 @@ for (const e of ENG) {
 }
 for (const [k2, p] of Object.entries(tools)) summary.tools[k2] = p ? path.relative(ROOT, p).split(path.sep).join("/") : null;
 const tm = toolsManifest().tools;
-summary.toolVersions = { qpdf: tm.qpdf?.version, pdfcpu: tm.pdfcpu?.version, poppler: tm.poppler?.version, jre: tm.jre?.version, verapdf: tm.verapdf?.version, pdfjs: pkgV("pdfjs-dist"), mupdf: pkgV("mupdf"), takumiPdf: pkgV("takumi-pdf") };
+summary.toolVersions = { qpdf: tm.qpdf?.version, pdfcpu: tm.pdfcpu?.version, poppler: tm.poppler?.version, jre: tm.jre?.version, verapdf: tm.verapdf?.version, pdfjs: pkgV("pdfjs-dist"), mupdf: pkgV("mupdf"), takumiPdf: manifest.versions?.['takumi-pdf']?.version ?? pkgV("takumi-pdf") };
 function pkgV(p) { try { return JSON.parse(readFileSync(path.join(ROOT, "bench", "pdf", "node_modules", ...p.split("/"), "package.json"), "utf8")).version; } catch { return null; } }
 
 const out = { date: new Date().toISOString(), build: { date: manifest.date, versions: manifest.versions, seconds: manifest.seconds }, args: process.argv.slice(2), gate, missingTools: missing, summary, docs: results, seconds: +((performance.now() - T0) / 1000).toFixed(1) };
@@ -331,7 +331,14 @@ function markdown(o) {
   const L = [];
   L.push("# PDF validation (bench/pdf/validate.mjs)", "", `Generated ${o.date} by \`node bench/pdf/validate.mjs\`; do not edit. Build ${o.build.date}.`, "");
   L.push("## Tools", "", "| Tool | Version | Path |", "|:--|:--|:--|");
-  for (const [k2, v] of Object.entries(s.toolVersions)) L.push(`| ${k2} | ${v ?? "—"} | ${s.tools[k2 === "takumiPdf" ? "" : k2] ?? (["pdfjs", "mupdf", "takumiPdf"].includes(k2) ? "npm (bench/pdf/node_modules)" : "not installed")} |`);
+  for (const [k2, v] of Object.entries(s.toolVersions)) {
+    const toolKey = ({ poppler: 'pdfinfo', jre: 'java' })[k2] ?? k2;
+    const reference = o.build.versions?.['takumi-pdf'];
+    const location = k2 === 'takumiPdf' ? reference?.file ?? 'npm (bench/pdf/node_modules)' : s.tools[toolKey] ?? (['pdfjs', 'mupdf'].includes(k2) ? 'npm (bench/pdf/node_modules)' : 'not installed');
+    L.push(`| ${k2} | ${v ?? '—'} | ${location} |`);
+  }
+  const ref = o.build.versions?.['takumi-pdf']?.reference;
+  if (ref) L.push('', `Reference: ${ref.kind}${ref.revision ? ' at ' + ref.revision : ''}.`);
   L.push("", "## Summary per engine", "", "| Engine | rendered | render errors | clean PDFs | errors | warnings | bm-only | shared with takumi-pdf | fonts not embedded / not subset | issues by tool |", "|:--|--:|--:|--:|--:|--:|--:|--:|:--|:--|");
   for (const [e, v] of Object.entries(s.byEngine)) L.push(`| ${e} | ${v.rendered} | ${v.renderErrors} | ${v.clean} | ${v.errors} | ${v.warnings} | ${v.bmOnly ?? "—"} | ${v.shared ?? "—"} | ${v.fontsNotEmbedded} / ${v.fontsNotSubset} | ${Object.entries(v.byTool).map(([t, n]) => `${t} ${n}`).join(", ") || "—"} |`);
   L.push("", `**Identity:** bm-native == bm-wasm byte for byte in ${s.identity.nativeEqualsWasm}/${s.identity.compared} documents (same error on both: ${s.identity.sameErrorBoth}; mismatches: ${s.identity.mismatches.join(", ") || "none"}). bm-native sync == async in ${s.identity.syncEqualsAsync} (mismatches: ${s.identity.syncMismatches.join(", ") || "none"}).`);

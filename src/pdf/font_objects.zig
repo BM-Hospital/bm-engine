@@ -309,9 +309,8 @@ pub const Uncovered = struct {
         return out.items;
     }
 
-    /// The error of text met while no font is registered at all (takumi-pdf always has its bundled
-    /// Geist last-resort font; bm-engine bundles none). Names the first characters, null when none
-    /// were met.
+    /// The error of text met while no font is registered at all (the bundled Geist last-resort font
+    /// unregistered too). Names the first characters, null when none were met.
     pub fn noFontMessage(u: *const Uncovered, a: Allocator) !?[]const u8 {
         if (u.chars.items.len == 0) return null;
         var out: std.ArrayList(u8) = .empty;
@@ -319,7 +318,7 @@ pub const Uncovered = struct {
         const shown = @min(u.chars.items.len, 8);
         try u.appendNamed(a, &out, shown);
         if (shown < u.chars.items.len) try out.appendSlice(a, ", ...");
-        try out.appendSlice(a, ". bm-engine bundles no font: register one with registerFont or the fonts option.");
+        try out.appendSlice(a, ". Register one with registerFont or the fonts option (unregistering Geist removed the bundled fallback).");
         return out.items;
     }
 

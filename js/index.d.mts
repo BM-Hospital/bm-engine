@@ -166,7 +166,7 @@ export type FontDetails = {
   weight?: number;
   /** "normal" | "italic" | "oblique" override (default: from the font) */
   style?: string;
-  /** accepted, ignored (every face is registered eagerly) */
+  /** PDF async preparation/rendering skips subsets whose characters are unused; image rendering registers eagerly. */
   unicodeRange?: [number, number][] | string;
   /** accepted, ignored */
   subsetOf?: string;

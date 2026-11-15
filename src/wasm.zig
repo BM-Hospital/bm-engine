@@ -45,7 +45,40 @@ export fn bm_renderer_free(r: *Renderer) void {
 /// Takes ownership of the font bytes (`ptr` must come from bm_alloc(len)). Result (bm_result_*):
 /// takumi `RegisteredFamily[]` JSON.
 export fn bm_register_font(r: *Renderer, ptr: [*]u8, len: usize, name: [*]const u8, name_len: usize, weight: u32, italic: i32) u32 {
-    _ = r.registerFont(ptr[0..len], name[0..name_len], @intCast(@min(weight, 1000)), italic) catch |e| return fail(r, e);
+    _ = r.registerFont(ptr[0..len], name[0..name_len], @intCast(@min(weight, 1000)), italic, null) catch |e| return fail(r, e);
+    return 0;
+}
+
+/// Same as bm_register_font, with JSON options `{ "unicodeRange": [[start, end], ...] }`.
+export fn bm_register_font_options(r: *Renderer, ptr: [*]u8, len: usize, name: [*]const u8, name_len: usize, weight: u32, italic: i32, opts_ptr: [*]const u8, opts_len: usize) u32 {
+    const Options = struct { unicodeRange: ?[]const [2]u32 = null };
+    var parsed: ?std.json.Parsed(Options) = null;
+    defer if (parsed) |p| p.deinit();
+    var ranges: ?[]@import("font/collection.zig").UnicodeRange = null;
+    defer if (ranges) |slice| gpa.free(slice);
+    if (opts_len > 0) {
+        parsed = std.json.parseFromSlice(Options, gpa, opts_ptr[0..opts_len], .{}) catch {
+            bm_free(ptr, len);
+            last_error = "invalid font options";
+            return 1;
+        };
+        if (parsed.?.value.unicodeRange) |source| {
+            ranges = gpa.alloc(@import("font/collection.zig").UnicodeRange, source.len) catch {
+                bm_free(ptr, len);
+                last_error = "out of memory";
+                return 1;
+            };
+            for (source, 0..) |range, i| {
+                if (range[0] > range[1] or range[1] > 0x10ffff) {
+                    bm_free(ptr, len);
+                    last_error = "invalid unicodeRange";
+                    return 1;
+                }
+                ranges.?[i] = .{ .start = @intCast(range[0]), .end = @intCast(range[1]) };
+            }
+        }
+    }
+    _ = r.registerFont(ptr[0..len], name[0..name_len], @intCast(@min(weight, 1000)), italic, ranges) catch |e| return fail(r, e);
     return 0;
 }
 
@@ -142,6 +175,10 @@ export fn bm_render_pdf(r: *Renderer, kind: u32, src: [*]const u8, src_len: usiz
 export fn bm_measure_pdf(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
     const k: render.SourceKind = if (kind == 1) .html else .json;
     _ = r.measurePdf(k, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
+    return 0;
+}
+export fn bm_needs_pdf(r: *Renderer, kind: u32, src: [*]const u8, src_len: usize, opts: [*]const u8, opts_len: usize) u32 {
+    _ = r.needsPdf(if (kind == 1) .html else .json, src[0..src_len], opts[0..opts_len]) catch |e| return fail(r, e);
     return 0;
 }
 

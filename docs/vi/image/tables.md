@@ -2,7 +2,7 @@
 
 [English](../../en/image/tables.md) · [Tiếng Việt](tables.md)
 
-bm-engine dàn trang bảng bằng bản port thuật toán bảng của takumi (tức là của Chromium) và hỗ trợ float
+bm-engine dàn trang bảng bằng thuật toán layout bảng theo CSS và hỗ trợ float
 của CSS với chữ chảy vòng quanh. Cả hai là tính năng tùy chọn của profile **standard** và **full**
 (`features.tables`, `features.floats`); trên `core`, bảng được dàn như các block thường và `float` bị bỏ
 qua. Trang này trình bày bảng HTML và cây node tương đương, cách tính chiều rộng cột, span, viền, caption
@@ -258,7 +258,7 @@ Những mục này đã được kiểm tra bằng các lần render thử nhỏ
 ## Bảng RTL {#rtl-tables}
 
 `dir="rtl"` trên `<table>` (hoặc `direction: "rtl"` trên node `display: "table"`) đảo thứ tự cột, như
-trình duyệt và takumi:
+trình duyệt:
 
 <!-- @example tables#rtl -->
 ```js
@@ -357,9 +357,7 @@ Nếu đầu vào có thể chứa bảng (ví dụ HTML do người dùng cung 
 
 ## Những gì còn gần đúng
 
-Theo [Hỗ trợ CSS](./css-support.md#layout) và benchmark: bảng tương đương takumi trên cả 8 fixture bảng
-và 339 trên 352 trường hợp oracle layout; float đạt 138 / 138 trường hợp oracle. Các hạn chế đã biết trong
-0.1.0:
+Xem [hỗ trợ CSS](css-support.md#layout) để tra các tính năng bảng, float và profile tối thiểu cần dùng.
 
 - Thứ tự vẽ float theo CSS 2.1 Phụ lục E trong đầu ra PNG / JPEG / WebP / raw: float được vẽ sau nền
   của các block trong luồng và trước nội dung inline trong luồng (chữ), nên chữ chồng lên float (ví dụ

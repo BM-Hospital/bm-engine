@@ -6,13 +6,7 @@ Server route của TanStack Start định nghĩa các HTTP handler nhận một 
 `Response`. Vì vậy một endpoint Open Graph chính là [mẫu chung](./index.md#mẫu-chung) đặt
 bên dưới `server.handlers`.
 
-::: info Trạng thái kiểm chứng
-Đã kiểm chứng: object handler `GET({ request })` bên dưới được gọi trên Node 26.13 và trả về một PNG
-1200 × 630 (`docs/examples/frameworks/check-frameworks.mjs`). **Chưa kiểm chứng trong một ứng dụng
-TanStack Start thật**: API định nghĩa route (`createFileRoute(...)({ server: { handlers } })`) lấy theo
-hướng dẫn TanStack Start của takumi và thay đổi giữa các bản phát hành TanStack Start — hãy kiểm tra phiên
-bản bạn dùng.
-:::
+Route dưới đây là mẫu tích hợp. Kiểm tra API định nghĩa route theo phiên bản TanStack Start của ứng dụng; ví dụ chưa được chạy trong một bản build framework hoàn chỉnh tại đây.
 
 ## Một server route
 
@@ -59,12 +53,7 @@ export const Route = createFileRoute("/posts/$slug")({
 Dự án TanStack Start vốn đã biên dịch JSX bằng automatic runtime của React, vốn tạo ra React element chứ
 không phải node của bm-engine. Các lựa chọn:
 
-- dựng trực tiếp object node (như trên), hoặc gọi [`h()`](./index.md#node-tree-không-cần-jsx) như một hàm
-  thông thường;
-- đặt thẻ vào một file riêng có pragma `/** @jsxRuntime classic */ /** @jsx h */` để JSX của file đó gọi
-  `h` (esbuild và TypeScript hỗ trợ; plugin React của Vite có thể ghi đè runtime — chưa thử ở đây);
-- chuyển React element bằng `fromJsx()` của takumi trong `@takumi-rs/helpers` (xem
-  [hướng dẫn chuyển đổi](../migration/from-takumi.md#jsx)).
+- Render React component thành HTML trên server rồi truyền chuỗi đó vào bm-engine.
 
 ## Đích triển khai (cấu hình dự kiến)
 

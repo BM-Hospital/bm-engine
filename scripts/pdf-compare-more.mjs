@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ref = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "ref", "takumi");
+const ref = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "tests", "upstream", "takumi");
 const asset = (f) => readFileSync(path.join(ref, "assets", "images", f));
 const dataUrl = (mime, bytes) => `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 

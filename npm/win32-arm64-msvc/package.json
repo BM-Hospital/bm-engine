@@ -7,16 +7,16 @@
     "napi",
     "native-addon"
   ],
-  "license": "(MIT OR Apache-2.0)",
-  "author": "AUTHOR_NAME",
-  "homepage": "https://github.com/OWNER/bm-engine#readme",
+  "license": "MIT",
+  "author": "hunghg255",
+  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/bm-engine.git",
+    "url": "git+https://github.com/BM-Hospital/bm-engine.git",
     "directory": "npm/win32-arm64-msvc"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-engine/issues"
   },
   "os": [
     "win32"
@@ -27,8 +27,7 @@
   "main": "bm-engine.win32-arm64-msvc.node",
   "files": [
     "bm-engine.win32-arm64-msvc.node",
-    "LICENSE-MIT",
-    "LICENSE-APACHE",
+    "LICENSE",
     "NOTICE",
     "THIRD-PARTY-NOTICES.md"
   ],

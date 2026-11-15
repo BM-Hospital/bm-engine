@@ -43,14 +43,14 @@ writeFileSync("og.png", png);
 
 Cần lưu ý:
 
-- **Đăng ký font trước khi render chữ.** Nếu chưa có font, chữ sẽ không được vẽ và cũng không báo lỗi
-  (takumi kèm sẵn font Geist; bm-engine thì không). Xem [Font](#font).
+- **Đăng ký font trước khi render chữ.** Nếu chưa có font, chữ sẽ không được vẽ và cũng không báo lỗi.
+  Xem [Font](#font).
 - `renderSync` trả về `Uint8Array` (PNG nếu bạn không truyền `format`). Method nào cũng có bản async
   tương ứng (`render`, `measure`, ...). Với backend native, các bản async render trên thread pool
   của libuv (một renderer chỉ chạy một lệnh tại một thời điểm: tạo vài renderer để render song song); với
-  wasm, việc render luôn đồng bộ và các bản async tồn tại để tương thích với takumi và để xử lý những tùy
+  wasm, việc render luôn đồng bộ và các bản async tồn tại để xử lý những tùy
   chọn cần chờ (`fonts`, `images` nạp lười).
-- `display` mặc định là **`inline`**, giống takumi và CSS. Container nào có kích thước, hoặc cần xếp con
+- `display` mặc định là **`inline`**. Container nào có kích thước, hoặc cần xếp con
   theo hàng/cột, phải đặt rõ `display: "flex"` / `"block"` / `"grid"`.
   Xem [Xử lý sự cố](../troubleshooting.md#khối-chứa-bị-co-về-chiều-cao-0).
 
@@ -94,7 +94,7 @@ Với điểm vào chung (`js/index.mjs`), bạn truyền binary một cách tư
 - Những gì đã kiểm thử: đường `init(fetch(url))` đã được chạy trong Node với một HTTP server cục bộ phục
   vụ package; bài test trình duyệt của repository (`bench/browser`, Edge 157 headless) nạp cùng wrapper
   và binary, kiểm tra đầu ra raw trùng từng byte với Node (12/12 ca ở lần chạy gần nhất, xem
-  [Benchmark](../benchmark.md#trình-duyệt)).
+  [Benchmark](../benchmark.md)).
   Bài test package còn nạp các trang build bằng Vite trong Edge 157 headless (render ra PNG, không có lỗi
   console). Nạp thẳng từ CDN (`https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/core.mjs`, rồi
   `await init()`) hẳn sẽ chạy theo cùng cách khi package được phát hành; trước đó thì chưa kiểm thử.
@@ -111,7 +111,7 @@ renderer.registerFont({ name: "Geist", data: readFileSync("Geist-VF.ttf") });   
 await renderer.registerFont("https://example.com/font.woff2");                                // URL: fetched, returns a Promise
 ```
 
-`registerFont` trả về `RegisteredFamily[]` giống takumi:
+`registerFont` trả về `RegisteredFamily[]`:
 `[{ name, faces: [{ weight, style, width, index }], weight, style }]`. Đăng ký thêm một file dưới tên
 family đã có sẽ bổ sung face vào family đó. Xem [Tham chiếu API](api.md#registerfont).
 
@@ -194,7 +194,7 @@ const png = renderer.renderSync(
 ```
 
 - **Không có gì được tải về.** URL chỉ là khoá để tra trong `images`; khoá không tồn tại thì không vẽ gì
-  và không ném lỗi, giống `render` của takumi khi không qua `prepare`. Bạn tự tải bytes.
+  và không ném lỗi,  Bạn tự tải bytes.
 - **`Buffer` của Node đặt trực tiếp vào `src`:** dùng được luôn; không còn cần bọc bằng
   `new Uint8Array(buffer)`. Buffer trong `images[].data` và `registerFont` cũng dùng bình thường.
 - `images[].data` có thể là hàm hoặc promise (nạp lười) khi dùng các method async (`render`,
@@ -217,7 +217,7 @@ const png = renderer.renderSync(
 |:--|:--|:--|
 | `"png"` (mặc định) | PNG; tự chọn indexed / RGB / RGBA | tất cả |
 | `"jpeg"` (bí danh `"jpg"`) | JPEG baseline, `quality` 1–100 (mặc định 75); điểm ảnh trong suốt thành màu đen | tất cả |
-| `"webp"` | WebP **lossless** (bỏ qua `quality` / `lossless`, giống bản wasm của takumi) | tất cả |
+| `"webp"` | WebP **lossless** (bỏ qua `quality` / `lossless`) | tất cả |
 | `"raw"` | `width × height × 4` byte, RGBA8 thẳng (không premultiplied), theo từng hàng | tất cả |
 | `"ico"` | ICO với một mục PNG; mỗi cạnh 1–256 px | full |
 | `renderSvg()` | chuỗi tài liệu SVG | full |

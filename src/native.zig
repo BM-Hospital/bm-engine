@@ -344,7 +344,9 @@ const Exec = struct {
     zeroed: bool = false,
     /// "" = success
     err: []const u8 = "",
-    err_buf: [300]u8 = undefined,
+    // PDF image errors can include a data URI label followed by the decoder reason. Keep enough
+    // space for the full diagnostic so native reports the same useful suffix as the wasm backend.
+    err_buf: [4096]u8 = undefined,
 
     fn fail(x: *Exec, msg: []const u8) void {
         const n = @min(msg.len, x.err_buf.len);
@@ -500,7 +502,7 @@ fn makeBytes(env: Env, data: []const u8) Value {
 }
 
 fn makeError(env: Env, msg: []const u8, type_error: bool) Value {
-    var buf: [320]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     const prefix = "bm-engine: ";
     @memcpy(buf[0..prefix.len], prefix);
     const n = @min(msg.len, buf.len - prefix.len);

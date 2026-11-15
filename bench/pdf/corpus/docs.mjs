@@ -8,7 +8,7 @@ import path from "node:path";
 import { ROOT } from "../lib/tools.mjs";
 
 const F = path.join(ROOT, "assets", "fonts");
-const RF = path.join(ROOT, "ref", "takumi", "assets", "fonts");
+const RF = path.join(ROOT, "tests", "upstream", "takumi", "assets", "fonts");
 const font = (name, file, weight = 400, style = "normal", dir = F) => ({ name, path: path.join(dir, file), weight, style });
 export const INTER = [font("Inter", "Inter-Regular.ttf"), font("Inter", "Inter-Bold.ttf", 700), font("Inter", "Inter-Italic.ttf", 400, "italic")];
 const NOTO_TC = font("Noto Sans TC", "noto-sans/NotoSansTC-VariableFont_wght.woff2", 400, "normal", RF);

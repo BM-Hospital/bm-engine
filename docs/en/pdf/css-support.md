@@ -54,13 +54,13 @@ Structure for accessibility and the PDF/A and PDF/UA standards are described in
 [Accessibility and archival](accessibility.md).
 
 Some CSS has no PDF equivalent. A `blur()` or `drop-shadow()` `filter` fails the render with
-`A PDF cannot draw filter: blur(2px)` (the message names the filter), as in takumi-pdf. `backdrop-filter`
+`A PDF cannot draw filter: blur(2px)` (the message names the filter). `backdrop-filter`
 is ignored.
 
 ## Differences from image output
 
 **List markers** are drawn in PDF output only (paged and `viewport`), with `Lbl` structure elements; PNG,
-JPEG, WebP and SVG output draw none. See [Differences from takumi-pdf](differences-from-takumi.md#known-limitations).
+JPEG, WebP and SVG output draw none. See [Known limitations](limitations.md).
 
 **`text-overflow`** markers are drawn, but they are not text: extracting the text of the page (copy and
 paste, search, `pdftotext`) gives the characters drawn before the marker, not the marker and not the
@@ -108,4 +108,4 @@ try {
 ```
 
 **Box shadow blur** is approximated with vector shapes (eight fainter spread bands around the shadow),
-so a soft shadow looks slightly different from the PNG, as in takumi-pdf.
+so a soft shadow looks slightly different from the PNG.

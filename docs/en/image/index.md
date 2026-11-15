@@ -44,14 +44,13 @@ writeFileSync("og.png", png);
 
 Things to notice:
 
-- **Register a font before rendering text.** Without one, text is silently not drawn (takumi bundles
-  the Geist font; bm-engine does not). See [Fonts](#fonts).
+- **Register a font before rendering text.** Without one, text is silently not drawn. See [Fonts](#fonts).
 - `renderSync` returns a `Uint8Array` (PNG unless you pass `format`). Every method also has an async
   twin (`render`, `measure`, ...). On the native backend the async variants render on the libuv thread
   pool (one renderer runs one call at a time: create several renderers to render in parallel); on wasm
-  rendering is synchronous either way and the async variants exist for takumi compatibility and for the
+  rendering is synchronous either way and the async variants resolve the
   options that need awaiting (`fonts`, lazy `images`).
-- `display` defaults to **`inline`**, as in takumi and CSS. Give every container that has a size, or
+- `display` defaults to **`inline`**. Give every container that has a size, or
   whose children should be laid out as a row/column, an explicit `display: "flex"` / `"block"` / `"grid"`.
   See [Troubleshooting](../troubleshooting.md#containers-collapse-to-zero-height).
 
@@ -95,7 +94,7 @@ With the generic entry (`js/index.mjs`) you pass the binary explicitly:
 - What was tested: the `init(fetch(url))` path was executed in Node against a local HTTP server
   serving the package; the repository's browser test (`bench/browser`, headless Edge 157) loads the
   same wrapper and binary and checks that raw output is byte-identical to Node (12/12 cases in the last
-  run, see [Benchmark](../benchmark.md#browser)).
+  run, see [Benchmark](../benchmark.md)).
   The package test also loads Vite-built pages in headless Edge 157 (PNG rendered, no console errors).
   Loading straight from a CDN (`https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/core.mjs`, then
   `await init()`) should work the same way once the package is published; it is untested until then.
@@ -111,7 +110,7 @@ renderer.registerFont({ name: "Geist", data: readFileSync("Geist-VF.ttf") });   
 await renderer.registerFont("https://example.com/font.woff2");                                // URL: fetched, returns a Promise
 ```
 
-`registerFont` returns takumi's `RegisteredFamily[]`:
+`registerFont` returns `RegisteredFamily[]`:
 `[{ name, faces: [{ weight, style, width, index }], weight, style }]`. Registering another file under
 an existing family name adds faces to that family. See the [API reference](api.md#registerfont).
 
@@ -195,7 +194,7 @@ const png = renderer.renderSync(
 ```
 
 - **Nothing is downloaded.** A URL is only a lookup key into `images`; an unknown key paints nothing
-  and does not throw, like takumi's `render` without `prepare`. Fetch the bytes yourself.
+  and does not throw's `render` without `prepare`. Fetch the bytes yourself.
 - **Node `Buffer` directly in `src`:** works as is; wrapping it in `new Uint8Array(buffer)` is no longer
   necessary. Buffers in `images[].data` and `registerFont` work too.
 - `images[].data` may be a function or a promise (lazy loading) with the async methods (`render`,
@@ -218,7 +217,7 @@ const png = renderer.renderSync(
 |:--|:--|:--|
 | `"png"` (default) | PNG; indexed / RGB / RGBA chosen automatically | all |
 | `"jpeg"` (alias `"jpg"`) | baseline JPEG, `quality` 1–100 (default 75); transparent pixels become black | all |
-| `"webp"` | **lossless** WebP (`quality` / `lossless` ignored, as in takumi's wasm build) | all |
+| `"webp"` | **lossless** WebP (`quality` / `lossless` ignored) | all |
 | `"raw"` | `width × height × 4` bytes, straight (non-premultiplied) RGBA8, row-major | all |
 | `"ico"` | ICO with one PNG entry; 1–256 px per side | full |
 | `renderSvg()` | SVG document string | full |

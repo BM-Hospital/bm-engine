@@ -2,15 +2,7 @@
 
 [English](api.md) · [Tiếng Việt](../../vi/image/api.md)
 
-The complete public API of bm-engine 0.1.0: module functions (`init`, `initSync`, `features`, ...), the
-`Renderer` class, the node format, render options, errors, limits and the memory model. The API mirrors
-`@takumi-rs/wasm` 2.20 so that the same input renders on both engines; differences are called out inline
-and collected in [Differences from takumi](differences-from-takumi.md). Typings ship as
-`js/index.d.mts` (plus `core.d.mts`, `standard.d.mts`, `full.d.mts`, `addons.d.mts`, `wasm.d.mts`;
-tested with TypeScript 5.0 and 5.9). Byte results are typed `OutputBytes`, a fresh `Uint8Array` that owns
-its buffer (`Uint8Array<ArrayBuffer>` on TypeScript ≥ 5.7), so they can be passed to `new Response()` or
-`new Blob()` directly.
-Behaviour described here was checked by running it; error messages are quoted verbatim.
+The public API of bm-engine: initialization, `Renderer`, node objects, render options, errors and memory. Type declarations ship in `js/index.d.mts` and the profile-specific `.d.mts` files. Byte results are fresh `Uint8Array` values that can be passed to `Response` or `Blob`.
 
 - [Module exports](#module-exports): [`init`](#init), [`initSync`](#initsync), [`features`](#features), [`profile` / `wasmUrl`](#profile-and-wasmurl), [`setGlyphCacheMaxBytes`](#setglyphcachemaxbytes)
 - [`Renderer`](#renderer): [constructor](#constructor), [`registerFont`](#registerfont), [`unregisterFont`](#unregisterfont), [`clearFonts`](#clearfonts), [`render`](#render--rendersync), [`renderAsDataUrl`](#renderasdataurl--renderasdataurlsync), [`renderSvg`](#rendersvg--rendersvgsync), [`measure`](#measure--measuresync), [`renderAnimation`](#renderanimation--renderanimationsync), [`prepare`](#prepare--prepareanimation), [`memoryBytes`](#memorybytes), [`free`](#free--symboldispose)
@@ -35,7 +27,7 @@ instead, and `bm-engine/native` always does); `bm-engine/pdf` adds `PdfRenderer`
 | `Renderer` | class |
 | `features` | `Readonly<Features>` |
 | `Prepared` | opaque class of `prepare()` handles (not constructible by you) |
-| `setGlyphCacheMaxBytes` | no-op, for takumi compatibility |
+| `setGlyphCacheMaxBytes` | no-op, accepted for API compatibility; ignored |
 | `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-engine`, `bm-engine/native` and `bm-engine/pdf` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](../getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
 | `profile` | `"core" \| "standard" \| "full" \| "pdf"` (profile entries only) |
 | `wasmUrl` | `() => URL` (profile entries only) |
@@ -106,8 +98,7 @@ A renderer owns its registered fonts, a decoded-image cache and a glyph cache. C
 fonts and reuse it; creating a renderer is cheap, registering fonts is not.
 
 Every rendering method exists twice: `xxxSync()` returns the result, `xxx()` returns a `Promise`.
-Rendering is synchronous and blocks the calling thread in both cases; the async variants additionally
-resolve the asynchronous options (`fonts`, lazy `images[].data`, promises).
+On WebAssembly, both variants perform rendering on the calling thread. On the native backend, async methods use the libuv thread pool. Async methods also resolve `fonts`, lazy `images[].data` and promises.
 
 ### Constructor
 
@@ -155,7 +146,7 @@ standard / full build, or load the WOFF add-on: ...)`.
 
 ### `clearFonts`
 
-`clearFonts(): void`: removes every registered font. Unlike takumi there is no built-in font left
+`clearFonts(): void`: removes every registered font. There is no built-in font left
 afterwards: text renders as nothing until you register a font again.
 
 ### `render` / `renderSync`
@@ -166,7 +157,7 @@ render(source: Source | Prepared, options?: RenderOptions): Promise<Uint8Array>
 ```
 
 `source` is a [node](#node-format), `{ json: string }` (a node tree as JSON text), an **HTML string**
-(every JS string is treated as HTML, as in takumi; needs `features.html`) or a `Prepared` handle.
+(every JS string is treated as HTML; needs `features.html`) or a `Prepared` handle.
 Returns a fresh `Uint8Array`: the encoded image, or straight RGBA8 for `format: "raw"`. See
 [Render options](#render-options).
 
@@ -188,8 +179,7 @@ Returns an SVG document string (needs `features.renderSvg`, i.e. the `full` prof
 `bm-engine: this build has no renderSvg support ...`). Boxes become `<rect>`/`<path>`, gradients
 `<linearGradient>`/`<radialGradient>` (conic gradients as wedges), shadows `<filter>`s, images are
 embedded as `data:` URLs, text becomes glyph outlines (`<use>` of paths in `<defs>`; no font embedding,
-the text is not selectable). `format`, `quality` and `devicePixelRatio` are ignored (always ratio 1, as in
-takumi).
+the text is not selectable). `format`, `quality` and `devicePixelRatio` are ignored (always ratio 1).
 
 ```js
 const svg = r.renderSvgSync(node, { width: 400, height: 200 });
@@ -227,10 +217,7 @@ r.measureSync(
 //   { width: 20, height: 20, transform: [1,0,0,1,105.40625,10], children: [], runs: [] } ] }
 ```
 
-`transform` is the 2D matrix of the node relative to the canvas (not to its parent); `runs`
-positions are relative to the content box of their node. Differences from takumi's `measure` in 0.1.0: runs carry no
-`text` field, and run heights are the line height rather than the glyph extent (takumi reports e.g. `y: 0.5, height: 19.36` for the run above).
-Boxes and positions match takumi (see [Benchmark](../benchmark.md)). More in [measure()](./measure.md).
+`transform` is the node’s 2D matrix relative to the canvas. Text run positions are relative to the node’s content box. Runs have no `text` field, and run heights describe line height. See [measure()](measure.md).
 
 ### `renderAnimation` / `renderAnimationSync`
 
@@ -251,7 +238,7 @@ type RenderAnimationOptions = CommonOptions & {
 Needs `features.animation` (`full`). Encodes an animated WebP (lossless), APNG or GIF (palette
 quantised per frame).
 
-**Frame schedule** (identical to takumi-raster): with `total = sum(durationMs)`, the animation has
+**Frame schedule**: with `total = sum(durationMs)`, the animation has
 `ceil(total × fps / 1000)` frames; frame *i* starts at `floor(i × 1000 / fps)` ms and lasts until the
 next frame's start (clamped to `total`; zero-length frames are dropped). A frame shows the scene active
 at its start time, rendered at that scene's **local** time (CSS animations restart in every scene).
@@ -285,7 +272,7 @@ and merge their own options over the prepared ones; `renderAnimation*` accepts a
 handle. Passing the wrong kind throws `bm-engine: this prepared handle is for renderAnimation` (or
 `... for render`).
 
-Unlike takumi, `prepare` **does not fetch anything**: there is no "needs" pass that discovers remote
+`prepare` **does not fetch anything**: there is no "needs" pass that discovers remote
 images or `@font-face` files. Provide image bytes through `images` and fonts through `fonts` /
 `registerFont`.
 
@@ -331,14 +318,14 @@ type Meta = {
   (`bm-engine: text node is missing \`text\``). Unknown keys are ignored. `null` / `undefined`
   children are skipped.
 - **Style keys are camelCase** (`backgroundColor`, `WebkitLineClamp`). Kebab-case keys
-  (`"background-color"`) and unknown property names are ignored silently, as in takumi. Custom
+  (`"background-color"`) and unknown property names are ignored silently. Custom
   properties keep their dashes: `{ "--accent": "#7c3aed", color: "var(--accent)" }`.
 - **Values** are CSS strings or numbers. A number is a length in px where the property takes a length
   (`width: 100`), and a plain number otherwise (`opacity: 0.5`, `lineHeight: 1.4`, `fontWeight: 700`).
   `!important` inside a string value is honoured.
 - **Precedence** (low → high): `preset` < stylesheet rules (`css`) and `tw` utilities < inline `style`;
   `!important` follows CSS rules.
-- **Defaults follow takumi**, which follows CSS/Blink: `display` is **`inline`** for every node (the
+- **Defaults:** `display` is **`inline`** for every node (the
   root and flex/grid children are blockified); `boxSizing` is **`border-box`**; `objectFit` is `fill`;
   `transformOrigin` is `50% 50%`; the canvas starts fully transparent.
 - A text node behaves like `<span>text</span>`. An image node's `width` / `height` are presentational
@@ -355,9 +342,9 @@ The [CSS support](css-support.md) page lists every supported property and value.
 | `quality` | number | 75 | JPEG only, clamped to 1–100. |
 | `devicePixelRatio` | number | 1 | Scales CSS px lengths, font sizes and image intrinsic sizes; does **not** change the canvas size. Values outside (0, 64) are ignored. |
 | `images` | `ImageSource[] \| { sources: ImageSource[] }` | | `{ src, data }` pairs that `src` / `url()` references look up. `data` may be lazy (async API only). |
-| `css` | `(string \| rule object)[] \| string` | | Stylesheets (standard / full). Rule objects follow takumi: `{ selector, style }`. |
+| `css` | `(string \| rule object)[] \| string` | | Stylesheets (standard / full). Rule objects use `{ selector, style }`. |
 | `stylesheets` | `string[]` | | Deprecated alias of `css` (used when `css` is absent). |
-| `keyframes` | `{ [name]: { [offset]: Style } }` or takumi's rule list | | Deprecated takumi top-level keyframes. |
+| `keyframes` | `{ [name]: { [offset]: Style } }` or a rule list | | Deprecated top-level keyframes. |
 | `timeMs` | number | 0 | Position on the CSS animation timeline (floored to whole ms). Animations are applied at t = 0 when omitted. `full` only. |
 | `fontFamilies` | `string[] \| string` | | Root font stack: the `font-family` of elements that set none. Fallback still walks every registered family. |
 | `lang` | string | | Root language for `:lang()` and OpenType language systems. |
@@ -391,7 +378,7 @@ all three profiles.
 
 | Limit | Value |
 |:--|:--|
-| Node nesting depth | 512 levels (513 throws `node tree is nested too deeply`), as in takumi |
+| Node nesting depth | 512 levels (513 throws `node tree is nested too deeply`) |
 | Canvas | at most 16384 px per side and 40 megapixels (`canvas too large`) |
 | Empty content without `width`/`height` | throws `invalid viewport: content has zero size and no width/height was given` |
 | ICO output | 1–256 px per side |

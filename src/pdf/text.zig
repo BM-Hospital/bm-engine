@@ -765,9 +765,9 @@ pub fn glyphOutlinePx(a: Allocator, font: *const ttf.Font, gid: u16, sc: f32, ou
     return type3.glyphPath(a, font, gid, geom.Tf.row(sc, 0, 0, -sc, 0, 0), out);
 }
 
-/// bm-engine bundles no font, while takumi-pdf always has its bundled last-resort font (Geist):
-/// with no font registered at all the text engine shapes nothing, so text would vanish without
-/// a trace. A frame whose paragraphs hold text other than white space then fails the render (or
+/// A PDF renderer starts with the bundled last-resort font (Geist, `Renderer.ensureDefaultFonts`),
+/// as takumi-pdf's. Should no font be registered at all (Geist unregistered by family name), the
+/// text engine shapes nothing, so text would vanish without a trace. A frame whose paragraphs hold text other than white space then fails the render (or
 /// measure), naming the first characters; `blank` (`uncoveredText: "blank"`) asked for nothing to
 /// be drawn and keeps going.
 pub fn requireFont(f: *const rt.Frame, blank: bool) rt.Error!void {
@@ -1039,7 +1039,7 @@ fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_m
         var t: std.ArrayList(u8) = .empty;
         for (gs, shaped) |g, *sg| {
             const st: u32 = @intCast(t.items.len);
-            if (try fc.cid.codepoint(g.gid)) |cp| {
+            if (g.generated orelse try fc.cid.codepoint(g.gid)) |cp| {
                 var b: [4]u8 = undefined;
                 try t.appendSlice(a, b[0..ttf.encodeUtf8(cp, &b)]);
             }
@@ -1112,10 +1112,10 @@ pub fn drawSeamRun(reg: *FontRegistry, s: *sf.Surface, f: *rt.Frame, run: anytyp
     var i: usize = 0;
     while (i < all.len) {
         var e = i + 1;
-        while (e < all.len and (all[e].bidi_level & 1) == (all[i].bidi_level & 1)) e += 1;
+        while (e < all.len and (all[e].bidi_level & 1) == (all[i].bidi_level & 1) and all[e].generated == all[i].generated) e += 1;
         const gs = all[i..e];
         i = e;
-        const r = (try buildRun(reg, s.cx.work(), f, run.node.para, gs, run.text)) orelse continue;
+        const r = (try buildRun(reg, s.cx.work(), f, run.node.para, gs, if (gs[0].generated != null) "" else run.text)) orelse continue;
         var p: RunPaint = .{
             .color = run.fill,
             .stroke_first = run.stroke_first,

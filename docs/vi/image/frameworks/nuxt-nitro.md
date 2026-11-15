@@ -6,7 +6,7 @@ Phía server của Nuxt là Nitro, và route của Nitro là các event handler 
 handler h3 được phép trả về một `Response` chuẩn Web, nên một route dùng bm-engine chính là
 [mẫu chung](./index.md#mẫu-chung) đặt bên trong `defineEventHandler`. Trang này nói về `server/routes`
 của Nuxt, Nitro độc lập, và những gì thay đổi trên các preset edge. Không có Nuxt module nào cho
-bm-engine (tích hợp của takumi đi qua Nuxt OG Image, vốn không biết bm-engine).
+bm-engine.
 
 ::: info Trạng thái kiểm chứng
 Đã kiểm chứng: handler dưới đây chạy dưới **h3 2.0.8** (`new H3().get(...)`, gửi request qua `app.fetch`)
@@ -105,7 +105,7 @@ useSeoMeta({
 });
 ```
 
-Template `.takumi.vue` của Nuxt OG Image không áp dụng được: bm-engine không render Vue component. Hãy
+bm-engine không render Vue component. Hãy
 dựng node tree trong server route (hoặc render một Vue component thành chuỗi HTML bằng server renderer
 của Vue rồi truyền chuỗi đó — đầu vào HTML cần profile `standard` hoặc `full`; xem
 [HTML và Tailwind](../html-and-tailwind.md); chưa thử với Vue).

@@ -2,12 +2,13 @@
 // binding's `Renderer`, and the page counter primitives. Shared by js/pdf.mjs (the wasm pdf profile) and
 // js/node-pdf.mjs (the native addon when it is available), so both expose exactly the same classes.
 const DISPOSE = typeof Symbol.dispose === "symbol" ? Symbol.dispose : Symbol.for("nodejs.dispose");
+import { resourceOptions } from "./pdf-resources.mjs";
 
 /** @param {new (options?: object) => any} Renderer  the `Renderer` of a binding with the `pdf` feature */
 export function pdfApi(Renderer) {
   /**
    * A PDF renderer holding registered fonts (takumi-pdf `PdfRenderer`). Reuse one instance across renders.
-   * Unlike takumi-pdf, `prepare` fetches nothing and `images` / `fonts` are passed as bytes (see Renderer.prepare).
+   * `prepare` discovers resources after the cascade and fetches missing images and font files.
    */
   class PdfRenderer {
     #r;
@@ -27,21 +28,23 @@ export function pdfApi(Renderer) {
      * accept the handle (their options merge over it).
      */
     async prepare(node, options) {
-      if (options != null && typeof options === "object") {
-        options.signal?.throwIfAborted?.();
-        options = await fetchImages(resolveBands(options), node);
-        options.signal?.throwIfAborted?.();
-      }
-      return this.#r.prepare(resolveDocument(node), options);
+      node = resolveDocument(node);
+      return this.#r.prepare(node, await resourceOptions(this.#r, node, resolveBands(options), true));
     }
     /** A node tree, an HTML string or a prepared document -> PDF bytes (Uint8Array). */
-    render(node, options) { return this.#r.renderPdf(resolveDocument(node), resolveBands(options)); }
+    async render(node, options) {
+      node = resolveDocument(node);
+      return this.#r.renderPdf(node, node?.[PREPARED] ? resolveBands(options) : await resourceOptions(this.#r, node, resolveBands(options), false));
+    }
     renderSync(node, options) { return this.#r.renderPdfSync(resolveDocument(node), resolveBands(options)); }
     /**
      * Laid-out `{ width, height }` in CSS px (page options: at the full page width, unbounded height, like a band).
      * As in takumi-pdf, `signal` is not read here.
      */
-    measure(node, options) { return this.#r.measurePdf(resolveDocument(node), measureOptions(options)); }
+    async measure(node, options) {
+      node = resolveDocument(node);
+      return this.#r.measurePdf(node, node?.[PREPARED] ? measureOptions(options) : await resourceOptions(this.#r, node, measureOptions(options), false));
+    }
     measureSync(node, options) { return this.#r.measurePdfSync(resolveDocument(node), measureOptions(options)); }
     free() { this.#r.free(); }
     [DISPOSE]() { this.free(); }
@@ -89,6 +92,17 @@ const CSS_NULL = "bm-engine: data did not match any variant of untagged enum Css
 function resolveBands(options) {
   if (options == null || typeof options !== "object" || Array.isArray(options)) return options;
   const o = { ...options };
+  // JSON.stringify turns NaN and infinities into null. Reject them here while
+  // the original JS numbers are still observable, before the native/wasm parser
+  // can mistake them for an omitted margin side.
+  if (typeof o.margin === "number") {
+    if (!Number.isFinite(o.margin)) throw new Error("Page size must be finite and larger than zero");
+  } else if (o.margin && typeof o.margin === "object" && !Array.isArray(o.margin)) {
+    for (const side of ["top", "right", "bottom", "left"]) {
+      if (typeof o.margin[side] === "number" && !Number.isFinite(o.margin[side]))
+        throw new Error("Page size must be finite and larger than zero");
+    }
+  }
   // takumi-pdf: `css: null` becomes the sheet list `[null]`, which no `CssSource` variant reads
   if (o.css === null) throw new TypeError(CSS_NULL);
   if (o.fonts != null && typeof o.fonts !== "object" && typeof o.fonts !== "function") throw new TypeError("bm-engine: fonts takes an array");
@@ -193,63 +207,6 @@ function styleText(c) {
   if (typeof c === "string" || typeof c === "number") return String(c).replace(/<\/style/gi, "<\\/style");
   if (typeof c === "object" && typeof c[Symbol.iterator] === "function") return Array.from(c, styleText).join("");
   return isJsxElement(c) ? styleText(c.props && c.props.children) : "";
-}
-
-// ---- prepare: fetching the images a document draws (takumi helpers `prepareImages`)
-
-const isHttp = (u) => /^https?:\/\//i.test(u);
-const CSS_URL = /url\(\s*(['"]?)(.*?)\1\s*\)/g;
-
-function cssUrls(s, out) {
-  if (typeof s === "string") for (const m of s.matchAll(CSS_URL)) { const u = m[2] && m[2].trim(); if (u) out.add(u); }
-  else if (Array.isArray(s)) for (const x of s) cssUrls(x, out);
-}
-
-/** The image URLs a source names: `<img src>`, CSS `url()` (HTML), and image `src` / style images / `tw` (node trees). */
-function imageUrls(v, out) {
-  if (typeof v === "string") {
-    for (const m of v.matchAll(/<(?:img|image)\b[^>]*?\s(?:src|href|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
-      const u = (m[1] ?? m[2] ?? m[3] ?? "").replace(/&amp;/g, "&").trim();
-      if (u) out.add(u);
-    }
-    cssUrls(v, out);
-  } else if (isNode(v)) {
-    for (const s of [v.style, v.preset]) if (s && typeof s === "object") { cssUrls(s.backgroundImage, out); cssUrls(s.maskImage, out); cssUrls(s.listStyleImage, out); }
-    cssUrls(v.tw, out);
-    if (v.type === "image" && typeof v.src === "string") out.add(v.src);
-    for (const c of Array.isArray(v.children) ? v.children : []) imageUrls(c, out);
-  }
-}
-
-/**
- * takumi-pdf `prepare`: the images the document and its bands draw that `images` does not provide are fetched
- * (`images.fetch`, else the global `fetch`; without a custom fetch only http(s) URLs) and added to `images`.
- * A failed fetch rejects unless `images.throwOnError` is false.
- */
-async function fetchImages(options, node) {
-  const images = options.images;
-  const { sources = [], fetch: fetchFn, throwOnError = true, signal = options.signal, timeout } = Array.isArray(images) ? { sources: images } : images && typeof images === "object" ? images : {};
-  const urls = new Set();
-  imageUrls(resolveDocument(node), urls);
-  const bands = [options.header, options.footer];
-  if (options.pages && typeof options.pages === "object") for (const p of Object.values(options.pages)) if (p && typeof p === "object") bands.push(p.header, p.footer);
-  for (const b of bands) if (b != null && b !== false) imageUrls(b, urls);
-  if (typeof options.css === "string" || Array.isArray(options.css)) cssUrls(options.css, urls);
-  const have = new Set((Array.isArray(sources) ? sources : []).map((s) => s && s.src));
-  const doFetch = fetchFn || globalThis.fetch;
-  const todo = [...urls].filter((u) => !have.has(u) && !u.startsWith("data:") && (fetchFn !== undefined || isHttp(u)));
-  if (todo.length === 0 || typeof doFetch !== "function") return images === undefined ? options : { ...options, images: Array.isArray(images) ? images : sources };
-  const one = async (src) => {
-    const init = {};
-    const s = timeout ? (signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout)) : signal;
-    if (s) init.signal = s;
-    const res = await doFetch(src, init);
-    if (!res || !res.ok) throw new Error(`bm-engine: fetching ${src} failed${res ? ` (${res.status})` : ""}`);
-    return { src, data: new Uint8Array(await res.arrayBuffer()) };
-  };
-  const tasks = todo.map(one);
-  const fetched = throwOnError ? await Promise.all(tasks) : (await Promise.allSettled(tasks)).filter((r) => r.status === "fulfilled").map((r) => r.value);
-  return { ...options, images: [...(Array.isArray(sources) ? sources : []), ...fetched] };
 }
 
 // ---- page counter primitives (takumi-pdf primitives.ts, as bm-engine nodes instead of JSX elements)

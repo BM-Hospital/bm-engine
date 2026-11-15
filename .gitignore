@@ -12,6 +12,6 @@ docs/public/data/
 .vercel
 native/dist/
 npm/*/*.node
-npm/*/LICENSE-*
+npm/*/LICENSE
 npm/*/NOTICE
 npm/*/THIRD-PARTY-NOTICES.md

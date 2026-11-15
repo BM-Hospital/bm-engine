@@ -317,6 +317,43 @@ fn compile(comptime complex: bool, alloc: std.mem.Allocator, font: *const Font, 
 
 /// Hebrew: patah / qamats + sheva / hiriq + meteg-or-below are swapped so that the font's
 /// mark positioning sees the order it expects. `normalize.ReorderHook`.
+/// HarfBuzz `_hb_ot_shape_fallback_spaces`: a Unicode space the font has no glyph for is drawn with
+/// the space glyph (normalize.zig) and given the width its kind asks for (`gl.x_adv` in font units:
+/// the space glyph's advance on entry). Characters the font maps itself keep their own advance.
+fn fallbackSpace(font: *const Font, gl: *ot.Glyph) void {
+    if (font.glyphIndex(gl.cp) != 0) return;
+    const upem: i32 = font.units_per_em;
+    const em = struct {
+        fn div(u: i32, n: i32) i32 {
+            return @divTrunc(u + @divTrunc(n, 2), n);
+        }
+    }.div;
+    gl.x_adv = switch (gl.cp) {
+        0x2001, 0x2003, 0x3000 => upem,
+        0x2000, 0x2002 => em(upem, 2),
+        0x2004 => em(upem, 3),
+        0x2005 => em(upem, 4),
+        0x2009 => em(upem, 5),
+        0x2006 => em(upem, 6),
+        0x200a => em(upem, 16),
+        0x205f => @divTrunc(upem * 4, 18),
+        0x2007 => blk: { // figure space: the width of a digit
+            var d: u21 = '0';
+            while (d <= '9') : (d += 1) {
+                const g = font.glyphIndex(d);
+                if (g != 0) break :blk font.advanceWidth(g);
+            }
+            break :blk gl.x_adv;
+        },
+        0x2008 => blk: { // punctuation space: the width of '.' (or ',')
+            const g = if (font.glyphIndex('.') != 0) font.glyphIndex('.') else font.glyphIndex(',');
+            break :blk if (g != 0) font.advanceWidth(g) else gl.x_adv;
+        },
+        0x202f => @divTrunc(gl.x_adv, 2), // narrow no-break space: half a space
+        else => gl.x_adv,
+    };
+}
+
 fn reorderMarksHebrew(b: *ot.Buffer, start: usize, end: usize) void {
     const gs = b.g();
     var i = start + 2;
@@ -522,6 +559,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
     }
 
     // advances + GPOS
+    const space_gid = font.glyphIndex(' ');
     for (b.g()) |*gl| {
         gl.x_adv = font.advanceWidth(gl.gid);
         gl.x_off = 0;
@@ -529,6 +567,7 @@ pub fn shape(comptime complex: bool, cache: *Cache, font: *const Font, b: *ot.Bu
         gl.kern = 0;
         gl.attach_chain = 0;
         gl.attach_type = 0;
+        if (space_gid != 0 and gl.gid == space_gid and gl.cp != ' ') fallbackSpace(font, gl);
     }
     const has_gpos = plan.gpos_table.len != 0;
     if (plan.gpos.lookups.len != 0) ot.position(plan, font, b);

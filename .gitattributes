@@ -1,2 +1,4 @@
 # Byte-exact reference data compared in tests (no end-of-line conversion on checkout).
 src/pdf/testdata/*.txt -text
+# Keep imported upstream blobs byte-identical to the corpus integrity manifest.
+tests/upstream/takumi/** -text

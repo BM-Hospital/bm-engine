@@ -69,6 +69,8 @@ const S = struct {
     /// the float item placed last and `Bfc.last_top` before it (for `float_fn` how = 3)
     undo_item: u32,
     undo_top: f32,
+    resume_from: f32 = std.math.inf(f32),
+    resume_dy: f32 = 0,
 };
 
 fn Host(comptime T: type) type {
@@ -81,7 +83,7 @@ fn Host(comptime T: type) type {
             const rects = t.float_rects.items[@min(bf.start, t.float_rects.items.len)..];
             if (rects.len == 0 or !(y == y) or !(h == h)) return full;
             const cl = c.org[0] + c.inset[0];
-            const ct = c.org[1] + c.inset[1];
+            const ct = c.org[1] + c.inset[1] + (if (y >= c.resume_from) c.resume_dy else 0);
             const e = fl.edges(rects, ct + y, @max(h, 0));
             const x0 = @max(e[0] - cl, 0);
             const x1 = @max(@min(e[1] - cl, c.line_w), x0);
@@ -132,6 +134,12 @@ pub noinline fn compute(t: anytype, node: u32, in_: *const In, out: *Out, in_flo
     const mark = t.scratch.mark();
     defer t.scratch.release(mark);
     const c = try t.scratch.create(t.alloc, S);
+    c.resume_from = std.math.inf(f32);
+    c.resume_dy = 0;
+    if (comptime st.frag_enabled) if (t.paged.inline_resume) |continuation| if (continuation.node == node) {
+        c.resume_from = continuation.from_y;
+        c.resume_dy = continuation.dy;
+    };
     c.in = in_.*;
     c.tree = t;
     c.err = null;

@@ -29,6 +29,25 @@ const SourceKind = rt.SourceKind;
 const Error = rt.Error;
 const Allocator = std.mem.Allocator;
 
+pub fn needs(r: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+    const a = r.arena.allocator();
+    var o = try parseOptions(r, opts_json);
+    try poolStyles(a, &o, kind, source);
+    var collector: @import("needs.zig").Collector = .{ .a = a };
+    const main = try buildFrameEx(r, a, o, kind, source, .needs, null, null);
+    try collector.collect(&main);
+    const p = o.pages;
+    for ([_]?opt.Band{ o.header, o.footer, p.first.header, p.first.footer, p.last.header, p.last.footer, p.odd.header, p.odd.footer, p.even.header, p.even.footer }) |band| if (band) |b| {
+        const f = switch (b) {
+            .off => continue,
+            .html => |h| try buildFrameEx(r, a, o, .html, h, .needs, null, null),
+            .node => |n| try buildFrameEx(r, a, o, .json, "", .needs, null, n),
+        };
+        try collector.collect(&f);
+    };
+    return collector.finish();
+}
+
 pub const options = opt;
 
 /// Everything `emit` needs besides the frame.
@@ -208,6 +227,7 @@ fn firstComponent(s_in: []const u8) []const u8 {
 }
 
 const Mode = enum {
+    needs,
     /// the main document: paged content width / viewport
     document,
     /// a band or `measure`: full page width, unbounded height
@@ -236,10 +256,10 @@ fn buildFrameEx(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind,
         .page => |p| ro.width = @intFromFloat(@max(1, @min(p.width, 16384))),
     }
     ro.css = try cssWithVariables(a, o);
-    var f: Frame = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined, .pre = pre };
+    var f: Frame = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined, .pre = pre, .needs_only = mode == .needs };
     f.tree.paged.pdf = true;
     f.tree.paged.skip_dom_styles = o.pooled_styles;
-    if (o.geometry == .page and mode == .document) {
+    if (o.geometry == .page and mode != .band) {
         const ar = area orelse blk: {
             const p = o.geometry.page;
             const m = p.resolveMargins(null, null);
@@ -248,7 +268,7 @@ fn buildFrameEx(r: *Renderer, a: Allocator, o: opt.PdfOptions, kind: SourceKind,
         f.setPaged(ar.width, ar.height);
     }
     try f.prepare(kind, source);
-    try @import("text.zig").requireFont(&f, o.uncovered_text == .blank);
+    if (mode != .needs) try @import("text.zig").requireFont(&f, o.uncovered_text == .blank);
     return f;
 }
 
@@ -310,8 +330,7 @@ fn emit(a: Allocator, input: Input) Error![]const u8 {
             const h: f32 = if (v.height) |vh| @floatFromInt(vh) else blk: {
                 const rn = f.nodes.items[f.root];
                 if (rn.cs.position == .absolute or rn.cs.position == .fixed) break :blk 0;
-                const l = f.tree.layout(rn.lid);
-                break :blk l.y + l.h + l.margin.bottom;
+                break :blk f.rootBlockEnd();
             };
             if (!(h > 0) or !std.math.isFinite(h)) {
                 r.setErr("Page size must be finite and larger than zero", "");
@@ -344,6 +363,25 @@ fn finishSelection(r: *Renderer, sel: *const opt.PageSelection) Error!void {
 // ---- tests (page geometry, document structure, layout and option errors; the graphics pass)
 
 const config = @import("../config.zig");
+
+test "PDF needs uses computed styles and all bands before font loading or layout" {
+    if (comptime !@import("../config.zig").enable_pdf) return;
+    const r = Renderer.create(std.testing.allocator) orelse return error.OutOfMemory;
+    defer r.destroy();
+    const result = try r.needsPdf(.html,
+        \\<style>.used{background:url(body.png)}.unused{background:url(unused.png)}@font-face{font-family:Band;src:url(band.woff2)}</style><p class="used">body</p><div style="display:none"><img src="hidden.png"></div>
+    ,
+        \\{"footer":"<p style='font-family:Band'>Ж</p>","pages":{"first":{"header":"<img src='header.png'>"}}}
+    );
+    const value = try json.parse(r.arena.allocator(), result);
+    const images = value.get("images").?.array;
+    try std.testing.expectEqual(@as(usize, 2), images.len);
+    try std.testing.expect(std.mem.indexOf(u8, result, "body.png") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "header.png") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "hidden.png") == null);
+    try std.testing.expect(std.mem.indexOf(u8, value.get("text").?.string, "Ж") != null);
+    try std.testing.expect(value.get("faces").?.array.len > 0);
+}
 
 test "renderPdf: not supported without the flag, a page of the requested size with it" {
     const gpa = std.testing.allocator;
@@ -387,14 +425,31 @@ test "renderPdf: not supported without the flag, a page of the requested size wi
     try std.testing.expectEqualStrings("backgroundColor is not a color: notacolor", r.err);
 }
 
-test "renderPdf: text while no font is registered fails, naming it (bm-engine bundles no font)" {
+test "renderPdf: the bundled Geist draws text no registered font covers; without any font the render fails" {
     if (comptime !config.enable_pdf) return;
     const r = Renderer.create(std.testing.allocator).?;
     defer r.destroy();
     const node = "{\"type\":\"text\",\"text\":\"Hi\"}";
     const vp = "{\"viewport\":{\"width\":100,\"height\":50}}";
+    // takumi-pdf: every renderer starts with the last-resort Geist, and `clearFonts()` goes back to it
+    _ = try r.renderPdf(.json, node, vp);
+    try std.testing.expectEqualStrings("Geist", r.fonts.faces.items[0].family);
+    try std.testing.expect(r.fonts.faces.items[0].last_resort);
+    r.clearFonts();
+    _ = try r.measurePdf(.json, node, "");
+    _ = try r.renderPdf(.json, node, vp);
+    // a registered family comes before it, whatever order they were registered in
+    var out: [8]@import("../font/collection.zig").FaceId = undefined;
+    _ = try r.registerFont(try std.testing.allocator.dupe(u8, @embedFile("../font/testdata/Inter-Regular.ttf")), "Inter", 0, -1, null);
+    const order = r.fonts.match(&.{"sans-serif"}, 400, false, &out);
+    try std.testing.expectEqualStrings("Inter", r.fonts.face(order[0]).family);
+    try std.testing.expectEqualStrings("Geist", r.fonts.face(order[order.len - 1]).family);
+    // with Geist unregistered too, text fails, naming it
+    r.clearFonts();
+    _ = try r.renderPdf(.json, "{\"type\":\"text\",\"text\":\" \"}", vp);
+    _ = r.unregisterFont("Geist");
     try std.testing.expectError(error.Invalid, r.renderPdf(.json, node, vp));
-    try std.testing.expect(std.mem.indexOf(u8, r.err, "No font is registered to draw H (U+0048), i (U+0069). bm-engine bundles no font") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.err, "No font is registered to draw H (U+0048), i (U+0069).") != null);
     try std.testing.expectError(error.Invalid, r.measurePdf(.json, node, ""));
     // `uncoveredText: "blank"` asked for nothing to be drawn; a tree without text needs no font
     _ = try r.renderPdf(.json, node, "{\"viewport\":{\"width\":100,\"height\":50},\"uncoveredText\":\"blank\"}");

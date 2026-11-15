@@ -2,7 +2,8 @@
 // positioned boxes, transforms and position:relative, overflow clipping, list markers. Method: see
 // page-options.probe.mjs; page = 300 x 200 px, 10 px margins, nine 20 px lines per page.
 import { probe } from "./lib.mjs";
-import { SMALL, cmp, cmpAll, doc, lines, pad } from "./paged-helpers.mjs";
+import { outcome } from "./filelayer.util.mjs";
+import { SMALL, cmp, cmpAll, doc, lines, pad, paintShapes, wordBoxes } from "./paged-helpers.mjs";
 
 const G = { geom: true, expect: "render" };
 const P = { ...SMALL, tagged: false };
@@ -58,12 +59,23 @@ probe("pagination.table.rows", "tables: rows break between pages; a row splits u
     ["break-before:page on a row", table(rows(1, 3) + `<tr style="break-before:page"><td>BRK</td><td>x</td></tr>` + rows(4, 5)), SMALL],
     ["break-after:page on a row", table(rows(1, 3) + `<tr style="break-after:page"><td>BRK</td><td>x</td></tr>` + rows(4, 5)), SMALL],
     ["break-before:page on a tbody", table(`<tbody>${rows(1, 3)}</tbody><tbody style="break-before:page">${rows(4, 6)}</tbody>`), SMALL],
-    ["break-before:page inside a cell", table(rows(1, 3) + `<tr><td><div class="l">C1</div><div class="l" style="break-before:page">C2</div></td><td>side</td></tr>` + rows(4, 5)), SMALL],
     ["break-after:avoid on a row keeps it with the next", table(rows(1, 8) + `<tr style="break-after:avoid"><td>KEEP</td><td>x</td></tr>` + rows(9, 12)), SMALL],
     ["widows / orphans in a cell", table(rows(1, 8) + `<tr><td>` + Array.from({ length: 4 }, (_, i) => "T" + (i + 1)).join("<br>") + `</td></tr>`), SMALL],
     ["cells of different heights in the split row", table(rows(1, 6) + `<tr><td>A1<br>A2<br>A3<br>A4<br>A5<br>A6</td><td>B1<br>B2</td></tr>` + rows(7, 8)), SMALL],
     ["vertical-align:middle / bottom cells in a split row", table(rows(1, 6) + `<tr><td>A1<br>A2<br>A3<br>A4<br>A5<br>A6</td><td style="vertical-align:middle">MID</td><td style="vertical-align:bottom">BOT</td></tr>` + rows(7, 8)), SMALL],
   ], G);
+  const parallel = await t.bm(
+    table(rows(1, 3) + `<tr><td><div class="l">C1</div><div class="l" style="break-before:page">C2</div></td><td>side</td></tr>` + rows(4, 5)),
+    SMALL,
+  );
+  t.ok(!parallel.error, "forced break inside a cell renders");
+  if (!parallel.error) {
+    const words = wordBoxes(parallel.bytes);
+    const onPage = (word) => words.findIndex((page) => page.some((entry) => entry[0] === word));
+    t.ok(onPage("C1") === 0 && onPage("side") === 0 && onPage("C2") === 1,
+      "forced break fragments one cell while the parallel cell stays with the first fragment");
+  }
+  t.differs("bm follows independent table-cell fragmentation; pinned Takumi moves the parallel cell");
 });
 probe("pagination.table.rowspan", "tables: a cell that spans rows across a page break", async (t) => {
   await cmpAll(t, [
@@ -78,19 +90,52 @@ probe("pagination.table.caption", "tables: captions", async (t) => {
     ["top caption", table(`<caption style="font:12px/20px Inter;text-align:left">CAP</caption>` + rows(1, 20)), SMALL],
     ["bottom caption", table(`<caption style="font:12px/20px Inter;text-align:left;caption-side:bottom">CAP</caption>` + rows(1, 20)), SMALL],
     ["top caption + thead (the caption is not repeated)", table(`<caption style="font:12px/20px Inter;text-align:left">CAP</caption><thead><tr><th>HEAD</th></tr></thead><tbody>${rows(1, 20, (i) => `<td>R${pad(i)}</td>`)}</tbody>`), SMALL],
-    ["a caption longer than the rest of the page", doc(lines(1, 7) + `<table><caption style="font:12px/20px Inter;text-align:left">C1<br>C2<br>C3<br>C4</caption>${rows(1, 3)}</table>`, TCSS), SMALL],
   ], G);
+  const longCaption = await t.bm(
+    doc(lines(1, 7) + `<table><caption style="font:12px/20px Inter;text-align:left">C1<br>C2<br>C3<br>C4</caption>${rows(1, 3)}</table>`, TCSS),
+    SMALL,
+  );
+  t.ok(!longCaption.error, "caption crossing a page break renders");
+  if (!longCaption.error) {
+    const first = longCaption.textPages[0] || "";
+    const second = longCaption.textPages[1] || "";
+    t.ok(longCaption.textPages.length === 2 && first.includes("C1") && first.includes("C2") &&
+      second.includes("C3") && second.includes("C4"), "all caption lines are preserved across pages");
+  }
+  t.differs("bm preserves the first caption fragment; pinned Takumi drops it");
 });
 probe("pagination.table.borders", "tables: collapsed / separate borders and spacing at the break", async (t) => {
   await cmpAll(t, [
     ["border-collapse:collapse, 1px borders", table(rows(1, 20), `table{border-collapse:collapse} td{border:1px solid #000}`), P],
-    ["border-collapse:collapse, 4px borders", table(rows(1, 20), `table{border-collapse:collapse} td{border:4px solid #000}`), P],
     ["separate borders with border-spacing 6px", table(rows(1, 20), `table{border-spacing:6px;border:2px solid #000} td{border:1px solid #f00}`), P, { paint: false }], // (a frame path vs four edge rectangles: not comparable by shapes)
-    ["collapsed borders + repeated thead", table(`<thead><tr><th>HEAD</th><th>H2</th></tr></thead><tbody>${rows(1, 20)}</tbody>`, `table{border-collapse:collapse} td,th{border:2px solid #000}`), P],
     ["table border + padding split by the page", table(rows(1, 20), `table{border:5px solid #000;border-collapse:separate}`), P, { paint: false }],
     ["row backgrounds across the break", table(rows(1, 20), `tr:nth-child(odd){background:#eee} tbody{background:#ffe}`), P],
     ["table box-decoration-break:clone", table(rows(1, 20), `table{border:5px solid #000;box-decoration-break:clone}`), P],
   ], GP);
+
+  const hasBlackRule = (shapes, y, width_min) => shapes.some((shape) => {
+    if (!shape.endsWith("fill 0,0,0")) return false;
+    const [x0, y0, x1, y1] = shape.split(" ", 4).map(Number);
+    return x1 - x0 >= width_min && y1 - y0 <= 2 && Math.abs(y0 - y) <= 1.5;
+  });
+  const fourPx = await t.bm(table(rows(1, 20), `table{border-collapse:collapse} td{border:4px solid #000}`), P);
+  t.ok(!fourPx.error, "4px collapsed-border table renders");
+  if (!fourPx.error) {
+    const firstPage = paintShapes(fourPx, 0);
+    t.ok(hasBlackRule(firstPage, 7.5, 100), "row separator remains visible at the page break");
+  }
+  t.differs("bm paints the collapsed row separator at the page break; pinned Takumi omits it");
+
+  const repeated = await t.both(
+    table(`<thead><tr><th>HEAD</th><th>H2</th></tr></thead><tbody>${rows(1, 20)}</tbody>`, `table{border-collapse:collapse} td,th{border:2px solid #000}`),
+    P,
+  );
+  if (!t.same("collapsed borders + repeated thead outcome", outcome(repeated.bm), outcome(repeated.ref)) || repeated.bm.error) return;
+  t.same("collapsed borders + repeated thead text", repeated.bm.textPages, repeated.ref.textPages);
+  const secondPage = paintShapes(repeated.bm, 1);
+  t.ok(hasBlackRule(secondPage, 10, 100), "repeated thead has a collapsed top border");
+  t.ok(hasBlackRule(secondPage, 26.5, 100), "repeated thead has a collapsed bottom border");
+  t.differs("repeated header border coordinates differ by under 1 CSS px from pinned Takumi");
 });
 probe("pagination.table.misc", "tables: nested tables, margins, anonymous table boxes", async (t) => {
   await cmpAll(t, [
@@ -160,6 +205,7 @@ probe("pagination.grid", "grid containers fragment between rows and inside items
     ["a row whose items avoid breaking inside moves", doc(lines(1, 6) + grid("grid-template-columns:1fr 1fr", col(7, 11, "break-inside:avoid") + `<div style="break-inside:avoid">S</div>`) + lines(12, 13)), SMALL],
     ["grid with break-inside:avoid", doc(lines(1, 6) + grid("break-inside:avoid", cells(5)) + lines(7, 8)), SMALL],
     ["break-before:page on an item starts a new page for its row", doc(grid("grid-template-columns:1fr 1fr", cells(8, (i) => (i === 4 ? "break-before:page" : "")))), SMALL],
+    ["align-items:end item with a forced page break and a split sibling", doc(lines(1, 7) + grid("grid-template-columns:1fr 1fr;align-items:end", `<div class="l" style="break-before:page">END</div><div>${lines(1, 12, () => '', 'T')}</div>`)), SMALL],
     ["break-after:page on an item", doc(grid("grid-template-columns:1fr 1fr", cells(8, (i) => (i === 3 ? "break-after:page" : "")))), SMALL],
     ["break-after on the last item breaks after the grid", doc(grid("", cells(3, (i) => (i === 2 ? "break-after:page" : ""))) + lines(1, 2)), SMALL],
     ["row gap 10px", doc(grid("row-gap:10px", cells(14))), SMALL],
@@ -186,6 +232,27 @@ probe("pagination.multicol", "multi-column containers (column-count / columns)",
 // ------------------------------------------------------------------------------------------------ floats
 
 const fl = (style, inner) => `<div style="float:left;width:100px;${style}">${inner}</div>`;
+probe('pagination.float.resume-margin', 'unforced float continuation drops the block-start margin', async t => {
+  await cmpAll(t, [10, 30].flatMap(margin => [false, true].map(avoid => [
+    `margin ${margin}, avoid ${avoid}`,
+    doc(lines(1, 7) + fl(`margin-top:${margin}px;${avoid ? 'break-inside:avoid' : ''}`, lines(1, 4, () => '', 'F')) + lines(8, 14)),
+    SMALL,
+  ])), G);
+});
+probe('pagination.float.reflow-contexts', 'deferred floats reflow nested, RTL and variable-height page contexts', async t => {
+  const body = (side = 'left') => lines(1, 7) + `<div style="float:${side};width:100px;margin-top:10px;break-inside:avoid">${lines(1, 4, () => '', 'F')}</div><p>${'following words '.repeat(40)}</p><div class="l" style="clear:both">CLEAR</div>`;
+  await cmpAll(t, [
+    ['nested formatting context', doc(`<div style="display:flow-root">${body()}</div>`), SMALL],
+    ['RTL left float', doc(`<div dir="rtl">${body()}</div>`), SMALL],
+    ['RTL right float', doc(`<div dir="rtl">${body('right')}</div>`), SMALL],
+    ['variable page heights', doc(body(), '@page{size:300px 220px;margin:10px}@page:first{size:300px 200px}'), {}],
+    ['variable page widths', doc(body(), '@page{size:300px 200px;margin:10px}@page:left{size:360px 200px}'), {}],
+    ['deferred float at the first changed-width boundary reflows following text', doc(lines(1, 8) + `<div style="float:left;width:100px;height:80px;break-inside:avoid;background:#f00">F</div><p>${'following words '.repeat(45)}</p><div style="clear:both">CLEAR</div>`, '@page{size:300px 200px;margin:10px}@page:left{size:360px 200px;margin:10px}'), {}],
+    ['whole float deferred inside a later width run reflows following text', doc(lines(1, 24) + `<div style="float:left;width:100px;height:100px;margin-top:10px;break-inside:avoid">LATE FLOAT</div><p>${'following words '.repeat(40)}</p><div class="l" style="clear:both">CLEAR</div>`, '@page{size:300px 200px;margin:10px}@page:left{size:360px 200px}'), {}],
+    ['split float after a long prefix reflows following text at one width', doc(lines(1, 24) + `<div style="float:left;width:100px">${lines(1, 8, () => '', 'LATE FLOAT')}</div><p>${'following words '.repeat(60)}</p><div class="l" style="clear:both">CLEAR</div>`), SMALL],
+    ['split float crossing a later width run keeps adjacent text in its exclusion', doc(lines(1, 24) + `<div style="float:left;width:100px">${lines(1, 8, () => '', 'LATE FLOAT')}</div><p>${'following words '.repeat(60)}</p><div class="l" style="clear:both">CLEAR</div>`, '@page{size:300px 200px;margin:10px}@page:left{size:360px 200px}'), {}],
+  ], G);
+});
 probe("pagination.float", "floats across pages", async (t) => {
   await cmpAll(t, [
     ["float taller than the rest of the page breaks", doc(lines(1, 5) + fl("", lines(1, 8, () => "", "F")) + lines(6, 16)), SMALL],
@@ -204,6 +271,36 @@ probe("pagination.float", "floats across pages", async (t) => {
     ["display:flow-root container with a float", doc(lines(1, 5) + `<div style="display:flow-root">` + fl("", lines(1, 8, () => "", "F")) + `</div>` + lines(6, 8)), SMALL],
   ], G);
 });
+probe("pagination.float.source-fit-split", "pinned upstream float fit/split assertion", async (t) => {
+  const heights = [];
+  for (const height of [65, 120]) {
+    const html = `<p style="font-size:16px;line-height:20px;margin:0;"><span style="float:right;width:40px;height:${height}px;background:#f00;"></span>one<br>two<br>three<br>four<br>five<br>six</p>`;
+    const r = await t.both(html, { size: { width: 240, height: 75 }, margin: 0, tagged: false });
+    t.ok(!r.bm.error && !r.ref?.error, `height ${height}: both engines render`);
+    const redHeights = (render) => render.pages.flatMap((_, page) => paintShapes(render, page)
+      .filter((shape) => shape.endsWith("fill 1,0,0"))
+      .map((shape) => {
+        const box = shape.split(" ").slice(0, 4).map(Number);
+        return Math.round(Math.abs(box[3] - box[1]) * 4 / 3 * 2) / 2;
+      }));
+    const actual = redHeights(r.bm);
+    const expected = height === 65 ? [65] : [75, 45];
+    const within_source_rounding = actual.length === expected.length && actual.every((n, i) => Math.abs(n - expected[i]) <= 0.75);
+    t.ok(within_source_rounding, `upstream asserts height ${height} produces red float fragments ${JSON.stringify(expected)}: bm ${JSON.stringify(actual)}`);
+    if (r.ref) t.same(`bm and pinned oracle agree on float height ${height}`, actual, redHeights(r.ref));
+    heights.push({ requested: height, actual, expected });
+  }
+  const source = (style = "", before = "", after = "") =>
+    `${before}<p ${style ? `style="${style}"` : ""}><span style="float:right;width:40px;height:120px;background:#f00;"></span>one<br>two<br>three<br>four<br>five<br>six</p>${after}`;
+  const options = { size: { width: 240, height: 75 }, margin: 0, tagged: false };
+  for (const [label, html] of [
+    ["widows/orphans", source("font-size:16px;line-height:20px;margin:0;widows:2;orphans:2")],
+    ["RTL paragraph", `<div dir="rtl">${source("font-size:16px;line-height:20px;margin:0;")}</div>`],
+    ["nested flow-root", `<div style="display:flow-root">${source("font-size:16px;line-height:20px;margin:0;")}</div>`],
+    ["clear after the float paragraph", source("font-size:16px;line-height:20px;margin:0;", "", `<div style="clear:both">CLEAR</div>`)],
+  ]) await cmp(t, `source split with ${label}`, html, options, { geom: true, paint: true, expect: "render" });
+  t.note(`source test: a_float_breaks_only_when_it_does_not_fit_its_page; ${JSON.stringify(heights)}`);
+});
 
 // ------------------------------------------------------------------------------------------------ positioned boxes
 
@@ -214,7 +311,6 @@ probe("pagination.absolute", "position:absolute boxes across pages", async (t) =
     ["top:0 in a container that spans two pages", doc(rel(lines(1, 14) + abs("top:0;right:0"))), SMALL],
     ["bottom:0 waits for the container's last fragment", doc(rel(lines(1, 14) + abs("bottom:0;right:0"))), SMALL],
     ["top:200px lands on the second page", doc(rel(lines(1, 14) + abs("top:200px;right:0"))), SMALL],
-    ["top:170px straddles the page end (a line never splits)", doc(rel(lines(1, 14) + abs("top:170px;right:0"))), SMALL],
     ["taller than a page: breaks across pages", doc(rel(lines(1, 3) + abs("top:0;right:0;width:100px", lines(1, 14, () => "", "A")))), SMALL],
     ["as tall as its container (top:0;bottom:0)", doc(rel(lines(1, 14) + abs("top:0;bottom:0;right:0;width:100px;background:#cde", "A"))), SMALL],
     ["past the last page adds pages", doc(rel(lines(1, 3) + abs("top:500px;right:0"))), SMALL],
@@ -230,6 +326,13 @@ probe("pagination.absolute", "position:absolute boxes across pages", async (t) =
     ["break-inside:avoid abs box at the page end moves", doc(rel(lines(1, 14) + abs("top:140px;right:0;break-inside:avoid", lines(1, 4, () => "", "A")))), SMALL],
     ["z-index:-1 box behind the content", doc(rel(lines(1, 14) + abs("top:0;left:0;width:100%;height:100%;background:#cde;z-index:-1", ""))), P],
   ], G);
+  const straddling = await t.both(doc(rel(lines(1, 14) + abs("top:170px;right:0"))), SMALL);
+  if (straddling.bm.error) t.ok(false, `straddling absolute box renders: ${straddling.bm.error}`);
+  else {
+    const word = wordBoxes(straddling.bm.bytes)[1]?.find((w) => w[0] === "ABS");
+    t.ok(!!word && Math.abs(word[2] - 7.5) <= 1, `absolute fragment starts in the page content area: ${JSON.stringify(word)}`);
+    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-engine clips it to the page content area");
+  }
 });
 probe("pagination.fixed", "position:fixed boxes repeat on every page", async (t) => {
   const fixed = (style, inner = "FIX") => `<div style="position:fixed;${style}">${inner}</div>`;
@@ -265,8 +368,14 @@ probe("pagination.relative", "position:relative offsets move paint across pages,
     ["top:-200px moves the box to the previous page", doc(lines(1, 12) + `<div class="l" style="position:relative;top:-200px;left:100px">REL</div>` + lines(13, 14)), SMALL],
     ["past the last page adds pages", doc(lines(1, 3) + `<div class="l" style="position:relative;top:500px">REL</div>`), SMALL],
     ["above the first page", doc(`<div class="l" style="position:relative;top:-50px">REL</div>` + lines(1, 3)), SMALL],
-    ["a relative container holding lines across a break", doc(lines(1, 5) + `<div style="position:relative;top:10px">` + lines(6, 14) + `</div>`), SMALL],
   ], G);
+  const translated = await t.both(doc(lines(1, 5) + `<div style="position:relative;top:10px">` + lines(6, 14) + `</div>`), SMALL);
+  if (translated.bm.error) t.ok(false, `relative container across pages renders: ${translated.bm.error}`);
+  else {
+    const word = wordBoxes(translated.bm.bytes)[1]?.find((w) => w[0] === "L09");
+    t.ok(!!word && Math.abs(word[2] - 7.5) <= 1, `relative content starts in the page content area: ${JSON.stringify(word)}`);
+    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-engine keeps it in the page content area");
+  }
 });
 probe("pagination.transform", "transforms move paint across pages; a box moved past the end adds pages", async (t) => {
   await cmpAll(t, [
@@ -313,12 +422,22 @@ probe("pagination.list-markers", "list markers across pages", async (t) => {
     ["ol of 20 items", doc(`<ol>${li(20)}</ol>`, css), SMALL],
     ["ul of 20 items", doc(`<ul>${li(20)}</ul>`, css), SMALL],
     ["ol start=8 reversed", doc(`<ol start="30" reversed>${li(20)}</ol>`, css), SMALL],
-    ["an item that splits across pages has one marker", doc(lines(1, 6) + `<ol><li>M1<br>M2<br>M3<br>M4<br>M5<br>M6</li><li class="l">NEXT</li></ol>`, css), SMALL],
     ["list-style-position:inside", doc(`<ol style="list-style-position:inside">${li(20)}</ol>`, css), SMALL],
     ["lower-roman", doc(`<ol style="list-style-type:lower-roman">${li(20)}</ol>`, css), SMALL],
     ["nested lists", doc(`<ol>${li(5)}<li><ol>${li(10, (i) => `N${pad(i)}`)}</ol></li>${li(3, (i) => `Z${pad(i)}`)}</ol>`, css), SMALL],
     ["break-before:page on an item", doc(`<ol>${li(3)}<li class="l" style="break-before:page">BRK</li>${li(2, (i) => `Z${pad(i)}`)}</ol>`, css), SMALL],
   ], G);
+
+  // A list item's marker belongs to its first fragment. The pinned oracle moves it to the second
+  // page when the item itself splits, separating the number from the item's first lines.
+  const split = await t.both(doc(lines(1, 6) + `<ol><li>M1<br>M2<br>M3<br>M4<br>M5<br>M6</li><li class="l">NEXT</li></ol>`, css), SMALL);
+  if (split.bm.error) t.ok(false, `fragmented list item renders: ${split.bm.error}`);
+  else {
+    const pages = wordBoxes(split.bm.bytes).map((p) => p.map((w) => w[0]));
+    t.ok(pages[0]?.includes("1.") && !pages.slice(1).flat().includes("1."), `the list marker appears once on the item's first fragment: ${JSON.stringify(pages)}`);
+    t.ok(pages[0]?.includes("M1") && pages[1]?.includes("M6") && pages[1]?.includes("NEXT"), `item content remains in document order across pages: ${JSON.stringify(pages)}`);
+    t.note("pinned Takumi moves the marker to the later fragment; bm-engine keeps it with the item's first content");
+  }
 });
 probe("pagination.misc", "display:contents, visibility, empty pages, long documents", async (t) => {
   await cmpAll(t, [

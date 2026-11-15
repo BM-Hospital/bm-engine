@@ -206,9 +206,18 @@ pub const Renderer = struct {
     scratch: bump.Bump,
     fonts: font.FontCollection = .{},
     font_blobs: std.ArrayList([]u8) = .empty,
+    /// [pdf] the bundled last-resort font (`geist_ttf`) is registered (see `ensureDefaultFonts`)
+    default_fonts: bool = false,
     images: std.ArrayList(ImageEntry) = .empty,
     img_cache: std.ArrayList(CachedImage) = .empty,
     img_cache_bytes: usize = 0,
+    /// Content hashes of sources that failed to decode (a decoder this build lacks, e.g. a
+    /// progressive JPEG): not attempted again on every render.
+    img_failed: std.ArrayList(u64) = .empty,
+    /// Content hashes of image sources computed during the current call (layout and the PDF
+    /// emitter both key on them), by address; forgotten when the call starts or images change.
+    hash_memo: [8]HashMemo = @splat(.{}),
+    hash_memo_next: u8 = 0,
     rast: raster.Rasterizer,
     /// Glyph-mask cache. The key is 128 bits wide so a full 16-bit face id (variable-font
     /// instances are >= 0x8000) fits next to gid / size / subpixel phase / synthesis bits.
@@ -251,6 +260,7 @@ pub const Renderer = struct {
         self.font_blobs.deinit(self.gpa);
         self.images.deinit(self.gpa);
         self.img_cache.deinit(self.gpa);
+        self.img_failed.deinit(self.gpa);
         self.glyphs.deinit(self.gpa);
         self.color_glyphs.deinit(self.gpa);
         self.shape_cache.deinit();
@@ -293,13 +303,14 @@ pub const Renderer = struct {
         }
         self.img_cache.clearRetainingCapacity();
         self.img_cache_bytes = 0;
+        self.img_failed.clearRetainingCapacity();
     }
 
     /// Takes ownership of `data` (allocated with `gpa`): TTF/OTF/TTC (every face of a collection is
     /// registered) or, with WOFF support compiled in, WOFF/WOFF2 (decoded to sfnt, the container is
     /// freed). Returns takumi's `RegisteredFamily[]` JSON in the arena: `[{name, faces:[{weight, style,
     /// width, index}], weight, style}]` (`weight`/`style` of the first face kept for compatibility).
-    pub fn registerFont(self: *Renderer, data_in: []u8, name: []const u8, weight: u16, italic: i32) Error![]const u8 {
+    pub fn registerFont(self: *Renderer, data_in: []u8, name: []const u8, weight: u16, italic: i32, unicode_range: ?[]const font.collection.UnicodeRange) Error![]const u8 {
         self.arena.reset();
         var data = data_in;
         if (comptime config.enable_woff) {
@@ -322,13 +333,33 @@ pub const Renderer = struct {
             .family = if (name.len > 0) name else null,
             .weight = if (weight > 0) weight else null,
             .italic = if (italic < 0) null else italic != 0,
-        }) catch |e| {
+            .unicode_range = unicode_range,
+        }) catch |e| blk: {
+            const is_sfnt = sfntDirectoryReads(data);
+            // takumi registers a named font whose tables it cannot read (truncated, no `cmap`) as
+            // long as its table directory reads: it draws no character, and the text falls back
+            // to the next family (in PDF output at last the bundled Geist). Here: a face of that
+            // family covering nothing, on an empty font (every build alike, so the native addon
+            // and every wasm build accept the same files).
+            if (e != error.OutOfMemory and name.len > 0 and is_sfnt) {
+                const nothing = [_]font.collection.UnicodeRange{};
+                if (self.fonts.registerAll(self.gpa, &empty_font, .{
+                    .family = name,
+                    .weight = if (weight > 0) weight else null,
+                    .italic = if (italic < 0) null else italic != 0,
+                    .unicode_range = &nothing,
+                })) |r| break :blk r else |e2| if (e2 == error.OutOfMemory) {
+                    self.gpa.free(data);
+                    return error.OutOfMemory;
+                }
+            }
             self.gpa.free(data);
             switch (e) {
                 error.OutOfMemory => return error.OutOfMemory,
-                error.UnsupportedFontFormat => self.setErr("unsupported font format", ""),
                 error.WoffContainer, error.Woff2Container => self.setErr("WOFF/WOFF2 fonts are not supported by this build", ""),
-                else => self.setErr("invalid font data", ""),
+                // (takumi's wording for bytes that are no font file, and for a format it cannot read)
+                error.UnsupportedFontFormat => self.setErr("Unsupported font format", ""),
+                else => self.setErr(if (is_sfnt) "invalid font data" else "Unsupported font format", ""),
             }
             return error.Invalid;
         };
@@ -389,8 +420,90 @@ pub const Renderer = struct {
         self.clearGlyphs();
         self.shape_cache.clear();
         self.fonts.clear(self.gpa);
+        font.variations.invalidateCaches();
         for (self.font_blobs.items) |b| self.gpa.free(b);
         self.font_blobs.clearRetainingCapacity();
+        // (the bundled fallback comes back with the next PDF call, as takumi-pdf's `clearFonts()`)
+        self.default_fonts = false;
+    }
+
+    /// A TrueType font with no glyph mapped (`cmap` without subtables, one empty glyph): the face
+    /// of a registered family whose own file cannot be read (`registerFont`).
+    const empty_font: [196]u8 = blk: {
+        var b: [196]u8 = @splat(0);
+        const put16 = struct {
+            fn f(buf: []u8, at: usize, v: u16) void {
+                buf[at] = @intCast(v >> 8);
+                buf[at + 1] = @intCast(v & 0xff);
+            }
+        }.f;
+        const put32 = struct {
+            fn f(buf: []u8, at: usize, v: u32) void {
+                buf[at] = @intCast(v >> 24);
+                buf[at + 1] = @intCast((v >> 16) & 0xff);
+                buf[at + 2] = @intCast((v >> 8) & 0xff);
+                buf[at + 3] = @intCast(v & 0xff);
+            }
+        }.f;
+        put32(&b, 0, 0x00010000);
+        put16(&b, 4, 5); // tables, in tag order: cmap head hhea hmtx maxp
+        // directory
+        const dir = [_][3]u32{ .{ 0x636d6170, 92, 4 }, .{ 0x68656164, 96, 54 }, .{ 0x68686561, 150, 36 }, .{ 0x686d7478, 186, 4 }, .{ 0x6d617870, 190, 6 } };
+        for (dir, 0..) |d, i| {
+            put32(&b, 12 + i * 16, d[0]);
+            put32(&b, 12 + i * 16 + 8, d[1]);
+            put32(&b, 12 + i * 16 + 12, d[2]);
+        }
+        // head: version 1.0, magic, unitsPerEm 1000, short loca
+        put32(&b, 96, 0x00010000);
+        put32(&b, 96 + 12, 0x5F0F3CF5);
+        put16(&b, 96 + 18, 1000);
+        // hhea: version 1.0, ascender 800, descender -200, one metric
+        put32(&b, 150, 0x00010000);
+        put16(&b, 150 + 4, 800);
+        put16(&b, 150 + 6, 0xFF38);
+        put16(&b, 150 + 34, 1);
+        // hmtx: advance 500
+        put16(&b, 186, 500);
+        // maxp: version 0.5, one glyph
+        put32(&b, 190, 0x00005000);
+        break :blk b;
+    };
+
+    /// Whether `data` starts like an sfnt font (TrueType, OpenType or a collection) whose table
+    /// directory lies inside it.
+    fn sfntDirectoryReads(data: []const u8) bool {
+        if (data.len < 12) return false;
+        const rd32 = struct {
+            fn f(b: []const u8, i: usize) u32 {
+                return std.mem.readInt(u32, b[i..][0..4], .big);
+            }
+        }.f;
+        var dir: usize = 0;
+        if (rd32(data, 0) == 0x74746366) { // 'ttcf': the first face's directory
+            if (data.len < 16) return false;
+            dir = rd32(data, 12);
+            if (dir > data.len - 12) return false;
+        }
+        const magic = rd32(data, dir);
+        if (magic != 0x00010000 and magic != 0x74727565 and magic != 0x4F54544F) return false; // 1.0, 'true', 'OTTO'
+        const n: usize = std.mem.readInt(u16, data[dir + 4 ..][0..2], .big);
+        return dir + 12 + n * 16 <= data.len;
+    }
+
+    /// takumi-pdf's bundled last-resort font: Geist (Latin, weights 300-800; SIL OFL 1.1,
+    /// src/pdf/geist/OFL.txt), the same file takumi embeds (`EMBEDDED_FONTS`). PDF builds only.
+    const geist_ttf: []const u8 = if (config.enable_pdf) @embedFile("pdf/geist/geist-latin-wght-300-800.ttf") else "";
+
+    /// Registers the bundled last-resort font for a PDF call (takumi-pdf `default_fonts`: every
+    /// renderer starts with it, and `clearFonts()` goes back to it). It is tried after every
+    /// registered family and claims no generic family (`sans-serif` stays with the caller's
+    /// fonts); a document that names `Geist` gets it directly.
+    fn ensureDefaultFonts(self: *Renderer) void {
+        if (comptime !config.enable_pdf) return;
+        if (self.default_fonts) return;
+        self.default_fonts = true;
+        _ = self.fonts.registerAll(self.gpa, geist_ttf, .{ .family = "Geist", .last_resort = true }) catch {};
     }
 
     pub fn putImage(self: *Renderer, src: []const u8, data: []const u8, w: u32, h: u32, premul: bool) Error!void {
@@ -406,6 +519,7 @@ pub const Renderer = struct {
     }
 
     pub fn clearImages(self: *Renderer) void {
+        self.hash_memo = @splat(.{});
         for (self.images.items) |e| {
             self.gpa.free(e.src);
             self.gpa.free(e.data);
@@ -422,6 +536,7 @@ pub const Renderer = struct {
         self.result = "";
         self.err = "";
         self.arena.reset();
+        self.hash_memo = @splat(.{});
         self.fonts.beginFrame();
         // variable-font instance ids are recycled: cached glyph masks keyed by them go stale
         const ev = self.fonts.instanceEvictions();
@@ -709,6 +824,7 @@ pub const Renderer = struct {
 
     noinline fn renderPdfImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
+        self.ensureDefaultFonts();
         self.result = try @import("pdf/pdf.zig").render(self, kind, source, opts_json);
         return self.result;
     }
@@ -725,7 +841,19 @@ pub const Renderer = struct {
 
     noinline fn measurePdfImpl(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
         self.beginCall();
+        self.ensureDefaultFonts();
         self.result = try @import("pdf/pdf.zig").measure(self, kind, source, opts_json);
+        return self.result;
+    }
+
+    pub fn needsPdf(self: *Renderer, kind: SourceKind, source: []const u8, opts_json: []const u8) Error![]const u8 {
+        self.beginCall();
+        if (comptime !config.enable_pdf) {
+            self.setErr("needsPdf is not supported by this build", "");
+            return error.Invalid;
+        }
+        self.ensureDefaultFonts();
+        self.result = try @import("pdf/pdf.zig").needs(self, kind, source, opts_json);
         return self.result;
     }
 
@@ -834,6 +962,24 @@ pub const Renderer = struct {
         return p;
     }
 
+    pub const HashMemo = struct { ptr: usize = 0, len: usize = 0, hash: u64 = 0 };
+
+    /// XxHash64 of image source bytes (seeded with their length), remembered for the call when
+    /// they are the data of an `images` entry (decoded data: URIs live in the call's arena).
+    pub fn contentHash(self: *Renderer, bytes: []const u8) u64 {
+        for (self.hash_memo) |m| {
+            if (m.len == bytes.len and m.ptr == @intFromPtr(bytes.ptr) and m.len != 0) return m.hash;
+        }
+        const h = std.hash.XxHash64.hash(bytes.len, bytes);
+        const entry = for (self.images.items) |e| {
+            if (e.data.ptr == bytes.ptr and e.data.len == bytes.len) break true;
+        } else false;
+        if (!entry) return h;
+        self.hash_memo[self.hash_memo_next % self.hash_memo.len] = .{ .ptr = @intFromPtr(bytes.ptr), .len = bytes.len, .hash = h };
+        self.hash_memo_next +%= 1;
+        return h;
+    }
+
     /// Resolves an image `src` (data: URI or a key of the `images` option) to a decoded,
     /// premultiplied pixmap (cached across renders by content hash). null = paints nothing.
     /// Animated GIF / WebP / APNG sources show the frame at the render's `timeMs` (looping over
@@ -850,7 +996,8 @@ pub const Renderer = struct {
             if (e.width != 0) raw = e;
         } else return null;
 
-        const key = std.hash.Wyhash.hash(bytes.len, bytes);
+        // (XxHash64: 64-bit multiplies only; Wyhash's 128-bit products are emulated on wasm32)
+        const key = self.contentHash(bytes);
         if (comptime config.enable_animation and config.enable_extra_codecs) {
             if (raw == null and self.time_ms > 0) {
                 if (self.animatedFrame(key, bytes)) |pm| return pm;
@@ -865,7 +1012,15 @@ pub const Renderer = struct {
             if (!e.premultiplied) premultiply(pm.data);
         } else {
             if (codec.sniff(bytes) == .unknown) return null; // SVG, text, unsupported formats
-            const img = codec.decodeEx(self.gpa, bytes, .{ .max_pixels = max_image_pixels }, codec.build_decoders) catch return null;
+            if (std.mem.indexOfScalar(u64, self.img_failed.items, key) != null) return null;
+            const img = codec.decodeEx(self.gpa, bytes, .{ .max_pixels = max_image_pixels }, codec.build_decoders) catch |err| {
+                // (out of memory may pass: only a decoder's verdict on the bytes is remembered)
+                if (err != error.OutOfMemory) {
+                    if (self.img_failed.items.len >= 1024) self.img_failed.clearRetainingCapacity();
+                    self.img_failed.append(self.gpa, key) catch {};
+                }
+                return null;
+            };
             premultiply(img.data);
             pm = .{ .width = img.width, .height = img.height, .data = img.data };
         }
@@ -1005,7 +1160,7 @@ pub fn svgSizeFrom(w_attr: ?f32, h_attr: ?f32, view_box: ?[4]f32, dpr: f32) SvgS
     return .{ .w = 300 * dpr, .h = 150 * dpr, .ratio = 0 };
 }
 
-fn svgIntrinsic(doc: *const svgm.Document, dpr: f32) SvgSize {
+pub fn svgIntrinsic(doc: *const svgm.Document, dpr: f32) SvgSize {
     const root = doc.root();
     return svgSizeFrom(svgLength(root.attr("width")), svgLength(root.attr("height")), svgm.intrinsicSize(doc).view_box, dpr);
 }
@@ -1184,6 +1339,19 @@ fn percentDecode(a: Allocator, payload: []const u8) ?[]const u8 {
 }
 
 /// Payload bytes of a `data:` URI (base64 decoded, or percent-decoded), in `a`.
+/// Base64 digit values (standard and URL-safe alphabets); 0xff: skipped.
+const base64_values: [256]u8 = blk: {
+    var t: [256]u8 = @splat(0xff);
+    for ('A'..'Z' + 1) |c| t[c] = c - 'A';
+    for ('a'..'z' + 1) |c| t[c] = c - 'a' + 26;
+    for ('0'..'9' + 1) |c| t[c] = c - '0' + 52;
+    t['+'] = 62;
+    t['-'] = 62;
+    t['/'] = 63;
+    t['_'] = 63;
+    break :blk t;
+};
+
 pub fn decodeDataUri(a: Allocator, src: []const u8) ?[]const u8 {
     const comma = std.mem.indexOfScalar(u8, src, ',') orelse return null;
     const meta = src[5..comma];
@@ -1193,15 +1361,26 @@ pub fn decodeDataUri(a: Allocator, src: []const u8) ?[]const u8 {
     var n: usize = 0;
     var acc: u32 = 0;
     var bits: u32 = 0;
-    for (payload) |c| {
-        const v: u32 = switch (c) {
-            'A'...'Z' => c - 'A',
-            'a'...'z' => c - 'a' + 26,
-            '0'...'9' => c - '0' + 52,
-            '+', '-' => 62,
-            '/', '_' => 63,
-            else => continue,
-        };
+    var i: usize = 0;
+    // four valid characters at a time while the bit buffer is empty (the common case: no
+    // whitespace or padding inside the payload)
+    while (i + 4 <= payload.len) {
+        const q = payload[i..][0..4];
+        const v0 = base64_values[q[0]];
+        const v1 = base64_values[q[1]];
+        const v2 = base64_values[q[2]];
+        const v3 = base64_values[q[3]];
+        if (bits != 0 or (v0 | v1 | v2 | v3) >= 64) break;
+        const w = (@as(u32, v0) << 18) | (@as(u32, v1) << 12) | (@as(u32, v2) << 6) | v3;
+        out[n] = @truncate(w >> 16);
+        out[n + 1] = @truncate(w >> 8);
+        out[n + 2] = @truncate(w);
+        n += 3;
+        i += 4;
+    }
+    for (payload[i..]) |c| {
+        const v: u32 = base64_values[c];
+        if (v >= 64) continue;
         acc = (acc << 6) | v;
         bits += 6;
         if (bits >= 8) {
@@ -1295,6 +1474,8 @@ pub const Frame = struct {
     lid_node: std.ArrayList(u32) = .empty,
     root: u32 = none,
     lroot: u32 = none,
+    /// Resource discovery stops after the cascade and generated content, before shaping/layout.
+    needs_only: bool = false,
     canvas_w: u32 = 0,
     canvas_h: u32 = 0,
     /// Source elements (JSON or HTML) with their computed styles.
@@ -1339,7 +1520,12 @@ pub const Frame = struct {
     // (the paged-layout state, PDF feature only, is `tree.paged`: `layout.fragment.PagedState`. A field here,
     // even a zero-size one, perturbs the struct layout and grows the other builds.)
 
-    pub const Pseudo = struct { cs: *const CS, text: []const u8 };
+    pub const Pseudo = struct {
+        cs: *const CS,
+        text: []const u8,
+        parts: ?[]const @import("generated_content.zig").Part = null,
+        generated_el: ?u32 = null,
+    };
 
     const CssState = if (config.enable_css) struct {
         m: css.Matcher = .{},
@@ -1410,15 +1596,24 @@ pub const Frame = struct {
             f.tw_theme = true;
         };
         try f.styleTree(f.dom.root, null, 0);
+        if (comptime config.enable_svg and config.enable_css) try @import("svg/html_cascade.zig").generate(f);
+        try @import("text_control.zig").generate(f);
         // (PDF list markers: src/pdf/markers.zig, gated by `listMarkers`)
         if (comptime config.enable_pdf) if (f.listMarkers()) try @import("pdf/markers.zig").generate(f);
+        try @import("generated_content.zig").generate(f);
         // (PDF: named pages, the `page` property: src/pdf/page_names.zig)
         if (comptime config.enable_pdf) if (f.tree.paged.pdf) try @import("pdf/page_names.zig").collect(f);
+        if (f.needs_only) return;
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
         // (PDF: a paragraph continued on a page of another width, src/pdf/paged.zig)
         if (comptime config.enable_pdf and layout.fragment.enabled) if (f.tree.paged.cut_node < f.nodes.items.len) {
             if (f.nodes.items[f.tree.paged.cut_node].para) |p| p.cut = f.tree.paged.cut_glyph;
+        };
+        if (comptime config.enable_pdf and layout.fragment.enabled) for (f.tree.paged.cuts) |cut| {
+            if (cut.node < f.nodes.items.len) if (f.nodes.items[cut.node].para) |p| {
+                p.cut = cut.glyph;
+            };
         };
 
         // The layout root is the root element itself; the available size is the initial containing
@@ -1426,6 +1621,9 @@ pub const Frame = struct {
         // takumi, a relative offset or auto margins of the root move nothing. An out-of-flow root is
         // placed by its insets inside an explicit initial containing block node (one more layout
         // level, so such a tree reaches the layout engine's depth limit one level earlier).
+        // PDF differs: takumi-pdf lays the root out as a block child of the page frame, so its relative
+        // offset and its auto inline margins apply (document and header / footer bands alike); such a
+        // root is placed inside the same containing block node.
         const rcs = f.nodes.items[f.root].cs;
         // (at most one layout node per render node, plus the containing block: reserved at once, see
         // `LTree.ensureCapacity`)
@@ -1433,9 +1631,14 @@ pub const Frame = struct {
         try f.lid_node.ensureTotalCapacityPrecise(f.a, f.tree.nodes.items.len + f.nodes.items.len + 1);
         const lr = try f.buildLayout(f.root);
         f.lroot = lr;
-        if (rcs.position == .absolute or rcs.position == .fixed) {
+        const out_of_flow = rcs.position == .absolute or rcs.position == .fixed;
+        if (out_of_flow or f.pdfRootInFlow(lr)) {
             var icb: layout.Style = .{ .display = .block };
-            if (o.width) |w| icb.size[0] = .{ .px = @floatFromInt(w) };
+            // (an in-flow PDF root: an auto width stretches the block to the available width, which is
+            // the page area's exact width when paged)
+            if (o.width) |w| if (out_of_flow) {
+                icb.size[0] = .{ .px = @floatFromInt(w) };
+            };
             if (o.height) |h| icb.size[1] = .{ .px = @floatFromInt(h) };
             f.lroot = f.tree.addNode(icb) catch return error.OutOfMemory;
             f.tree.appendChild(f.lroot, lr) catch return error.OutOfMemory;
@@ -1460,7 +1663,9 @@ pub const Frame = struct {
             f.canvas_h = @intFromFloat(@max(1, @min(@ceil(f.tree.paged.page_h), 16384)));
             return;
         };
-        const rl = f.tree.layout(lr);
+        // (an in-flow PDF root in its containing block: the content size is the block's, without the
+        // root's relative offset, which moves the root but sizes nothing; see `rootBlockEnd`)
+        const rl = f.tree.layout(if (f.lroot != lr and !out_of_flow) f.lroot else lr);
         const cw: f32 = if (o.width) |w| @floatFromInt(w) else @floor(rl.x + rl.w + rl.margin.right + 0.5);
         const ch: f32 = if (o.height) |h| @floatFromInt(h) else @floor(rl.y + rl.h + rl.margin.bottom + 0.5);
         if (!(cw >= 1) or !(ch >= 1)) {
@@ -1492,6 +1697,36 @@ pub const Frame = struct {
     /// `layout.fragment.PagedState`.
     fn listMarkers(f: *const Frame) bool {
         return f.tree.paged.pdf;
+    }
+
+    /// Where the root's margin box ends in the block direction (unrounded), without the root's relative
+    /// offset, which moves the root but sizes nothing: what a content-sized PDF page or band is as tall
+    /// as (an in-flow root placed in a containing block node, `pdfRootInFlow`, sizes that node).
+    pub fn rootBlockEnd(f: *const Frame) f32 {
+        const lid = f.nodes.items[f.root].lid;
+        if (f.lroot != lid) {
+            const s = f.tree.style(lid);
+            if (s.position != .absolute and s.position != .fixed) {
+                const c = f.tree.layout(f.lroot);
+                return c.y + c.h;
+            }
+        }
+        const l = f.tree.layout(lid);
+        return l.y + l.h + l.margin.bottom;
+    }
+
+    /// PDF frames only: whether the root (layout node `lr`) has a relative offset or auto inline margins,
+    /// which takumi-pdf applies (the root is a block child of its page frame) and the bare layout root
+    /// would ignore.
+    fn pdfRootInFlow(f: *const Frame, lr: u32) bool {
+        if (comptime !layout.fragment.enabled) return false;
+        if (!f.tree.paged.pdf) return false;
+        const s = f.tree.style(lr);
+        // (`sticky` is laid out as `relative`; takumi-pdf does not offset a sticky root)
+        if (f.nodes.items[f.root].cs.position == .relative) {
+            if (s.inset.left != .auto or s.inset.right != .auto or s.inset.top != .auto or s.inset.bottom != .auto) return true;
+        }
+        return s.margin.left == .auto or s.margin.right == .auto;
     }
 
     fn addNode(f: *Frame, n: Node) Error!u32 {
@@ -1554,7 +1789,7 @@ pub const Frame = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidRule => return f.fail("invalid keyframes option", ""),
         };
-        if (sheet.rules.items.len == 0 and sheet.keyframes.items.len == 0 and sheet.extra_keyframes.items.len == 0 and !sheet.preflight) return;
+        if (sheet.rules.items.len == 0 and sheet.keyframes.items.len == 0 and sheet.extra_keyframes.items.len == 0 and sheet.font_faces.items.len == 0 and !sheet.preflight) return;
         const st = &f.cssx;
         st.m = try css.prepare(a, &sheet, .{
             .viewport_w = if (o.width) |w| @floatFromInt(w) else null,
@@ -1700,6 +1935,7 @@ pub const Frame = struct {
             const ps = &f.pseudos.items[el.after];
             try cx.enter(ps.cs.counter_reset, ps.cs.counter_increment, ps.cs.counter_set, .none);
             ps.text = (try dom_mod.contentText(f.a, ps.cs.content, &f.dom, i, cx.hook())) orelse "";
+            ps.parts = try @import("generated_content.zig").read(f.a, ps.cs.content, &f.dom, i, cx.hook());
             cx.leave(ps.cs.counter_reset, ps.cs.counter_increment, ps.cs.counter_set, .none);
         }
         const cs = el.cs;
@@ -1871,12 +2107,13 @@ pub const Frame = struct {
         // own; a `::after` is read again after the element's children, `leaveCounters`)
         const cx: ?*CssCounters = if (comptime config.enable_pdf) f.cssCounters() else null;
         if (comptime config.enable_pdf) if (cx) |c| if (which == .before) try c.enter(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
-        const text = (try dom_mod.contentText(f.a, pcs.content, &f.dom, i, if (comptime config.enable_pdf) (if (cx) |c| c.hook() else null) else null)) orelse {
+        const parts = try @import("generated_content.zig").read(f.a, pcs.content, &f.dom, i, if (comptime config.enable_pdf) (if (cx) |c| c.hook() else null) else null);
+        const text = (try dom_mod.contentText(f.a, pcs.content, &f.dom, i, if (comptime config.enable_pdf) (if (cx) |c| c.hook() else null) else null)) orelse if (parts != null) "" else {
             if (comptime config.enable_pdf) if (cx) |c| if (which == .before) c.leave(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
             return none;
         };
         if (comptime config.enable_pdf) if (cx) |c| if (which == .before) c.leave(pcs.counter_reset, pcs.counter_increment, pcs.counter_set, .none);
-        try f.pseudos.append(f.a, .{ .cs = pcs, .text = text });
+        try f.pseudos.append(f.a, .{ .cs = pcs, .text = text, .parts = parts });
         return @intCast(f.pseudos.items.len - 1);
     }
 
@@ -2034,6 +2271,7 @@ pub const Frame = struct {
         switch (item) {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
+                if (ps.generated_el) |el| return f.hasLineContent(.{ .el = el }, depth + 1);
                 if (ps.cs.white_space_collapse != .collapse) return ps.text.len > 0;
                 for (ps.text) |c| if (!isSpace(c)) return true;
                 return hasInlineEdges(ps.cs);
@@ -2133,8 +2371,11 @@ pub const Frame = struct {
 
     noinline fn buildPseudo(f: *Frame, p: u32, parent: u32) Error!u32 {
         const ps = f.pseudos.items[p];
-        const id = try f.addNode(.{ .kind = .text, .cs = ps.cs, .parent = parent });
-        f.nodes.items[id].para = try f.soloParagraph(ps.text, ps.cs);
+        const id = if (ps.generated_el) |el| try f.buildElement(el, parent, 0) else blk: {
+            const node = try f.addNode(.{ .kind = .text, .cs = ps.cs, .parent = parent });
+            f.nodes.items[node].para = try f.soloParagraph(ps.text, ps.cs);
+            break :blk node;
+        };
         if (comptime config.enable_pdf) try @import("pdf/markers.zig").onBuilt(f, p, id);
         return id;
     }
@@ -2243,10 +2484,33 @@ pub const Frame = struct {
         var it = start_it;
         var k: u32 = 0;
         if (!content and !boxes) {
+            // Empty inline elements beside block siblings still form an anonymous inline
+            // formatting context. It has no line box, but owns a marked-content region.
+            var target = parent;
+            if (comptime config.enable_pdf) if (f.tree.paged.pdf and hasLines(cs.display)) {
+                var scan = start_it;
+                var inline_element = false;
+                for (0..count) |_| {
+                    const c = scan.next() orelse break;
+                    const s = f.itemStyle(c);
+                    if (c == .el and !f.dom.at(c.el).run and s.display == .@"inline" and s.position != .absolute and s.position != .fixed and s.float == .none) inline_element = true;
+                }
+                const el = f.nodes.items[parent].el;
+                if (inline_element and el != none) {
+                    var siblings: Items = .{ .f = f, .el = el };
+                    while (siblings.next()) |c| {
+                        const s = f.itemStyle(c);
+                        if (s.display != .none and s.position != .absolute and s.position != .fixed and s.float == .none and !f.isInlineLevel(c, 0, true)) {
+                            target = try f.openAnonBox(cs, parent);
+                            break;
+                        }
+                    }
+                }
+            };
             // no line box: only the boxes are built
             while (k < count) : (k += 1) {
                 const c = it.next() orelse break;
-                if (f.objectKind(c) != null) try f.buildItem(c, parent, depth + 1);
+                if (f.objectKind(c) != null) try f.buildItem(c, target, depth + 1);
             }
             return;
         }
@@ -2494,6 +2758,7 @@ pub const Frame = struct {
         switch (item) {
             .ps => |p| {
                 const ps = f.pseudos.items[p];
+                if (ps.generated_el) |el| return f.collectRuns(.{ .el = el }, out, depth + 1, pcs);
                 if (ps.cs.display == .none) return;
                 if (!inFlowInline(ps.cs)) return f.splitForBlock(out, item);
                 try f.openInlineBox(ps.cs);
@@ -2695,10 +2960,21 @@ pub const Frame = struct {
             st.features = out;
         }
         return .{
-            .text = try transformText(f.a, text, cs.text_transform),
+            .text = try transformText(f.a, text, cs.text_transform, cs.white_space_collapse == .preserve or cs.white_space_collapse == .preserve_spaces or cs.white_space_collapse == .break_spaces),
             .style = st,
             .white_space = whiteSpaceOf(cs),
+            .overflow_wrap = overflowWrapOf(cs),
             .box = if (f.cur_box != none and f.cur_box >= f.box_base) f.cur_box - f.box_base else font.no_box,
+        };
+    }
+
+    /// `overflow-wrap` for the text engine (the legacy `word-break: break-word` acts as `anywhere`).
+    fn overflowWrapOf(cs: *const CS) font.OverflowWrap {
+        if (cs.word_break == .break_word) return .anywhere;
+        return switch (cs.overflow_wrap) {
+            .normal => .normal,
+            .break_word => .break_word,
+            .anywhere => .anywhere,
         };
     }
 
@@ -2736,11 +3012,7 @@ pub const Frame = struct {
                 .break_all => .break_all,
                 .keep_all => .keep_all,
             },
-            .overflow_wrap = if (cs.word_break == .break_word) .anywhere else switch (cs.overflow_wrap) {
-                .normal => .normal,
-                .break_word => .break_word,
-                .anywhere => .anywhere,
-            },
+            .overflow_wrap = overflowWrapOf(cs),
             .max_lines = if (cs.line_clamp > 0) cs.line_clamp else null,
             .ellipsis = cs.text_overflow != .clip and clip,
             .ellipsis_text = if (cs.text_overflow == .string) cs.text_overflow_string else null,
@@ -2833,7 +3105,6 @@ pub const Frame = struct {
             if (n.kind == .image) st.breaks.monolithic = true;
             if (comptime config.enable_pdf) if (n.el != none and n.kind != .anon_text and n.kind != .anon_box) {
                 st.breaks.page = @import("pdf/page_names.zig").idOf(f, n.el);
-                contentsBreaks(f, n.el, &st);
             };
         }
         if (n.el != none) {
@@ -2851,6 +3122,7 @@ pub const Frame = struct {
         while (f.lid_node.items.len <= lid) try f.lid_node.append(f.a, none);
         f.lid_node.items[lid] = id;
         if (leaf) f.tree.setMeasured(lid, true);
+        if (n.kind == .image) f.tree.setReplaced(lid, true);
         return .{ .lid = lid, .ordered = st.display == .flex or st.display == .grid, .leaf = leaf };
     }
 
@@ -2927,7 +3199,10 @@ pub const Frame = struct {
             .min_content => p.minContentWidth(),
             .max_content => null,
         };
-        const sz = p.measure(limit);
+        const sz = if (comptime config.enable_pdf) blk: {
+            if (known[0] == null and avail[0] != .definite and p.cut != std.math.maxInt(u32)) break :blk p.measureIntrinsic(limit);
+            break :blk p.measure(limit);
+        } else p.measure(limit);
         // (the min-content width may exceed the widest line it produces: inline edges, see text.zig)
         const w = if (avail[0] == .min_content) @max(sz.width, limit orelse 0) else sz.width;
         return .{ known[0] orelse w, known[1] orelse sz.height };
@@ -2959,7 +3234,7 @@ pub const Frame = struct {
         }
         fn float(fl: *const font.Flow, id: u32, y: f32, used: f32, avail: f32, how: font.FloatPlace) bool {
             const c: *FlowCtx = @ptrCast(@alignCast(fl.ctx.?));
-            return c.io.float_fn.?(c.io, id, y, used, avail, @intFromEnum(how));
+            return c.io.float_fn.?(c.io, id, y, used, avail, @backingInt(how));
         }
     };
 
@@ -3160,26 +3435,165 @@ pub const Frame = struct {
         if (comptime layout.fragment.enabled) {
             f.tree.paged.height_fn = o.page_height_fn;
             f.tree.paged.height_ctx = o.ctx;
-            const pages = layout.fragment.paginate(&f.tree, f.a, f.lroot, .{
-                .page_height = o.page_height,
-                .page_height_fn = if (o.page_height_fn != null) pageHeightCb else null,
-                .ctx = @ptrCast(f),
-                .lines_fn = linesCb,
-                .max_pages = o.max_pages,
-                .start = o.start,
-                .start_top = o.start_top,
-                .record_starts = o.record_starts,
-                .extent_fn = if (comptime config.enable_pdf) movedExtentCb else null,
-            }) catch |e| return switch (e) {
-                error.OutOfMemory => error.OutOfMemory,
-                error.TooManyPages => f.fail("The content spans more than 20000 pages. Give it a height that resolves.", ""),
-                error.InvalidPageSize => f.fail("invalid page size", ""),
+            if (f.tree.has_floats) if (o.start) |start| if (o.start_top) |page_top| {
+                if (start.branches.len == 0 and start.node < f.lid_node.items.len) {
+                    const id = f.lid_node.items[start.node];
+                    if (id != none) {
+                        const n = &f.nodes.items[id];
+                        // A deferred float can move the first paragraph line before it is consumed.
+                        const first_line = if (start.line == none) 0 else start.line;
+                        if (n.tl) |tl| if (first_line < tl.lines.len) {
+                            var inline_float = false;
+                            var child = f.tree.nodes.items[start.node].first_child;
+                            while (child < f.tree.nodes.items.len) : (child = f.tree.nodes.items[child].next_sibling) {
+                                if (f.tree.nodes.items[child].style.float != .none) inline_float = true;
+                            }
+                            const line_top = tl.lines[first_line].top;
+                            const box = f.tree.layout(start.node);
+                            var absolute_top = box.y + box.border.top + box.padding.top;
+                            var parent = f.tree.nodes.items[start.node].parent;
+                            while (parent < f.tree.nodes.items.len) : (parent = f.tree.nodes.items[parent].parent) absolute_top += f.tree.layout(parent).y;
+                            const delta = page_top - absolute_top - line_top;
+                            if (!inline_float and @abs(delta) > 1.0 / 64.0) {
+                                f.tree.paged.inline_resume = .{ .node = start.node, .from_y = line_top, .dy = delta };
+                                try f.recomputePaged();
+                            }
+                        };
+                    }
+                }
             };
-            if (f.layout_oom) return error.OutOfMemory;
-            f.tree.paged.pages = pages;
-            try f.applyLineShifts(&f.tree.paged.pages.?);
-            return &f.tree.paged.pages.?;
+            const reflow_floats = f.tree.has_floats and o.start == null;
+            const previous_y: []f32 = if (reflow_floats) try f.a.alloc(f32, f.tree.nodes.items.len) else &.{};
+            const previous_h: []f32 = if (reflow_floats) try f.a.alloc(f32, f.tree.nodes.items.len) else &.{};
+            var attempts: u32 = 0;
+            while (true) {
+                if (reflow_floats) for (f.tree.nodes.items, 0..) |nd, lid| {
+                    if (nd.style.float != .none) {
+                        const before = f.tree.layout(@intCast(lid));
+                        previous_y[lid] = before.y;
+                        previous_h[lid] = before.h;
+                    }
+                };
+                var pages = layout.fragment.paginate(&f.tree, f.a, f.lroot, .{
+                    .page_height = o.page_height,
+                    .page_height_fn = if (o.page_height_fn != null) pageHeightCb else null,
+                    .ctx = @ptrCast(f),
+                    .lines_fn = linesCb,
+                    .max_pages = o.max_pages,
+                    .start = o.start,
+                    .start_top = o.start_top,
+                    .record_starts = o.record_starts,
+                    .extent_fn = if (comptime config.enable_pdf) movedExtentCb else null,
+                }) catch |e| return switch (e) {
+                    error.OutOfMemory => error.OutOfMemory,
+                    error.TooManyPages => f.fail("The content spans more than 20000 pages. Give it a height that resolves.", ""),
+                    error.InvalidPageSize => f.fail("invalid page size", ""),
+                };
+                if (f.layout_oom) return error.OutOfMemory;
+                var changed = false;
+                if (reflow_floats) for (f.tree.nodes.items, 0..) |nd, lid| {
+                    if (nd.style.float == .none or nd.style.breaks.before != .auto) continue;
+                    const box = f.tree.layout(@intCast(lid));
+                    // Pagination can insert space into a split float when its remaining children
+                    // resume in the next fragmentainer. Carry that added extent into the next
+                    // intrinsic layout so following lines keep the float exclusion to its end.
+                    const extent = @max(box.h - previous_h[lid], 0);
+                    const old_extent = if (lid < f.tree.paged.float_extents.len) f.tree.paged.float_extents[lid] else 0;
+                    if (extent > old_extent + 1.0 / 64.0) {
+                        if (f.tree.paged.float_extents.len == 0) {
+                            f.tree.paged.float_extents = try f.a.alloc(f32, f.tree.nodes.items.len);
+                            @memset(f.tree.paged.float_extents, 0);
+                        }
+                        f.tree.paged.float_extents[lid] = extent;
+                        changed = true;
+                    }
+                    // Whole floats that fit one page can be placed before laying
+                    // out the following lines. Split floats need continuation
+                    // extents above and remain in the fragmentation algorithm.
+                    var top = box.y;
+                    var parent = nd.parent;
+                    while (parent < f.tree.nodes.items.len) : (parent = f.tree.nodes.items[parent].parent) top += f.tree.layout(parent).y;
+                    const float_page = pages.pageAt(top);
+                    if (box.h + box.margin.top + box.margin.bottom > pages.pages[float_page].height) continue;
+                    const delta = box.y - previous_y[lid];
+                    if (delta <= 1.0 / 64.0) continue;
+                    if (f.tree.paged.float_shifts.len == 0) {
+                        f.tree.paged.float_shifts = try f.a.alloc(f32, f.tree.nodes.items.len);
+                        @memset(f.tree.paged.float_shifts, 0);
+                    }
+                    f.tree.paged.float_shifts[lid] += delta;
+                    changed = true;
+                };
+                if (changed) {
+                    pages.deinit(f.a);
+                    attempts += 1;
+                    if (attempts >= o.max_pages) return f.fail("Float placement did not settle within the page limit.", "");
+                    try f.recomputePaged();
+                    continue;
+                }
+                f.tree.paged.pages = pages;
+                try f.applyLineShifts(&f.tree.paged.pages.?);
+                if (o.record_starts) try f.recordRowspanStarts(&f.tree.paged.pages.?);
+                return &f.tree.paged.pages.?;
+            }
         } else return f.fail("paged layout is not supported by this build", "");
+    }
+
+    fn recomputePaged(f: *Frame) Error!void {
+        for (f.nodes.items) |*node| {
+            node.tl = null;
+            node.tl_w = 0;
+        }
+        f.tree.compute(f.lroot, .{ .{ .definite = f.tree.paged.page_w }, .max_content }, f, measureCb, .{ .quantize64 = true, .baseline = baselineCb, .inline_fn = inlineCb }) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => f.fail("node tree is nested too deeply", ""),
+        };
+        if (f.layout_oom) return error.OutOfMemory;
+    }
+
+    fn recordRowspanStarts(f: *Frame, pages: *layout.fragment.Pages) Error!void {
+        var cells: std.AutoHashMapUnmanaged(u32, void) = .empty;
+        defer cells.deinit(f.a);
+        for (f.tree.table_geoms.items) |table| for (table.cells) |cell| {
+            if (cell.rowspan > 1 and cell.node < f.tree.nodes.items.len) try cells.put(f.a, cell.node, {});
+        };
+        if (cells.count() == 0) return;
+        var paragraphs: std.ArrayList(u32) = .empty;
+        defer paragraphs.deinit(f.a);
+        for (f.nodes.items, 0..) |n, id| {
+            if (n.para == null or n.lid == none) continue;
+            var ancestor = n.lid;
+            while (ancestor < f.tree.nodes.items.len) : (ancestor = f.tree.nodes.items[ancestor].parent) {
+                if (cells.contains(ancestor)) {
+                    try paragraphs.append(f.a, @intCast(id));
+                    break;
+                }
+            }
+        }
+        for (pages.starts, 0..) |*start, i| {
+            if (i == 0) continue;
+            const top = pages.pages[i].top;
+            var points: std.ArrayList(layout.fragment.ResumePoint) = .empty;
+            for (paragraphs.items) |id| {
+                const n = &f.nodes.items[id];
+                const p = n.para.?;
+                if (p.cut == p.glyphs.len) {
+                    try points.append(f.a, .{ .node = n.lid, .finished = true });
+                    continue;
+                }
+                const tl = n.tl orelse continue;
+                if (tl.lines.len == 0) continue;
+                const box = f.tree.layout(n.lid);
+                var absolute_top = box.y + box.border.top + box.padding.top;
+                var parent = f.tree.nodes.items[n.lid].parent;
+                while (parent < f.tree.nodes.items.len) : (parent = f.tree.nodes.items[parent].parent) absolute_top += f.tree.layout(parent).y;
+                if (absolute_top > top + 1.0 / 64.0) continue;
+                var line: usize = 0;
+                while (line < tl.lines.len and absolute_top + tl.lines[line].top < top - 1.0 / 64.0) line += 1;
+                try points.append(f.a, if (line == tl.lines.len) .{ .node = n.lid, .finished = true } else .{ .node = n.lid, .line = if (line == 0) none else @intCast(line) });
+            }
+            start.side_flows = try points.toOwnedSlice(f.a);
+        }
     }
 
     fn movedExtentCb(ctx: *anyopaque) ?f32 {
@@ -3534,7 +3948,6 @@ pub const Frame = struct {
         return found;
     }
 
-
     /// Text runs of paragraph node `id` (one per line and source run); (dx, dy) = the node's
     /// border-box offset from the content box the runs are reported against.
     noinline fn writeRuns(f: *Frame, out: *std.ArrayList(u8), id: u32, dx: f32, dy: f32, first: *bool) Error!void {
@@ -3607,7 +4020,7 @@ fn convertDecls(a: Allocator, src: anytype) Error![]const style.Declaration {
 }
 
 /// `css.Dom` callbacks over the element model (only ELEMENTS are visible; bare text runs skipped).
-const CssDom = struct {
+pub const CssDom = struct {
     fn d(ctx: *const anyopaque) *const dom_mod.Dom {
         return @ptrCast(@alignCast(ctx));
     }
@@ -3649,24 +4062,28 @@ const CssDom = struct {
             .rtl => .rtl,
         };
     }
-    fn vtable(dm: *const dom_mod.Dom) css.Dom {
+    pub fn vtable(dm: *const dom_mod.Dom) css.Dom {
         return .{ .ctx = dm, .tag = tag, .id = id, .classes = classes, .attr = attr, .parent = parent, .prev_sibling = prev, .next_sibling = next, .first_child = first, .is_empty = empty, .dir = dir };
     }
 };
 
 pub fn textStyle(cs: *const CS, user: u32) font.TextStyle {
     var ts: font.TextStyle = .{
+        .unicode_bidi = @fromBackingInt(@intCast(@backingInt(cs.unicode_bidi))),
+        .rtl = cs.direction == .rtl,
         .families = cs.font_family,
         .weight = cs.font_weight,
         .italic = cs.font_style != .normal,
         .size = cs.font_size,
         .letter_spacing = cs.letter_spacing,
         .word_spacing = cs.word_spacing,
+        .tab_spaces = if (cs.tab_size == .number) @intFromFloat(@min(512, @max(0, @round(cs.tab_size.number)))) else null,
+        .tab_length = if (cs.tab_size == .px) cs.tab_size.px else null,
         .user = user,
         .stretch = cs.font_stretch,
         .optical_sizing = cs.font_optical_sizing != .none,
         // (same member order: normal, small, all-small, petite, all-petite, unicase, titling)
-        .caps = @enumFromInt(@intFromEnum(cs.font_variant_caps)),
+        .caps = @fromBackingInt(@intCast(@backingInt(cs.font_variant_caps))),
         .synth_small_caps = cs.font_synthesis.small_caps,
     };
     // style.FontVariation and font.AxisValue are both { tag: [4]u8, value: f32 }
@@ -3743,7 +4160,7 @@ fn titleCase(cp: u21) u21 {
 /// expansions: ß -> SS, ﬁ -> FI, ...), simple lowercase with the final-sigma rule and
 /// U+0130 -> i + U+0307; capitalize = titlecase of a word start (a character not preceded by a
 /// letter / digit, nor by an apostrophe, period, colon or middle dot between letters: UAX #29 approximated).
-fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
+pub fn transformText(a: Allocator, text: []const u8, tt: style.computed.TextTransform, preserve_spaces: bool) Error![]const u8 {
     if (tt == .none) return text;
     var out: std.ArrayList(u8) = .empty;
     try out.ensureTotalCapacity(a, text.len + 8);
@@ -3756,7 +4173,8 @@ fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
         const cp = decodeCp(text, &i);
         var m: [3]u21 = .{ cp, 0, 0 };
         var n: usize = 1;
-        switch (tt) {
+        const case: style.computed.TextTransform = @fromBackingInt(@backingInt(tt) & 3);
+        switch (case) {
             .uppercase => n = font.case.upper(cp, &m),
             .lowercase => {
                 m[0] = font.case.lower(cp);
@@ -3783,13 +4201,28 @@ fn transformText(a: Allocator, text: []const u8, tt: anytype) Error![]const u8 {
         if (!isCaseIgnorable(cp)) prev_cased = isCased(cp);
         prev2 = prev;
         prev = cp;
-        for (m[0..n]) |c| {
+        for (m[0..n]) |original| {
+            var c = original;
+            const variants = @import("font/character_variants.zig");
+            if (@backingInt(tt) & 4 != 0) c = if (c == ' ' and preserve_spaces) 0x3000 else variants.fullWidth(c);
+            if (@backingInt(tt) & 8 != 0) c = variants.fullSizeKana(c);
             var buf: [4]u8 = undefined;
             const len = json.encodeUtf8(c, &buf);
             try out.appendSlice(a, buf[0..len]);
         }
     }
     return out.items;
+}
+
+test "text variants: compose case, width and kana while respecting preserved spaces" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try std.testing.expectEqualStrings("ＡＢＳＳ", try transformText(a, "abß", @fromBackingInt(5), false));
+    try std.testing.expectEqualStrings("ａ ｂ", try transformText(a, "a b", .full_width, false));
+    try std.testing.expectEqualStrings("ａ　ｂ", try transformText(a, "a b", .full_width, true));
+    try std.testing.expectEqualStrings("アイカ", try transformText(a, "ｧｨｶ", @fromBackingInt(12), false));
+    try std.testing.expectEqualStrings("あいかアイカ", try transformText(a, "ぁぃゕァィヵ", .full_size_kana, false));
 }
 
 // ---- ComputedStyle -> layout.Style
@@ -4027,48 +4460,6 @@ fn mapStyle(f: *Frame, cs: *const CS) layout.Style {
     return s;
 }
 
-/// PDF: the `break-before` / `break-after` of the `display: contents` ancestors that `el` is the
-/// first / last box of (they generate no box; takumi-pdf breaks before / after their content).
-fn contentsBreaks(f: *const Frame, el: u32, st: *layout.Style) void {
-    if (comptime !layout.fragment.enabled) return;
-    const Edge = struct {
-        fn boxes(fr: *const Frame, c: u32) bool {
-            const ce = fr.dom.at(c);
-            if (ce.run) return std.mem.trim(u8, ce.text, " \t\r\n\x0c").len > 0;
-            return ce.cs.display != .none;
-        }
-        fn first(fr: *const Frame, p: u32) u32 {
-            var c = fr.dom.at(p).first;
-            while (c != none and !boxes(fr, c)) c = fr.dom.at(c).next;
-            return c;
-        }
-        fn last(fr: *const Frame, p: u32) u32 {
-            var c = fr.dom.at(p).last;
-            while (c != none and !boxes(fr, c)) c = fr.dom.at(c).prev;
-            return c;
-        }
-        fn join(a: layout.BreakBetween, b: layout.BreakBetween) layout.BreakBetween {
-            return if (@intFromEnum(b) >= @intFromEnum(a)) b else a;
-        }
-    };
-    var cur = el;
-    var is_first = true;
-    var is_last = true;
-    var guard: u32 = 0;
-    while (guard < 256) : (guard += 1) {
-        const p = f.dom.at(cur).parent;
-        if (p == none) return;
-        const pe = f.dom.at(p);
-        if (pe.kind != .container or pe.run or pe.cs.display != .contents) return;
-        is_first = is_first and Edge.first(f, p) == cur;
-        is_last = is_last and Edge.last(f, p) == cur;
-        if (is_first) st.breaks.before = Edge.join(breakBetween(pe.cs.break_before), st.breaks.before);
-        if (is_last) st.breaks.after = Edge.join(st.breaks.after, breakBetween(pe.cs.break_after));
-        if (!is_first and !is_last) return;
-        cur = p;
-    }
-}
-
 /// `break-before` / `break-after` for the fragmentation pass (avoid-column -> auto).
 fn breakBetween(b: style.computed.BreakBetween) layout.BreakBetween {
     if (b.forcesPage()) return .page;
@@ -4302,7 +4693,7 @@ fn testRender(node: []const u8, opts: []const u8) !void {
     const r = Renderer.create(gpa).?;
     defer r.destroy();
     const font_bytes = @embedFile("font/testdata/Inter-Regular.ttf");
-    _ = try r.registerFont(try gpa.dupe(u8, font_bytes), "", 0, -1);
+    _ = try r.registerFont(try gpa.dupe(u8, font_bytes), "", 0, -1, null);
     _ = r.render(node, opts) catch |e| switch (e) {
         error.Invalid => {},
         else => return e,
@@ -4324,7 +4715,7 @@ const TestFrame = struct {
         const gpa = std.testing.allocator;
         const r = Renderer.create(gpa).?;
         errdefer r.destroy();
-        _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+        _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
         r.beginCall();
         const a = r.arena.allocator();
         const t = try a.create(TestFrame);
@@ -4598,6 +4989,25 @@ test "svg intrinsic size mapping (takumi probe values)" {
     try std.testing.expectEqual(@as(?f32, null), svgLength(null));
 }
 
+test "registerFont: unreadable sfnt fonts register as a family drawing nothing; non-fonts fail as takumi words it" {
+    const gpa = std.testing.allocator;
+    const r = Renderer.create(gpa).?;
+    defer r.destroy();
+    const inter = @embedFile("font/testdata/Inter-Regular.ttf");
+    // truncated: the table directory reads, the tables do not
+    _ = try r.registerFont(try gpa.dupe(u8, inter[0..4000]), "Broken", 0, -1, null);
+    var out: [8]font.FaceId = undefined;
+    const order = r.fonts.match(&.{"Broken"}, 400, false, &out);
+    try std.testing.expectEqualStrings("Broken", r.fonts.face(order[0]).family);
+    try std.testing.expect(!r.fonts.allows(order[0], 'H'));
+    // unnamed, it has no family to stand for
+    try std.testing.expectError(error.Invalid, r.registerFont(try gpa.dupe(u8, inter[0..4000]), "", 0, -1, null));
+    try std.testing.expectEqualStrings("invalid font data", r.err);
+    // bytes that are no font file at all
+    try std.testing.expectError(error.Invalid, r.registerFont(try gpa.dupe(u8, "garbage!"), "X", 0, -1, null));
+    try std.testing.expectEqualStrings("Unsupported font format", r.err);
+}
+
 test "data: URI decoding (base64, percent-encoded, malformed escapes)" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();
@@ -4607,6 +5017,20 @@ test "data: URI decoding (base64, percent-encoded, malformed escapes)" {
     try std.testing.expectEqualStrings("100%zz%4", decodeDataUri(a, "data:text/plain,100%25zz%4").?);
     try std.testing.expectEqualStrings("<svg/>", decodeDataUri(a, "data:image/svg+xml;BASE64,PHN2Zy8+").?);
     try std.testing.expect(decodeDataUri(a, "data:nocomma") == null);
+    // whitespace, padding and URL-safe digits inside the payload are skipped / accepted
+    try std.testing.expectEqualStrings("<svg/>", decodeDataUri(a, "data:x;base64,PH N2\nZy8+").?);
+    try std.testing.expectEqualStrings("ab", decodeDataUri(a, "data:x;base64,YW I=").?);
+    try std.testing.expectEqualStrings("\xfb\xff", decodeDataUri(a, "data:x;base64,-_8").?);
+    var prng = std.Random.DefaultPrng.init(7);
+    for (0..200) |k| {
+        var raw: [97]u8 = undefined;
+        prng.random().bytes(&raw);
+        const len = k % raw.len;
+        var enc: [132]u8 = undefined;
+        const e = std.base64.standard.Encoder.encode(&enc, raw[0..len]);
+        const uri = try std.fmt.allocPrint(a, "data:x;base64,{s}", .{e});
+        try std.testing.expectEqualSlices(u8, raw[0..len], decodeDataUri(a, uri).?);
+    }
 }
 
 test "svg image sources: intrinsic size, inline markup, data URIs" {
@@ -4822,7 +5246,7 @@ test "layout2: measure() tree shape follows takumi (inline content = the block's
     const gpa = std.testing.allocator;
     const r = Renderer.create(gpa).?;
     defer r.destroy();
-    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1);
+    _ = try r.registerFont(try gpa.dupe(u8, @embedFile("font/testdata/Inter-Regular.ttf")), "", 0, -1, null);
     const opts = "{\"width\":200,\"height\":100}";
     const count = std.mem.count;
     // block with text only: no child box, two runs (one per source run)

@@ -9,6 +9,7 @@ test {
     _ = json;
     _ = render;
     _ = @import("dom.zig");
+    _ = @import("text_control.zig");
     _ = @import("test_fixcss.zig");
     _ = @import("measure_xform.zig");
     _ = @import("animate.zig");

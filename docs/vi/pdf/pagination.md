@@ -3,7 +3,7 @@
 [English](../../en/pdf/pagination.md) · [Tiếng Việt](pagination.md)
 
 PDF nhiều trang dàn tài liệu ở chiều rộng của vùng trang rồi cắt thành các trang theo quy tắc ngắt của
-Chromium (takumi-core port cách phân mảnh khối của Blink, và bm-engine port takumi-core). Trang này trình bày
+CSS về phân mảnh tài liệu. Trang này trình bày
 nội dung chảy từ trang này sang trang khác ra sao, cách ép và cấm ngắt trang bằng CSS, Tailwind hoặc cây node,
 cách bảng lặp lại phần đầu và phần cuối, `@page` đặt được những gì, và cách chỉ giữ một số trang. Nó cần [profile
 `pdf`](index.md); các thuộc tính ngắt trang bị mọi profile khác bỏ qua. Mọi đoạn mã Node.js là các đoạn của
@@ -77,8 +77,7 @@ Trong HTML, các utility ngắt trang của Tailwind v4 được chấp nhận t
 profile `pdf`: `break-before-auto`, `break-before-avoid`, `break-before-page` (cũng là `break-before-all`),
 `break-before-avoid-page`, `break-before-left`, `break-before-right`, `break-before-column`, tương tự cho
 `break-after-*`, và `break-inside-auto`, `break-inside-avoid`, `break-inside-avoid-page`,
-`break-inside-avoid-column`. takumi-pdf không có các utility này; đây là phần mở rộng của bm-engine và chúng có
-nghĩa đúng như Tailwind định nghĩa.
+`break-inside-avoid-column`. Các utility này dùng ý nghĩa do Tailwind định nghĩa.
 
 <!-- @example pdf-pagination#tailwind -->
 ```js
@@ -160,9 +159,7 @@ const table = await pdf.render(
 // the header group is drawn again at the top of every page, the footer group at the bottom of every page
 ```
 
-Hàng được chia qua các trang khi không vừa, và ô trải nhiều hàng (`rowspan`) được cắt cùng các hàng của nó. Viền
-gộp (collapsed) kết thúc mỗi mảnh bằng viền dưới riêng của nó; với viền 4 px và header lặp lại vẫn còn lệch nhỏ so
-với takumi-pdf.
+Hàng bảng có thể chia qua các trang. Ô `rowspan` được cắt theo các hàng tương ứng; viền gộp kết thúc ở từng mảnh. Hãy kiểm tra viền dày và header lặp ở kích thước in thực tế.
 
 ## Quy tắc trang
 
@@ -209,8 +206,7 @@ Phần tử gốc, dùng cho `em`, `var()` và `direction`, là `<body>` của m
 `<html>`); custom property của một đoạn HTML có nhiều phần tử ở cấp cao nhất thì không được đọc. Trang có lề
 không để lại vùng trang nào thì giữ hình học của các tùy chọn.
 
-Không được hỗ trợ: đối tượng quy tắc trong `css`. Các hộp lề trang như `@top-center` bị bỏ qua (takumi cũng không
-vẽ chúng); các descriptor quanh chúng vẫn có hiệu lực.
+Không được hỗ trợ: đối tượng quy tắc trong `css`. Các hộp lề trang như `@top-center` bị bỏ qua; các descriptor quanh chúng vẫn có hiệu lực.
 
 ### Trang có tên
 
@@ -234,7 +230,7 @@ const named = await pdf.render(
 // the used page name changes twice, so there is a break before and after the annex
 ```
 
-Mỗi trang dàn nội dung của nó ở chiều rộng vùng trang của chính nó, giống takumi. Trang có tên với chiều rộng
+Mỗi trang dàn nội dung của nó ở chiều rộng vùng trang của chính nó. Trang có tên với chiều rộng
 khác sẽ dàn lại phần nội dung nó chứa, và trang có quy tắc `:first`, `:left` hoặc `:right` làm đổi chiều rộng cũng
 vậy: khi một đoạn văn bị ngắt ngay chỗ đổi chiều rộng, các dòng sau chỗ ngắt xuống dòng theo chiều rộng mới. Bảng,
 flex và grid tiếp tục sang một trang khác chiều rộng cũng được dàn lại ở chiều rộng đó.
@@ -277,16 +273,5 @@ try {
 Các trang được cắt sau khi dàn, từ một layout cao duy nhất, theo cách Blink xử lý phân mảnh flex và grid. Điều đó
 kéo theo:
 
-- Phần trăm và việc giãn không bao giờ thấy kích thước trang.
-- Hộp có `height` xác định giữ nguyên nó kể cả khi nội dung bị đẩy qua trang; các hộp khác lớn thêm đúng phần mà
-  một chỗ ngắt đã đẩy xuống.
-- Dòng chữ không chảy lại quanh float đã chuyển sang trang khác: bố cục chỉ được phân trang một lần, không được
-  dàn lại cho từng mảnh.
-- Hộp bị xoay hoặc nghiêng bị ranh giới trang cắt được vẽ nguyên vẹn ở trang nơi nó bắt đầu; takumi-pdf cắt lát nó
-  theo từng mảnh.
-- Ký hiệu của mục danh sách bị chia qua các trang nằm ở dòng đầu của mục, như Chrome (takumi-pdf đặt nó ở mảnh
-  cuối).
-- Một trang bắt đầu giữa một hàng bảng hoặc một dòng flex giữ chiều rộng của trang trước nó khi chiều rộng của
-  chính nó khác (xem [Trang có tên](#trang-có-tên)).
-- Nền hoặc viền của hộp trải qua mép trang bị trang cắt. Với `box-decoration-break: slice` (mặc định) các cạnh bị cắt
-  mất viền, padding và bo góc; với `clone` mỗi mảnh giữ viền, padding và bo góc.
+- Kiểm tra riêng các hộp có transform nằm qua ranh giới trang, nhất là khi kết hợp clip và liên kết.
+- Ký hiệu của mục danh sách bị chia qua trang nằm ở dòng đầu của mục.

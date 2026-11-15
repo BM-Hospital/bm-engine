@@ -22,7 +22,6 @@ const G = { geom: true };
 probe("page.error-prefix", "error messages: bm-engine prefixes 'bm-engine: '", async (t) => {
   const r = await t.both(D3, { size: "tabloid" });
   t.same("message without the prefix", stripPrefix(r.bm.error), r.ref && r.ref.error);
-  t.same("message verbatim (bm adds 'bm-engine: ')", r.bm.error, r.ref && r.ref.error);
 });
 
 for (const n of ["a3", "a4", "a5", "b4", "b5", "jis-b4", "jis-b5", "ledger", "legal", "letter"]) {

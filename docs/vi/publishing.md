@@ -20,9 +20,9 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
 
 ## Thiết lập một lần
 
-1. Thay các placeholder `OWNER` / `AUTHOR_NAME` trong `package.json` gốc (`author`, `homepage`,
-   `repository`, `bugs`), rồi chạy `npm run build:npm` để chép chúng sang `npm/*/package.json`.
-   `npm run verify` sẽ không qua chừng nào còn placeholder.
+1. `author`, `homepage`, `repository` và `bugs` đã được đặt trong `package.json` gốc (hunghg255,
+   https://github.com/BM-Hospital/bm-engine). Sau khi đổi bất kỳ trường nào, chạy `npm run build:npm` để
+   chép chúng sang `npm/*/package.json`.
 2. Một tài khoản npm có xác thực hai lớp. Lần `npm publish` đầu tiên của mỗi tên sẽ tạo package và đặt
    bạn làm owner; thêm đồng maintainer cho **cả chín** package bằng `npm owner add <user> <pkg>`. Ngày
    2026-11-12, chưa có tên nào trong chín tên này tồn tại trên registry (`npm view <name>` trả về 404).
