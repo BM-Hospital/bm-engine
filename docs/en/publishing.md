@@ -39,7 +39,7 @@ npm run release -- 0.1.1       # the real release
 ```
 
 `npm run release -- <version>` (scripts/publish.mjs) sets the version everywhere, rebuilds the wasm and its
-manifest (`npm run build`), commits "Release <version>", builds the native addon for the 8 targets and the
+manifest (`npm run build`), commits `Release <version>`, builds the native addon for the 8 targets and the
 `npm/<platform>/` folders, runs every check (`npm run release:check`: verify, Zig tests, PDF tests, native
 tests, pack test), publishes the 8 platform packages first and bm-engine last, then tags `v<version>` and
 pushes the commit and the tag. It refuses to start with uncommitted changes or without `npm login`. Packages

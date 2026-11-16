@@ -39,7 +39,7 @@ npm run release -- 0.1.1       # release thật
 ```
 
 `npm run release -- <version>` (scripts/publish.mjs) đặt version ở mọi nơi, build lại wasm và manifest
-(`npm run build`), commit "Release <version>", build addon native cho 8 nền tảng và các thư mục
+(`npm run build`), commit `Release <version>`, build addon native cho 8 nền tảng và các thư mục
 `npm/<platform>/`, chạy mọi kiểm tra (`npm run release:check`: verify, test Zig, test PDF, test native,
 pack test), publish 8 platform package trước và bm-engine sau cùng, rồi gắn tag `v<version>` và push commit
 cùng tag. Script từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`. Gói nào đã publish ở
