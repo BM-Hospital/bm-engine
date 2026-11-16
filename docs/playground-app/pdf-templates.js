@@ -71,7 +71,7 @@ const article = `<style>
   .lede { font-size: 14px; color: #475569; margin-bottom: 18px; }
   p { margin: 0 0 10px; text-align: justify; orphans: 3; widows: 3; }
 </style>
-<h1>Typesetting pages with bm-engine</h1>
+<h1>Typesetting pages with bm-render</h1>
 <p class="lede">An article that runs over several A5 pages: headings become bookmarks (outline), and orphans / widows keep at least three lines of a paragraph together at each break.</p>
 ${sections.map((h, i) => `<h2>${i + 1}. ${h}</h2>\n${[0, 1, 2, 3].map((k) => `<p>${para[(i + k) % para.length]}</p>`).join("\n")}`).join("\n")}`;
 
@@ -136,7 +136,7 @@ const accessible = `<style>
   ul { margin: 0; padding-left: 20px; }
   .rule { height: 6px; border-radius: 3px; background: linear-gradient(90deg, #be123c, #f59e0b); margin: 10px 0 16px; }
 </style>
-<div style="display: flex; align-items: center; gap: 10px; color: #64748b"><img src="${AVATAR_SRC}" alt="" width="28" height="28" style="border-radius: 14px"><span>bm-engine · Annual summary 2026</span></div>
+<div style="display: flex; align-items: center; gap: 10px; color: #64748b"><img src="${AVATAR_SRC}" alt="" width="28" height="28" style="border-radius: 14px"><span>bm-render · Annual summary 2026</span></div>
 <h1>Accessible annual summary</h1>
 <div class="rule"></div>
 <p>This document is rendered with <b>tagged: "ua1"</b>: the engine writes a structure tree (headings, paragraphs, lists, figures) and validates it against PDF/UA-1, which needs a title, a language, and alternate text for every informative image.</p>
@@ -199,14 +199,14 @@ export const pdfTemplates = [
   { id: "invoice", title: { en: "Invoice (table, totals, page footer)", vi: "Hoá đơn (bảng, tổng tiền, footer số trang)" }, kind: "html", source: invoice, pages: 1,
     pdf: { size: "a4", mt: "40", mr: "40", ml: "40", footer: footer("ACME Studio · Invoice 2026-017"), title: "Invoice 2026-017", author: "ACME Studio", lang: "en" } },
   { id: "article", title: { en: "Article (A5, outline, widows/orphans)", vi: "Bài viết (A5, outline, widows/orphans)" }, kind: "html", source: article, pages: 4,
-    pdf: { size: "a5", mt: "", mr: "36", mb: "", ml: "36", header: `<div style="font: 9px Inter; color: #94a3b8; padding: 0 36px">Typesetting pages with bm-engine</div>`, footer: footer("bm-engine"), plainFirst: true, outline: true, title: "Typesetting pages with bm-engine", author: "bm-engine", lang: "en" },
+    pdf: { size: "a5", mt: "", mr: "36", mb: "", ml: "36", header: `<div style="font: 9px Inter; color: #94a3b8; padding: 0 36px">Typesetting pages with bm-render</div>`, footer: footer("bm-render"), plainFirst: true, outline: true, title: "Typesetting pages with bm-render", author: "bm-render", lang: "en" },
     hint: { en: "Headings become bookmarks (outline on). The first page has no header or footer (pages.first).", vi: "Tiêu đề trở thành bookmark (bật outline). Trang đầu không có header, footer (pages.first)." } },
   { id: "report", title: { en: "Report (repeating table header)", vi: "Báo cáo (header bảng lặp lại)" }, kind: "html", source: report, pages: 4,
     pdf: { size: "letter", landscape: true, mr: "40", ml: "40", header: `<div style="font: 9px Inter; color: #64748b; padding: 0 40px; display: flex; justify-content: space-between"><span>Northwind · Q1 2026</span><span>Confidential</span></div>`, footer: footer("Quarterly sales report"), title: "Quarterly sales report", lang: "en" } },
   { id: "ticket", title: { en: "Event ticket (Tailwind, one custom page)", vi: "Vé sự kiện (Tailwind, một trang tuỳ chỉnh)" }, kind: "tw", source: ticket, pages: 1,
     pdf: { layout: "viewport", vw: "720", vh: "260", title: "Ticket 004217", lang: "en" } },
   { id: "accessible", title: { en: "Accessible document (PDF/UA-1, alt text)", vi: "Tài liệu truy cập được (PDF/UA-1, alt text)" }, kind: "html", source: accessible, pages: 1, images: avatarImg,
-    pdf: { size: "a4", mr: "48", ml: "48", tagged: "ua1", lang: "en", title: "Accessible annual summary", author: "bm-engine", outline: true },
+    pdf: { size: "a4", mr: "48", ml: "48", tagged: "ua1", lang: "en", title: "Accessible annual summary", author: "bm-render", outline: true },
     hint: { en: "tagged: \"ua1\" validates PDF/UA-1. Remove the portrait's alt or the title to see the engine's validation error.", vi: "tagged: \"ua1\" kiểm tra PDF/UA-1. Xoá alt của ảnh chân dung hoặc tiêu đề để xem lỗi kiểm tra của engine." } },
   { id: "vietnamese", title: { en: "Vietnamese and multi-script text", vi: "Tiếng Việt và nhiều hệ chữ" }, kind: "json", source: vietnamese, pages: 1,
     pdf: { size: "a5", mr: "36", ml: "36", lang: "vi", title: "Xin chào Việt Nam" } },

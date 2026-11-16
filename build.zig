@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) void {
     const is_pdf = std.mem.eql(u8, profile, "pdf");
     const flags = b.addOptions();
     // The native addon (`zig build native`) is built from the same options with one difference: `pdf`
-    // is on unless `-Dpdf=false` says otherwise (the addon serves both `bm-engine` and `bm-engine/pdf`).
+    // is on unless `-Dpdf=false` says otherwise (the addon serves both `bm-render` and `bm-render/pdf`).
     const native_flags = b.addOptions();
     inline for (features) |ft| {
         const is_pdf_flag = comptime std.mem.eql(u8, ft.name, "pdf");
@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
     wasm_mod.addOptions("build_options", flags);
 
     const stack = (b.option(u64, "stack-kib", "wasm shadow stack size in KiB (default 1024)") orelse 1024) * 1024;
-    const wasm = b.addExecutable(.{ .name = "bm_engine", .root_module = wasm_mod });
+    const wasm = b.addExecutable(.{ .name = "bm_render", .root_module = wasm_mod });
     wasm.entry = .disabled;
     wasm.rdynamic = true;
     wasm.import_memory = false;
@@ -106,7 +106,7 @@ pub fn build(b: *std.Build) void {
 }
 
 /// `zig build native -Dtarget=<triple> [-Dnative-optimize=fast|safe|small|debug]`: the Node-API addon
-/// (src/native.zig, docs/NATIVE.md) as `zig-out/native/bm-engine.<platform>-<arch>[-<abi>].node`.
+/// (src/native.zig, docs/NATIVE.md) as `zig-out/native/bm-render.<platform>-<arch>[-<abi>].node`.
 /// All eight release targets are cross-compiled by scripts/build-native.mjs.
 fn addNative(b: *std.Build, target_in: std.Build.ResolvedTarget, flags: *std.Build.Step.Options) void {
     // A fixed CPU level per architecture, never the build host's. x86-64: x86-64-v2 (SSE4.2, SSSE3,
@@ -132,7 +132,7 @@ fn addNative(b: *std.Build, target_in: std.Build.ResolvedTarget, flags: *std.Bui
         .link_libc = t.os.tag != .windows,
     });
     mod.addOptions("build_options", flags);
-    const lib = b.addLibrary(.{ .linkage = .dynamic, .name = "bm_engine_node", .root_module = mod });
+    const lib = b.addLibrary(.{ .linkage = .dynamic, .name = "bm_render_node", .root_module = mod });
     // The napi_* symbols come from the host executable at load time: undefined in the shared object
     // (ELF) / `-undefined dynamic_lookup` (Mach-O). Windows resolves them at run time (src/native/napi.zig).
     lib.linker_allow_shlib_undefined = true;
@@ -152,7 +152,7 @@ fn addNative(b: *std.Build, target_in: std.Build.ResolvedTarget, flags: *std.Bui
         .linux => if (t.abi.isMusl()) "-musl" else "-gnu",
         else => "",
     };
-    const file = b.fmt("bm-engine.{s}-{s}{s}.node", .{ platform, arch, abi });
+    const file = b.fmt("bm-render.{s}-{s}{s}.node", .{ platform, arch, abi });
     const install = b.addInstallFileWithDir(lib.getEmittedBin(), .{ .custom = "native" }, file);
     b.step("native", "Build the Node-API addon (zig-out/native/*.node)").dependOn(&install.step);
 }

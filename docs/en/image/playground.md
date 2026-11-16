@@ -9,7 +9,7 @@ pageClass: playground-page
 
 [English](playground.md) · [Tiếng Việt](../../vi/image/playground.md)
 
-The playground runs the real bm-engine WebAssembly build in your browser: try node JSON, HTML and
+The playground runs the real bm-render WebAssembly build in your browser: try node JSON, HTML and
 Tailwind input, compare the three profiles, inspect layout with `measure()` and export every output
 format. Nothing is uploaded; fonts and images you add stay in the page.
 

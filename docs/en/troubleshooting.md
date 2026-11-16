@@ -2,9 +2,9 @@
 
 [English](troubleshooting.md) · [Tiếng Việt](../vi/troubleshooting.md)
 
-Symptoms you are likely to hit with bm-engine 0.1.0, their cause and the fix. Most of them come from
+Symptoms you are likely to hit with bm-render 0.1.0, their cause and the fix. Most of them come from
 two defaults (`display` defaults to `inline`; inputs are never fetched)
-and one of bm-engine's own (no bundled font).
+and one of bm-render's own (no bundled font).
 
 - [Text is missing, or shows as boxes](#text-is-missing-or-shows-as-boxes)
 - [Containers collapse to zero height](#containers-collapse-to-zero-height)
@@ -23,7 +23,7 @@ and one of bm-engine's own (no bundled font).
 ## Text is missing, or shows as boxes
 
 - **Nothing at all is drawn**: no font is registered on this `Renderer` (or `clearFonts()` was called).
-  bm-engine does not bundle a font and never reads system fonts. Register one:
+  bm-render does not bundle a font and never reads system fonts. Register one:
   `renderer.registerFont(readFileSync("Inter-Regular.ttf"))`. Fonts are per renderer.
 - **Boxes (tofu) for some characters**: no registered font contains those characters; they are drawn
   with the `.notdef` glyph. Register a font that covers the script (for example Noto Sans JP for
@@ -54,17 +54,17 @@ flex containers need nothing.
 
 The loaded profile does not contain the feature. Messages and the smallest profile that has it:
 
-| Message (prefix `bm-engine: `) | Needs |
+| Message (prefix `bm-render: `) | Needs |
 |:--|:--|
 | `this build has no HTML input support` | `standard` |
 | `this build has no stylesheet (\`css\` option) support` | `standard` |
 | `Tailwind (\`tw\`) is not supported by this build` | `standard` |
-| `this build has no WOFF/WOFF2 font support` | `standard`, or `loadWoff()` from `bm-engine/woff` |
+| `this build has no WOFF/WOFF2 font support` | `standard`, or `loadWoff()` from `bm-render/woff` |
 | `unsupported font format` (an `.otf`) | `standard` (CFF) |
 | `invalid value for style property backgroundColor` with `oklch()` / `lab()` / `color-mix()` on core | `standard` |
 | `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (the message says "use the full build") |
 
-Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-engine/full`), or see
+Check `features` at startup, import a larger profile (`bm-render/standard`, `bm-render/full`), or see
 [Profiles and size](profiles-and-size.md).
 
 ## Images do not appear
@@ -81,45 +81,45 @@ Check `features` at startup, import a larger profile (`bm-engine/standard`, `bm-
 
 ## The .wasm file is not found
 
-- **Browser / bundler**: import a profile entry (`bm-engine/full`, `/standard`, `/core`) and call
-  `await init()`. These entries reference their binary with `new URL("./bm_engine....wasm",
+- **Browser / bundler**: import a profile entry (`bm-render/full`, `/standard`, `/core`) and call
+  `await init()`. These entries reference their binary with `new URL("./bm_render....wasm",
   import.meta.url)`, which Vite, webpack 5, Rollup (with an asset plugin) and Parcel emit as an asset.
   If your bundler does not, import the binary URL explicitly (`import wasmUrl from
-  "bm-engine/full.wasm?url"` in Vite) or copy the file to your public directory and call
-  `init("/bm_engine.wasm")`.
-- **The generic `bm-engine` entry outside Node** has no default location: `init()` without an argument
-  throws `bm-engine: init() needs the wasm binary ...`. Pass bytes, a URL / `Response` or a
+  "bm-render/full.wasm?url"` in Vite) or copy the file to your public directory and call
+  `init("/bm_render.wasm")`.
+- **The generic `bm-render` entry outside Node** has no default location: `init()` without an argument
+  throws `bm-render: init() needs the wasm binary ...`. Pass bytes, a URL / `Response` or a
   `WebAssembly.Module`, or switch to a profile entry.
 - **Cloudflare Workers** do not allow compiling WebAssembly from bytes at runtime: import the module
-  (`import wasm from "bm-engine/full.wasm"`) and pass it to `init` / `initSync`.
+  (`import wasm from "bm-render/full.wasm"`) and pass it to `init` / `initSync`.
 - **Wrong content type**: if the server does not send `application/wasm`, `init` falls back to the
   non-streaming path. That works, but a 404 HTML page will fail to compile — check the URL.
-- **Node in a custom setup**: `BM_WASM=/path/to/bm_engine.wasm` overrides the binary of the `bm-engine`
+- **Node in a custom setup**: `BM_WASM=/path/to/bm_render.wasm` overrides the binary of the `bm-render`
   entry.
 
 ## Native addon (Node.js)
 
-On Node.js, `bm-engine` runs the native addon from the optional platform package
-`bm-engine-<platform>` when it is installed and loads, and WebAssembly otherwise (see
+On Node.js, `bm-render` runs the native addon from the optional platform package
+`bm-render-<platform>` when it is installed and loads, and WebAssembly otherwise (see
 [Install](getting-started.md#native-on-nodejs-webassembly-everywhere-else)). The fallback is silent by
 design, so the first step is always to ask which backend runs:
 
 ```sh
-node --input-type=module -e 'import("bm-engine").then((m) => console.log(m.backend))'
-BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not used
+node --input-type=module -e 'import("bm-render").then((m) => console.log(m.backend))'
+BM_RENDER_BACKEND=native node app.mjs   # throws and says why the addon was not used
 ```
 
 - **No binary for this platform, or it was not installed** (an OS / CPU without a platform package, e.g.
   FreeBSD, Linux on 32-bit ARM or ppc64; `--omit=optional`; a `node_modules` copied from another OS; a
   lockfile that lost the optional packages): you get WebAssembly, with the same output. The forced error
-  says `bm-engine-<platform>: not installed`. Reinstall on the target machine, see
+  says `bm-render-<platform>: not installed`. Reinstall on the target machine, see
   [Package managers, Docker, serverless](getting-started.md#package-managers-docker-serverless).
 - **Only `win32-x64-msvc` has been executed so far.** The seven other platform packages are built and
-  structurally verified but have never run; if one fails to load on your machine, `bm-engine` uses
+  structurally verified but have never run; if one fails to load on your machine, `bm-render` uses
   WebAssembly. Please report it with the forced error message.
-- **`BM_ENGINE_BACKEND`**: `wasm` never tries the addon; `native` makes the import throw when the addon is not
-  available; anything else throws `BM_ENGINE_BACKEND must be "wasm" or "native"`. `BM_WASM` and `BM_PROFILE`
-  select WebAssembly too. `bm-engine/native` is native or an import error; `bm-engine/full`, `/standard`,
+- **`BM_RENDER_BACKEND`**: `wasm` never tries the addon; `native` makes the import throw when the addon is not
+  available; anything else throws `BM_RENDER_BACKEND must be "wasm" or "native"`. `BM_WASM` and `BM_PROFILE`
+  select WebAssembly too. `bm-render/native` is native or an import error; `bm-render/full`, `/standard`,
   `/core` are always WebAssembly.
 - **Old x64 CPUs.** The x64 addons need x86-64-v2 (SSE4.2, POPCNT: Intel since 2008, AMD since 2011). On an
   older CPU the addon refuses to register and you get WebAssembly.
@@ -129,14 +129,14 @@ BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not 
   on it are queued in order). For parallel throughput on the native backend create several renderers with
   the same fonts, at most about the libuv pool size (`UV_THREADPOOL_SIZE`, default 4), and spread the work.
   On WebAssembly everything runs on the calling thread anyway.
-- **A bundled server cannot find the wasm file**: `bm-engine: cannot find bm_engine.wasm (...)`. A bundler
+- **A bundled server cannot find the wasm file**: `bm-render: cannot find bm_render.wasm (...)`. A bundler
   moved the Node entry away from its package and `node_modules` is not there at run time. Keep the package
-  external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), or set
-  `BM_WASM=/path/to/bm_engine.wasm`. See [Next.js](image/frameworks/nextjs.md) for deployments.
+  external (Next.js `serverExternalPackages: ["bm-render"]`, esbuild `--external:bm-render`), or set
+  `BM_WASM=/path/to/bm_render.wasm`. See [Next.js](image/frameworks/nextjs.md) for deployments.
 
 ## Memory keeps growing
 
-WebAssembly memory can grow but never shrink. bm-engine reuses memory between renders (a per-render
+WebAssembly memory can grow but never shrink. bm-render reuses memory between renders (a per-render
 arena, fixed-budget caches: decoded images cleared above 96 MiB, glyphs above 8 MiB), so a steady
 workload plateaus — about 6 MiB for 1200 × 630 cards with one font. What makes it grow:
 
@@ -198,14 +198,14 @@ functions on `core`. Stylesheet declarations do not throw; they are dropped.
 
 ## Other errors
 
-| Message (prefix `bm-engine: `) | Cause |
+| Message (prefix `bm-render: `) | Cause |
 |:--|:--|
 | `call init()/initSync() before creating a Renderer` | outside Node, the entry was not initialised |
 | `renderer has been freed` | the renderer was used after `free()` |
-| `BM_ENGINE_BACKEND=native, but the native addon is not available (...)` | native forced, no usable addon; the reason is in parentheses ([Native addon](#native-addon-nodejs)) |
-| `bm-engine/native: the native addon is not available (...)` | `bm-engine/native` imported without an installed platform package |
-| `BM_ENGINE_BACKEND must be "wasm" or "native", not "..."` | a typo in the environment variable |
-| `cannot find bm_engine.wasm (...)` | a bundler moved the Node entry away from `node_modules` ([Native addon](#native-addon-nodejs)) |
+| `BM_RENDER_BACKEND=native, but the native addon is not available (...)` | native forced, no usable addon; the reason is in parentheses ([Native addon](#native-addon-nodejs)) |
+| `bm-render/native: the native addon is not available (...)` | `bm-render/native` imported without an installed platform package |
+| `BM_RENDER_BACKEND must be "wasm" or "native", not "..."` | a typo in the environment variable |
+| `cannot find bm_render.wasm (...)` | a bundler moved the Node entry away from `node_modules` ([Native addon](#native-addon-nodejs)) |
 | `invalid viewport: width/height must be > 0` | `width` or `height` is 0 |
 | `invalid viewport: content has zero size and no width/height was given` | no canvas size and nothing to measure |
 | `canvas too large` | more than 16384 px per side or 40 megapixels |

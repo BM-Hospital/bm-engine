@@ -1,11 +1,11 @@
-// Layout behaviours where bm-engine follows Chrome because takumi 2.20 deviates from it (or does not
+// Layout behaviours where bm-render follows Chrome because takumi 2.20 deviates from it (or does not
 // support the feature), so they cannot be fixtures of the takumi equivalence suite:
 //   * display: contents                      (takumi: declaration dropped / inline style rejected)
 //   * percentage margin / padding of inline boxes and percentage margins of inline-blocks
 //                                            (takumi: the percentage part is 0)
 //   * text-indent of an anonymous block that is not the first child of its container
 //                                            (takumi: indented; Chrome: no first formatted line)
-// Each case is rendered by bm-engine (zig-out/bin/bm_engine.wasm, or $BM_WASM) and by a headless
+// Each case is rendered by bm-render (zig-out/bin/bm_render.wasm, or $BM_WASM) and by a headless
 // Chromium (Edge / Chrome, found like bench/browser/run.mjs does) with the fixture fonts, and compared
 // with the suite's metrics (lib/metrics.mjs). Cases without text must be `equivalent` (SSIM >= 0.99,
 // <= 0.5 % pixels) or `identical`; cases with text (`text: true`: glyph rasterisation differs between
@@ -78,7 +78,7 @@ const candidates = [args.browser, process.env.BROWSER_PATH,
   "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].filter((x) => x && x !== true);
 const exe = candidates.find((p) => existsSync(p));
 if (!exe) { console.error("no Chromium-based browser found (pass --browser=<path>)"); process.exit(2); }
-if (!bm.available) { console.error("bm-engine wasm not built (zig build / node scripts/build.mjs)"); process.exit(2); }
+if (!bm.available) { console.error("bm-render wasm not built (zig build / node scripts/build.mjs)"); process.exit(2); }
 
 const fontCss = FONTS.map((f) => `@font-face{font-family:"${f.name}";src:url(data:font/ttf;base64,${readFileSync(f.path).toString("base64")});font-weight:${f.weight};font-style:${f.style}}`).join("\n");
 const re = new RegExp(args.filter || ".", "i");

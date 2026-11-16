@@ -74,7 +74,7 @@ let failed = 0;
 const results = [];
 for (const [label, engine] of engines) {
   const env = { ...process.env };
-  if (engine === "wasm" || engine === "native") env.BM_ENGINE_BACKEND = engine;
+  if (engine === "wasm" || engine === "native") env.BM_RENDER_BACKEND = engine;
   const p = spawnSync(process.execPath, ["--max-old-space-size=8192", fileURLToPath(import.meta.url), `--child=${engine}`], { cwd: ROOT, env, encoding: "utf8", maxBuffer: 1 << 26 });
   const line = (p.stdout || "").trim().split("\n").pop();
   let res;

@@ -9,7 +9,7 @@ pageClass: playground-page
 
 [English](../../en/image/playground.md) · [Tiếng Việt](playground.md)
 
-Playground chạy bản build WebAssembly thật của bm-engine ngay trong trình duyệt: thử đầu vào node JSON,
+Playground chạy bản build WebAssembly thật của bm-render ngay trong trình duyệt: thử đầu vào node JSON,
 HTML và Tailwind, so sánh ba profile, xem layout bằng `measure()` và xuất mọi định dạng đầu ra. Không có
 gì được tải lên máy chủ; font và ảnh bạn thêm vào chỉ nằm trong trang.
 

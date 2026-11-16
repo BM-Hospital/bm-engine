@@ -2,7 +2,7 @@
 //! (tiny-skia-path `Transform` / `Rect` / path bounds, krilla `simplify_path`), so the numbers in
 //! the content streams come out as takumi writes them.
 //!
-//! Paths are bm-engine's `raster.Path` (move / line / quad / cubic / close); "finished" path
+//! Paths are bm-render's `raster.Path` (move / line / quad / cubic / close); "finished" path
 //! semantics (tiny-skia `PathBuilder::finish`: nothing for an empty path or a lone move) are in
 //! `bounds`.
 const std = @import("std");
@@ -36,7 +36,7 @@ pub const Tf = struct {
         return .{ .sx = x, .sy = y };
     }
 
-    /// bm-engine affine (`a b c d e f`, same layout).
+    /// bm-render affine (`a b c d e f`, same layout).
     pub fn fromAffine(m: Affine) Tf {
         return row(m.a, m.b, m.c, m.d, m.e, m.f);
     }

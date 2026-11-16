@@ -6,7 +6,7 @@ function ranges(value) {
   if (typeof value !== "string") return null;
   return value.split(",").map((raw) => {
     const m = /^\s*U\+([0-9a-f?]{1,6})(?:-([0-9a-f]{1,6}))?\s*$/i.exec(raw);
-    if (!m) throw new TypeError(`bm-engine: invalid unicodeRange: ${raw}`);
+    if (!m) throw new TypeError(`bm-render: invalid unicodeRange: ${raw}`);
     return [parseInt(m[1].replaceAll("?", "0"), 16), parseInt(m[2] ?? m[1].replaceAll("?", "f"), 16)];
   });
 }
@@ -37,9 +37,9 @@ function waitFor(promise, signal) {
 
 async function download(url, config, signal) {
   const fetcher = config.fetch ?? globalThis.fetch;
-  if (typeof fetcher !== "function") throw new Error(`bm-engine: no fetch available for ${url}`);
+  if (typeof fetcher !== "function") throw new Error(`bm-render: no fetch available for ${url}`);
   const response = await fetcher(url, signal ? { signal } : {});
-  if (!response?.ok) throw new Error(`bm-engine: fetching ${url} failed${response ? ` (${response.status})` : ""}`);
+  if (!response?.ok) throw new Error(`bm-render: fetching ${url} failed${response ? ` (${response.status})` : ""}`);
   const limit = config.maxBytes ?? 33554432;
   if (Number(response.headers?.get("content-length")) > limit) { await response.body?.cancel(); throw new Error(`Response exceeds ${limit} bytes`); }
   if (!response.body?.getReader) {
@@ -108,7 +108,7 @@ export async function resourceOptions(renderer, node, options = {}, fetchMissing
   const signal = options.signal;
   signal?.throwIfAborted?.();
   const fonts = options.fonts == null ? undefined : await options.fonts;
-  if (fonts !== undefined && !Array.isArray(fonts)) throw new TypeError("bm-engine: fonts takes an array");
+  if (fonts !== undefined && !Array.isArray(fonts)) throw new TypeError("bm-render: fonts takes an array");
   const subsets = fonts?.some((f) => fontRange(f) !== undefined);
   if (!fetchMissing && !subsets) return fonts === undefined ? options : { ...options, fonts };
   const fallback = options.fontFamilies ?? fonts?.filter((f) => f && !binary(f) && typeof f.name === "string").map((f) => f.name);

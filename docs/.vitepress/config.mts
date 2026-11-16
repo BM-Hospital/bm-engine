@@ -1,4 +1,4 @@
-// VitePress site for bm-engine. Sources stay GitHub-friendly (README.md per language folder, relative links);
+// VitePress site for bm-render. Sources stay GitHub-friendly (README.md per language folder, relative links);
 // this config maps them onto clean routes:
 //   docs/index.md, docs/vi/index.md        -> /, /vi/                    (home pages, hero)
 //   docs/en/README.md, docs/vi/README.md   -> /overview, /vi/overview    (doc index)
@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const REPO = "https://github.com/BM-Hospital/bm-engine";
+export const REPO = "https://github.com/BM-Hospital/bm-render";
 const BLOB = `${REPO}/blob/main/`;
 const TREE = `${REPO}/tree/main/`;
 
@@ -229,7 +229,7 @@ const productOf = (rel: string): "image" | "pdf" | null => {
 };
 
 export default defineConfig({
-  title: "bm-engine",
+  title: "bm-render",
   description: "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG and animations with a dependency-free WebAssembly engine.",
   cleanUrls: true,
   lastUpdated: false,
@@ -289,14 +289,14 @@ export default defineConfig({
           pdf: { title: "PDF", description: "Paged documents" },
         },
         outline: { level: [2, 3], label: "On this page" },
-        footer: { message: "Released under the MIT License.", copyright: "bm-engine · Zig, native and WebAssembly." },
+        footer: { message: "Released under the MIT License.", copyright: "bm-render · Zig, native and WebAssembly." },
       },
     },
     vi: {
       label: "Tiếng Việt",
       lang: "vi",
       link: "/vi/",
-      title: "bm-engine",
+      title: "bm-render",
       description: "Render cây node kiểu JSX / HTML + CSS thành PNG, JPEG, WebP, SVG và ảnh động bằng một engine WebAssembly không phụ thuộc.",
       themeConfig: {
         nav: [
@@ -321,7 +321,7 @@ export default defineConfig({
         returnToTopLabel: "Lên đầu trang",
         langMenuLabel: "Đổi ngôn ngữ",
         notFound: { title: "KHÔNG TÌM THẤY TRANG", quote: "Trang này không tồn tại hoặc đã được chuyển đi.", linkText: "Về trang chủ", linkLabel: "về trang chủ" },
-        footer: { message: "Phát hành theo giấy phép MIT.", copyright: "bm-engine · Zig, native và WebAssembly." },
+        footer: { message: "Phát hành theo giấy phép MIT.", copyright: "bm-render · Zig, native và WebAssembly." },
       },
     },
   },

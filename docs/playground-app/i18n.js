@@ -2,8 +2,8 @@
 // data-i18n-ph="key" (placeholder); dynamic strings go through tr(key, vars) with {name} placeholders.
 export const dict = {
   en: {
-    title: "bm-engine playground",
-    subtitlePdf: "Zig + WebAssembly PDF writer (bm-engine/pdf), running entirely in your browser",
+    title: "bm-render playground",
+    subtitlePdf: "Zig + WebAssembly PDF writer (bm-render/pdf), running entirely in your browser",
     modeLabel: "Output", modeImage: "Image", modePdf: "PDF", downloadPdf: "Download .pdf",
     cssNotePdf: "Stylesheet text passed as the `css` option; it can also hold @page rules.",
     pdfPage: "Page", layout: "Layout", layoutPaged: "Paged (size, margins, bands)", layoutViewport: "One page (viewport)",
@@ -43,8 +43,8 @@ export const dict = {
     rawNote: "raw RGBA is drawn on a canvas; Download saves the PNG.", binSize: "{kb} KB",
   },
   vi: {
-    title: "bm-engine playground",
-    subtitlePdf: "Bộ ghi PDF Zig + WebAssembly (bm-engine/pdf), chạy hoàn toàn trong trình duyệt của bạn",
+    title: "bm-render playground",
+    subtitlePdf: "Bộ ghi PDF Zig + WebAssembly (bm-render/pdf), chạy hoàn toàn trong trình duyệt của bạn",
     modeLabel: "Đầu ra", modeImage: "Ảnh", modePdf: "PDF", downloadPdf: "Tải .pdf",
     cssNotePdf: "Nội dung stylesheet truyền qua tuỳ chọn `css`; có thể chứa cả quy tắc @page.",
     pdfPage: "Trang", layout: "Bố cục", layoutPaged: "Phân trang (khổ giấy, lề, header/footer)", layoutViewport: "Một trang (viewport)",

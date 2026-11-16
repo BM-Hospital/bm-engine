@@ -2,7 +2,7 @@
 
 [English](fonts.md) · [Tiếng Việt](../../vi/image/fonts.md)
 
-bm-engine draws text only with fonts you register: it bundles **no** font and never reads system fonts.
+bm-render draws text only with fonts you register: it bundles **no** font and never reads system fonts.
 This page covers loading fonts (TTF, OTF/CFF, TTC, WOFF/WOFF2, variable and colour fonts), how a
 `font-family` is matched to a face, how fallback works when a glyph is missing, what synthetic bold and
 italic look like, what each [profile](../profiles-and-size.md) supports, and how much memory fonts cost.
@@ -18,7 +18,7 @@ Create a `Renderer` once and register fonts on it. `registerFont` takes the font
 <!-- @example fonts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 const families = renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -73,12 +73,12 @@ families, `Geist` (face `index: 0`) and `Geist Mono` (face `index: 1`).
 | Colour glyphs: COLR v0/v1 | plain outlines, no colour | plain outlines, no colour | yes |
 | Colour glyphs: bitmap CBDT / sbix | not drawn | yes | yes |
 
-Bytes that are not a font throw `bm-engine: invalid font data`. Check what the loaded binary supports
+Bytes that are not a font throw `bm-render: invalid font data`. Check what the loaded binary supports
 with `features.woff`, `features.cff`, `features.variableFonts` and `features.colorFonts`.
 
 ## How a face is chosen
 
-Within a family, bm-engine applies CSS font matching: first `font-stretch`, then `font-style`, then
+Within a family, bm-render applies CSS font matching: first `font-stretch`, then `font-style`, then
 `font-weight`. For the weight this means: a requested weight between 400 and 500 tries the weights up to
 500, then lighter ones, then heavier ones; below 400 lighter weights are preferred, above 500 heavier
 ones. With Inter Regular (400), SemiBold (600), Bold (700) and Italic (400 italic) registered:
@@ -110,7 +110,7 @@ bold is **synthesised** on top of it.
 
 ### Synthetic bold and italic
 
-When the chosen face is lighter than the requested weight, bm-engine emboldens the outlines; when no
+When the chosen face is lighter than the requested weight, bm-render emboldens the outlines; when no
 italic face exists, it slants the regular face (oblique). Here the family "Solo" has only Roboto Regular:
 
 <!-- @example fonts#synthesis -->
@@ -148,7 +148,7 @@ Unlike bold and italic, this synthesis can be turned off, with `fontSynthesisSma
 ## Fallback
 
 Each character is looked up in the element's `font-family` list first. If none of those families has a
-glyph for it, bm-engine tries **every registered family, in registration order**. This makes it enough to
+glyph for it, bm-render tries **every registered family, in registration order**. This makes it enough to
 register a font that covers a script or symbol set: you do not have to add it to every `fontFamily`.
 
 Roboto has no glyphs for many symbols. With only Roboto registered they are boxes; after registering
@@ -308,7 +308,7 @@ On `core`, the font registers without error but every line is drawn with the **d
 <!-- @example fonts#variable-core -->
 ```js
 // The same tree on core: the font registers, but only its default instance is drawn.
-const { Renderer: CoreRenderer } = await import("bm-engine/core");
+const { Renderer: CoreRenderer } = await import("bm-render/core");
 const coreRenderer = new CoreRenderer();
 coreRenderer.registerFont({ name: "Archivo", data: archivo });
 const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200 });
@@ -319,7 +319,7 @@ const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200
 ## WOFF and WOFF2
 
 `standard` and `full` decode WOFF and WOFF2 themselves. `core` has no decoder, but the separate 84 KiB
-WOFF add-on (`bm-engine/woff`) converts WOFF / WOFF2 to TTF / OTF before registration, for every entry in
+WOFF add-on (`bm-render/woff`) converts WOFF / WOFF2 to TTF / OTF before registration, for every entry in
 the process:
 
 <!-- @example fonts#woff -->
@@ -328,15 +328,15 @@ the process:
 renderer.registerFont(readFileSync("./fonts/Geist.woff2"));
 
 // ... and on core after loading the 84 KiB WOFF add-on once per process.
-const { Renderer: CoreRenderer } = await import("bm-engine/core");
-const { loadWoff } = await import("bm-engine/woff");
+const { Renderer: CoreRenderer } = await import("bm-render/core");
+const { loadWoff } = await import("bm-render/woff");
 await loadWoff();
 const geist = new CoreRenderer().registerFont(readFileSync("./fonts/Geist.woff2"));
 // geist: [{ name: "Geist", faces: [{ weight: 400, ... }], ... }]
 ```
 
 Without the add-on, `core` throws
-`bm-engine: this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF
+`bm-render: this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF
 add-on: ...)`. The add-on does not add CFF support: a WOFF2 with CFF outlines still needs `standard` or
 `full`. More in [Profiles and size](../profiles-and-size.md#the-woff-add-on).
 
@@ -387,7 +387,7 @@ renderer.registerFont({ name: "Inter", data: bytes });
 const families = await renderer.registerFont("https://example.com/fonts/Inter-Regular.ttf");
 ```
 
-bm-engine does not download `@font-face` rules from stylesheets: their descriptors are read, the files
+bm-render does not download `@font-face` rules from stylesheets: their descriptors are read, the files
 are not fetched. Register the files yourself.
 
 For Google Fonts, download the files once (TTF from the family's download, or the WOFF2 URLs in the CSS

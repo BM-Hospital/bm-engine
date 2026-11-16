@@ -2,14 +2,14 @@
 
 [English](../../en/image/recipes.md) · [Tiếng Việt](recipes.md)
 
-Các đoạn mã theo tác vụ cho những thứ mọi người hay xây với bm-engine: file trên đĩa, endpoint HTTP với
+Các đoạn mã theo tác vụ cho những thứ mọi người hay xây với bm-render: file trên đĩa, endpoint HTTP với
 caching đúng cách, batch, worker pool, sinh ảnh lúc build, render trong trình duyệt, đầu ra high-DPI, chữ
 vừa khít khung, ảnh từ xa, xử lý lỗi và font đa ngôn ngữ. Mỗi recipe ngắn và đầy đủ; phần lớn import
 `getRenderer()` và `card()` từ module `og.js` được mô tả ở
 [Frameworks → Mẫu chung](./frameworks/index.md#mẫu-chung).
 
 ::: info Trạng thái kiểm chứng
-Mọi recipe đều được chạy trên Node 26.13 với tarball bm-engine 0.1.0 đã đóng gói
+Mọi recipe đều được chạy trên Node 26.13 với tarball bm-render 0.1.0 đã đóng gói
 (`docs/examples/frameworks/check-recipes.mjs`, `check-servers.mjs`, `check-browser.mjs`); số đo thời gian
 lấy từ một máy thử Windows 11 và chỉ cho biết bậc độ lớn. Recipe Web Worker chạy trong Edge 157 headless.
 :::
@@ -30,7 +30,7 @@ lấy từ một máy thử Windows 11 và chỉ cho biết bậc độ lớn. R
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine/core";
+import { Renderer } from "bm-render/core";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("fonts/Inter-Regular.ttf") });
@@ -66,7 +66,7 @@ async function etagFor(params) {
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname !== "/og.png") return res.writeHead(404).end();
-  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-engine" };
+  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-render" };
   const etag = await etagFor(params);
   const headers = { etag, "cache-control": "public, max-age=3600, stale-while-revalidate=86400" };
   if (req.headers["if-none-match"] === etag) return res.writeHead(304, headers).end();
@@ -111,12 +111,12 @@ Nếu buộc phải tạo renderer sống ngắn, hãy gọi `free()` (hoặc `u
 ## Pool worker threads
 
 Engine chạy đơn luồng và một lần render chặn luồng của nó. Để tăng throughput, hoặc để giữ event loop của
-HTTP server rảnh, hãy chạy một instance bm-engine cho mỗi worker. Một pool tối giản không cần dependency:
+HTTP server rảnh, hãy chạy một instance bm-render cho mỗi worker. Một pool tối giản không cần dependency:
 
 ```js
 // render-worker.js
 import { parentPort } from "node:worker_threads";
-import { getRenderer, card } from "./og.js"; // each worker imports bm-engine: its own wasm instance and fonts
+import { getRenderer, card } from "./og.js"; // each worker imports bm-render: its own wasm instance and fonts
 
 parentPort.on("message", ({ id, props, options }) => {
   try {
@@ -224,7 +224,7 @@ chép):
 
 ```js
 // render-worker.js
-import { init, Renderer } from "bm-engine/standard";
+import { init, Renderer } from "bm-render/standard";
 
 const ready = (async () => {
   await init();
@@ -302,7 +302,7 @@ ra của measure: [Measure](./measure.md). Các lựa chọn CSS không cần đ
 
 ## Nhúng ảnh từ xa
 
-bm-engine không bao giờ tải gì về: `src` của ảnh là một key trong option `images`. Hãy tự fetch byte (kèm
+bm-render không bao giờ tải gì về: `src` của ảnh là một key trong option `images`. Hãy tự fetch byte (kèm
 timeout), rồi render:
 
 ```js
@@ -338,13 +338,13 @@ URL đến từ người dùng. Định dạng theo từng profile (SVG và WebP
 try {
   const png = await renderer.render(node, { width: 1200, height: 630, signal: AbortSignal.timeout(2000) });
 } catch (error) {
-  // "bm-engine: invalid value for style property width", "bm-engine: canvas too large", signal.reason, ...
+  // "bm-render: invalid value for style property width", "bm-render: canvas too large", signal.reason, ...
 }
 ```
 
 Những gì đã được kiểm chứng:
 
-- Một giá trị inline style không hợp lệ sẽ ném lỗi (`bm-engine: invalid value for style property width`);
+- Một giá trị inline style không hợp lệ sẽ ném lỗi (`bm-render: invalid value for style property width`);
   `width` bằng 0 cũng ném lỗi. Đầu vào stylesheet hoặc Tailwind không hợp lệ thì bị bỏ qua âm thầm.
 - `signal` được kiểm tra **trước** khi rasterise, sau khi các `fonts` bất đồng bộ / `images` lazy đã resolve:
   một signal đã abort sẵn sẽ reject với reason của nó, và một signal kích hoạt trong lúc font lazy đang tải

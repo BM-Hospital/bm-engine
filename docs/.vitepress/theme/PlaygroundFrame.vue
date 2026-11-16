@@ -36,7 +36,7 @@ const label = computed(() => (props.lang === "vi" ? "Mở playground trong tab m
     <div class="pg-embed-bar">
       <a :href="openHref" target="_blank" rel="noopener">{{ label }} ↗</a>
     </div>
-    <iframe ref="frame" class="pg-embed-frame" :src="src" :title="mode === 'pdf' ? 'bm-engine PDF playground' : 'bm-engine playground'"
+    <iframe ref="frame" class="pg-embed-frame" :src="src" :title="mode === 'pdf' ? 'bm-render PDF playground' : 'bm-render playground'"
       loading="eager" allow="clipboard-write" />
   </div>
 </template>

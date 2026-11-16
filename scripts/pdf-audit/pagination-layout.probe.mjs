@@ -331,7 +331,7 @@ probe("pagination.absolute", "position:absolute boxes across pages", async (t) =
   else {
     const word = wordBoxes(straddling.bm.bytes)[1]?.find((w) => w[0] === "ABS");
     t.ok(!!word && Math.abs(word[2] - 7.5) <= 1, `absolute fragment starts in the page content area: ${JSON.stringify(word)}`);
-    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-engine clips it to the page content area");
+    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-render clips it to the page content area");
   }
 });
 probe("pagination.fixed", "position:fixed boxes repeat on every page", async (t) => {
@@ -374,7 +374,7 @@ probe("pagination.relative", "position:relative offsets move paint across pages,
   else {
     const word = wordBoxes(translated.bm.bytes)[1]?.find((w) => w[0] === "L09");
     t.ok(!!word && Math.abs(word[2] - 7.5) <= 1, `relative content starts in the page content area: ${JSON.stringify(word)}`);
-    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-engine keeps it in the page content area");
+    t.note("pinned Takumi paints the surviving fragment in the top margin; bm-render keeps it in the page content area");
   }
 });
 probe("pagination.transform", "transforms move paint across pages; a box moved past the end adds pages", async (t) => {
@@ -436,7 +436,7 @@ probe("pagination.list-markers", "list markers across pages", async (t) => {
     const pages = wordBoxes(split.bm.bytes).map((p) => p.map((w) => w[0]));
     t.ok(pages[0]?.includes("1.") && !pages.slice(1).flat().includes("1."), `the list marker appears once on the item's first fragment: ${JSON.stringify(pages)}`);
     t.ok(pages[0]?.includes("M1") && pages[1]?.includes("M6") && pages[1]?.includes("NEXT"), `item content remains in document order across pages: ${JSON.stringify(pages)}`);
-    t.note("pinned Takumi moves the marker to the later fragment; bm-engine keeps it with the item's first content");
+    t.note("pinned Takumi moves the marker to the later fragment; bm-render keeps it with the item's first content");
   }
 });
 probe("pagination.misc", "display:contents, visibility, empty pages, long documents", async (t) => {

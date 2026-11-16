@@ -1,12 +1,12 @@
 // Examples for docs/{en,vi}/image/tables.md. Run: node docs/examples/run-all.mjs tables
 import { saver } from "./_lib.mjs";
 import assert from "node:assert/strict";
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 const save = saver("tables");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // tables and floats need standard or full
+import { Renderer } from "bm-render/standard"; // tables and floats need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

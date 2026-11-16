@@ -4,7 +4,7 @@ const save = saver("templates");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "NotoSans-Regular", "NotoSans-Bold"]) {
@@ -124,7 +124,7 @@ function repoCard({ owner, repo, description, language, stars, forks, issues }) 
 }
 
 const repoPng = renderer.renderSync(repoCard({
-  owner: "acme", repo: "bm-engine",
+  owner: "acme", repo: "bm-render",
   description: "Render node trees, HTML and Tailwind to PNG, JPEG, WebP and SVG with a dependency-free WebAssembly engine.",
   language: { name: "Zig", color: "#ec915c" },
   stars: "4.2k", forks: "186", issues: "23",

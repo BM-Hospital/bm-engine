@@ -2,7 +2,7 @@
 
 [English](../../en/image/effects.md) · [Tiếng Việt](effects.md)
 
-Các hiệu ứng hình ảnh mà bm-engine vẽ được: gradient, viền và bo góc, outline, bóng đổ của box và của chữ,
+Các hiệu ứng hình ảnh mà bm-render vẽ được: gradient, viền và bo góc, outline, bóng đổ của box và của chữ,
 chữ gradient và viền chữ, filter, opacity, transform 2D, clip path, mask, blend mode và backdrop filter.
 Mỗi phần có một ví dụ nhỏ và ghi rõ profile cần dùng; đa số hiệu ứng có trên mọi profile, còn clip-path,
 mask, blend mode, backdrop-filter và các không gian màu hiện đại cần **standard** hoặc **full**
@@ -31,7 +31,7 @@ Các ví dụ render trên điểm vào `full` và dùng hai hàm phụ nhỏ: `
 <!-- @example effects#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -281,7 +281,7 @@ không hợp lệ. Trong style inline chúng làm cả lần render throw:
 const message = expectThrow(() =>
   renderer.renderSync({ type: "container", style: { width: 10, height: 10, transform: "rotateX(45deg)" } }, { width: 10, height: 10 }),
 );
-console.log(message); // bm-engine: invalid value for style property transform
+console.log(message); // bm-render: invalid value for style property transform
 ```
 
 Trong stylesheet hay class `tw`, khai báo không hợp lệ bị bỏ đi thay vì throw (cơ chế phục hồi lỗi của

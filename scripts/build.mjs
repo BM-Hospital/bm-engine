@@ -15,9 +15,9 @@
 //   (ZIG=<path to zig> overrides the compiler location; wasm-opt comes from the `binaryen` dev dependency,
 //    looked up in ./node_modules then bench/node_modules)
 //
-// Outputs: js/bm_engine.core.wasm, js/bm_engine.standard.wasm, js/bm_engine.wasm (= full: every feature but pdf),
-// js/bm_engine.pdf.wasm (= full + PDF output),
-// js/bm_woff.wasm (add-on, see js/addons.mjs), zig-out/bin/bm_engine.wasm (= full, optimised),
+// Outputs: js/bm_render.core.wasm, js/bm_render.standard.wasm, js/bm_render.wasm (= full: every feature but pdf),
+// js/bm_render.pdf.wasm (= full + PDF output),
+// js/bm_woff.wasm (add-on, see js/addons.mjs), zig-out/bin/bm_render.wasm (= full, optimised),
 // js/build-manifest.json (per file: profile, bytes, sha256, feature bits; git describe; zig version) and a
 // size table (raw / gzip -9 / brotli q11) printed and written to bench/out/sizes.json.
 import { execFileSync, spawnSync } from "node:child_process";
@@ -35,7 +35,7 @@ const opts = Object.fromEntries((dd >= 0 ? argv.slice(0, dd) : argv).map((a) => 
 const ALL = ["core", "standard", "full", "pdf"];
 
 /** Published binaries: js/<file> per profile (+ the add-on). */
-const FILES = { core: "bm_engine.core.wasm", standard: "bm_engine.standard.wasm", full: "bm_engine.wasm", pdf: "bm_engine.pdf.wasm", woff: "bm_woff.wasm" };
+const FILES = { core: "bm_render.core.wasm", standard: "bm_render.standard.wasm", full: "bm_render.wasm", pdf: "bm_render.pdf.wasm", woff: "bm_woff.wasm" };
 /** `bm_features()` of each canonical profile (bit order: src/config.zig `feature_bits`, js/engine.mjs FEATURE_NAMES). */
 const EXPECTED_FEATURES = { core: 0x0, standard: 0x1fff, full: 0x3ffff, pdf: 0x7ffff };
 const MANIFEST = path.join(root, "js", "build-manifest.json");
@@ -117,13 +117,13 @@ function verify() {
 if (opts.verify) {
   const problems = verify();
   if (problems.length) {
-    console.error("bm-engine: the package is not ready to publish:\n  - " + problems.join("\n  - ") +
+    console.error("bm-render: the package is not ready to publish:\n  - " + problems.join("\n  - ") +
       "\nWasm problems: rebuild with `npm run build` (needs Zig 0.17), or, if the binaries in js/ are the intended release" +
       " builds, record them with `node scripts/build.mjs --manifest`. Placeholders: edit package.json. Then retry.");
     process.exit(1);
   }
   const m = readManifest();
-  console.log(`bm-engine: wasm binaries match ${rel(MANIFEST)} (git ${m.git ?? "?"}, zig ${m.zig ?? "?"})`);
+  console.log(`bm-render: wasm binaries match ${rel(MANIFEST)} (git ${m.git ?? "?"}, zig ${m.zig ?? "?"})`);
   for (const [k, e] of Object.entries(m.files)) console.log(`  ${k.padEnd(8)} ${e.file.padEnd(28)} ${String(e.bytes).padStart(8)} B  sha256 ${e.sha256.slice(0, 16)}  ${e.features ?? ""}`);
   process.exit(0);
 }
@@ -140,13 +140,13 @@ const defaultZig = "C:/Users/admini/Downloads/zig-x86_64-windows-0.17.1/zig-x86_
 const zig = process.env.ZIG || (existsSync(defaultZig) ? defaultZig : "zig");
 const zv = spawnSync(zig, ["version"], { encoding: "utf8" });
 if (zv.error || zv.status !== 0) {
-  console.error(`bm-engine: Zig not found (tried \`${zig}\`). Building the wasm needs Zig 0.17.x: install it from` +
+  console.error(`bm-render: Zig not found (tried \`${zig}\`). Building the wasm needs Zig 0.17.x: install it from` +
     " https://ziglang.org/download/ and put it on PATH, or set ZIG=<path to the zig executable>." +
     "\n(The npm package ships prebuilt wasm files; you only need Zig to rebuild them.)");
   process.exit(1);
 }
 const zigVersion = zv.stdout.trim();
-if (!zigVersion.startsWith("0.17.")) console.warn(`warning: Zig ${zigVersion} found; bm-engine targets 0.17.x`);
+if (!zigVersion.startsWith("0.17.")) console.warn(`warning: Zig ${zigVersion} found; bm-render targets 0.17.x`);
 
 if (opts.test) {
   const r = spawnSync(zig, ["build", "test", "--summary", "all"], { cwd: root, stdio: "inherit" });
@@ -181,7 +181,7 @@ for (const p of profiles) {
   const prefix = p === "full" ? path.join(root, "zig-out") : path.join(root, "zig-out", "profiles", p);
   const speed = SPEED.has(p) && !extra.some((a) => a.startsWith("-Dwasm-optimize"));
   execFileSync(zig, ["build", `-Dprofile=${p}`, ...(speed ? ["-Dwasm-optimize=fast"] : []), "-p", prefix, ...extra], { cwd: root, stdio: "inherit" });
-  const out = path.join(prefix, "bin", "bm_engine.wasm");
+  const out = path.join(prefix, "bin", "bm_render.wasm");
   const zigBytes = statSync(out).size;
   optimise(out, speed ? "-O3" : "-Oz");
   const dest = path.join(root, "js", FILES[p]);

@@ -1,4 +1,4 @@
-// bm-engine internal: the takumi-pdf style API (`PdfRenderer`, `render`, `measure`, `prepare`) on top of one
+// bm-render internal: the takumi-pdf style API (`PdfRenderer`, `render`, `measure`, `prepare`) on top of one
 // binding's `Renderer`, and the page counter primitives. Shared by js/pdf.mjs (the wasm pdf profile) and
 // js/node-pdf.mjs (the native addon when it is available), so both expose exactly the same classes.
 const DISPOSE = typeof Symbol.dispose === "symbol" ? Symbol.dispose : Symbol.for("nodejs.dispose");
@@ -66,9 +66,9 @@ export function pdfApi(Renderer) {
 
 // ---- inputs as takumi-pdf's JS wrapper reads them (takumi-bindings-js document.ts `resolveDocument`, export.ts)
 
-const PREPARED = Symbol.for("bm-engine.prepared");
+const PREPARED = Symbol.for("bm-render.prepared");
 const isJsxElement = (v) => typeof v === "object" && v !== null && typeof v.$$typeof === "symbol" && "props" in v;
-/** takumi-bindings-js `isNode`: an object with a `type` that is not a JSX element (bm-engine also reads `{ json }`). */
+/** takumi-bindings-js `isNode`: an object with a `type` that is not a JSX element (bm-render also reads `{ json }`). */
 const isNode = (v) => typeof v === "object" && v !== null && "type" in v && !("$$typeof" in v);
 
 /**
@@ -86,7 +86,7 @@ function resolveDocument(v) {
 /** A band value: `false` / `null` / `undefined` stay (no band), the rest as {@link resolveDocument} reads a document. */
 const resolveBand = (v) => (v == null || v === false ? v : typeof v === "string" || isNode(v) ? v : jsxToHtml(v));
 
-const CSS_NULL = "bm-engine: data did not match any variant of untagged enum CssSource";
+const CSS_NULL = "bm-render: data did not match any variant of untagged enum CssSource";
 
 /** render / prepare options: bands resolved, and the input checks takumi-pdf's wrapper makes before the native side. */
 function resolveBands(options) {
@@ -105,7 +105,7 @@ function resolveBands(options) {
   }
   // takumi-pdf: `css: null` becomes the sheet list `[null]`, which no `CssSource` variant reads
   if (o.css === null) throw new TypeError(CSS_NULL);
-  if (o.fonts != null && typeof o.fonts !== "object" && typeof o.fonts !== "function") throw new TypeError("bm-engine: fonts takes an array");
+  if (o.fonts != null && typeof o.fonts !== "object" && typeof o.fonts !== "function") throw new TypeError("bm-render: fonts takes an array");
   if ("header" in o) o.header = resolveBand(o.header);
   if ("footer" in o) o.footer = resolveBand(o.footer);
   if (o.pages != null && typeof o.pages === "object" && !Array.isArray(o.pages)) {
@@ -152,7 +152,7 @@ const cssText = (style) =>
     .join(";");
 
 /**
- * takumi helpers `fromJsx`, as HTML markup bm-engine's HTML reader lays out: function / class / forwardRef / memo
+ * takumi helpers `fromJsx`, as HTML markup bm-render's HTML reader lays out: function / class / forwardRef / memo
  * components are called, fragments and context providers give their children, `<style>` stays a style sheet,
  * `className` is `class`, a `style` object is CSS text (numbers in px, React's unitless properties excepted).
  * Components run once without a React dispatcher: hooks other than plain reads are not supported.
@@ -160,7 +160,7 @@ const cssText = (style) =>
 export function jsxToHtml(v, svg = false) {
   if (v == null || v === false) return "";
   if (typeof v === "string" || typeof v === "number" || typeof v === "bigint" || v === true) return escText(String(v));
-  if (typeof v === "object" && typeof v.then === "function") throw new TypeError("bm-engine: an async component needs to be awaited before render");
+  if (typeof v === "object" && typeof v.then === "function") throw new TypeError("bm-render: an async component needs to be awaited before render");
   if (isJsxElement(v)) return jsxElement(v, svg);
   if (typeof v === "object" && typeof v[Symbol.iterator] === "function") return Array.from(v, (x) => jsxToHtml(x, svg)).join("");
   return escText(String(v));
@@ -209,7 +209,7 @@ function styleText(c) {
   return isJsxElement(c) ? styleText(c.props && c.props.children) : "";
 }
 
-// ---- page counter primitives (takumi-pdf primitives.ts, as bm-engine nodes instead of JSX elements)
+// ---- page counter primitives (takumi-pdf primitives.ts, as bm-render nodes instead of JSX elements)
 
 const counter = (hook, { format, className, ...rest } = {}) => ({
   type: "container",

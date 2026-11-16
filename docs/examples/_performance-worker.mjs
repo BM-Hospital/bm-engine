@@ -3,7 +3,7 @@
 // render-worker.mjs: one wasm instance + one renderer per worker, fonts registered once.
 import { parentPort } from "node:worker_threads";
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });

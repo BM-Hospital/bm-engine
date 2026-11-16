@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 if (process.argv[2] === "--child") {
   // #region backend
-  const { backend, profile, features, PdfRenderer } = await import("bm-engine/pdf");
+  const { backend, profile, features, PdfRenderer } = await import("bm-render/pdf");
   console.log(backend, profile, features.pdf); // "native" pdf true  (or "wasm" pdf true without the addon)
   // #endregion
   const { readFileSync } = await import("node:fs");
@@ -26,7 +26,7 @@ if (process.argv[2] === "--child") {
 }
 
 const run = (env) => {
-  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--child"], { encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: env } });
+  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--child"], { encoding: "utf8", env: { ...process.env, BM_RENDER_BACKEND: env } });
   if (r.status !== 0) return { error: (r.stderr || r.stdout).trim().split("\n").pop() };
   return JSON.parse(r.stdout.slice(r.stdout.indexOf("{")));
 };

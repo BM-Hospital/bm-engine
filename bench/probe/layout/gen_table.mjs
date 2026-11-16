@@ -5,7 +5,7 @@
 //  * spans: style keys `colSpan` / `rowSpan` (cells) and `colSpan` (= `span` of a column / column group). takumi
 //    reads them from HTML attributes, so the oracle gets tagName td / col / colgroup + attributes.
 //  * takumi materialises anonymous table boxes (row groups, rows, cells, tables around stray parts) as extra
-//    nodes of its result; bm-engine keeps them virtual. `expect` only has the REAL nodes: the anonymous levels
+//    nodes of its result; bm-render keeps them virtual. `expect` only has the REAL nodes: the anonymous levels
 //    are skipped here by replaying takumi's fix-up (layout/table/parts.rs) on the fixture tree.
 //  * display:none children, columns and column groups (which takumi hides) are recorded as {none:true}.
 import { Renderer } from "@takumi-rs/wasm/node";
@@ -108,7 +108,7 @@ export const CG = (style, ...ch) => c({ display: "table-column-group", ...style 
 export const box = (w, h, extra = {}) => B({ width: w, height: h, ...extra });
 // "text-like" content: a wrapping flex row of fixed boxes (min-content = widest box, max-content = sum)
 export const words = (n, w = 30, h = 10, extra = {}) => F({ flexWrap: "wrap", ...extra }, ...Array.from({ length: n }, () => F({ width: w, height: h, flexShrink: 0 })));
-// border-spacing, border-collapse and caption-side are inherited in CSS but per-node in bm-engine's Style (the
+// border-spacing, border-collapse and caption-side are inherited in CSS but per-node in bm-render's Style (the
 // integrator resolves inheritance): make the inherited values explicit in the fixture.
 const INHERITED = ["borderSpacing", "borderCollapse", "captionSide"];
 function inherit(n, from = {}) {

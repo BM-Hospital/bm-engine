@@ -2,7 +2,7 @@
 
 [English](../../en/image/animation.md) · [Tiếng Việt](animation.md)
 
-bm-engine render CSS animation bằng cách **lấy mẫu** dòng thời gian
+bm-render render CSS animation bằng cách **lấy mẫu** dòng thời gian
 `@keyframes` tại thời điểm bạn chọn. Một lời gọi cho bạn một khung hình tại `timeMs`; lời gọi khác lấy
 mẫu một danh sách scene theo tốc độ khung hình cố định rồi mã hoá thành WebP động, APNG hoặc GIF. Trang này
 trình bày cả hai, cách khai báo keyframes (văn bản stylesheet, rule object, `<style>` trong HTML), các
@@ -26,7 +26,7 @@ stylesheet hoặc trong HTML.
 <!-- @example animation#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine"; // Node: the full profile
+import { Renderer, features } from "bm-render"; // Node: the full profile
 
 console.log(features.animation); // true: CSS animations need the full profile
 const renderer = new Renderer();
@@ -124,11 +124,11 @@ const frame = renderer.renderSync(scene, { width: 240, height: 80, css, timeMs: 
 ![Scene tại 500 ms](/img/guide/animation-frame-500.png)
 
 Render nhiều lần cho bạn một dải khung hình. Đầu ra RGBA raw dùng thẳng làm nguồn ảnh được, nên chính
-bm-engine có thể ghép dải đó:
+bm-render có thể ghép dải đó:
 
 <!-- @example animation#strip -->
 ```js
-// Five raw frames, laid side by side by bm-engine itself (raw RGBA works as an image source).
+// Five raw frames, laid side by side by bm-render itself (raw RGBA works as an image source).
 const times = [0, 250, 500, 750, 1000];
 const frames = times.map((timeMs) => renderer.renderSync(scene, { width: 240, height: 80, css, timeMs, format: "raw" }));
 const strip = renderer.renderSync(
@@ -376,7 +376,7 @@ const spinnerGif = renderer.renderAnimationSync({ scenes: [{ node: spinner, dura
 
 Với MP4 / WebM, hãy render khung raw tại các mốc thời gian của lịch rồi đưa cho bộ mã hoá video như ffmpeg
 (`ffmpeg -f rawvideo -pix_fmt rgba -s 240x80 -r 30 -i - out.mp4`, ghi các khung vào stdin của nó). Bản
-thân bm-engine không có bộ mã hoá video.
+thân bm-render không có bộ mã hoá video.
 
 <!-- @example animation#video -->
 ```js
@@ -399,8 +399,8 @@ for (const options of [
 ]) {
   try { renderer.renderAnimationSync(options); } catch (err) { console.log(err.message); }
 }
-// bm-engine: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
-// bm-engine: Expected at least one animation scene
+// bm-render: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
+// bm-render: Expected at least one animation scene
 ```
 
 Các thông báo khác: `renderAnimation needs \`width\` and \`height\``, `missing field \`fps\``,
@@ -425,7 +425,7 @@ gì chuyển động; trên `core`, thuộc tính `animation` bị bỏ qua; `re
 
 <!-- @example animation#standard -->
 ```js
-import * as standard from "bm-engine/standard";
+import * as standard from "bm-render/standard";
 
 const std = new standard.Renderer();
 const still = std.measureSync(

@@ -1,4 +1,4 @@
-//! Tolerant HTML parser + Chromium UA presets for bm-engine (port of takumi-core `html/` minus node building).
+//! Tolerant HTML parser + Chromium UA presets for bm-render (port of takumi-core `html/` minus node building).
 //!
 //! Standalone (std only). Mirrors the behaviour of takumi's `html::parse_html` tree construction, which is a
 //! pragmatic subset of the WHATWG algorithm (see the "Scope" list below), so the node tree an integrator builds

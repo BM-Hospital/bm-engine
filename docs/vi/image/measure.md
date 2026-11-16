@@ -25,7 +25,7 @@ bị bỏ qua. Font phải được đăng ký y như khi render: chữ được
 <!-- @example measure#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -155,12 +155,12 @@ Khi không có `width` / `height`, root được dàn trang theo kích thước 
 ```js
 // Without width / height the root is laid out at its max-content size: the result is
 // the size the image would have if you rendered it without a canvas size.
-const label = { type: "text", text: "Hello bm-engine", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
+const label = { type: "text", text: "Hello bm-render", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
 const { width, height } = renderer.measureSync(label); // { width: 258.71875, height: 39 }
 const tight = renderer.renderSync(label); // a 259 × 39 PNG
 ```
 
-![Nhãn đậm "Hello bm-engine" trên canvas trong suốt 259 x 39](/img/guide/measure-intrinsic.png)
+![Nhãn đậm "Hello bm-render" trên canvas trong suốt 259 x 39](/img/guide/measure-intrinsic.png)
 
 Khi có `width` / `height`, kích thước phần trăm, `vw` / `vh` và các truy vấn `@media` được tính theo chúng,
 giống như khi render.

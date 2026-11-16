@@ -1,4 +1,4 @@
-// Worker side of lib/pool.mjs: imports bm-engine (its own wasm instance), registers fonts once, renders jobs.
+// Worker side of lib/pool.mjs: imports bm-render (its own wasm instance), registers fonts once, renders jobs.
 import { parentPort } from "node:worker_threads";
 import { getRenderer, card } from "./og.mjs";
 

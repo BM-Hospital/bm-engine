@@ -166,12 +166,12 @@ probe("file.pdf20.differences", "PDF 2.0 output (UA-2 / A-4): no /ProcSet, no In
   }
 });
 
-probe("file.error-prefix", "error message prefix: bm-engine prepends `bm-engine: ` to every message; takumi-pdf throws the bare PdfError text", async (t) => {
+probe("file.error-prefix", "error message prefix: bm-render prepends `bm-render: ` to every message; takumi-pdf throws the bare PdfError text", async (t) => {
   const r = await t.both(`<p>x</p>`, { pdfa: "2b", metadata: { title: "T" } });
   t.ok(!!r.bm.error, "bm fails without creationDate under PDF/A-2b");
   if (r.ref) {
     t.note(`bm: ${JSON.stringify(r.bm.error)} (${r.bm.errorName}) | takumi: ${JSON.stringify(r.ref.error)} (${r.ref.errorName})`);
-    t.same("error text without engine-specific prefix", String(r.bm.error).replace(/^bm-engine: /, ""), r.ref.error);
+    t.same("error text without engine-specific prefix", String(r.bm.error).replace(/^bm-render: /, ""), r.ref.error);
     t.same("error class name", r.bm.errorName, r.ref.errorName);
   }
 });

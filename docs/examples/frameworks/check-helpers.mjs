@@ -4,7 +4,7 @@ import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 import { imageResponse } from "./lib/image-response.mjs";
 import { h, Fragment } from "./lib/h.mjs";
 import { getRenderer, card } from "./lib/og.mjs";
@@ -112,7 +112,7 @@ await check("flexByDefault(): satori-style trees lay out like flex", async () =>
 });
 
 await check("satori replacement: renderSvg (full) and PNG in one call", async () => {
-  const full = await import("bm-engine/full");
+  const full = await import("bm-render/full");
   const r = new full.Renderer();
   r.registerFont({ name: "Inter", data: font("Inter-Regular.ttf"), weight: 400, style: "normal" });
   const node = { type: "container", style: { display: "flex", width: "100%", height: "100%", backgroundColor: "white" }, children: [{ type: "text", text: "Hello", style: { fontFamily: "Inter", fontSize: 48 } }] };

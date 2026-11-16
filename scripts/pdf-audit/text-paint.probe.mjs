@@ -1,5 +1,5 @@
 // Text painting probes: how glyph runs, decorations, strokes, shadows and colour glyphs are written (text
-// operators and render modes, outlines, Type3 fonts, `/ActualText`, `/ReversedChars`), compared between bm-engine/pdf
+// operators and render modes, outlines, Type3 fonts, `/ActualText`, `/ReversedChars`), compared between bm-render/pdf
 // and takumi-pdf with the canonical pages / draw lists of paint.probe.mjs. Extracted text (pdftotext) is compared
 // as well where the reading order matters.
 import { INTER, INTER_BOLD, ARCHIVO, NOTO_TC, TWEMOJI, font, squash } from "./lib.mjs";
@@ -220,14 +220,14 @@ textCases("text.background-clip", "background-clip: text", [
 probeAs("text.background-clip.border-box-and-text", "mixed background-clip layers paint the box color and clip only the text layer", async (t) => {
   const html = p("background:linear-gradient(90deg,red,blue),#ff0;background-clip:text,border-box;color:transparent", "Gradient");
   const r = await t.both(html, page, { fonts: [F.inter] });
-  t.ok(!r.bm.error, `bm-engine renders the mixed background layers${r.bm.error ? `: ${r.bm.error}` : ""}`);
+  t.ok(!r.bm.error, `bm-render renders the mixed background layers${r.bm.error ? `: ${r.bm.error}` : ""}`);
   if (r.bm.error) return;
   const flat = flatten(canonPages(r.bm)[0] || []);
   const joined = flat.map(String).join(" ");
   t.ok(joined.includes("FILL rg 1 1 0"), "yellow border-box background color is painted");
   t.ok(joined.includes("/PatternType") && joined.includes("/ShadingType"), "gradient layer remains available to the text glyph mask");
   t.ok(squash(r.bm.text).includes("Gradient"), "text remains extractable");
-  t.differs("pinned Takumi paints the gradient as a box and omits the background color in this mixed-clip case; bm-engine follows each layer's clip");
+  t.differs("pinned Takumi paints the gradient as a box and omits the background color in this mixed-clip case; bm-render follows each layer's clip");
 });
 
 // ------------------------------------------------------------------------------------------------ transform, variants

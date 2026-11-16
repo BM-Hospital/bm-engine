@@ -1,4 +1,4 @@
-// Colour-glyph oracle: renders emoji with bm-engine's color.zig reference painter (wasm harness built
+// Colour-glyph oracle: renders emoji with bm-render's color.zig reference painter (wasm harness built
 // from src/test_color.zig) and compares per glyph with takumi (@takumi-rs/wasm, CBDT + COLRv0) or
 // headless Chrome/Edge (COLRv1: takumi only renders COLR v0, glyph.rs uses ColorGlyphFormat::ColrV0).
 //

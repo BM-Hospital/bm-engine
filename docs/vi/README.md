@@ -1,6 +1,6 @@
-# Tài liệu bm-engine
+# Tài liệu bm-render
 
-bm-engine là thư viện viết bằng Zig, dùng để chuyển cây node hoặc HTML + CSS thành ảnh và tài liệu PDF. Thư viện chạy bằng addon native trên Node.js khi có sẵn, và bằng WebAssembly trên trình duyệt cùng các môi trường khác.
+bm-render là thư viện viết bằng Zig, dùng để chuyển cây node hoặc HTML + CSS thành ảnh và tài liệu PDF. Thư viện chạy bằng addon native trên Node.js khi có sẵn, và bằng WebAssembly trên trình duyệt cùng các môi trường khác.
 
 ## Bắt đầu từ đâu?
 

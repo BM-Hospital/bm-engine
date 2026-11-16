@@ -31,7 +31,7 @@ const exe = candidates.find((p) => existsSync(p));
 if (!exe) { console.error("No Chromium-based browser found. Tried:\n  " + candidates.join("\n  ")); process.exit(2); }
 
 // ---- Node reference (same wasm file the browser downloads) ----
-const wasmPath = path.join(REPO_ROOT, "js", "bm_engine.wasm");
+const wasmPath = path.join(REPO_ROOT, "js", "bm_render.wasm");
 const wasmBytes = readFileSync(wasmPath);
 const wasmSha = createHash("sha256").update(wasmBytes).digest("hex").slice(0, 16);
 const bm = await import(pathToFileURL(path.join(REPO_ROOT, "js", "index.mjs")).href);
@@ -191,7 +191,7 @@ try {
   const yn = (b) => (b ? "yes" : "NO");
   const md = [];
   md.push(`# Browser test`, ``, `- Browser: **${version}** (headless, puppeteer-core)`,
-    `- wasm: js/bm_engine.wasm (${initInfo.wasmBytes} bytes, sha256 ${wasmSha}), served as \`${initInfo.wasmContentType}\`; compile+instantiate (streaming) **${f1(initInfo.compileInstantiateMs)} ms**; registering ${initInfo.fonts} fonts ${f1(initInfo.fontRegisterMs)} ms`,
+    `- wasm: js/bm_render.wasm (${initInfo.wasmBytes} bytes, sha256 ${wasmSha}), served as \`${initInfo.wasmContentType}\`; compile+instantiate (streaming) **${f1(initInfo.compileInstantiateMs)} ms**; registering ${initInfo.fonts} fonts ${f1(initInfo.fontRegisterMs)} ms`,
     `- Memory after run: wasm linear memory ${(memory.wasmMemoryBytes / 1048576).toFixed(1)} MiB; JS heap used ${memory.jsHeapUsed ? (memory.jsHeapUsed / 1048576).toFixed(1) + " MiB" : "n/a"}`,
     `- Result: **${failures.length ? "FAIL" : "PASS"}** - ${sum.identical}/${sum.cases} raw renders byte-identical to Node; png ${sum.pngOk}/${sum.cases}, webp ${sum.webpOk}/${sum.cases}, jpeg ${sum.jpegOk}/${sum.cases} decode OK; console errors ${sum.consoleErrors}`,
     `- examples/browser.html: ${example.error ? "ERROR " + example.error : `shows ${example.w}x${example.h} image (${example.info})`}`, ``,

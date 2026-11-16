@@ -1,6 +1,6 @@
 // The "create once, register fonts once" module every framework page builds on (docs: frameworks/index.md).
 // In the docs the fonts are read with readFileSync(new URL("./fonts/Inter-Regular.ttf", import.meta.url)).
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 import { font } from "./util.mjs";
 
 let renderer; // one per process / isolate

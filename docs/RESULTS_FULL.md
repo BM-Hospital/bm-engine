@@ -1,4 +1,4 @@
-# bm-engine vs takumi — benchmark & equivalence results
+# bm-render vs takumi — benchmark & equivalence results
 
 > This table reflects the 200-fixture phase-3 run (historical). Current per-fixture results for the 250-fixture suite, including the native addon, are in [BENCHMARK.md](BENCHMARK.md).
 
@@ -16,7 +16,7 @@
 | takumi-wasm | JS glue (dist/export.mjs) | 37.5 KiB | 10.0 KiB | 8.8 KiB |
 | takumi-native | binary (.node addon) | 9796.0 KiB | 4257.9 KiB | 3201.3 KiB |
 | takumi-native | JS glue (dist/export.mjs) | 43.5 KiB | 7.4 KiB | 6.5 KiB |
-| bm | binary (zig-out/bin/bm_engine.wasm) | 1099.8 KiB | 538.2 KiB | 453.4 KiB |
+| bm | binary (zig-out/bin/bm_render.wasm) | 1099.8 KiB | 538.2 KiB | 453.4 KiB |
 | bm | JS glue (js/engine.mjs + js/index.mjs + js/node.mjs) | 29.2 KiB | 9.5 KiB | 8.3 KiB |
 
 ## Cold start (fresh `node` process, median of runs)

@@ -1,4 +1,4 @@
-# bm-engine (Zig) so với takumi 2.20.0 — benchmark và kiểm tra tương đương
+# bm-render (Zig) so với takumi 2.20.0 — benchmark và kiểm tra tương đương
 
 > **Giai đoạn 4 (2026-11-12)** — addon native cho Node.js: bm-native, bm-wasm, takumi-native và takumi-wasm đo cùng lúc; ở ngay dưới, mọi bảng sinh từ [results-native.json](results-native.json).
 > **Giai đoạn 3 (2026-11-12)** — số liệu cuối cùng của 0.1.0 (bản wasm) ở sau đó; giai đoạn 2 được giữ làm lịch sử (số của giai đoạn 2 được ghi rõ). Báo cáo giai đoạn 1 được giữ nguyên ở cuối file để đối chiếu.
@@ -6,8 +6,8 @@
 
 ## Giai đoạn 6 — PDF
 
-Đầu ra PDF (`bm-engine/pdf`) được đo với ba engine trên cùng máy, cùng Node, cùng font, cùng ảnh và cùng đầu vào:
-**bm-native** (addon Node-API, API sync và async), **bm-wasm** (`js/bm_engine.pdf.wasm`, profile `pdf`) và
+Đầu ra PDF (`bm-render/pdf`) được đo với ba engine trên cùng máy, cùng Node, cùng font, cùng ảnh và cùng đầu vào:
+**bm-native** (addon Node-API, API sync và async), **bm-wasm** (`js/bm_render.pdf.wasm`, profile `pdf`) và
 **takumi-pdf** (npm `takumi-pdf`, chỉ có bản wasm; không có gói native nào được phát hành). Bộ tài liệu
 (`bench/pdf/corpus/`) gồm đầu vào của 89 golden của takumi-pdf (dựng như `scripts/pdf-compare.mjs`), các tài liệu
 trong hướng dẫn PDF (hoá đơn, báo cáo lặp header bảng, vé, văn bản nhiều trang, header/footer có số trang, liên kết
@@ -32,9 +32,9 @@ hai bằng cùng thiết lập.
 |:--|:--|
 | Máy | 11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz, 8 CPU logic, 31.7 GiB, win32 10.0.19045 x64 |
 | Node.js | v24.21.0 (V8 13.6.233.17-node.53, libuv 1.52.1) |
-| bm-engine | 0.1.0, git `e7017d6879` (main, 12 file đang sửa) |
-| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3.676 KiB, sha256 `771d6f7f6c9b` |
-| bm-wasm | `js/bm_engine.pdf.wasm` (profile pdf), 1.907 KiB, sha256 `8e1eaaa710df` |
+| bm-render | 0.1.0, git `e7017d6879` (main, 12 file đang sửa) |
+| bm-native | `native/dist/win32-x64-msvc/bm-render.win32-x64-msvc.node`, 3.676 KiB, sha256 `771d6f7f6c9b` |
+| bm-wasm | `js/bm_render.pdf.wasm` (profile pdf), 1.907 KiB, sha256 `8e1eaaa710df` |
 | takumi-pdf | npm `takumi-pdf` 0.20.0 (wasm, 4.335 KiB); không có bản native nào được phát hành |
 | Lần chạy | 2026-11-16 01:48 UTC, full, 7.6 min; CPU bận trước khi chạy: 41.8 % |
 <!-- /pdf-bench:env -->
@@ -379,7 +379,7 @@ median / p95 ms.
 ## Giai đoạn 4 — native Node.js
 
 Bốn engine trên cùng một máy, cùng Node, cùng 250 fixture, cùng font, cùng ảnh, cùng kích thước đầu ra:
-**bm-native** (addon Node-API của bm-engine, `native/dist/win32-x64-msvc`), **bm-wasm** (bản wasm profile `full`),
+**bm-native** (addon Node-API của bm-render, `native/dist/win32-x64-msvc`), **bm-wasm** (bản wasm profile `full`),
 **takumi-native** (`@takumi-rs/core`) và **takumi-wasm** (`@takumi-rs/wasm`). Mọi bảng trong phần này được sinh từ
 `docs/results-native.json` bởi `node bench/run-native.mjs` (giữa các comment `native-bench`); không con số nào được gõ tay.
 Trang tóm tắt bằng tiếng Anh và tiếng Việt: [en/native-vs-wasm.md](en/native-vs-wasm.md), [vi/native-vs-wasm.md](vi/native-vs-wasm.md).
@@ -391,9 +391,9 @@ Trang tóm tắt bằng tiếng Anh và tiếng Việt: [en/native-vs-wasm.md](e
 |:--|:--|
 | Máy | Intel(R) Core(TM) i3-10100 CPU @ 3.60GHz, 8 CPU logic, 7.80 GiB, win32 10.0.26200 x64 |
 | Node.js | v26.13.0 (V8 14.6.202.34-node.40, N-API 10, libuv 1.52.1) |
-| bm-engine | 0.1.0, git `e5c535cbbf` (main, 3 file đang sửa) |
-| bm-native | `native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node`, 3 327 KiB, Zig 0.17.1, ReleaseFast, sha256 `1d5ff5ea0a4f` |
-| bm-wasm | `js/bm_engine.wasm` (profile full), 1 144 KiB, sha256 `a7e1528586ac` |
+| bm-render | 0.1.0, git `e5c535cbbf` (main, 3 file đang sửa) |
+| bm-native | `native/dist/win32-x64-msvc/bm-render.win32-x64-msvc.node`, 3 327 KiB, Zig 0.17.1, ReleaseFast, sha256 `1d5ff5ea0a4f` |
+| bm-wasm | `js/bm_render.wasm` (profile full), 1 144 KiB, sha256 `a7e1528586ac` |
 | takumi-native | `@takumi-rs/core` 2.20.0 + `@takumi-rs/core-win32-x64-msvc` 2.20.0, 9 796 KiB |
 | takumi-wasm | `@takumi-rs/wasm` 2.20.0, 4 235 KiB |
 | Lần chạy | 2026-11-13 04:23 UTC, chế độ full, 250 fixtures, 16.0 min; CPU bận trước khi chạy: 5.00 % |
@@ -455,8 +455,8 @@ Geomean trên 250 fixture mà cả bốn engine đều render được; ± = n�
 - **Tải hệ thống:** trước và trong mỗi giai đoạn, `os.cpus()` được lấy mẫu mỗi giây; "tiến trình khác" = lõi-giây
   bận của cả máy trừ thời gian CPU của chính benchmark. Các agent khác build/test trên cùng máy trong lúc đo, nên số
   tuyệt đối có nhiễu; tỉ lệ giữa các engine (đo xen kẽ trong cùng fixture) ổn định hơn số tuyệt đối.
-- **Cold start:** spawn `node` → import engine như người dùng (`bm-engine` = `js/node.mjs`, wasm qua
-  `BM_ENGINE_BACKEND=wasm`; `@takumi-rs/core`; `@takumi-rs/wasm` + `initSync`) → đăng ký Inter Regular → PNG og card
+- **Cold start:** spawn `node` → import engine như người dùng (`bm-render` = `js/node.mjs`, wasm qua
+  `BM_RENDER_BACKEND=wasm`; `@takumi-rs/core`; `@takumi-rs/wasm` + `initSync`) → đăng ký Inter Regular → PNG og card
   1200×630 → thoát; ≥ 30 lần mỗi engine, xen kẽ; trừ median của một tiến trình Node rỗng đọc cùng file.
 - **Bộ nhớ:** một tiến trình mỗi engine, render cả bộ (raw + PNG) 10 lượt, đo sau GC cưỡng bức; RSS đỉnh của một PNG
   4000×4000 trong tiến trình riêng.
@@ -672,7 +672,7 @@ Thời gian median và dung lượng đầu ra. JPEG: quality 85 cho mọi engin
 Những gì phép đo cho thấy (bảng chẩn đoán bên dưới là một phần của mỗi lần chạy; điều gì không được nó chứng minh
 thì được ghi là giả thuyết):
 
-- **`filter: blur()` chậm hơn nhiều ở bm-engine, trên cả hai backend.** Trong cảnh animation, bỏ filter blur thì
+- **`filter: blur()` chậm hơn nhiều ở bm-render, trên cả hai backend.** Trong cảnh animation, bỏ filter blur thì
   thời gian một khung của bm xuống dưới takumi, và riêng blur chiếm gần hết thời gian của bm; blur của takumi rẻ.
   Chính hiệu ứng này làm animation 60 khung trong bảng event loop của bm lâu hơn nhiều (takumi-native còn render
   các khung song song). *Giả thuyết, chưa profile:* bước filter của bm xử lý một vùng lớn hơn nhiều so với phần
@@ -813,14 +813,14 @@ heavy = một PNG 2400×2400: gradient, 24 thẻ với box-shadow mờ lớn, c�
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
-| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
+| `bm-render.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
 | bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
 | bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
 | bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
@@ -1286,7 +1286,7 @@ cache glyph) trong cùng bộ nhớ tuyến tính — cần một dynamic linker
 
 ## Chưa port / còn khác takumi sau giai đoạn 2
 
-- **PDF: không có trong các profile `core` / `standard` / `full` và không nằm trong benchmark này.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust. Sau giai đoạn đo này, bm-engine đã thêm nó thành profile `pdf` riêng (`bm-engine/pdf`; xem [Đầu ra PDF](en/pdf/index.md) và [bản tiếng Việt](vi/pdf/index.md)). Các con số speed / size / SSIM trong báo cáo này chỉ nói về đầu ra ảnh; đầu ra PDF chưa được benchmark về tốc độ và kích thước.
+- **PDF: không có trong các profile `core` / `standard` / `full` và không nằm trong benchmark này.** `takumi-pdf` là gói npm riêng (không thuộc `@takumi-rs/wasm`), ~43 500 dòng Rust. Sau giai đoạn đo này, bm-render đã thêm nó thành profile `pdf` riêng (`bm-render/pdf`; xem [Đầu ra PDF](en/pdf/index.md) và [bản tiếng Việt](vi/pdf/index.md)). Các con số speed / size / SSIM trong báo cáo này chỉ nói về đầu ra ảnh; đầu ra PDF chưa được benchmark về tốc độ và kích thước.
 - **Dòng inline:** float + chữ và chữ trong dòng hỗn hợp đã xong ở giai đoạn 3; các khoảng trống còn lại nằm trong mục "Giai đoạn 3" ở đầu file.
 - **Shaping:** Indic chỉ kiểm chứng Devanagari + Bengali (các hệ khác dùng shaper mặc định); chuỗi emoji ZWJ có ca chưa gộp thành một glyph; ưu tiên font emoji khác takumi ở vài ca (©️, VS15).
 - **SVG:** `<text>` chỉ qua hook; thiếu feTurbulence/feImage/feMorphology/feConvolveMatrix/feDisplacementMap/lighting/feTile; bảng SVG trong font chưa vẽ.
@@ -1306,7 +1306,7 @@ Số liệu đầy đủ từng fixture: [RESULTS_FULL.md](RESULTS_FULL.md) (sin
 
 - Máy: Intel Core i3-10100 @ 3.6 GHz (8 luồng), 7.8 GB RAM, Windows 11, Node v26.13.0. Ngày đo: 2026-11-11.
 - Đối chứng: `@takumi-rs/wasm` 2.20.0 (bản wasm chính thức trên npm) và `@takumi-rs/core` 2.20.0 (native N-API, chỉ để tham khảo).
-- bm-engine: `zig build` (optimize = small, wasm32-freestanding, simd128) + `wasm-opt -Oz`.
+- bm-render: `zig build` (optimize = small, wasm32-freestanding, simd128) + `wasm-opt -Oz`.
 - 87 fixture trong `bench/fixtures/` (25 nhóm tính năng), cùng một cây node, cùng 9 font TTF tĩnh (Inter, Noto Sans,
   Roboto) đăng ký giống hệt nhau vào mọi engine.
 - Thời gian: median của ≥ 20 lần lặp và ≥ 300 ms sau 3 lần warm-up, các engine chạy xen kẽ theo từng ca.
@@ -1318,7 +1318,7 @@ Số liệu đầy đủ từng fixture: [RESULTS_FULL.md](RESULTS_FULL.md) (sin
 
 ## Tóm tắt
 
-| Chỉ số | takumi-wasm 2.20 | bm-engine | Tỉ lệ |
+| Chỉ số | takumi-wasm 2.20 | bm-render | Tỉ lệ |
 |:--|--:|--:|:--|
 | Kích thước `.wasm` | 4 234.9 KiB | **320.9 KiB** | nhỏ hơn **13.2×** |
 | `.wasm` gzip -9 / brotli | 1 860.9 / 1 409.3 KiB | **147.1 / 126.5 KiB** | nhỏ hơn 12.7× / 11.1× |
@@ -1377,7 +1377,7 @@ PNG của bm chậm hơn trên dữ liệu chữ khử răng cưa dù file nhỏ
 
 ### Bộ mã hoá (3 ca đại diện, 1200×630; ms median / byte)
 
-| Ca | Định dạng | takumi-wasm | bm-engine |
+| Ca | Định dạng | takumi-wasm | bm-render |
 |:--|:--|--:|--:|
 | card-flat-ui (UI phẳng) | PNG | 19.93 ms / 25 948 B | **7.13 ms / 13 381 B** |
 | | JPEG q75 4:4:4 | 25.14 ms / 50 167 B | **17.63 ms / 47 298 B** |
@@ -1465,5 +1465,5 @@ layout khớp tới 1/64 px) nhưng **không trùng từng byte** ở các mép 
 Nó **chưa thay thế được takumi**: takumi là một engine CSS gần như đầy đủ (Tailwind, stylesheet, SVG, font biến thiên,
 WOFF2, emoji màu, chữ phức, animation). Lợi thế kích thước của bm đến chủ yếu từ việc *không làm* những thứ đó, nên con
 số 13× không phải là so sánh ngang tính năng; thêm font biến thiên + WOFF2 + shaping đầy đủ sẽ làm bản Zig lớn lên
-đáng kể. Lựa chọn hợp lý: dùng bm-engine khi đầu vào nằm trong tập con ở trên và cần wasm nhỏ / khởi động nhanh
+đáng kể. Lựa chọn hợp lý: dùng bm-render khi đầu vào nằm trong tập con ở trên và cần wasm nhỏ / khởi động nhanh
 (edge, trình duyệt); dùng takumi khi cần độ phủ CSS.

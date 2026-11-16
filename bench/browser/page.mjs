@@ -15,7 +15,7 @@ let lastRaw = null;
 
 window.bmInit = async (fonts) => {
   const t0 = performance.now();
-  const resp = await fetch("/js/bm_engine.wasm");
+  const resp = await fetch("/js/bm_render.wasm");
   const ct = resp.headers.get("content-type");
   await init(resp); // streaming compile + instantiate
   const compileMs = performance.now() - t0;

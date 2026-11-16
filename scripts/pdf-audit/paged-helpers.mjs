@@ -70,8 +70,8 @@ export function noteBoth(t, r, label = "") {
   t.note(`${label} bm: ${one(r.bm)}`);
   t.note(`${label} takumi: ${one(r.ref)}`);
 }
-/** Drop bm-engine's binding prefix and Takumi's wasm-bindgen `Error: ` wrapper before comparing messages. */
-export const stripPrefix = (m) => (m == null ? m : String(m).replace(/^bm-engine: /, "").replace(/^Error: /, ""));
+/** Drop bm-render's binding prefix and Takumi's wasm-bindgen `Error: ` wrapper before comparing messages. */
+export const stripPrefix = (m) => (m == null ? m : String(m).replace(/^bm-render: /, "").replace(/^Error: /, ""));
 /** One line describing a render result: the error, or page count, page sizes (pt) and the text of each page. */
 export const summary = (x) => (!x ? "n/a" : x.error ? "ERROR " + stripPrefix(x.error)
   : `${x.pages.length}p ${[...new Set(x.pages.map((p) => p.media.slice(2).join("x")))].join(",")} ${JSON.stringify(pagesOf(x))}`);

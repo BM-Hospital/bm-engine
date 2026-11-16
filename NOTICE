@@ -1,20 +1,20 @@
-bm-engine
+bm-render
 Copyright (c) 2026 hunghg255
-https://github.com/BM-Hospital/bm-engine
+https://github.com/BM-Hospital/bm-render
 
 Licensed under the MIT License (LICENSE).
 
-bm-engine is a port to Zig / WebAssembly of takumi (https://github.com/kane50613/takumi):
+bm-render is a port to Zig / WebAssembly of takumi (https://github.com/kane50613/takumi):
 
     takumi
     Copyright (c) 2025 Kane Wang
     Licensed under the MIT License or the Apache License, Version 2.0, at your option.
 
-Large parts of bm-engine are transliterations of takumi's Rust code (layout, painting, text, CSS,
-Tailwind, HTML, SVG, animation, codecs); bm-engine is therefore a derivative work of takumi, uses
+Large parts of bm-render are transliterations of takumi's Rust code (layout, painting, text, CSS,
+Tailwind, HTML, SVG, animation, codecs); bm-render is therefore a derivative work of takumi, uses
 takumi under the MIT option of its dual license, and keeps its copyright notice in LICENSE.
 
-takumi in turn follows Chromium's Blink renderer and Skia in many places, and bm-engine ports or follows
+takumi in turn follows Chromium's Blink renderer and Skia in many places, and bm-render ports or follows
 further third-party code, algorithms and data. The notices they require are reproduced in
 THIRD-PARTY-NOTICES.md:
 

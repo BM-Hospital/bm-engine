@@ -8,39 +8,39 @@
 //   manifest     js/build-manifest.json matches the wasm files (scripts/build.mjs --verify --allow-placeholders)
 //   pack         npm pack: the tarball holds exactly the whitelisted files
 //   install      npm i --ignore-scripts <tarball> into <dir>/app (type: module)
-//   node-esm     bm-engine, /core, /standard, /full, /pdf on Node: render PNG with each profile, features per
+//   node-esm     bm-render, /core, /standard, /full, /pdf on Node: render PNG with each profile, features per
 //                profile, separate instances, renderSvg, measure, init idempotency, WOFF add-on on core,
 //                renderPdf on /pdf (starts with %PDF-) and its "not supported by this build" rejection on /full
-//   node-cjs     a CommonJS file: await import("bm-engine"), and require("bm-engine") (require(esm), Node >= 20.19)
-//   workerd-sim  node --conditions=workerd: bm-engine/core + init(WebAssembly.Module) from bm-engine/core.wasm,
-//                the neutral bm-engine entry's error without an argument, loadWoff(module)
-//   browser-sim  node --conditions=browser: bm-engine/core init() with no argument (file: URL fallback)
+//   node-cjs     a CommonJS file: await import("bm-render"), and require("bm-render") (require(esm), Node >= 20.19)
+//   workerd-sim  node --conditions=workerd: bm-render/core + init(WebAssembly.Module) from bm-render/core.wasm,
+//                the neutral bm-render entry's error without an argument, loadWoff(module)
+//   browser-sim  node --conditions=browser: bm-render/core init() with no argument (file: URL fallback)
 //   tsc-bundler / tsc-node16   scripts/types-test.ts against the installed typings (typescript@5)
-//   vite-build   vite build of two pages (bm-engine/core + init(); bm-engine + init(full.wasm?url)) + woff add-on
+//   vite-build   vite build of two pages (bm-render/core + init(); bm-render + init(full.wasm?url)) + woff add-on
 //   vite-browser the built pages in headless Edge / Chrome (puppeteer-core): PNG rendered, no console errors
 //   esbuild      esbuild bundles for the browser and for workerd (sanity: no node:fs import, builds cleanly; no
-//                trace of the native loader in them, also for `bm-engine` itself and for `bm-engine/pdf`;
+//                trace of the native loader in them, also for `bm-render` itself and for `bm-render/pdf`;
 //                vite-build checks the same)
 // Native addon (skipped when native/dist/<host> is not built; --skip-native skips them):
 //   pack-platform          the 8 platform packages generated (scripts/npm-platform-packages.mjs --out) and packed:
 //                          exact file lists, versions = root version = optionalDependencies; the main tarball has no .node
-//   install-native         main tarball + npm overrides mapping every bm-engine-<name> to its tarball (= published):
+//   install-native         main tarball + npm overrides mapping every bm-render-<name> to its tarball (= published):
 //                          npm installs only the host's package (os / cpu / libc)
-//   native-default         backend "native"; PNG, async render, SVG, measure byte-identical to bm-engine/full (wasm)
-//   native-env             BM_ENGINE_BACKEND=wasm / =native
-//   native-subpath         bm-engine/native with the addon installed
-//   native-pdf             bm-engine/pdf from the installed platform package: backend "native", PDF (sync, async,
-//                          PdfRenderer, measure) byte-identical to BM_ENGINE_BACKEND=wasm (bm_engine.pdf.wasm);
-//                          in the same process `bm-engine` stays native with features.pdf off and rejects renderPdf
-//   fallback-pdf           bm-engine/pdf falls back to bm_engine.pdf.wasm, same bytes, nothing printed: a truncated
+//   native-default         backend "native"; PNG, async render, SVG, measure byte-identical to bm-render/full (wasm)
+//   native-env             BM_RENDER_BACKEND=wasm / =native
+//   native-subpath         bm-render/native with the addon installed
+//   native-pdf             bm-render/pdf from the installed platform package: backend "native", PDF (sync, async,
+//                          PdfRenderer, measure) byte-identical to BM_RENDER_BACKEND=wasm (bm_render.pdf.wasm);
+//                          in the same process `bm-render` stays native with features.pdf off and rejects renderPdf
+//   fallback-pdf           bm-render/pdf falls back to bm_render.pdf.wasm, same bytes, nothing printed: a truncated
 //                          .node, no platform package (the main-only install); forced native names the reason
-//   native-worker          4 worker_threads importing bm-engine: native in each, same bytes as the main thread
+//   native-worker          4 worker_threads importing bm-render: native in each, same bytes as the main thread
 //   fallback-corrupt       the installed .node replaced by another arch's / another OS's binary, truncated, empty,
-//                          text: wasm, same bytes, nothing printed; BM_ENGINE_BACKEND=native names the reason
-//   esbuild-node           esbuild --platform=node: --external:bm-engine, bundled ESM, bundled CJS -> native; the CJS
+//                          text: wasm, same bytes, nothing printed; BM_RENDER_BACKEND=native names the reason
+//   esbuild-node           esbuild --platform=node: --external:bm-render, bundled ESM, bundled CJS -> native; the CJS
 //                          bundle alone (no node_modules): a clear error, and BM_WASM makes it work
 //   fallback-missing       main only (optional packages unavailable): wasm, same bytes; forced native and
-//                          bm-engine/native fail with clear messages
+//                          bm-render/native fail with clear messages
 //   fallback-omit-optional npm i --omit=optional with the packages available: wasm
 //   fallback-foreign-pkg   another OS's platform package force-installed (npm i --force): wasm
 import { spawnSync } from "node:child_process";
@@ -53,7 +53,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
-const dir = path.resolve(args.dir && args.dir !== true ? args.dir : path.join(os.tmpdir(), "bm-engine-pack-test"));
+const dir = path.resolve(args.dir && args.dir !== true ? args.dir : path.join(os.tmpdir(), "bm-render-pack-test"));
 const app = path.join(dir, "app");
 const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const FONT = path.join(root, "assets", "fonts", "Inter-Regular.ttf");
@@ -72,7 +72,7 @@ function run(cmd, argv, opts = {}) {
 }
 const tail = (s, n = 25) => s.trim().split("\n").slice(-n).join("\n");
 /** Strings that only the Node.js side (js/native.mjs, js/wasm-file.mjs) contains: never in a browser bundle. */
-const NATIVE_MARKERS = ["bm-engine-win32-x64-msvc", "bm-engine-linux-x64-gnu", "process.dlopen", "createRequire", "node:module", "BM_ENGINE_NATIVE_PATH", "readPackageWasm"];
+const NATIVE_MARKERS = ["bm-render-win32-x64-msvc", "bm-render-linux-x64-gnu", "process.dlopen", "createRequire", "node:module", "BM_RENDER_NATIVE_PATH", "readPackageWasm"];
 const kb = (n) => (n / 1024).toFixed(1) + " KiB";
 
 // ------------------------------------------------------------------ manifest + pack
@@ -118,10 +118,10 @@ let mainPack = null;
 let installed = false;
 if (tarball) {
   mkdirSync(app, { recursive: true });
-  writeFileSync(path.join(app, "package.json"), JSON.stringify({ name: "bm-engine-pack-test-app", private: true, type: "module" }, null, 2));
+  writeFileSync(path.join(app, "package.json"), JSON.stringify({ name: "bm-render-pack-test-app", private: true, type: "module" }, null, 2));
   const r = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: app });
-  installed = r.ok && existsSync(path.join(app, "node_modules", "bm-engine", "package.json"));
-  record("install", installed, installed ? "node_modules/bm-engine" : tail(r.out));
+  installed = r.ok && existsSync(path.join(app, "node_modules", "bm-render", "package.json"));
+  record("install", installed, installed ? "node_modules/bm-render" : tail(r.out));
 }
 
 // ------------------------------------------------------------------ test tools (one install: npm prunes --no-save packages on every later install)
@@ -147,16 +147,16 @@ const pngSize = (b) => {
 };
 const node = { type: "container", style: { display: "flex", width: "100%", height: "100%", alignItems: "center",
   justifyContent: "center", backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)" },
-  children: [{ type: "text", text: "bm-engine", style: { fontFamily: "Inter", fontSize: 40, color: "white" } }] };
+  children: [{ type: "text", text: "bm-render", style: { fontFamily: "Inter", fontSize: 40, color: "white" } }] };
 
-const main = await import("bm-engine");
-const core = await import("bm-engine/core");
-const standard = await import("bm-engine/standard");
-const full = await import("bm-engine/full");
-const pdf = await import("bm-engine/pdf");
+const main = await import("bm-render");
+const core = await import("bm-render/core");
+const standard = await import("bm-render/standard");
+const full = await import("bm-render/full");
+const pdf = await import("bm-render/pdf");
 const log = [];
-assert.match(import.meta.resolve("bm-engine"), /\/js\/node\.mjs$/);
-assert.match(import.meta.resolve("bm-engine/core"), /\/js\/node-core\.mjs$/);
+assert.match(import.meta.resolve("bm-render"), /\/js\/node\.mjs$/);
+assert.match(import.meta.resolve("bm-render/core"), /\/js\/node-core\.mjs$/);
 for (const [name, m] of Object.entries({ main, core, standard, full })) {
   const r = new m.Renderer();
   const fams = r.registerFont({ name: "Inter", data: font });
@@ -176,7 +176,7 @@ assert.equal(standard.features.renderSvg, false);
 assert.equal(count(full), 18, "full has every feature but pdf");
 assert.equal(count(pdf), 19, "pdf = full + pdf");
 assert.equal(pdf.features.pdf, true); assert.equal(full.features.pdf, false); assert.equal(pdf.profile, "pdf");
-assert.match(import.meta.resolve("bm-engine/pdf"), /\/js\/node-pdf\.mjs$/);
+assert.match(import.meta.resolve("bm-render/pdf"), /\/js\/node-pdf\.mjs$/);
 {
   // (with no font registered the bundled last-resort Geist draws the text, as in takumi-pdf)
   assert.equal(new TextDecoder("latin1").decode((await new pdf.PdfRenderer().render(node, { size: "a4" })).subarray(0, 5)), "%PDF-");
@@ -188,7 +188,7 @@ assert.match(import.meta.resolve("bm-engine/pdf"), /\/js\/node-pdf\.mjs$/);
   await assert.rejects(new full.Renderer().renderPdf(node), /renderPdf is not supported by this build/);
   log.push("pdf: " + bytes.length + " B PDF");
 }
-assert.deepEqual({ ...main.features }, { ...full.features }, "bm-engine (node) = full");
+assert.deepEqual({ ...main.features }, { ...full.features }, "bm-render (node) = full");
 assert.notEqual(core.features, full.features, "separate instances");
 assert.equal(core.profile, "core"); assert.equal(full.profile, "full");
 // idempotent init (concurrent + repeated, ignoring the argument once initialised)
@@ -214,7 +214,7 @@ assert.equal(String.fromCharCode(...gif.subarray(0, 6)), "GIF89a");
 if (woffPath) {
   const woff2 = readFileSync(woffPath);
   assert.throws(() => rc.registerFont({ name: "G", data: woff2 }), /WOFF\/WOFF2 font support/);
-  const { loadWoff } = await import("bm-engine/woff");
+  const { loadWoff } = await import("bm-render/woff");
   const res = await loadWoff();
   assert.equal(typeof res.builtIn, "boolean");
   const fams = rc.registerFont({ name: "G", data: woff2 });
@@ -236,13 +236,13 @@ if (installed) {
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 (async () => {
-  const m = await import("bm-engine");
+  const m = await import("bm-render");
   const r = new m.Renderer();
   r.registerFont({ name: "Inter", data: readFileSync(process.argv[2]) });
   const png = r.renderSync({ type: "text", text: "cjs", style: { fontFamily: "Inter" } }, { width: 40, height: 20 });
   assert.equal(png[1], 0x50);
   let req = "require(esm) unavailable";
-  try { const c = require("bm-engine/core"); req = "require(\"bm-engine/core\") works (require(esm)): " + typeof c.Renderer; } catch (e) { req = "require() throws: " + e.code; }
+  try { const c = require("bm-render/core"); req = "require(\"bm-render/core\") works (require(esm)): " + typeof c.Renderer; } catch (e) { req = "require() throws: " + e.code; }
   console.log("await import ok; " + req);
 })().catch((e) => { console.error(e); process.exit(1); });
 `);
@@ -253,38 +253,38 @@ const { readFileSync } = require("node:fs");
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-assert.match(import.meta.resolve("bm-engine"), /\/js\/index\.mjs$/);
-assert.match(import.meta.resolve("bm-engine/core"), /\/js\/core\.mjs$/);
-const neutral = await import("bm-engine");
+assert.match(import.meta.resolve("bm-render"), /\/js\/index\.mjs$/);
+assert.match(import.meta.resolve("bm-render/core"), /\/js\/core\.mjs$/);
+const neutral = await import("bm-render");
 await assert.rejects(neutral.init(), /init\(\) needs the wasm binary/);
 assert.throws(() => new neutral.Renderer(), /call init/);
-// what wrangler gives for  import wasm from "bm-engine/core.wasm"
-const mod = await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-engine/core.wasm"))));
-const { init, Renderer, features } = await import("bm-engine/core");
+// what wrangler gives for  import wasm from "bm-render/core.wasm"
+const mod = await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-render/core.wasm"))));
+const { init, Renderer, features } = await import("bm-render/core");
 await init(mod);
 assert.equal(features.css, false);
 const r = new Renderer();
 r.registerFont({ name: "Inter", data: readFileSync(process.argv[2]) });
 const png = await r.render({ type: "text", text: "workers", style: { fontFamily: "Inter" } }, { width: 80, height: 20 });
 assert.equal(png[1], 0x50);
-const { loadWoff } = await import("bm-engine/woff");
-await loadWoff(await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-engine/woff.wasm")))));
+const { loadWoff } = await import("bm-render/woff");
+await loadWoff(await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-render/woff.wasm")))));
 // neutral entry with a module too
-await neutral.init(await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-engine/wasm")))));
+await neutral.init(await WebAssembly.compile(readFileSync(fileURLToPath(import.meta.resolve("bm-render/wasm")))));
 assert.equal(neutral.features.renderSvg, true);
-console.log("init(WebAssembly.Module) ok for bm-engine/core, bm-engine, bm-engine/woff");
+console.log("init(WebAssembly.Module) ok for bm-render/core, bm-render, bm-render/woff");
 `);
   const w = run(process.execPath, ["--conditions=workerd", "workerd-test.mjs", FONT], { cwd: app });
   record("workerd-sim", w.ok, w.ok ? tail(w.out, 1) : tail(w.out));
 
   writeFileSync(path.join(app, "browser-sim.mjs"), String.raw`
 import assert from "node:assert/strict";
-assert.match(import.meta.resolve("bm-engine/standard"), /\/js\/standard\.mjs$/);
-const s = await import("bm-engine/standard");
+assert.match(import.meta.resolve("bm-render/standard"), /\/js\/standard\.mjs$/);
+const s = await import("bm-render/standard");
 assert.equal(s.features.css, false, "not initialised before init()");
 await s.init();
 assert.equal(s.features.css, true);
-assert.match(String(s.wasmUrl()), /bm_engine\.standard\.wasm$/);
+assert.match(String(s.wasmUrl()), /bm_render\.standard\.wasm$/);
 console.log("init() without argument loads " + String(s.wasmUrl()).split("/").pop());
 `);
   const b = run(process.execPath, ["--conditions=browser", "browser-sim.mjs"], { cwd: app });
@@ -330,8 +330,8 @@ async function decode(png) {
 const font = async (u) => new Uint8Array(await (await fetch(u)).arrayBuffer());
 `;
     writeFileSync(path.join(web, "core.js"), common + String.raw`
-import { init, Renderer, features, profile } from "bm-engine/core";
-import { loadWoff } from "bm-engine/woff";
+import { init, Renderer, features, profile } from "bm-render/core";
+import { loadWoff } from "bm-render/woff";
 (async () => {
   try {
     await init();
@@ -349,8 +349,8 @@ import { loadWoff } from "bm-engine/woff";
 })();
 `);
     writeFileSync(path.join(web, "main.js"), common + String.raw`
-import init, { Renderer, features } from "bm-engine";
-import wasmUrl from "bm-engine/full.wasm?url";
+import init, { Renderer, features } from "bm-render";
+import wasmUrl from "bm-render/full.wasm?url";
 (async () => {
   try {
     await init(wasmUrl);
@@ -369,7 +369,7 @@ import wasmUrl from "bm-engine/full.wasm?url";
     const assets = existsSync(path.join(web, "dist", "assets")) ? readdirSync(path.join(web, "dist", "assets")) : [];
     const sizes = assets.map((f) => `${f} ${kb(statSync(path.join(web, "dist", "assets", f)).size)}`);
     const wasms = assets.filter((f) => f.endsWith(".wasm"));
-    viteOk = r.ok && wasms.some((f) => f.startsWith("bm_engine.core")) && wasms.some((f) => f.startsWith("bm_engine")) && wasms.some((f) => f.startsWith("bm_woff"));
+    viteOk = r.ok && wasms.some((f) => f.startsWith("bm_render.core")) && wasms.some((f) => f.startsWith("bm_render")) && wasms.some((f) => f.startsWith("bm_woff"));
     // the browser bundles must not contain the native loader or any Node.js module
     const leaks = assets.filter((f) => f.endsWith(".js")).flatMap((f) => {
       const code = readFileSync(path.join(web, "dist", "assets", f), "utf8");
@@ -440,9 +440,9 @@ if (installed && !args["skip-esbuild"]) {
   else {
     const esbuild = createRequire(esbuildPkg)("esbuild");
     const entry = path.join(app, "esb-entry.mjs");
-    writeFileSync(entry, `import { init, Renderer } from "bm-engine/core";\nimport { loadWoff } from "bm-engine/woff";\nimport * as main from "bm-engine";\nexport { init, Renderer, loadWoff, main };\n`);
+    writeFileSync(entry, `import { init, Renderer } from "bm-render/core";\nimport { loadWoff } from "bm-render/woff";\nimport * as main from "bm-render";\nexport { init, Renderer, loadWoff, main };\n`);
     const pdfEntry = path.join(app, "esb-pdf-entry.mjs");
-    writeFileSync(pdfEntry, `import { init, PdfRenderer, Renderer, PageNumber, backend } from "bm-engine/pdf";\nexport { init, PdfRenderer, Renderer, PageNumber, backend };\n`);
+    writeFileSync(pdfEntry, `import { init, PdfRenderer, Renderer, PageNumber, backend } from "bm-render/pdf";\nexport { init, PdfRenderer, Renderer, PageNumber, backend };\n`);
     const out = [];
     let ok = true;
     for (const [label, conditions, platform, src] of [["browser", [], "browser", entry], ["workerd", ["workerd", "worker"], "neutral", entry],
@@ -455,7 +455,7 @@ if (installed && !args["skip-esbuild"]) {
         const leaks = NATIVE_MARKERS.filter((m) => code.includes(m));
         const warns = r.warnings.map((w) => w.text);
         // (the pdf entry must be the wasm one: js/pdf.mjs + js/pdf-api.mjs, never js/node-pdf.mjs)
-        if (src === pdfEntry && (!code.includes("bm_engine.pdf.wasm") || !code.includes("PdfRenderer"))) { ok = false; out.push(label + ": not the wasm pdf entry"); }
+        if (src === pdfEntry && (!code.includes("bm_render.pdf.wasm") || !code.includes("PdfRenderer"))) { ok = false; out.push(label + ": not the wasm pdf entry"); }
         if (staticFs || leaks.length) ok = false;
         out.push(`${label}: ${kb(code.length)}${staticFs ? " STATIC node: import!" : ""}${leaks.length ? " NATIVE LOADER: " + leaks.join(",") : ""}${warns.length ? " warnings: " + warns.join("; ") : ""}`);
       } catch (e) { ok = false; out.push(`${label}: ${e.message.split("\n")[0]}`); }
@@ -466,7 +466,7 @@ if (installed && !args["skip-esbuild"]) {
 
 // ------------------------------------------------------------------ native: platform packages and install scenarios
 // The platform packages are generated from native/dist (scripts/npm-platform-packages.mjs --out, so the repository's
-// npm/ is not touched) and packed. "Published" is simulated with npm `overrides` mapping every bm-engine-<name>
+// npm/ is not touched) and packed. "Published" is simulated with npm `overrides` mapping every bm-render-<name>
 // to its local tarball: npm then reads os / cpu / libc from the tarballs and installs only the matching one,
 // exactly as from the registry. Only the host's binary can be executed.
 const PROBE = String.raw`
@@ -485,8 +485,8 @@ const run = async (m) => {
   return { backend: m.backend, png: sha(png), async: sha(await r.render(node, o)), svg: sha(await r.renderSvg(node, o)),
     measure: sha(JSON.stringify(await r.measure(node, o))), features: Object.values(m.features).filter(Boolean).length };
 };
-const out = await run(await import(process.argv[3] || "bm-engine"));
-if (process.argv[4] === "full") out.full = await run(await import("bm-engine/full"));
+const out = await run(await import(process.argv[3] || "bm-render"));
+if (process.argv[4] === "full") out.full = await run(await import("bm-render/full"));
 console.log(JSON.stringify(out));
 `;
 const WORKER_PROBE = String.raw`
@@ -495,10 +495,10 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 const font = readFileSync(process.argv[2]);
 const code = 'const { parentPort, workerData } = require("node:worker_threads");' +
-  '(async () => { const m = await import("bm-engine"); const r = new m.Renderer(); r.registerFont({ name: "Inter", data: workerData });' +
+  '(async () => { const m = await import("bm-render"); const r = new m.Renderer(); r.registerFont({ name: "Inter", data: workerData });' +
   'const png = await r.render({ type: "text", text: "worker", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 });' +
   'parentPort.postMessage({ backend: m.backend, png }); })().catch((e) => parentPort.postMessage({ error: String(e) }));';
-const m = await import("bm-engine");
+const m = await import("bm-render");
 const r = new m.Renderer(); r.registerFont({ name: "Inter", data: font });
 const main = createHash("sha256").update(r.renderSync({ type: "text", text: "worker", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 })).digest("hex");
 const results = await Promise.all(Array.from({ length: 4 }, () => new Promise((res, rej) => {
@@ -512,7 +512,7 @@ console.log(JSON.stringify({ main: m.backend, workers: results.map((x) => x.erro
 const ESB_APP = String.raw`
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { Renderer, backend } from "bm-engine";
+import { Renderer, backend } from "bm-render";
 const r = new Renderer();
 r.registerFont({ name: "Inter", data: readFileSync(process.argv[2]) });
 const png = r.renderSync({ type: "text", text: "bundled", style: { fontFamily: "Inter", fontSize: 30 } }, { width: 160, height: 40 });
@@ -523,8 +523,8 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 const font = readFileSync(process.argv[2]);
 const sha = (b) => createHash("sha256").update(b).digest("hex").slice(0, 16);
-const pdf = await import("bm-engine/pdf");
-const main = await import("bm-engine");
+const pdf = await import("bm-render/pdf");
+const main = await import("bm-render");
 const doc = "<style>body{font-family:Inter;font-size:14px} h1{break-before:page}</style><h1 id=a>One</h1><p>" + "Packed PDF text. ".repeat(80) + "<a href='#b'>to two</a></p><h1 id=b>Two</h1><ol><li>x<li>y</ol><table><tr><td>1<td>2</table>";
 const o = { size: "a5", margin: 30, tagged: true, outline: true, metadata: { title: "pack", creationDate: "2026-01-02T03:04:05Z" }, footer: "<p style='font:9px Inter'><span class=pageNumber></span>/<span class=totalPages></span></p>" };
 const r = new pdf.Renderer();
@@ -539,7 +539,7 @@ console.log(JSON.stringify({ backend: pdf.backend, profile: pdf.profile, pdfFeat
   measure: JSON.stringify(await pr.measure(doc, o)), main: main.backend, mainPdfFeature: main.features.pdf, mainFeatures: Object.values(main.features).filter(Boolean).length, reject }));
 `;
 const probe = (cwd, argv = [], env = {}, script = "probe.mjs") => {
-  const r = spawnSync(process.execPath, [script, FONT, ...argv], { cwd, encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "", BM_ENGINE_NATIVE_PATH: "", BM_WASM: "", BM_PROFILE: "", ...env } });
+  const r = spawnSync(process.execPath, [script, FONT, ...argv], { cwd, encoding: "utf8", env: { ...process.env, BM_RENDER_BACKEND: "", BM_RENDER_NATIVE_PATH: "", BM_WASM: "", BM_PROFILE: "", ...env } });
   let json = null;
   try { json = JSON.parse(r.stdout.trim().split("\n").pop()); } catch {}
   const stderr = (r.stderr || "").trim();
@@ -548,12 +548,12 @@ const probe = (cwd, argv = [], env = {}, script = "probe.mjs") => {
   return { status: r.status, json, stderr, err };
 };
 const show = (p) => (p.json ? JSON.stringify(p.json) : `exit ${p.status}: ${p.err}`);
-const installedPlatforms = (a) => (existsSync(path.join(a, "node_modules")) ? readdirSync(path.join(a, "node_modules")).filter((n) => n.startsWith("bm-engine-")) : []);
+const installedPlatforms = (a) => (existsSync(path.join(a, "node_modules")) ? readdirSync(path.join(a, "node_modules")).filter((n) => n.startsWith("bm-render-")) : []);
 const newApp = (name, extra = {}) => {
   const a = path.join(dir, name);
   rmSync(a, { recursive: true, force: true });
   mkdirSync(a, { recursive: true });
-  writeFileSync(path.join(a, "package.json"), JSON.stringify({ name: "bm-engine-" + name, private: true, type: "module", ...extra }, null, 2));
+  writeFileSync(path.join(a, "package.json"), JSON.stringify({ name: "bm-render-" + name, private: true, type: "module", ...extra }, null, 2));
   writeFileSync(path.join(a, "probe.mjs"), PROBE);
   return a;
 };
@@ -561,7 +561,7 @@ const newApp = (name, extra = {}) => {
 const { PLATFORMS } = await import(pathToFileURL(path.join(root, "scripts", "npm-platform-packages.mjs")).href);
 const { nativeNames } = await import(pathToFileURL(path.join(root, "js", "native.mjs")).href);
 const host = nativeNames()[0];
-const hostBuilt = host && existsSync(path.join(root, "native", "dist", host, `bm-engine.${host}.node`));
+const hostBuilt = host && existsSync(path.join(root, "native", "dist", host, `bm-render.${host}.node`));
 const platformTgz = {};
 const platformSizes = [];
 if (!tarball || args["skip-native"]) record("native", null, args["skip-native"] ? "--skip-native" : "no main tarball");
@@ -581,7 +581,7 @@ else {
     try { info = JSON.parse(r.out.slice(r.out.indexOf("[")))[0]; } catch {}
     if (!r.ok || !info) { problems.push(`${name}: npm pack failed ${tail(r.out, 3)}`); continue; }
     const files = info.files.map((f) => f.path).sort();
-    const want = ["LICENSE", "NOTICE", "README.md", "THIRD-PARTY-NOTICES.md", `bm-engine.${name}.node`, "package.json"].sort();
+    const want = ["LICENSE", "NOTICE", "README.md", "THIRD-PARTY-NOTICES.md", `bm-render.${name}.node`, "package.json"].sort();
     if (JSON.stringify(files) !== JSON.stringify(want)) problems.push(`${name}: files ${files.join(",")}`);
     const pj = JSON.parse(readFileSync(path.join(npmOut, name, "package.json"), "utf8"));
     if (pj.version !== pkg.version || pkg.optionalDependencies?.[pj.name] !== pkg.version) problems.push(`${name}: version ${pj.version} / optionalDependency ${pkg.optionalDependencies?.[pj.name]} != ${pkg.version}`);
@@ -593,62 +593,62 @@ else {
 }
 
 if (platformTgz[host]) {
-  const overrides = Object.fromEntries(Object.entries(platformTgz).map(([n, f]) => [`bm-engine-${n}`, "file:" + f.replace(/\\/g, "/")]));
+  const overrides = Object.fromEntries(Object.entries(platformTgz).map(([n, f]) => [`bm-render-${n}`, "file:" + f.replace(/\\/g, "/")]));
   // ---- (a) main + platform packages "published": npm picks the host's
   const appN = newApp("app-native", { overrides });
   const inst = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: appN });
   const got = installedPlatforms(appN);
-  const instOk = inst.ok && got.length === 1 && got[0] === `bm-engine-${host}`;
-  record("install-native", instOk, instOk ? `npm installed only bm-engine-${host} of ${Object.keys(platformTgz).length} optional platform packages` : `installed: ${got.join(", ") || "none"}; ${tail(inst.out, 5)}`);
+  const instOk = inst.ok && got.length === 1 && got[0] === `bm-render-${host}`;
+  record("install-native", instOk, instOk ? `npm installed only bm-render-${host} of ${Object.keys(platformTgz).length} optional platform packages` : `installed: ${got.join(", ") || "none"}; ${tail(inst.out, 5)}`);
   let ref = null;
   if (instOk) {
-    const p = probe(appN, ["bm-engine", "full"]);
+    const p = probe(appN, ["bm-render", "full"]);
     const j = p.json;
     const ok = p.status === 0 && j && j.backend === "native" && j.full.backend === "wasm" && j.png === j.async && j.png === j.full.png &&
       j.svg === j.full.svg && j.measure === j.full.measure && j.features === 18 && !p.stderr;
     ref = j;
-    record("native-default", ok, ok ? `backend native; PNG / async PNG / SVG / measure byte-identical to bm-engine/full (wasm) ${j.png}` : show(p));
+    record("native-default", ok, ok ? `backend native; PNG / async PNG / SVG / measure byte-identical to bm-render/full (wasm) ${j.png}` : show(p));
 
     // ---- (c) forcing
-    const pw = probe(appN, [], { BM_ENGINE_BACKEND: "wasm" });
-    const pn = probe(appN, [], { BM_ENGINE_BACKEND: "native" });
+    const pw = probe(appN, [], { BM_RENDER_BACKEND: "wasm" });
+    const pn = probe(appN, [], { BM_RENDER_BACKEND: "native" });
     const envOk = pw.json?.backend === "wasm" && pw.json?.png === j?.png && pn.json?.backend === "native";
-    record("native-env", envOk, `BM_ENGINE_BACKEND=wasm -> ${show(pw)}; =native -> ${pn.json?.backend ?? show(pn)}`);
+    record("native-env", envOk, `BM_RENDER_BACKEND=wasm -> ${show(pw)}; =native -> ${pn.json?.backend ?? show(pn)}`);
 
-    // ---- (d) bm-engine/native present
-    const ps = probe(appN, ["bm-engine/native"]);
-    record("native-subpath", ps.json?.backend === "native" && ps.json?.png === j?.png, `bm-engine/native with the addon: ${show(ps)}`);
+    // ---- (d) bm-render/native present
+    const ps = probe(appN, ["bm-render/native"]);
+    record("native-subpath", ps.json?.backend === "native" && ps.json?.png === j?.png, `bm-render/native with the addon: ${show(ps)}`);
 
-    // ---- PDF: bm-engine/pdf on the installed addon, against the wasm pdf profile of the same package
+    // ---- PDF: bm-render/pdf on the installed addon, against the wasm pdf profile of the same package
     writeFileSync(path.join(appN, "pdf-probe.mjs"), PDF_PROBE);
     const pp = probe(appN, [], {}, "pdf-probe.mjs");
-    const ppw = probe(appN, [], { BM_ENGINE_BACKEND: "wasm" }, "pdf-probe.mjs");
-    const ppn = probe(appN, [], { BM_ENGINE_BACKEND: "native" }, "pdf-probe.mjs");
-    const REJECT = /renderPdf is not supported by this build \(use the pdf build: import from "bm-engine\/pdf"\)/;
+    const ppw = probe(appN, [], { BM_RENDER_BACKEND: "wasm" }, "pdf-probe.mjs");
+    const ppn = probe(appN, [], { BM_RENDER_BACKEND: "native" }, "pdf-probe.mjs");
+    const REJECT = /renderPdf is not supported by this build \(use the pdf build: import from "bm-render\/pdf"\)/;
     const a = pp.json, b = ppw.json;
     const pdfOk = pp.status === 0 && ppw.status === 0 && a && b && !pp.stderr && !ppw.stderr &&
       a.backend === "native" && a.main === "native" && b.backend === "wasm" && b.main === "wasm" && ppn.json?.backend === "native" &&
       a.head === "%PDF-" && a.pdf === b.pdf && a.async === a.pdf && a.facade === a.pdf && b.async === b.pdf && a.measure === b.measure && a.bytes === b.bytes &&
       a.profile === "pdf" && b.profile === "pdf" && a.pdfFeature === true && b.pdfFeature === true && a.features === 19 && b.features === 19 &&
       a.mainPdfFeature === false && b.mainPdfFeature === false && a.mainFeatures === 18 && REJECT.test(a.reject) && a.reject === b.reject;
-    record("native-pdf", pdfOk, pdfOk ? `bm-engine/pdf backend native; ${a.bytes} B PDF, sync / async / PdfRenderer / measure byte-identical to BM_ENGINE_BACKEND=wasm (bm_engine.pdf.wasm) ${a.pdf}; bm-engine in the same process: native, features.pdf off, renderPdf rejected as on wasm` : `native: ${show(pp)}; wasm: ${show(ppw)}; forced native: ${show(ppn)}`);
+    record("native-pdf", pdfOk, pdfOk ? `bm-render/pdf backend native; ${a.bytes} B PDF, sync / async / PdfRenderer / measure byte-identical to BM_RENDER_BACKEND=wasm (bm_render.pdf.wasm) ${a.pdf}; bm-render in the same process: native, features.pdf off, renderPdf rejected as on wasm` : `native: ${show(pp)}; wasm: ${show(ppw)}; forced native: ${show(ppn)}`);
     {
-      // the addon unusable -> bm_engine.pdf.wasm, silently; no platform package at all (the main-only install) -> the same
-      const target = path.join(appN, "node_modules", `bm-engine-${host}`, `bm-engine.${host}.node`);
+      // the addon unusable -> bm_render.pdf.wasm, silently; no platform package at all (the main-only install) -> the same
+      const target = path.join(appN, "node_modules", `bm-render-${host}`, `bm-render.${host}.node`);
       const good = readFileSync(target);
       let pc, pf;
       try {
         writeFileSync(target, good.subarray(0, 65536));
         pc = probe(appN, [], {}, "pdf-probe.mjs");
-        pf = probe(appN, [], { BM_ENGINE_BACKEND: "native" }, "pdf-probe.mjs");
+        pf = probe(appN, [], { BM_RENDER_BACKEND: "native" }, "pdf-probe.mjs");
       } finally { writeFileSync(target, good); }
       writeFileSync(path.join(app, "pdf-probe.mjs"), PDF_PROBE);
       const pm = probe(app, [], {}, "pdf-probe.mjs");
-      const pmf = probe(app, [], { BM_ENGINE_BACKEND: "native" }, "pdf-probe.mjs");
+      const pmf = probe(app, [], { BM_RENDER_BACKEND: "native" }, "pdf-probe.mjs");
       const okCorrupt = pc.status === 0 && pc.json?.backend === "wasm" && pc.json.pdf === a?.pdf && !pc.stderr &&
-        pf.status !== 0 && /BM_ENGINE_BACKEND=native, but the native addon is not available/.test(pf.stderr);
+        pf.status !== 0 && /BM_RENDER_BACKEND=native, but the native addon is not available/.test(pf.stderr);
       const okMissing = pm.status === 0 && pm.json?.backend === "wasm" && pm.json.pdf === a?.pdf && pm.json.async === a?.pdf && !pm.stderr &&
-        pmf.status !== 0 && new RegExp(`BM_ENGINE_BACKEND=native, but the native addon is not available for bm-engine/pdf \\(bm-engine-${host}: not installed`).test(pmf.stderr);
+        pmf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available for bm-render/pdf \\(bm-render-${host}: not installed`).test(pmf.stderr);
       record("fallback-pdf", okCorrupt && okMissing, `truncated .node: ${okCorrupt ? "wasm, same bytes as native, silent; forced native fails with the reason" : "FAILED " + show(pc) + " / forced: " + pf.err}; ` +
         `no platform package: ${okMissing ? "wasm, same bytes as native, silent; forced native: " + pmf.err.slice(0, 160) : "FAILED " + show(pm) + " / forced: " + pmf.err}`);
     }
@@ -659,10 +659,10 @@ if (platformTgz[host]) {
     record("native-worker", pwk.json?.main === "native" && pwk.json.workers.every((b) => b === "native") && pwk.json.same === true, show(pwk));
 
     // ---- (e) corrupted / incompatible .node in the installed platform package -> wasm, silently
-    const target = path.join(appN, "node_modules", `bm-engine-${host}`, `bm-engine.${host}.node`);
+    const target = path.join(appN, "node_modules", `bm-render-${host}`, `bm-render.${host}.node`);
     const good = readFileSync(target);
     const [hostOs, hostArch] = [PLATFORMS[host].os, PLATFORMS[host].cpu];
-    const pickFile = (pred) => { const n = Object.keys(platformTgz).find((x) => x !== host && pred(PLATFORMS[x])); return n ? [n, readFileSync(path.join(dir, "npm", n, `bm-engine.${n}.node`))] : null; };
+    const pickFile = (pred) => { const n = Object.keys(platformTgz).find((x) => x !== host && pred(PLATFORMS[x])); return n ? [n, readFileSync(path.join(dir, "npm", n, `bm-render.${n}.node`))] : null; };
     const wrongArch = pickFile((q) => q.os === hostOs && q.cpu !== hostArch);
     const otherOs = pickFile((q) => q.os !== hostOs && q.cpu === hostArch);
     const cases = [
@@ -678,9 +678,9 @@ if (platformTgz[host]) {
       for (const [label, bytes] of cases) {
         writeFileSync(target, bytes);
         const pc = probe(appN);
-        const pf = probe(appN, [], { BM_ENGINE_BACKEND: "native" });
+        const pf = probe(appN, [], { BM_RENDER_BACKEND: "native" });
         const ok = pc.status === 0 && pc.json?.backend === "wasm" && pc.json.png === j?.png && !pc.stderr &&
-          pf.status !== 0 && new RegExp(`BM_ENGINE_BACKEND=native, but the native addon is not available \\(bm-engine-${host}: `).test(pf.stderr);
+          pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(bm-render-${host}: `).test(pf.stderr);
         if (!ok) corruptOk = false;
         rows.push(`${label}: ${ok ? "wasm, same bytes, silent" : "FAILED " + show(pc) + " / forced: " + pf.err}`);
       }
@@ -689,7 +689,7 @@ if (platformTgz[host]) {
     }
     record("fallback-corrupt", corruptOk, rows.join("; "));
 
-    // ---- (f) esbuild --platform=node bundles of an app importing bm-engine
+    // ---- (f) esbuild --platform=node bundles of an app importing bm-render
     const esbuildPkg = path.join(app, "node_modules", "esbuild", "package.json");
     if (args["skip-esbuild"] || !existsSync(esbuildPkg)) record("esbuild-node", null, "esbuild not installed");
     else {
@@ -697,7 +697,7 @@ if (platformTgz[host]) {
       writeFileSync(path.join(appN, "esb-app.mjs"), ESB_APP);
       const rows = [];
       let ok = true;
-      const variants = [["--external:bm-engine, esm", { format: "esm", external: ["bm-engine"] }, "dist/ext.mjs", "native"],
+      const variants = [["--external:bm-render, esm", { format: "esm", external: ["bm-render"] }, "dist/ext.mjs", "native"],
         ["bundled, esm", { format: "esm" }, "dist/bundle.mjs", "native"],
         ["bundled, cjs", { format: "cjs" }, "dist/bundle.cjs", "native"]];
       for (const [label, o, out, want] of variants) {
@@ -716,10 +716,10 @@ if (platformTgz[host]) {
       if (existsSync(path.join(appN, "dist", "bundle.cjs"))) {
         copyFileSync(path.join(appN, "dist", "bundle.cjs"), path.join(lone, "bundle.cjs"));
         const pl = probe(lone, [], {}, "bundle.cjs");
-        const clear = pl.status !== 0 && /cannot find bm_engine\.wasm .*keep the package external/.test(pl.stderr);
+        const clear = pl.status !== 0 && /cannot find bm_render\.wasm .*keep the package external/.test(pl.stderr);
         if (!clear) ok = false;
-        rows.push(`cjs bundle without node_modules: ${clear ? "clear error (cannot find bm_engine.wasm ... keep the package external)" : show(pl)}`);
-        const pe = probe(lone, [], { BM_WASM: path.join(root, "js", "bm_engine.wasm") }, "bundle.cjs");
+        rows.push(`cjs bundle without node_modules: ${clear ? "clear error (cannot find bm_render.wasm ... keep the package external)" : show(pl)}`);
+        const pe = probe(lone, [], { BM_WASM: path.join(root, "js", "bm_render.wasm") }, "bundle.cjs");
         if (pe.json?.backend !== "wasm") ok = false;
         rows.push(`same + BM_WASM: ${show(pe)}`);
       }
@@ -731,12 +731,12 @@ if (platformTgz[host]) {
   if (installed) {
     writeFileSync(path.join(app, "probe.mjs"), PROBE);
     const pm = probe(app);
-    const pf = probe(app, [], { BM_ENGINE_BACKEND: "native" });
-    const ps = probe(app, ["bm-engine/native"]);
+    const pf = probe(app, [], { BM_RENDER_BACKEND: "native" });
+    const ps = probe(app, ["bm-render/native"]);
     const ok = installedPlatforms(app).length === 0 && pm.status === 0 && pm.json?.backend === "wasm" && (!ref || pm.json.png === ref.png) && !pm.stderr &&
-      pf.status !== 0 && new RegExp(`BM_ENGINE_BACKEND=native, but the native addon is not available \\(bm-engine-${host}: not installed`).test(pf.stderr) &&
-      ps.status !== 0 && new RegExp(`bm-engine/native: the native addon is not available .*Install the optional package bm-engine-${host}`).test(ps.stderr);
-    record("fallback-missing", ok, `no platform package: ${show(pm)}${ref && pm.json?.png === ref.png ? " (same bytes as native)" : ""}; forced native: ${pf.err}; bm-engine/native: ${ps.err.slice(0, 200)}`);
+      pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(bm-render-${host}: not installed`).test(pf.stderr) &&
+      ps.status !== 0 && new RegExp(`bm-render/native: the native addon is not available .*Install the optional package bm-render-${host}`).test(ps.stderr);
+    record("fallback-missing", ok, `no platform package: ${show(pm)}${ref && pm.json?.png === ref.png ? " (same bytes as native)" : ""}; forced native: ${pf.err}; bm-render/native: ${ps.err.slice(0, 200)}`);
   }
 
   // ---- (b) --omit=optional with the packages available
@@ -752,8 +752,8 @@ if (platformTgz[host]) {
     const appF = newApp("app-foreign");
     const fi = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", "--force", tarball, platformTgz[foreign]], { cwd: appF });
     const pff = fi.ok ? probe(appF) : null;
-    record("fallback-foreign-pkg", fi.ok && installedPlatforms(appF).includes(`bm-engine-${foreign}`) && pff?.json?.backend === "wasm" && !pff.stderr,
-      fi.ok ? `npm i --force bm-engine-${foreign}: installed ${installedPlatforms(appF).join(", ")}; ${show(pff)}` : tail(fi.out, 5));
+    record("fallback-foreign-pkg", fi.ok && installedPlatforms(appF).includes(`bm-render-${foreign}`) && pff?.json?.backend === "wasm" && !pff.stderr,
+      fi.ok ? `npm i --force bm-render-${foreign}: installed ${installedPlatforms(appF).join(", ")}; ${show(pff)}` : tail(fi.out, 5));
   }
 }
 

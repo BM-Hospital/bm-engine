@@ -2,10 +2,10 @@
 
 [English](../../en/image/charts.md) · [Tiếng Việt](charts.md)
 
-bm-engine không có component biểu đồ, và cũng không cần: thanh ngang hay cột chỉ là các flex box có
+bm-render không có component biểu đồ, và cũng không cần: thanh ngang hay cột chỉ là các flex box có
 chiều rộng hoặc chiều cao tính theo phần trăm, vòng tiến độ và biểu đồ tròn là `conic-gradient`, heatmap
 là CSS grid, còn đường kẻ là một đoạn SVG nhỏ dựng từ dữ liệu của bạn. Trang này dựng từng loại từ đầu.
-Mọi ví dụ trên trang đều đã được chạy với bm-engine 0.1.0 bằng `docs/examples/charts.mjs`, và ảnh dưới mỗi
+Mọi ví dụ trên trang đều đã được chạy với bm-render 0.1.0 bằng `docs/examples/charts.mjs`, và ảnh dưới mỗi
 đoạn mã chính là kết quả của script đó.
 
 [[toc]]
@@ -20,8 +20,8 @@ Mọi ví dụ trên trang đều đã được chạy với bm-engine 0.1.0 b�
 | SVG inline (chuỗi `<svg>` làm `src` của ảnh) | sparkline, biểu đồ đường và vùng, mọi thứ cần path | `standard` / `full` (trên `core` ảnh SVG không vẽ gì) |
 | Chuỗi HTML hoặc Tailwind `tw` | cùng các biểu đồ đó nhưng viết bằng markup / utility class | `standard` / `full` |
 
-Các ví dụ trên trang dùng điểm vào mặc định `bm-engine` (profile `full` trên Node). Mọi biểu đồ dựng bằng
-flex, grid và gradient đều render giống hệt trên `bm-engine/core`.
+Các ví dụ trên trang dùng điểm vào mặc định `bm-render` (profile `full` trên Node). Mọi biểu đồ dựng bằng
+flex, grid và gradient đều render giống hệt trên `bm-render/core`.
 
 ## Chuẩn bị
 
@@ -32,7 +32,7 @@ rõ ràng); `text()` tạo một text node.
 <!-- @example charts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -136,7 +136,7 @@ const columnsPng = renderer.renderSync(columns, { width: 600, height: 260 });
 ![Biểu đồ cột với mười hai cột gradient, trục y và đường lưới](/img/guide/charts-columns.png)
 
 ::: tip Thứ tự vẽ của box được định vị
-bm-engine theo đúng thứ tự vẽ của CSS: box được định vị được vẽ **sau** toàn bộ nội dung trong luồng
+bm-render theo đúng thứ tự vẽ của CSS: box được định vị được vẽ **sau** toàn bộ nội dung trong luồng
 của stacking context chứa nó, bất kể thứ tự trong `children`. Nếu các cột không có `position: "relative"`, đường lưới sẽ bị vẽ đè lên
 chúng. Cho các cột cũng là box định vị thì thứ tự trong tài liệu quyết định (đường trước, cột sau);
 dùng `zIndex` cũng được.
@@ -367,9 +367,9 @@ const kpisPng = renderer.renderSync(kpis, { width: 560, height: 180 });
 ![Hai thẻ KPI, mỗi thẻ có giá trị, mức thay đổi và một sparkline](/img/guide/charts-sparkline.png)
 
 ::: warning SVG cần standard hoặc full
-Trên `bm-engine/core` ảnh SVG không được giải mã và không vẽ gì (không báo lỗi). Điều này đã được kiểm
-tra: sparkline ở trên cho ra 0 pixel không trong suốt trên `core`. Hãy dùng `bm-engine/standard` hoặc
-`bm-engine/full` cho mọi biểu đồ dựa trên SVG, hoặc giữ các kỹ thuật flex / gradient.
+Trên `bm-render/core` ảnh SVG không được giải mã và không vẽ gì (không báo lỗi). Điều này đã được kiểm
+tra: sparkline ở trên cho ra 0 pixel không trong suốt trên `core`. Hãy dùng `bm-render/standard` hoặc
+`bm-render/full` cho mọi biểu đồ dựa trên SVG, hoặc giữ các kỹ thuật flex / gradient.
 :::
 
 ## Một biểu đồ đường hoàn chỉnh trong một SVG
@@ -412,7 +412,7 @@ const linePng = renderer.renderSync({ type: "image", src: chartSvg, width: W, he
 
 ### SVG text hỗ trợ những gì
 
-Text trong SVG ở bm-engine 0.1.0 được giữ đơn giản có chủ đích. Mỗi phần tử `<text>` trở thành **một
+Text trong SVG ở bm-render 0.1.0 được giữ đơn giản có chủ đích. Mỗi phần tử `<text>` trở thành **một
 run** tại `x` / `y` của nó, dùng `font-family`, `font-size`, `font-weight`, `text-anchor` và `fill`
 **màu đặc** (kế thừa từ phần tử tổ tiên như `<svg>` gốc, như ở trên). Phép thử sau cho thấy giới hạn:
 
@@ -442,7 +442,7 @@ const svgTextPng = renderer.renderSync({ type: "image", src: textTest, width: 42
 
 Các thư viện có thể xuất chuỗi SVG mà không cần trình duyệt (ECharts với `ssr: true` +
 `renderToSVGString()`, `toSVG()` của Vega, path từ d3-shape / d3-scale, component SVG của React qua
-`renderToStaticMarkup()`) có thể đưa vào bm-engine theo cùng cách: truyền chuỗi làm `src` của image node,
+`renderToStaticMarkup()`) có thể đưa vào bm-render theo cùng cách: truyền chuỗi làm `src` của image node,
 kèm `width` / `height`. Hướng dẫn này chưa thử với các thư viện đó, nên hãy đối chiếu đầu ra của chúng với
 hai ràng buộc:
 

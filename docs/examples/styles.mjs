@@ -5,7 +5,7 @@ const save = saver("styles");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // stylesheets and Tailwind need the standard or full profile
+import { Renderer } from "bm-render"; // stylesheets and Tailwind need the standard or full profile
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -41,7 +41,7 @@ renderer.renderSync({ type: "container", style: { "background-color": "red", col
 
 // an invalid value for a known property throws
 expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 px" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property width"
+// "bm-render: invalid value for style property width"
 // #endregion
 assert.match(expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 px" } }, { width: 10, height: 10 })), /invalid value for style property width/);
 
@@ -305,9 +305,9 @@ const colorsPng = renderer.renderSync({
 save("colors", colorsPng);
 
 // #region core-colors
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync({ type: "container", style: { width: 10, height: 10, backgroundColor: "oklch(62% 0.2 30)" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property backgroundColor"
+// "bm-render: invalid value for style property backgroundColor"
 // #endregion
 assert.match(expectThrow(() => core.renderSync({ type: "container", style: { width: 10, height: 10, backgroundColor: "oklch(62% 0.2 30)" } }, { width: 10, height: 10 })), /invalid value for style property backgroundColor/);

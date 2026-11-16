@@ -2,7 +2,7 @@
 
 [English](typography.md) · [Tiếng Việt](../../vi/image/typography.md)
 
-How bm-engine lays out and paints text: wrapping and `white-space`, breaking long words, line height and
+How bm-render lays out and paints text: wrapping and `white-space`, breaking long words, line height and
 spacing, alignment, truncation with ellipsis and `line-clamp`, balanced headlines, decorations, shadows
 and strokes, case transforms, mixing spans, inline-blocks and images in a line, OpenType features, and
 which [profile](../profiles-and-size.md) you need for bidirectional and complex scripts. Text needs a
@@ -19,7 +19,7 @@ a framed box so you can see where the text box ends:
 <!-- @example typography#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "Roboto-Regular"]) {
@@ -173,7 +173,7 @@ Only the first line of the block is indented.
 
 <!-- @example typography#truncation -->
 ```js
-const long = "bm-engine renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
+const long = "bm-render renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
 const truncation = renderer.renderSync(
   page({}, [
     sample("textOverflow: ellipsis", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, [text(long)]),
@@ -391,7 +391,7 @@ const inline = renderer.renderSync(
 
 ## OpenType features
 
-bm-engine applies the font's GSUB / GPOS features (kerning, ligatures, contextual alternates, mark
+bm-render applies the font's GSUB / GPOS features (kerning, ligatures, contextual alternates, mark
 positioning) by default. CSS controls them:
 
 <!-- @example typography#features -->

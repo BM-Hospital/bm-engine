@@ -1,4 +1,4 @@
-# How bm-engine works
+# How bm-render works
 
 [English](concepts.md) · [Tiếng Việt](../../vi/image/concepts.md)
 
@@ -33,7 +33,7 @@ often as you like:
 <!-- @example concepts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine";
+import { Renderer, features } from "bm-render";
 
 const renderer = new Renderer(); // create once, reuse for every render
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -46,13 +46,13 @@ const png = renderer.renderSync(
   {
     type: "container",
     style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#4f46e5" },
-    children: [{ type: "text", text: "Hello, bm-engine", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
+    children: [{ type: "text", text: "Hello, bm-render", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
   },
   { width: 600, height: 200 },
 );
 ```
 
-![A purple banner with the text Hello, bm-engine](/img/guide/concepts-first.png)
+![A purple banner with the text Hello, bm-render](/img/guide/concepts-first.png)
 
 `renderSync` returns a `Uint8Array` with the PNG file. Each method has an async twin (`render`,
 `measure`, ...) that only differs in accepting asynchronous options such as lazy image data; the
@@ -112,8 +112,8 @@ const nodePng = renderer.renderSync(card, { width: 600, height: 160 });
 ![An image of four blurred colours next to a title and subtitle](/img/guide/concepts-node-format.png)
 
 The 2 × 2 image is stretched to 96 × 96 with smooth resampling; `objectFit` defaults to `fill`.
-Unknown keys on a node are ignored; a node without `type` throws ``bm-engine: node is missing `type` ``
-and a text node without `text` throws ``bm-engine: text node is missing `text` ``.
+Unknown keys on a node are ignored; a node without `type` throws ``bm-render: node is missing `type` ``
+and a text node without `text` throws ``bm-render: text node is missing `text` ``.
 
 ## Three ways to describe the same image
 
@@ -163,7 +163,7 @@ If you write JSX, convert it to node objects with the [node factory](frameworks/
 
 ## Defaults that surprise people
 
-bm-engine uses CSS layout conventions. A few CSS defaults look odd when you come from
+bm-render uses CSS layout conventions. A few CSS defaults look odd when you come from
 satori or from a browser with a CSS reset.
 
 ### `display` is `inline`
@@ -284,7 +284,7 @@ const auto = renderer.renderSync({ type: "container", style: { width: 240, heigh
 
 // Empty content and no size is an error
 expectThrow(() => renderer.renderSync({ type: "container" }));
-// "bm-engine: invalid viewport: content has zero size and no width/height was given"
+// "bm-render: invalid viewport: content has zero size and no width/height was given"
 ```
 
 ### Device pixel ratio
@@ -313,13 +313,13 @@ size in CSS px (output px ÷ `devicePixelRatio`).
 
 ### Fonts: none built in
 
-bm-engine ships no font and never reads system fonts. Text with no usable registered font is **not
+bm-render ships no font and never reads system fonts. Text with no usable registered font is **not
 drawn**, without an error. Register every font you use on every renderer — see [Fonts](./fonts.md).
 
 ### Strict inline styles, forgiving stylesheets
 
 An invalid value in an inline `style` (`width: "10 px"`) throws
-`bm-engine: invalid value for style property width`. The same mistake in a stylesheet or a Tailwind
+`bm-render: invalid value for style property width`. The same mistake in a stylesheet or a Tailwind
 class is dropped silently, as in a browser. Unknown properties and kebab-case keys in `style` are
 ignored silently. See [Styles](./styles.md#inline-styles).
 
@@ -329,7 +329,7 @@ Three objects have different lifetimes:
 
 | Object | How many | Holds |
 |:--|:--|:--|
-| The **wasm instance** | one per entry (`bm-engine`, `bm-engine/core`, `/standard`, `/full`), created by `init` (automatic on Node) | the linear memory shared by all renderers of that entry |
+| The **wasm instance** | one per entry (`bm-render`, `bm-render/core`, `/standard`, `/full`), created by `init` (automatic on Node) | the linear memory shared by all renderers of that entry |
 | A **`Renderer`** | as many as you need; usually one per font set | registered fonts, a decoded-image cache (cleared above 96 MiB), a glyph cache (cleared above 8 MiB), the canvas |
 | A **render** | one per call | a scratch arena, reused by the next render |
 
@@ -346,7 +346,7 @@ r.memoryBytes(); // size of the wasm memory shared by every renderer of this ent
 
 r.free();        // releases its fonts and caches; r can no longer be used
 expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 }));
-// "bm-engine: renderer has been freed"
+// "bm-render: renderer has been freed"
 
 {
   using scoped = new Renderer(); // free() is called at the end of the block
@@ -363,7 +363,7 @@ expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 })
 - **Single-threaded.** A render blocks the calling thread. For parallelism, run one instance per worker
   thread; renderers cannot be shared between threads.
 - `free()` (or `using`) releases a renderer's fonts and caches; afterwards every call on it throws
-  `bm-engine: renderer has been freed`.
+  `bm-render: renderer has been freed`.
 
 ## Profiles in one paragraph
 
@@ -371,8 +371,8 @@ The engine is compiled into three binaries for images (and a fourth, `pdf`, that
 PNG / JPEG images; 489.6 KiB), `standard` (adds stylesheets, Tailwind, HTML, SVG images, WOFF2,
 variable and CFF fonts, effects such as clip-path and blend modes, modern colours, tables, floats;
 936.5 KiB) and `full` (adds bidi and complex scripts, colour emoji, CSS animations and
-`renderAnimation`, `renderSvg`, extra codecs; 1 143.6 KiB). On Node.js, `bm-engine` loads `full`;
-`bm-engine/core` and `bm-engine/standard` load the smaller ones. `features` tells you what the loaded
+`renderAnimation`, `renderSvg`, extra codecs; 1 143.6 KiB). On Node.js, `bm-render` loads `full`;
+`bm-render/core` and `bm-render/standard` load the smaller ones. `features` tells you what the loaded
 binary can do:
 
 <!-- @example concepts#features -->

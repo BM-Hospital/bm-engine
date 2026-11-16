@@ -65,7 +65,7 @@ export const prerender = false;
 
 export async function GET({ url }) {
   return imageResponse(getRenderer(), card({
-    title: url.searchParams.get("title") ?? "bm-engine + Astro",
+    title: url.searchParams.get("title") ?? "bm-render + Astro",
     description: url.searchParams.get("description") ?? "On-demand endpoint",
   }), { width: 1200, height: 630, headers: { "cache-control": "public, max-age=86400" } });
 }

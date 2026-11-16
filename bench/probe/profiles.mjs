@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 const js = path.join(root, "js");
-const files = { core: process.argv[2] || path.join(js, "bm_engine.core.wasm"), standard: process.argv[3] || path.join(js, "bm_engine.standard.wasm"), full: process.argv[4] || path.join(js, "bm_engine.wasm") };
+const files = { core: process.argv[2] || path.join(js, "bm_render.core.wasm"), standard: process.argv[3] || path.join(js, "bm_render.standard.wasm"), full: process.argv[4] || path.join(js, "bm_render.wasm") };
 const font = readFileSync(path.join(root, "assets", "fonts", "Inter-Regular.ttf"));
 const woff2 = readFileSync(path.join(root, "src", "woff", "testdata", "geist.woff2"));
 const png = readFileSync(path.join(here, "..", "assets", "icon.png"));
@@ -64,7 +64,7 @@ for (const [prof, file] of Object.entries(files)) {
   rows[prof] = { features: Object.entries(bm.features).filter(([, v]) => v).map(([k]) => k).join(",") || "(none)" };
   for (const [name, fn] of probes) {
     let out;
-    try { out = summary(fn(r)); } catch (e) { out = (e instanceof WebAssembly.RuntimeError ? "TRAP " : "error: ") + String(e.message).replace(/^bm-engine: /, ""); }
+    try { out = summary(fn(r)); } catch (e) { out = (e instanceof WebAssembly.RuntimeError ? "TRAP " : "error: ") + String(e.message).replace(/^bm-render: /, ""); }
     rows[prof][name] = out;
   }
 }

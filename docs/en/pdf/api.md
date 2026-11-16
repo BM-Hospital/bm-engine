@@ -2,11 +2,11 @@
 
 [English](api.md) · [Tiếng Việt](../../vi/pdf/api.md)
 
-Everything `bm-engine/pdf` exports, with the exact signatures of `js/pdf.d.mts` and `js/pdf-types.d.mts`
+Everything `bm-render/pdf` exports, with the exact signatures of `js/pdf.d.mts` and `js/pdf-types.d.mts`
 and the errors the calls throw. The node format, `registerFont` and the other parts shared with image
 output are described once, in the [image API reference](../image/api.md). Every snippet is a section of
 `docs/examples/pdf-api.mjs` in the repository and was executed by it on the native addon and on
-WebAssembly (`BM_ENGINE_BACKEND=wasm`), with the same results.
+WebAssembly (`BM_RENDER_BACKEND=wasm`), with the same results.
 
 - [Module exports](#module-exports)
 - [`PdfRenderer`](#pdfrenderer)
@@ -23,7 +23,7 @@ WebAssembly (`BM_ENGINE_BACKEND=wasm`), with the same results.
 
 <!-- @example pdf-api#exports -->
 ```js
-import * as pdfEntry from "bm-engine/pdf";
+import * as pdfEntry from "bm-render/pdf";
 
 pdfEntry.profile;      // "pdf"
 pdfEntry.features.pdf; // true (and every other feature of the full profile)
@@ -35,7 +35,7 @@ pdfEntry.backend;      // "native" with the platform package on Node.js, else "w
 | `PdfRenderer` | class | A renderer that holds registered fonts and writes PDF files ([below](#pdfrenderer)). |
 | `render`, `measure`, `prepare` | functions | The same methods on one shared, lazily created `PdfRenderer` ([below](#module-level-render-measure-and-prepare)). |
 | `PageNumber`, `TotalPages`, `TargetPageNumber` | functions | Page counter nodes for headers, footers and cross references ([below](#page-counters)). |
-| `init(input?)`, `default` | `Promise<WasmExports>` | Loads the wasm binary. On Node.js the entry is ready on import and `init()` returns at once; in browsers `await init()` fetches `bm_engine.pdf.wasm` next to the module, or pass the binary. |
+| `init(input?)`, `default` | `Promise<WasmExports>` | Loads the wasm binary. On Node.js the entry is ready on import and `init()` returns at once; in browsers `await init()` fetches `bm_render.pdf.wasm` next to the module, or pass the binary. |
 | `initSync(input)` | `WasmExports` | Synchronous `init` with bytes or a `WebAssembly.Module`. |
 | `wasmUrl()` | `URL` | The URL `init()` loads by default. |
 | `profile` | `"pdf"` | Build profile of the entry, also on the native backend. |
@@ -43,8 +43,8 @@ pdfEntry.backend;      // "native" with the platform package on Node.js, else "w
 | `features` | object | What the loaded build contains; `features.pdf` is `true` only here. |
 | `Renderer`, `Prepared`, `setGlyphCacheMaxBytes`, `setWoffDecoder` | | The image API of the same module instance ([image API reference](../image/api.md)). Its `Renderer` also has [`renderPdf`](#rendererrenderpdf-and-measurepdf). |
 
-The entry has its own module instance: fonts registered on a `Renderer` of `bm-engine` are not seen by
-`bm-engine/pdf`. The type definitions also export every type of `bm-engine` and of `pdf-types.d.mts`
+The entry has its own module instance: fonts registered on a `Renderer` of `bm-render` are not seen by
+`bm-render/pdf`. The type definitions also export every type of `bm-render` and of `pdf-types.d.mts`
 ([Types](#types)).
 
 ## `PdfRenderer`
@@ -67,7 +67,7 @@ class PdfRenderer {
 }
 ```
 
-`PdfRenderer` wraps one image `Renderer` of the `bm-engine/pdf` instance; the constructor takes the same
+`PdfRenderer` wraps one image `Renderer` of the `bm-render/pdf` instance; the constructor takes the same
 `RendererOptions` ([image API reference](../image/api.md#constructor)). Create one, register fonts, and
 reuse it for every document.
 
@@ -76,7 +76,7 @@ reuse it for every document.
 <!-- @example pdf-api#renderer -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const families = pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -93,7 +93,7 @@ pdf.unregisterFont("Missing"); // false
 pdf.clearFonts();              // removes every registered font
 ```
 
-bm-engine ships no font and never reads system fonts. When **no font at all** is registered, text is
+bm-render ships no font and never reads system fonts. When **no font at all** is registered, text is
 not drawn and the render does not fail; with at least one font, a character that no font draws fails
 the render by default ([Fonts in PDF](fonts.md#characters-no-font-covers)):
 
@@ -166,7 +166,7 @@ const a5 = await pdf.render(prepared, { margin: 24 }); // options merge over the
 }
 const done = new PdfRenderer();
 done.free();
-// done.renderSync(...) now throws "bm-engine: renderer has been freed"
+// done.renderSync(...) now throws "bm-render: renderer has been freed"
 ```
 
 ## Sources
@@ -190,7 +190,7 @@ fonts, so use them for documents without text, or pass the fonts in the `fonts` 
 
 <!-- @example pdf-api#module-level -->
 ```js
-import { render, measure } from "bm-engine/pdf";
+import { render, measure } from "bm-render/pdf";
 
 const plain = await render(`<div style="width: 200px; height: 100px; background: #0ea5e9"></div>`, {
   viewport: { width: 200 },
@@ -207,11 +207,11 @@ Fonts passed in `fonts` stay registered on the shared renderer for later calls.
 
 Every `Renderer` has `renderPdf`, `renderPdfSync`, `measurePdf` and `measurePdfSync`, with the same
 parameters and results as `PdfRenderer.render` / `renderSync` / `measure` / `measureSync` (a
-`PdfRenderer` is a thin wrapper over them). They work on the `Renderer` exported by `bm-engine/pdf`:
+`PdfRenderer` is a thin wrapper over them). They work on the `Renderer` exported by `bm-render/pdf`:
 
 <!-- @example pdf-api#renderer-methods -->
 ```js
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const r = new Renderer();
 const viaRenderer = await r.renderPdf(`<div style="width: 40px; height: 40px; background: red"></div>`, {
@@ -220,11 +220,11 @@ const viaRenderer = await r.renderPdf(`<div style="width: 40px; height: 40px; ba
 r.measurePdfSync(`<div style="width: 40px; height: 40px"></div>`, { viewport: { width: 40 } }); // { width: 40, height: 40 }
 ```
 
-On every other build they throw, also on `bm-engine` when it runs on the native addon:
+On every other build they throw, also on `bm-render` when it runs on the native addon:
 
 <!-- @example pdf-api#other-builds -->
 ```js
-import { Renderer as FullRenderer } from "bm-engine/full";
+import { Renderer as FullRenderer } from "bm-render/full";
 
 let unsupported;
 try {
@@ -232,7 +232,7 @@ try {
 } catch (e) {
   unsupported = e.message;
 }
-// bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")
+// bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")
 ```
 
 ## Render options
@@ -294,7 +294,7 @@ enclosing `<a>`, with `href` it renders its own link. In HTML, write the classes
 
 <!-- @example pdf-api#counters -->
 ```js
-import { PageNumber, TotalPages, TargetPageNumber } from "bm-engine/pdf";
+import { PageNumber, TotalPages, TargetPageNumber } from "bm-render/pdf";
 
 PageNumber({ format: "upper-roman", style: { color: "#64748b" } });
 // { type: "container", tagName: "span", style: { color: "#64748b" }, className: "pageNumber upper-roman" }
@@ -330,7 +330,7 @@ generated content (`content: counter(page)`, `target-counter()`) work too; see
 
 ## Errors
 
-Every error is an `Error` whose message starts with `bm-engine:`, except an aborted render, which
+Every error is an `Error` whose message starts with `bm-render:`, except an aborted render, which
 rejects with the signal's reason (a `DOMException` named `AbortError` for `controller.abort()`):
 
 <!-- @example pdf-api#abort -->
@@ -357,22 +357,22 @@ const messageOf = async (options, source = html) => {
   }
 };
 await messageOf({ size: "tabloid" });
-// bm-engine: unknown page size: tabloid
+// bm-render: unknown page size: tabloid
 await messageOf({ margin: "1in" });
-// bm-engine: invalid margin: expected a number or "auto"
+// bm-render: invalid margin: expected a number or "auto"
 await messageOf({ viewport: { width: 300 }, size: "a4" });
-// bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
+// bm-render: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
 await messageOf({ pageRanges: [{ from: 5, to: 2 }] });
-// bm-engine: Page range is invalid: 5-2. Pages are numbered from 1.
+// bm-render: Page range is invalid: 5-2. Pages are numbered from 1.
 await messageOf({ pdfa: "1b" });
-// bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
+// bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 await messageOf({ backgroundColor: "paper" });
-// bm-engine: backgroundColor is not a color: paper
+// bm-render: backgroundColor is not a color: paper
 await messageOf({ sise: "a4" });
 // "ok": an unknown option name is ignored
 ```
 
-The example script checks each of these messages (the text after `bm-engine: `):
+The example script checks each of these messages (the text after `bm-render: `):
 
 | Cause | Message |
 |:--|:--|
@@ -408,14 +408,14 @@ The example script checks each of these messages (the text after `bm-engine: `):
 | a character no registered font draws (`uncoveredText: "error"`) | `No font the text can use draws 日 (U+65E5). Check each font's unicodeRange and the font-family stack, or register a font that draws them.` |
 | `filter: blur(2px)` in the document | `A PDF cannot draw filter: blur(2px)` |
 | a call on a freed renderer | `renderer has been freed` |
-| `renderPdf` on another build | `renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")` |
+| `renderPdf` on another build | `renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")` |
 
 PDF/A and PDF/UA violations, impossible standard combinations and their messages are listed in
 [Versions and combinations](accessibility.md#versions-and-combinations).
 
 ## Types
 
-`js/pdf-types.d.mts` (re-exported by `bm-engine/pdf`) defines `PdfRenderOptions`, `PdfMeasureOptions`,
+`js/pdf-types.d.mts` (re-exported by `bm-render/pdf`) defines `PdfRenderOptions`, `PdfMeasureOptions`,
 `MeasuredSize` (`{ width, height }` in CSS px), `PageSizeName`, `PageSize`, `Dimensions`,
 `ViewportInput`, `PageMargin`, `PageMarginSide`, `Band`, `PageOverride`, `PageRules`, `PageRange`,
 `PdfMetadata`, `XmpSchema`, `XmpProperty`, `Attachment`, `ArchivalAttachment` (an attachment with the

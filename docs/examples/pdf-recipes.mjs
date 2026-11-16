@@ -24,7 +24,7 @@ mkdirSync(outDir, { recursive: true });
 
 // #region setup
 import { readFileSync, writeFileSync } from "node:fs";
-import { PdfRenderer, PageNumber, TotalPages } from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, TotalPages } from "bm-render/pdf";
 
 const pdf = new PdfRenderer(); // create once, reuse for every document
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

@@ -5,7 +5,7 @@ const save = saver("performance");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 // Create the renderer and register fonts ONCE, at module load, and reuse them for every request.
 const renderer = new Renderer();
@@ -154,10 +154,10 @@ await pool.close();
 save("pool-card", cards[7]);
 
 // #region features
-import { features } from "bm-engine";
+import { features } from "bm-render";
 
 // Fail fast at startup if the loaded profile cannot render your templates.
 for (const need of ["css", "tw", "html"]) {
-  if (!features[need]) throw new Error(`bm-engine profile lacks "${need}": import bm-engine/standard or /full`);
+  if (!features[need]) throw new Error(`bm-render profile lacks "${need}": import bm-render/standard or /full`);
 }
 // #endregion

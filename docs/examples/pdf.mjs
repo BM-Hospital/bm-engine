@@ -8,7 +8,7 @@ const mediaBox = (b) => /\/MediaBox\[0 0 ([\d.]+) ([\d.]+)\]/.exec(latin1(b)).sl
 
 // #region setup
 import { readFileSync, writeFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -70,14 +70,14 @@ const same = pdf.renderSync(card, { viewport: { width: 600 } });
 assert.equal(same.length, poster.length);
 
 // #region not-supported
-import { Renderer } from "bm-engine/full"; // the full profile has no PDF writer
+import { Renderer } from "bm-render/full"; // the full profile has no PDF writer
 let message;
 try {
   new Renderer().renderPdfSync(card);
 } catch (e) {
   message = e.message;
 }
-// message: bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")
+// message: bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")
 // #endregion
 assert.match(message, /renderPdf is not supported by this build/);
 console.log("pdf: ok", bytes.length, letter.length, ticket.length, poster.length, width, height);

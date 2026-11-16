@@ -7,14 +7,14 @@ Besides node trees, the `standard` and `full` profiles accept two more ways of d
 attribute in HTML). The HTML parser and Tailwind compiler accept
 the same subset. This page covers what the HTML parser understands, which user-agent styles apply,
 what is ignored, and how far the Tailwind compiler goes — variants, arbitrary values, Preflight, theme
-variables and the gaps. All code is `docs/examples/html-and-tailwind.mjs`, run with `bm-engine/standard`.
+variables and the gaps. All code is `docs/examples/html-and-tailwind.mjs`, run with `bm-render/standard`.
 
 [[toc]]
 
 <!-- @example html-and-tailwind#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // HTML and Tailwind need standard or full
+import { Renderer } from "bm-render/standard"; // HTML and Tailwind need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -26,12 +26,12 @@ On `core` both inputs throw:
 
 <!-- @example html-and-tailwind#core-errors -->
 ```js
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync("<div></div>", { width: 10, height: 10 }));
-// "bm-engine: this build has no HTML input support (use the standard / full build)"
+// "bm-render: this build has no HTML input support (use the standard / full build)"
 expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10, height: 10 }));
-// "bm-engine: Tailwind (`tw`) is not supported by this build"
+// "bm-render: Tailwind (`tw`) is not supported by this build"
 ```
 
 ## HTML sources
@@ -447,4 +447,4 @@ elements by `class` (HTML) or `className` (node trees).
 - [Styles](./styles.md) — inline styles, stylesheets, cascade and layout modes
 - [CSS support](./css-support.md#html-input) — the HTML and Tailwind status tables
 - [Images](./images.md) — image sources for `<img>`
-- [How bm-engine works](./concepts.md) — the pipeline and the three inputs
+- [How bm-render works](./concepts.md) — the pipeline and the three inputs

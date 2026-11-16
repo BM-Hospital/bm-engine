@@ -4,12 +4,12 @@
 
 [satori](https://github.com/vercel/satori) biến JSX thành một chuỗi SVG; một công cụ thứ hai như
 `@resvg/resvg-js` (hoặc sharp) biến SVG thành PNG, còn `next/og` / `@vercel/og` gói cả hai bước sau
-`ImageResponse`. bm-engine thay toàn bộ pipeline đó bằng một lời gọi trả thẳng về byte PNG, JPEG hoặc
+`ImageResponse`. bm-render thay toàn bộ pipeline đó bằng một lời gọi trả thẳng về byte PNG, JPEG hoặc
 WebP (hoặc SVG với `renderSvg`). Trang này chỉ ra từng phần tương ứng với gì, cách mang JSX của bạn theo,
 và mỗi bên làm được gì mà bên kia không làm được.
 
 ::: info Trạng thái kiểm chứng
-Mọi điều nói về bm-engine đều đã được chạy trên Node 26.13 (`docs/examples/frameworks/check-helpers.mjs`:
+Mọi điều nói về bm-render đều đã được chạy trên Node 26.13 (`docs/examples/frameworks/check-helpers.mjs`:
 JSX factory `h()` qua esbuild, `flexByDefault()`, `renderSvg` + đầu ra PNG). satori, resvg và `next/og`
 **không được cài hay chạy**: các nhận định về chúng là những đặc điểm phổ biến, được biết rộng rãi của
 các dự án đó tại thời điểm viết, kèm dè dặt ở chỗ khác nhau giữa các phiên bản — hãy kiểm tra README
@@ -32,8 +32,8 @@ const png = new Resvg(svg).render().asPng();
 ```
 
 ```js
-// after: bm-engine
-import { Renderer } from "bm-engine/standard";
+// after: bm-render
+import { Renderer } from "bm-render/standard";
 import { h } from "./h.js"; // JSX factory, see below
 
 const renderer = new Renderer(); // once per process
@@ -43,7 +43,7 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 // need the SVG too?  renderer.renderSvgSync(node, { width: 1200, height: 630 })  (full profile)
 ```
 
-| satori / resvg / next/og | bm-engine |
+| satori / resvg / next/og | bm-render |
 |:--|:--|
 | `satori(element, { width, height, fonts })` → SVG | `renderer.renderSvgSync(node, { width, height })` → SVG (profile `full`); chữ thành đường viền glyph, giống đầu ra mặc định của satori |
 | `new Resvg(svg).render().asPng()` | không cần: `renderer.renderSync(node, options)` trả về PNG (`format: "jpeg" \| "webp"` cho định dạng khác) |
@@ -56,13 +56,13 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 
 ## Chuyển đổi JSX
 
-satori nhận React element. bm-engine nhận object node thuần. Chọn một trong các cách:
+satori nhận React element. bm-render nhận object node thuần. Chọn một trong các cách:
 
 2. **Dùng cây node thuần** khi muốn chia sẻ mẫu mà không phụ thuộc React. Xem [checklist tích hợp](checklist.md).
 
 ### `display: flex` ở mọi nơi
 
-satori (và do đó `next/og`) coi mọi phần tử là flex container. bm-engine dùng mặc định CSS: mọi node là
+satori (và do đó `next/og`) coi mọi phần tử là flex container. bm-render dùng mặc định CSS: mọi node là
 `display: inline` cho tới khi bạn đặt khác, và container inline bỏ qua `width` / `height`. Template viết
 cho satori thường dựa vào mặc định flex này, nên hoặc thêm `display: "flex"` ở chỗ cần, hoặc áp mặc định
 của satori cho cả cây:
@@ -82,17 +82,17 @@ một dòng inline không có box con nào; sau `flexByDefault()` các con nằm
 ## Font
 
 - satori bắt buộc có `fonts` và đọc TTF, OTF và WOFF (không có WOFF2, theo những gì README của nó nêu).
-  bm-engine đọc TTF trên mọi profile, OTF (CFF) và WOFF / WOFF2 trên `standard` / `full`, WOFF / WOFF2 trên
+  bm-render đọc TTF trên mọi profile, OTF (CFF) và WOFF / WOFF2 trên `standard` / `full`, WOFF / WOFF2 trên
   `core` qua [add-on WOFF](../api.md#add-on-woff).
-- Giống satori, bm-engine không có font hệ thống và không có font mặc định: chữ không có font đã đăng ký
+- Giống satori, bm-render không có font hệ thống và không có font mặc định: chữ không có font đã đăng ký
   sẽ không được vẽ (không báo lỗi).
 - Variable font theo `font-weight` / `font-variation-settings` trên `standard` / `full`.
 - Đăng ký font **một lần** cho mỗi renderer thay vì truyền byte ở mỗi lần gọi; phân tích font mới là
   phần tốn kém.
 
-## bm-engine có thêm gì
+## bm-render có thêm gì
 
-Đã kiểm chứng ở phía bm-engine (chi tiết trong bảng [Hỗ trợ CSS](../css-support.md)):
+Đã kiểm chứng ở phía bm-render (chi tiết trong bảng [Hỗ trợ CSS](../css-support.md)):
 
 - Xuất raster trực tiếp: PNG, JPEG, WebP, RGBA thô (và ICO trên `full`) — không cần bước resvg.
 - Layout ngoài flexbox: block, inline, grid, float và bảng (`tables` / `floats` trên `standard`).
@@ -103,15 +103,15 @@ một dòng inline không có box con nào; sau `flexByDefault()` các con nằm
 - `measure()` cho các box layout và run của từng dòng chữ (xem [Measure](../measure.md)).
 - API đồng bộ, không dependency, mỗi profile một file `.wasm` (489.6 KiB – 1.12 MiB raw).
 
-## satori có gì mà bm-engine không có
+## satori có gì mà bm-render không có
 
 Có dè dặt — dựa trên các tính năng satori đã công bố, không phải do chạy thử:
 
-- Nhận trực tiếp React element (bm-engine cần một bước chuyển đổi, như trên).
+- Nhận trực tiếp React element (bm-render cần một bước chuyển đổi, như trên).
 - Callback `loadAdditionalAsset` để tải font hoặc ảnh emoji theo nhu cầu ngay trong lúc render.
 - `graphemeImages` để ánh xạ ký tự sang ảnh.
 - Bước layout được phân phối thuần JavaScript (satori dùng Yoga biên dịch sang WebAssembly; resvg là một
-  binary hoặc module wasm riêng) — bm-engine là một binary WebAssembly mà bạn nạp bằng `init` trên các
+  binary hoặc module wasm riêng) — bm-render là một binary WebAssembly mà bạn nạp bằng `init` trên các
   runtime không phải Node.
 - Hệ sinh thái lớn hơn: `next/og` có sẵn trong Next.js, và nhiều template nhắm vào hành vi mặc định flex
   của satori.

@@ -37,7 +37,7 @@ export async function buildCorpus({ filter = null, maxStress = 500, log = consol
     for (const n of engines) {
       if (doc.group === "stress" && doc.pages >= 100) { // a fresh process each: an out-of-memory engine cannot end the run
         const f = fileOf(n, doc.id); mkdirSync(path.dirname(f), { recursive: true }); if (existsSync(f)) rmSync(f);
-        const r = spawnSync(process.execPath, [path.join(LIB, "render-child.mjs"), n, doc.id, f], { encoding: "utf8", timeout: 900000, maxBuffer: 1 << 24, env: { ...process.env, BM_ENGINE_BACKEND: "" } });
+        const r = spawnSync(process.execPath, [path.join(LIB, "render-child.mjs"), n, doc.id, f], { encoding: "utf8", timeout: 900000, maxBuffer: 1 << 24, env: { ...process.env, BM_RENDER_BACKEND: "" } });
         const o = childResult(r);
         row.engines[n] = o;
         continue;

@@ -6,7 +6,7 @@ Eleven complete, copy-paste templates: Open Graph card, blog cover, social post,
 card, product card, event ticket, certificate, weekly report with a bar graph, multi-language card and
 event banner. Each one is a plain function that takes your data and returns a node tree (or an HTML
 string), so you can drop it into a route handler, a build script or a worker. All of them were rendered
-by `docs/examples/templates.mjs` against bm-engine 0.1.0; the image under each snippet is the real
+by `docs/examples/templates.mjs` against bm-render 0.1.0; the image under each snippet is the real
 output, not a mock-up.
 
 [[toc]]
@@ -21,7 +21,7 @@ output, not a mock-up.
   the layout stays the same and every length is scaled (see the [handler](#serving-a-template-from-a-handler)
   at the end, and [Output formats](./formats.md)).
 - **Profiles.** Most templates use only node trees with inline styles and work on every profile
-  (`bm-engine/core` included). The product card (SVG image), the certificate (HTML + `<style>`) and the
+  (`bm-render/core` included). The product card (SVG image), the certificate (HTML + `<style>`) and the
   multi-language card (Tailwind `tw`) need `standard` or `full`; each section says so.
 - **Text fitting.** Titles use `lineClamp` so that long input cannot push the layout apart. For
   shrink-to-fit titles, see [measure](./measure.md). Text details are in [Typography](./typography.md).
@@ -31,7 +31,7 @@ output, not a mock-up.
 <!-- @example templates#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "NotoSans-Regular", "NotoSans-Bold"]) {
@@ -199,7 +199,7 @@ function repoCard({ owner, repo, description, language, stars, forks, issues }) 
 }
 
 const repoPng = renderer.renderSync(repoCard({
-  owner: "acme", repo: "bm-engine",
+  owner: "acme", repo: "bm-render",
   description: "Render node trees, HTML and Tailwind to PNG, JPEG, WebP and SVG with a dependency-free WebAssembly engine.",
   language: { name: "Zig", color: "#ec915c" },
   stars: "4.2k", forks: "186", issues: "23",
@@ -240,7 +240,7 @@ const quotePng = renderer.renderSync(quoteCard({
 
 ![Quote card on dark teal with a large quote mark, italic quote and author](/img/guide/templates-quote.png)
 
-- `fontStyle: "italic"` uses the registered `Inter-Italic.ttf` face. Without an italic face, bm-engine
+- `fontStyle: "italic"` uses the registered `Inter-Italic.ttf` face. Without an italic face, bm-render
   synthesises a slanted version of the regular face (see [Fonts](./fonts.md)).
 - The quote mark is `“` at 120 px with `lineHeight: "60px"` and `height: 60`, so the big glyph does
   not push the quote down.
@@ -552,7 +552,7 @@ console.log(res.status, res.headers.get("content-type"), (await res.arrayBuffer(
 
 - `devicePixelRatio: 1.5` turns the 800 × 420 design into a 1200 × 630 image without touching the
   template.
-- bm-engine has no `ImageResponse` helper; `new Response(png, ...)` is all it takes, because the result is
+- bm-render has no `ImageResponse` helper; `new Response(png, ...)` is all it takes, because the result is
   a `Uint8Array` that owns its buffer.
 - Rendering is synchronous and CPU-bound. Cache the result (here with `cache-control`) and see
   [Performance](./performance.md) for worker pools.

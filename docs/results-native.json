@@ -29,19 +29,19 @@
   },
   "engines": {
    "bm-native": {
-    "package": "bm-engine",
+    "package": "bm-render",
     "version": "0.1.0",
-    "file": "native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node",
+    "file": "native/dist/win32-x64-msvc/bm-render.win32-x64-msvc.node",
     "bytes": 3406848,
     "sha256": "1d5ff5ea0a4f82da959681bf12e982e710c1a7158de7306dbe1db8fb27a4e395",
     "zig": "0.17.1",
     "optimize": "fast"
    },
    "bm-wasm": {
-    "package": "bm-engine",
+    "package": "bm-render",
     "version": "0.1.0",
     "profile": "full",
-    "file": "js/bm_engine.wasm",
+    "file": "js/bm_render.wasm",
     "bytes": 1171107,
     "sha256": "a7e1528586ac24e5848af664fbcd8490f1fba814513f537761ea116663b15e32"
    },

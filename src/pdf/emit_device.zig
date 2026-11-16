@@ -396,7 +396,7 @@ pub const Device = struct {
     }
 };
 
-/// Rounded (or plain) rectangle path, bm-engine's path builder (`radii` null: a rectangle).
+/// Rounded (or plain) rectangle path, bm-render's path builder (`radii` null: a rectangle).
 pub fn addRRect(a: Allocator, p: *Path, r: Rect, radii: ?Radii) error{OutOfMemory}!void {
     if (radii) |rr| {
         try p.addRoundRect(a, r, rr);

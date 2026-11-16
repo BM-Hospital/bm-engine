@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { writeFileSync, readFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir, availableParallelism } from "node:os";
 import path from "node:path";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 import { getRenderer, card } from "./lib/og.mjs";
 import { createPool } from "./lib/pool.mjs";
 import { buildOgImages } from "./lib/build-og.mjs";
@@ -146,7 +146,7 @@ imgServer.close();
 
 await check("errors: invalid inline style throws; signal aborts before rendering", async () => {
   const r = getRenderer();
-  assert.throws(() => r.renderSync({ type: "container", style: { width: "abc" } }, { width: 10, height: 10 }), /bm-engine: invalid value for style property width/);
+  assert.throws(() => r.renderSync({ type: "container", style: { width: "abc" } }, { width: 10, height: 10 }), /bm-render: invalid value for style property width/);
   assert.throws(() => r.renderSync({ type: "container" }, { width: 0, height: 10 }));
   await assert.rejects(r.render(card({ title: "a", description: "b" }), { width: 100, height: 50, signal: AbortSignal.abort(new Error("client went away")) }), /client went away/);
   // a lazy font that resolves after the signal fired: the signal is checked after loading, before rasterising

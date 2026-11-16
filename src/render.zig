@@ -2817,7 +2817,7 @@ pub const Frame = struct {
                     n.img_ratio = sz.ratio;
                 } else |e| if (e == error.OutOfMemory) return error.OutOfMemory;
             };
-            // (PDF: a bitmap bm-engine does not decode, a CMYK JPEG or a damaged PNG, keeps the size
+            // (PDF: a bitmap bm-render does not decode, a CMYK JPEG or a damaged PNG, keeps the size
             // its header gives, as takumi-core's `EncodedBitmap`; src/pdf/emit_image.zig embeds or
             // rejects its bytes)
             if (comptime config.enable_pdf) if (f.tree.paged.pdf and img == null and n.svg == null) if (el.src) |src| {

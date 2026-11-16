@@ -4,7 +4,7 @@ const save = saver("charts");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -323,7 +323,7 @@ const twPng = renderer.renderSync(twChart, { width: 360, height: 200 });
 save("tailwind", twPng);
 
 // core profile check: SVG-based charts paint nothing on core, flex/conic ones work
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 {
   const r = new core.Renderer();
   r.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));

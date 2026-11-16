@@ -1,4 +1,4 @@
-// node cmp.mjs '<json node>' [w h]   -> takumi's layout (oracle) next to bm-engine's for one tree
+// node cmp.mjs '<json node>' [w h]   -> takumi's layout (oracle) next to bm-render's for one tree
 // node cmp.mjs @file.json [w h]      -> same, tree read from a file
 // Style objects as in gen.mjs. Needs the wasm32-wasi harness (BM_ONE_WASM, default: <tmp scratch>/one.wasm built
 // from a tiny root that imports src/layout/tests.zig; see the layout agent's scratch dir `buildone.sh`).

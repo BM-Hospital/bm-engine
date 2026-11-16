@@ -8,7 +8,7 @@
 //
 // Cases: concurrency, eventloop, free, gc, errors, raw, fallback, workers, stack, fuzz-tree, fuzz-inline, fuzz-table,
 // fuzz-diff, pdf, pdf-stack, fuzz-pdf, perf, cold. Byte identity on the fixtures is bench/native-identity.mjs.
-// The pdf cases drive the addon's PDF output (`bm-engine/pdf` on Node) against js/bm_engine.pdf.wasm.
+// The pdf cases drive the addon's PDF output (`bm-render/pdf` on Node) against js/bm_render.pdf.wasm.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -25,7 +25,7 @@ const href = (...p) => pathToFileURL(path.join(ROOT, ...p)).href;
 const sha = (b) => createHash("sha256").update(typeof b === "string" ? Buffer.from(b) : b).digest("hex").slice(0, 16);
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
 const fontFile = (f) => new Uint8Array(readFileSync(path.join(ROOT, "assets", "fonts", f)));
-const WASM_FILE = path.join(ROOT, "js", "bm_engine.wasm");
+const WASM_FILE = path.join(ROOT, "js", "bm_render.wasm");
 
 let failures = 0;
 const notes = {};
@@ -148,11 +148,11 @@ CASES.free = async () => {
     const good = res.filter((x) => x.status === "fulfilled");
     const bad = res.filter((x) => x.status === "rejected");
     if (!check(good.every((x) => sha(x.value) === want), "renders that completed before free() are correct")) break;
-    if (!check(bad.every((x) => x.reason.message === "bm-engine: renderer has been freed"), `renders after free() reject with "renderer has been freed" (${bad[0] && bad[0].reason.message})`)) break;
+    if (!check(bad.every((x) => x.reason.message === "bm-render: renderer has been freed"), `renders after free() reject with "renderer has been freed" (${bad[0] && bad[0].reason.message})`)) break;
     if (round === 0) notes.free = { fulfilled: good.length, rejected: bad.length };
     let threw = "";
     try { await r.render(k.node, {}); } catch (e) { threw = e.message; }
-    check(threw === "bm-engine: renderer has been freed", "render() on a freed renderer rejects");
+    check(threw === "bm-render: renderer has been freed", "render() on a freed renderer rejects");
     r.free(); // idempotent
   }
   // dropping the last reference while work is pending: the work completes, then the memory goes away
@@ -336,40 +336,40 @@ CASES.fallback = async () => {
     `const { loadWoff } = await import(${JSON.stringify(href("js", "addons.mjs"))}); const w = await loadWoff();` +
     `console.log(JSON.stringify({backend:m.backend, bytes:o.length, woff:m.features.woff, builtIn:w.builtIn, mem:r.memoryBytes()}));`;
   const run = (env, code = probe) => {
-    const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "", BM_ENGINE_NATIVE_PATH: "", ...env } });
+    const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8", env: { ...process.env, BM_RENDER_BACKEND: "", BM_RENDER_NATIVE_PATH: "", ...env } });
     let json = null;
     try { json = JSON.parse(r.stdout.trim().split("\n").pop()); } catch {}
-    return { status: r.status, json, stderr: r.stderr.split("\n").filter((l) => /Error|bm-engine/.test(l)).slice(0, 2).join(" | ").slice(0, 400), noise: r.stderr.trim().length };
+    return { status: r.status, json, stderr: r.stderr.split("\n").filter((l) => /Error|bm-render/.test(l)).slice(0, 2).join(" | ").slice(0, 400), noise: r.stderr.trim().length };
   };
   const garbage = path.join(BENCH, "out", "not-an-addon.node");
   mkdirSync(path.dirname(garbage), { recursive: true });
   writeFileSync(garbage, "this is not a shared library");
   const table = {
     default: run({}),
-    "BM_ENGINE_BACKEND=wasm": run({ BM_ENGINE_BACKEND: "wasm" }),
-    "BM_ENGINE_BACKEND=native": run({ BM_ENGINE_BACKEND: "native" }),
-    "NATIVE_PATH=missing": run({ BM_ENGINE_NATIVE_PATH: path.join(BENCH, "out", "does-not-exist.node") }),
-    "NATIVE_PATH=garbage file": run({ BM_ENGINE_NATIVE_PATH: garbage }),
-    "NATIVE_PATH=missing + BACKEND=native": run({ BM_ENGINE_NATIVE_PATH: path.join(BENCH, "out", "does-not-exist.node"), BM_ENGINE_BACKEND: "native" }),
-    "BM_ENGINE_BACKEND=bogus": run({ BM_ENGINE_BACKEND: "gpu" }),
+    "BM_RENDER_BACKEND=wasm": run({ BM_RENDER_BACKEND: "wasm" }),
+    "BM_RENDER_BACKEND=native": run({ BM_RENDER_BACKEND: "native" }),
+    "NATIVE_PATH=missing": run({ BM_RENDER_NATIVE_PATH: path.join(BENCH, "out", "does-not-exist.node") }),
+    "NATIVE_PATH=garbage file": run({ BM_RENDER_NATIVE_PATH: garbage }),
+    "NATIVE_PATH=missing + BACKEND=native": run({ BM_RENDER_NATIVE_PATH: path.join(BENCH, "out", "does-not-exist.node"), BM_RENDER_BACKEND: "native" }),
+    "BM_RENDER_BACKEND=bogus": run({ BM_RENDER_BACKEND: "gpu" }),
     "BM_PROFILE=core (a wasm choice)": run({ BM_PROFILE: "core" }),
-    "bm-engine/native, addon missing": run({ BM_ENGINE_NATIVE_PATH: garbage }, `await import(${JSON.stringify(href("js", "node-native.mjs"))})`),
-    "bm-engine/full (always wasm)": run({}, `const m = await import(${JSON.stringify(href("js", "node-full.mjs"))}); console.log(JSON.stringify({backend:m.backend}))`),
+    "bm-render/native, addon missing": run({ BM_RENDER_NATIVE_PATH: garbage }, `await import(${JSON.stringify(href("js", "node-native.mjs"))})`),
+    "bm-render/full (always wasm)": run({}, `const m = await import(${JSON.stringify(href("js", "node-full.mjs"))}); console.log(JSON.stringify({backend:m.backend}))`),
   };
   notes.fallback = Object.fromEntries(Object.entries(table).map(([k, v]) => [k, v.json ? v.json : `exit ${v.status}: ${v.stderr}`]));
   const ok = (name, backend) => check(table[name].status === 0 && table[name].json && table[name].json.backend === backend && (name.includes("native,") || table[name].json.bytes === table.default.json.bytes || !table[name].json.bytes), `${name} -> ${backend} (${JSON.stringify(table[name].json)} ${table[name].stderr})`);
   ok("default", "native");
-  ok("BM_ENGINE_BACKEND=wasm", "wasm");
-  ok("BM_ENGINE_BACKEND=native", "native");
+  ok("BM_RENDER_BACKEND=wasm", "wasm");
+  ok("BM_RENDER_BACKEND=native", "native");
   ok("NATIVE_PATH=missing", "wasm");
   ok("NATIVE_PATH=garbage file", "wasm");
   ok("BM_PROFILE=core (a wasm choice)", "wasm");
-  ok("bm-engine/full (always wasm)", "wasm");
+  ok("bm-render/full (always wasm)", "wasm");
   check(table["NATIVE_PATH=missing"].noise === 0 && table["NATIVE_PATH=garbage file"].noise === 0, "the fallback to wasm prints nothing");
   check(table.default.json.builtIn === true && table["NATIVE_PATH=missing"].json.builtIn === true, "loadWoff() reports built-in WOFF on both backends of the full build");
-  check(table["NATIVE_PATH=missing + BACKEND=native"].status !== 0 && /BM_ENGINE_BACKEND=native, but the native addon is not available/.test(table["NATIVE_PATH=missing + BACKEND=native"].stderr), "BM_ENGINE_BACKEND=native without an addon fails with a clear error");
-  check(table["BM_ENGINE_BACKEND=bogus"].status !== 0 && /must be "wasm" or "native"/.test(table["BM_ENGINE_BACKEND=bogus"].stderr), "a bogus BM_ENGINE_BACKEND is rejected");
-  check(table["bm-engine/native, addon missing"].status !== 0 && /bm-engine\/native: the native addon is not available/.test(table["bm-engine/native, addon missing"].stderr), "bm-engine/native without an addon fails with a clear error");
+  check(table["NATIVE_PATH=missing + BACKEND=native"].status !== 0 && /BM_RENDER_BACKEND=native, but the native addon is not available/.test(table["NATIVE_PATH=missing + BACKEND=native"].stderr), "BM_RENDER_BACKEND=native without an addon fails with a clear error");
+  check(table["BM_RENDER_BACKEND=bogus"].status !== 0 && /must be "wasm" or "native"/.test(table["BM_RENDER_BACKEND=bogus"].stderr), "a bogus BM_RENDER_BACKEND is rejected");
+  check(table["bm-render/native, addon missing"].status !== 0 && /bm-render\/native: the native addon is not available/.test(table["bm-render/native, addon missing"].stderr), "bm-render/native without an addon fails with a clear error");
 };
 
 // ---- e. worker threads ------------------------------------------------------------------------------------
@@ -570,7 +570,7 @@ CASES.stack = async () => {
 
 // ---- f. fuzz ----------------------------------------------------------------------------------------------
 function runProbe(name, script, argv, cwd = BENCH) {
-  const r = spawnSync(process.execPath, ["--import", href("bench", "lib", "native-hooks.mjs"), script, ...argv], { cwd, encoding: "utf8", timeout: 900000, env: { ...process.env, BM_WASM: WASM_FILE, BM_ENGINE_BACKEND: "" }, maxBuffer: 64 << 20 });
+  const r = spawnSync(process.execPath, ["--import", href("bench", "lib", "native-hooks.mjs"), script, ...argv], { cwd, encoding: "utf8", timeout: 900000, env: { ...process.env, BM_WASM: WASM_FILE, BM_RENDER_BACKEND: "" }, maxBuffer: 64 << 20 });
   const tail = r.stdout.trim().split("\n").slice(-1)[0] || "";
   const traps = (r.stdout.match(/^TRAP/gm) || []).length;
   check(r.status === 0 && traps === 0, `${name} ${argv.join(" ")}: exit ${r.status}${r.signal ? " signal " + r.signal : ""}, ${traps} traps; ${tail.slice(0, 200)} ${r.status ? r.stderr.slice(-300) : ""}`);
@@ -693,8 +693,8 @@ CASES["fuzz-diff"] = async () => {
   notes["fuzz-diff"] = rows;
 };
 
-// ---- PDF output (bm-engine/pdf: the same addon, js/native.mjs nativePdfBinding) ---------------------------
-const PDF_WASM_FILE = path.join(ROOT, "js", "bm_engine.pdf.wasm");
+// ---- PDF output (bm-render/pdf: the same addon, js/native.mjs nativePdfBinding) ---------------------------
+const PDF_WASM_FILE = path.join(ROOT, "js", "bm_render.pdf.wasm");
 async function loadPdf() {
   const base = await load();
   const { createBinding } = await import(href("js", "engine.mjs"));
@@ -711,10 +711,10 @@ const pdfDoc = (n, seed = 0) => "<style>body{font-family:Inter;font-size:12px;li
 CASES.pdf = async () => {
   const { native, npdf, wpdf, withFonts } = await loadPdf();
   // one addon, two bindings: the image entry keeps the full wasm build's surface
-  check(native.features.pdf === false && npdf.features.pdf === true && npdf.backend === "native", "features.pdf: off on the bm-engine binding, on on the bm-engine/pdf binding");
-  check(outcome(() => new native.Renderer().renderPdfSync("<p>x</p>")).error === "bm-engine: renderPdf is not supported by this build (use the pdf build: import from \"bm-engine/pdf\")", "bm-engine (native) rejects renderPdf with the wasm build's message");
+  check(native.features.pdf === false && npdf.features.pdf === true && npdf.backend === "native", "features.pdf: off on the bm-render binding, on on the bm-render/pdf binding");
+  check(outcome(() => new native.Renderer().renderPdfSync("<p>x</p>")).error === "bm-render: renderPdf is not supported by this build (use the pdf build: import from \"bm-render/pdf\")", "bm-render (native) rejects renderPdf with the wasm build's message");
   const entry = await import(href("js", "node-pdf.mjs"));
-  check(entry.backend === "native" && entry.profile === "pdf" && entry.Renderer === npdf.Renderer && typeof entry.PdfRenderer === "function", "bm-engine/pdf on Node runs on the addon");
+  check(entry.backend === "native" && entry.profile === "pdf" && entry.Renderer === npdf.Renderer && typeof entry.PdfRenderer === "function", "bm-render/pdf on Node runs on the addon");
   const opts = [{ size: "a4", uncoveredText: "blank" }, { size: "a5", landscape: true, tagged: true, uncoveredText: "blank", metadata: { title: "t", creationDate: "2026-01-01" } }, { viewport: { width: 500 }, uncoveredText: "blank" },
     { size: "letter", uncoveredText: "blank", header: "<div style='font:9px Inter'>h <span class=pageNumber></span>/<span class=totalPages></span></div>", outline: true }];
   const docs = [pdfDoc(6), pdfDoc(14, 3), pdfDoc(2, 9), pdfDoc(25, 1)];
@@ -750,7 +750,7 @@ CASES.pdf = async () => {
   // the image binding and the pdf binding share the addon: concurrent work on both
   const ir = withFonts(native, ["Inter"]);
   const both = await Promise.all(Array.from({ length: 40 }, (_, i) => (i & 1 ? ir.render(docs[2], img).then((b) => sha(b) === wantImg) : rs[i % 8].renderPdf(docs[1], opts[1]).then((b) => sha(b) === expected[1]))));
-  check(both.every(Boolean), "image renders (bm-engine binding) and PDF renders (bm-engine/pdf binding) run concurrently on one addon");
+  check(both.every(Boolean), "image renders (bm-render binding) and PDF renders (bm-render/pdf binding) run concurrently on one addon");
   // the event loop keeps turning during a long PDF render
   // (long enough to span many timer ticks now that a page costs only its own content)
   const big = pdfDoc(600);
@@ -774,7 +774,7 @@ CASES.pdf = async () => {
   const pend = Array.from({ length: 6 }, () => fr.renderPdf(docs[3], opts[3]).then((b) => "ok " + sha(b), (e) => "err " + e.message));
   fr.free();
   const settled = await Promise.all(pend);
-  check(settled.every((x) => x === "ok " + expected[3] || x === "err bm-engine: renderer has been freed"), "free() with PDF jobs pending: each completes with the right bytes or rejects cleanly: " + JSON.stringify([...new Set(settled)]));
+  check(settled.every((x) => x === "ok " + expected[3] || x === "err bm-render: renderer has been freed"), "free() with PDF jobs pending: each completes with the right bytes or rejects cleanly: " + JSON.stringify([...new Set(settled)]));
   const e1 = await r.renderPdf("<p style='filter:blur(2px)'>x</p>", {}).then(() => "resolved", (e) => e.message);
   check(e1 === outcome(() => wr.renderPdfSync("<p style='filter:blur(2px)'>x</p>", {})).error, "an async PDF error rejects with the wasm message: " + e1);
   // bytes survive later changes to the caller's buffers (inputs are snapshotted at the call)
@@ -1044,14 +1044,14 @@ CASES.cold = async () => {
     `process.stdout.write(m.backend + " " + png.length + " " + performance.now().toFixed(1));`;
   const once = (env, script) => {
     const t0 = performance.now();
-    const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "", BM_ENGINE_NATIVE_PATH: "", ...env } });
+    const r = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, BM_RENDER_BACKEND: "", BM_RENDER_NATIVE_PATH: "", ...env } });
     return { wall: performance.now() - t0, out: r.stdout, status: r.status };
   };
   const runs = 15;
   const sample = (env, script = code) => { once(env, script); const a = Array.from({ length: runs }, () => once(env, script)); return { wallMs: +median(a.map((x) => x.wall)).toFixed(1), inProcessMs: +median(a.map((x) => +(x.out.split(" ")[2] || 0))).toFixed(1), backend: a[0].out.split(" ")[0], ok: a.every((x) => x.status === 0) }; };
   const empty = sample({}, "process.stdout.write('none 0 ' + performance.now().toFixed(1))");
-  const n = sample({ BM_ENGINE_BACKEND: "native" }), w = sample({ BM_ENGINE_BACKEND: "wasm" });
-  notes.cold = { runs, what: "spawn -> import bm-engine -> registerFont(Inter) -> 1200x630 PNG -> exit; wall = parent's clock, inProcess = performance.now() at the end", emptyNode: empty, native: n, wasm: w, nativeOverNodeMs: +(n.wallMs - empty.wallMs).toFixed(1), wasmOverNodeMs: +(w.wallMs - empty.wallMs).toFixed(1) };
+  const n = sample({ BM_RENDER_BACKEND: "native" }), w = sample({ BM_RENDER_BACKEND: "wasm" });
+  notes.cold = { runs, what: "spawn -> import bm-render -> registerFont(Inter) -> 1200x630 PNG -> exit; wall = parent's clock, inProcess = performance.now() at the end", emptyNode: empty, native: n, wasm: w, nativeOverNodeMs: +(n.wallMs - empty.wallMs).toFixed(1), wasmOverNodeMs: +(w.wallMs - empty.wallMs).toFixed(1) };
   check(n.ok && w.ok && n.backend === "native" && w.backend === "wasm", "cold-start children ran on the intended backends");
 };
 

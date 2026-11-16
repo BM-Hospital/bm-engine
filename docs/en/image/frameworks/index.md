@@ -2,7 +2,7 @@
 
 [English](index.md) · [Tiếng Việt](../../../vi/image/frameworks/index.md)
 
-bm-engine is a plain library: give it a node tree (or HTML) and it returns image bytes. It has no
+bm-render is a plain library: give it a node tree (or HTML) and it returns image bytes. It has no
 framework plugin, no `ImageResponse` class and no JSX runtime, so every integration is the same three
 lines of glue — create a renderer, register fonts, wrap the bytes in a `Response`. This page explains the
 parts every integration shares: which package entry to import, the "create once" pattern, a ~30-line
@@ -10,7 +10,7 @@ parts every integration shares: which package entry to import, the "create once"
 without JSX. The per-framework pages then only show what differs.
 
 ::: info Verification status
-Every snippet on this page was executed on Node 26.13 against the packed npm tarball of bm-engine 0.1.0
+Every snippet on this page was executed on Node 26.13 against the packed npm tarball of bm-render 0.1.0
 (`npm pack`, installed into a scratch project): `imageResponse()` was called with a real `Request`, its
 `Response` body was decoded as a 1200 × 630 PNG; `h()` was checked to produce byte-identical output to
 hand-written nodes, also as an esbuild JSX factory; the manual wasm-loading paths ran under
@@ -37,24 +37,24 @@ depends on the runtime's export conditions:
 
 | Import | Node.js, Bun, Deno (`node` condition) | Browsers, bundlers for the browser, workerd, Vercel Edge |
 |:--|:--|:--|
-| `bm-engine` | full binary, read from disk and initialised on import | wrapper only: you call `init(wasm)` |
-| `bm-engine/core` · `/standard` · `/full` | that profile, initialised on import | `await init()` fetches the binary next to the module (or pass it) |
-| `bm-engine/wasm` (= `full.wasm`), `bm-engine/core.wasm`, `/standard.wasm`, `/full.wasm`, `/woff.wasm` | the raw binary file | the raw binary file (asset URL with `?url` in Vite, `WebAssembly.Module` under wrangler) |
+| `bm-render` | full binary, read from disk and initialised on import | wrapper only: you call `init(wasm)` |
+| `bm-render/core` · `/standard` · `/full` | that profile, initialised on import | `await init()` fetches the binary next to the module (or pass it) |
+| `bm-render/wasm` (= `full.wasm`), `bm-render/core.wasm`, `/standard.wasm`, `/full.wasm`, `/woff.wasm` | the raw binary file | the raw binary file (asset URL with `?url` in Vite, `WebAssembly.Module` under wrangler) |
 
 Rules of thumb:
 
 - **Server on Node.js (Express, Hono on Node, Next.js Node runtime, Nuxt / SvelteKit / Astro with the
-  Node adapter):** `import { Renderer } from "bm-engine/standard"` (or `/core`, `/full`). Nothing to
+  Node adapter):** `import { Renderer } from "bm-render/standard"` (or `/core`, `/full`). Nothing to
   initialise; the binary is read with `node:fs` when the module loads.
-- **Bundled for the browser:** `import { init, Renderer } from "bm-engine/standard"` and `await init()`.
+- **Bundled for the browser:** `import { init, Renderer } from "bm-render/standard"` and `await init()`.
   Vite, webpack 5 and Parcel emit the `.wasm` file as an asset (see [Vite and browsers](./vite-browser.md)).
 - **Workers / edge runtimes:** import the binary as a module and pass it:
-  `import wasm from "bm-engine/core.wasm"; initSync(wasm)` (see [Cloudflare Workers](./cloudflare-workers.md)).
+  `import wasm from "bm-render/core.wasm"; initSync(wasm)` (see [Cloudflare Workers](./cloudflare-workers.md)).
 - **Anything else:** load the bytes yourself and call `init()` / `initSync()` (below).
 
 Pick the smallest profile that has what your templates use; `core` is enough for node trees with inline
 styles and TTF fonts. See [Profiles and size](../../profiles-and-size.md). Each entry is a **separate
-wasm instance**: importing both `bm-engine` and `bm-engine/full` on Node loads the full binary twice, so
+wasm instance**: importing both `bm-render` and `bm-render/full` on Node loads the full binary twice, so
 choose one entry per application.
 
 ### Loading the wasm manually
@@ -65,10 +65,10 @@ compiled `WebAssembly.Module`, or a `{ module_or_path }` object. `initSync()` ac
 `WebAssembly.instantiateStreaming`; any other content type goes through `arrayBuffer()`.
 
 ```js
-import { init, initSync, Renderer } from "bm-engine";
+import { init, initSync, Renderer } from "bm-render";
 
 // 1. fetch it (browsers, Deno, workers that allow runtime compilation)
-await init(fetch("/assets/bm_engine.wasm"));
+await init(fetch("/assets/bm_render.wasm"));
 
 // 2. bytes you already have (any runtime that allows WebAssembly compilation from bytes)
 initSync(bytes);
@@ -76,14 +76,14 @@ initSync(bytes);
 // 3. a precompiled module (Cloudflare Workers, Vercel Edge `?module` imports)
 initSync(wasmModule);
 
-await init({ module_or_path: "/assets/bm_engine.wasm" });
+await init({ module_or_path: "/assets/bm_render.wasm" });
 ```
 
 All of these were run under `node --conditions=browser`, which resolves the same files a bundler does.
 `init()` is idempotent per entry: the first successful call wins, later calls return the same instance
 and ignore their argument. Before initialisation, `new Renderer()` throws
-`bm-engine: call init()/initSync() before creating a Renderer`, and `init()` without an argument on the
-generic entry rejects with `bm-engine: init() needs the wasm binary: ...`.
+`bm-render: call init()/initSync() before creating a Renderer`, and `init()` without an argument on the
+generic entry rejects with `bm-render: init() needs the wasm binary: ...`.
 
 ## The universal pattern
 
@@ -91,14 +91,14 @@ Every integration on these pages has the same shape:
 
 1. **Create one `Renderer` per process (Node) or per isolate (Workers), lazily.** Registering fonts
    parses them and copies them into wasm memory; doing it per request wastes time and grows memory.
-2. **Register fonts once.** bm-engine bundles no font: without a registered font, text is not drawn.
+2. **Register fonts once.** bm-render bundles no font: without a registered font, text is not drawn.
 3. **Per request:** read parameters, build a node tree, render, return a `Response` with the bytes and
    a `content-type`.
 
 ```js
 // og.js — shared by every route
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard";
+import { Renderer } from "bm-render/standard";
 
 let renderer; // one per process / isolate
 
@@ -140,7 +140,7 @@ still happens on the calling thread. For CPU-heavy servers, render in a worker p
 
 ## An `imageResponse()` helper
 
-bm-engine has no `ImageResponse` class (checked: nothing named `ImageResponse` exists in `js/`). The
+bm-render has no `ImageResponse` class (checked: nothing named `ImageResponse` exists in `js/`). The
 helper below gives you the useful part of one. It works anywhere `Response` and `Headers` exist: Node 18+,
 Deno, Bun, Workers, browsers and every framework on these pages.
 
@@ -180,7 +180,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   return imageResponse(getRenderer(), card({
     title: url.searchParams.get("title") ?? "Hello",
-    description: url.searchParams.get("description") ?? "Rendered with bm-engine",
+    description: url.searchParams.get("description") ?? "Rendered with bm-render",
   }), {
     width: 1200,
     height: 630,
@@ -218,7 +218,7 @@ deploy time (see [Astro](./astro.md) and [Recipes](../recipes.md#generate-at-bui
 
 ## Font loading strategies
 
-bm-engine never reads system fonts and has no built-in font. Pick the strategy that matches your runtime:
+bm-render never reads system fonts and has no built-in font. Pick the strategy that matches your runtime:
 
 | Strategy | Where | How |
 |:--|:--|:--|
@@ -239,7 +239,7 @@ bm-engine never reads system fonts and has no built-in font. Pick the strategy t
 
 ## Node trees without JSX
 
-bm-engine takes three kinds of source: a node object, `{ json: string }`, or an HTML string (HTML needs
+bm-render takes three kinds of source: a node object, `{ json: string }`, or an HTML string (HTML needs
 `standard` / `full`; see [HTML and Tailwind](../html-and-tailwind.md)). A node is plain data:
 
 ```js

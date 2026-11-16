@@ -1,22 +1,22 @@
 {
-  "name": "bm-engine-darwin-x64",
+  "name": "bm-render-darwin-x64",
   "version": "0.1.0",
-  "description": "bm-engine native Node-API addon for macOS x64 (10.15+). Installed automatically by bm-engine as an optional dependency; do not depend on it directly.",
+  "description": "bm-render native Node-API addon for macOS x64 (10.15+). Installed automatically by bm-render as an optional dependency; do not depend on it directly.",
   "keywords": [
-    "bm-engine",
+    "bm-render",
     "napi",
     "native-addon"
   ],
   "license": "MIT",
   "author": "hunghg255",
-  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
+  "homepage": "https://github.com/BM-Hospital/bm-render#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BM-Hospital/bm-engine.git",
+    "url": "git+https://github.com/BM-Hospital/bm-render.git",
     "directory": "npm/darwin-x64"
   },
   "bugs": {
-    "url": "https://github.com/BM-Hospital/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-render/issues"
   },
   "os": [
     "darwin"
@@ -24,9 +24,9 @@
   "cpu": [
     "x64"
   ],
-  "main": "bm-engine.darwin-x64.node",
+  "main": "bm-render.darwin-x64.node",
   "files": [
-    "bm-engine.darwin-x64.node",
+    "bm-render.darwin-x64.node",
     "LICENSE",
     "NOTICE",
     "THIRD-PARTY-NOTICES.md"

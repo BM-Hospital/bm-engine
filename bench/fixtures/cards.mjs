@@ -15,7 +15,7 @@ export const ogCard = (W = 1200, H = 630, k = 1) => root({
   ]),
   c({ justifyContent: "space-between", alignItems: "center" }, [
     c({ gap: 12 * k }, [tag("Zig", "rgba(251,191,36,0.2)", "#fbbf24"), tag("WebAssembly", "rgba(56,189,248,0.2)", "#38bdf8"), tag("Rendering", "rgba(244,114,182,0.2)", "#f472b6")]),
-    c({ alignItems: "center", gap: 10 * k }, [c({ width: 14 * k, height: 14 * k, borderRadius: 7 * k, backgroundColor: "#22c55e" }, []), t("bm-engine.dev", { fontSize: 24 * k, fontWeight: 600, color: "#e2e8f0" })]),
+    c({ alignItems: "center", gap: 10 * k }, [c({ width: 14 * k, height: 14 * k, borderRadius: 7 * k, backgroundColor: "#22c55e" }, []), t("bm-render.dev", { fontSize: 24 * k, fontWeight: 600, color: "#e2e8f0" })]),
   ]),
 ]);
 

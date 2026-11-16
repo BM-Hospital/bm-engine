@@ -1,4 +1,4 @@
-//! Round-trip tests of the subsetter against bm-engine's own font parser: subset, re-parse the
+//! Round-trip tests of the subsetter against bm-render's own font parser: subset, re-parse the
 //! subset with `ttf.Font` and compare every kept glyph's outline and advance with the
 //! original's. Also checks the sfnt checksums and that the output shrinks.
 const std = @import("std");
@@ -45,7 +45,7 @@ fn outlineOf(a: std.mem.Allocator, f: *const ttf.Font, gid: u16) ![]f32 {
     return r.v.items;
 }
 
-/// The subset has no `cmap` (as in Rust); bm-engine's parser requires one, so splice in a
+/// The subset has no `cmap` (as in Rust); bm-render's parser requires one, so splice in a
 /// minimal format-4 cmap (test helper only).
 pub fn withDummyCmap(a: std.mem.Allocator, sfnt: []const u8) ![]u8 {
     const cmap = [_]u8{
@@ -59,7 +59,7 @@ pub fn withDummyCmap(a: std.mem.Allocator, sfnt: []const u8) ![]u8 {
     @memcpy(out[0..12], sfnt[0..12]);
     std.mem.writeInt(u16, out[4..6], @intCast(n + 1), .big);
     // records: shift every offset by 16, append cmap record at the end (order is irrelevant
-    // for bm-engine's linear lookup)
+    // for bm-render's linear lookup)
     for (0..n) |i| {
         const src = sfnt[12 + i * 16 ..][0..16];
         const dst = out[12 + i * 16 ..][0..16];

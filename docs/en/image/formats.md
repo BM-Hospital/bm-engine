@@ -3,7 +3,7 @@
 [English](formats.md) · [Tiếng Việt](../../vi/image/formats.md)
 
 `render()` lays the page out once and then hands the pixels to an encoder; the `format` option picks
-which one. This page shows every output bm-engine 0.1.0 can produce — PNG, JPEG, WebP, raw RGBA, ICO,
+which one. This page shows every output bm-render 0.1.0 can produce — PNG, JPEG, WebP, raw RGBA, ICO,
 data URLs, SVG documents and (on its own page) animations — what each does with transparency and
 `quality`, how `devicePixelRatio` and the canvas size interact, which profile ships which encoder, and
 what the benchmark says about speed and file size. PDF documents have their own pages, starting at [PDF output](../pdf/index.md). Every snippet below is part of
@@ -21,7 +21,7 @@ what the benchmark says about speed and file size. PDF documents have their own 
 | `renderSvg()` | yes | — | `full` | an SVG document string |
 | `renderAnimation()` | yes | — | `full` | animated WebP (default), APNG or GIF; see [Animation](./animation.md) |
 
-Any other `format` throws `bm-engine: unsupported format: <x>` (for example `"gif"` for a still image).
+Any other `format` throws `bm-render: unsupported format: <x>` (for example `"gif"` for a still image).
 
 All examples on this page use this setup and card. Note the rounded corners on a transparent canvas: they
 show what each format does with alpha.
@@ -29,7 +29,7 @@ show what each format does with alpha.
 <!-- @example formats#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // Node: the full profile
+import { Renderer } from "bm-render"; // Node: the full profile
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -44,7 +44,7 @@ const card = {
     backgroundImage: "linear-gradient(135deg, #f97316, #db2777 55%, #7c3aed)",
   },
   children: [
-    { type: "text", text: "bm-engine", style: { fontSize: 40, fontWeight: 700, color: "white" } },
+    { type: "text", text: "bm-render", style: { fontSize: 40, fontWeight: 700, color: "white" } },
     { type: "text", text: "PNG · JPEG · WebP · SVG", style: { fontSize: 20, color: "rgba(255,255,255,0.85)" } },
   ],
 };
@@ -183,7 +183,7 @@ console.log(pixel(200, 100)); // an opaque pixel of the gradient
 The printed opaque pixel was `[222, 46, 110, 255]`. Raw output is also the fastest path, because the
 encoder is skipped (0.64 ms vs 1.33 ms geometric mean in the benchmark).
 
-A raw buffer can go straight back into bm-engine as an image source, which is handy for composing
+A raw buffer can go straight back into bm-render as an image source, which is handy for composing
 thumbnails or frame strips without an extra image library:
 
 <!-- @example formats#raw-roundtrip -->
@@ -213,13 +213,13 @@ console.log(url.slice(0, 23)); // "data:image/webp;base64,"
 // in a browser: img.src = url
 ```
 
-`format: "raw"` throws `bm-engine: renderAsDataUrl needs an encoded format`. Data URLs are about a third
+`format: "raw"` throws `bm-render: renderAsDataUrl needs an encoded format`. Data URLs are about a third
 larger than the bytes they encode; for HTTP responses send the bytes with the right `content-type`.
 
 ## ICO (favicons)
 
 `format: "ico"` writes an ICO file containing one PNG image. It needs the `full` profile and a canvas of
-1 to 256 pixels per side; anything bigger throws `bm-engine: ICO images are 1 to 256 pixels on a side,
+1 to 256 pixels per side; anything bigger throws `bm-render: ICO images are 1 to 256 pixels on a side,
 not 300`.
 
 <!-- @example formats#ico -->
@@ -339,13 +339,13 @@ try {
 | ICO | | | ✓ |
 | `renderSvg()` | | | ✓ |
 | `renderAnimation()` (WebP / APNG / GIF) | | | ✓ |
-| PDF (`renderPdf()`, `bm-engine/pdf`) | | | not in `full`: see [PDF output](../pdf/index.md) |
+| PDF (`renderPdf()`, `bm-render/pdf`) | | | not in `full`: see [PDF output](../pdf/index.md) |
 
 On a smaller profile the `full`-only outputs throw a clear error:
 
 <!-- @example formats#core -->
 ```js
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 
 const small = new core.Renderer();
 small.renderSync({ type: "container", style: { width: 16, height: 16, backgroundColor: "red" } },
@@ -353,7 +353,7 @@ small.renderSync({ type: "container", style: { width: 16, height: 16, background
 try {
   small.renderSync({ type: "container" }, { width: 16, height: 16, format: "ico" });
 } catch (err) {
-  console.log(err.message); // "bm-engine: this build has no ICO output support (use the full build)"
+  console.log(err.message); // "bm-render: this build has no ICO output support (use the full build)"
 }
 ```
 

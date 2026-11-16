@@ -22,7 +22,7 @@ function text(bytes) {
 }
 
 // #region exports
-import * as pdfEntry from "bm-engine/pdf";
+import * as pdfEntry from "bm-render/pdf";
 
 pdfEntry.profile;      // "pdf"
 pdfEntry.features.pdf; // true (and every other feature of the full profile)
@@ -35,11 +35,11 @@ assert.deepEqual(Object.keys(pdfEntry).sort(), [
   "PageNumber", "PdfRenderer", "Prepared", "Renderer", "TargetPageNumber", "TotalPages", "backend", "default", "features",
   "init", "initSync", "measure", "prepare", "profile", "render", "setGlyphCacheMaxBytes", "setWoffDecoder", "wasmUrl",
 ]);
-assert.ok(pdfEntry.wasmUrl().href.endsWith("bm_engine.pdf.wasm"));
+assert.ok(pdfEntry.wasmUrl().href.endsWith("bm_render.pdf.wasm"));
 
 // #region renderer
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const families = pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -86,7 +86,7 @@ const a5 = await pdf.render(prepared, { margin: 24 }); // options merge over the
 assert.deepEqual(mediaBox(a5).map(Math.round), [420, 595]);
 
 // #region module-level
-import { render, measure } from "bm-engine/pdf";
+import { render, measure } from "bm-render/pdf";
 
 const plain = await render(`<div style="width: 200px; height: 100px; background: #0ea5e9"></div>`, {
   viewport: { width: 200 },
@@ -112,10 +112,10 @@ try {
 } catch (e) {
   noFont = e.message;
 }
-// bm-engine: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-engine bundles
+// bm-render: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-render bundles
 // no font: register one with registerFont or the fonts option.
 // #endregion
-assert.equal(noFont, "bm-engine: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-engine bundles no font: register one with registerFont or the fonts option.");
+assert.equal(noFont, "bm-render: No font is registered to draw H (U+0048), e (U+0065), l (U+006C), o (U+006F). bm-render bundles no font: register one with registerFont or the fonts option.");
 // uncoveredText "blank" asks for nothing to be drawn: the render goes on without text
 const blank = await empty.render(`<p>Hello</p>`, { uncoveredText: "blank" });
 assert.equal(pageCount(blank), 1);
@@ -133,7 +133,7 @@ const t4 = text(viaSync);
 if (t4 !== null) assert.equal(t4, "Hello");
 
 // #region renderer-methods
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const r = new Renderer();
 const viaRenderer = await r.renderPdf(`<div style="width: 40px; height: 40px; background: red"></div>`, {
@@ -146,7 +146,7 @@ assert.deepEqual(r.measurePdfSync(`<div style="width: 40px; height: 40px"></div>
 r.free();
 
 // #region counters
-import { PageNumber, TotalPages, TargetPageNumber } from "bm-engine/pdf";
+import { PageNumber, TotalPages, TargetPageNumber } from "bm-render/pdf";
 
 PageNumber({ format: "upper-roman", style: { color: "#64748b" } });
 // { type: "container", tagName: "span", style: { color: "#64748b" }, className: "pageNumber upper-roman" }
@@ -194,9 +194,9 @@ pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular
 }
 const done = new PdfRenderer();
 done.free();
-// done.renderSync(...) now throws "bm-engine: renderer has been freed"
+// done.renderSync(...) now throws "bm-render: renderer has been freed"
 // #endregion
-assert.throws(() => done.renderSync(`<p>x</p>`), { message: "bm-engine: renderer has been freed" });
+assert.throws(() => done.renderSync(`<p>x</p>`), { message: "bm-render: renderer has been freed" });
 
 // #region abort
 const controller = new AbortController();
@@ -219,59 +219,59 @@ const messageOf = async (options, source = html) => {
   }
 };
 await messageOf({ size: "tabloid" });
-// bm-engine: unknown page size: tabloid
+// bm-render: unknown page size: tabloid
 await messageOf({ margin: "1in" });
-// bm-engine: invalid margin: expected a number or "auto"
+// bm-render: invalid margin: expected a number or "auto"
 await messageOf({ viewport: { width: 300 }, size: "a4" });
-// bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
+// bm-render: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
 await messageOf({ pageRanges: [{ from: 5, to: 2 }] });
-// bm-engine: Page range is invalid: 5-2. Pages are numbered from 1.
+// bm-render: Page range is invalid: 5-2. Pages are numbered from 1.
 await messageOf({ pdfa: "1b" });
-// bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
+// bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 await messageOf({ backgroundColor: "paper" });
-// bm-engine: backgroundColor is not a color: paper
+// bm-render: backgroundColor is not a color: paper
 await messageOf({ sise: "a4" });
 // "ok": an unknown option name is ignored
 // #endregion
 const ERRORS = [
-  [{ size: "tabloid" }, "bm-engine: unknown page size: tabloid"],
-  [{ size: { width: 10 } }, "bm-engine: invalid size: expected a preset name or { width, height }"],
-  [{ margin: "1in" }, 'bm-engine: invalid margin: expected a number or "auto"'],
-  [{ size: { width: 40, height: 40 }, margin: 20 }, "bm-engine: Page size must be finite and larger than zero"],
-  [{ landscape: "yes" }, "bm-engine: invalid landscape: expected a boolean"],
-  [{ viewport: { width: 300 }, size: "a4" }, "bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)"],
-  [{ viewport: { height: 300 } }, "bm-engine: invalid viewport: width is required"],
-  [{ viewport: { width: 0 } }, "bm-engine: Page size must be finite and larger than zero"],
+  [{ size: "tabloid" }, "bm-render: unknown page size: tabloid"],
+  [{ size: { width: 10 } }, "bm-render: invalid size: expected a preset name or { width, height }"],
+  [{ margin: "1in" }, 'bm-render: invalid margin: expected a number or "auto"'],
+  [{ size: { width: 40, height: 40 }, margin: 20 }, "bm-render: Page size must be finite and larger than zero"],
+  [{ landscape: "yes" }, "bm-render: invalid landscape: expected a boolean"],
+  [{ viewport: { width: 300 }, size: "a4" }, "bm-render: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)"],
+  [{ viewport: { height: 300 } }, "bm-render: invalid viewport: width is required"],
+  [{ viewport: { width: 0 } }, "bm-render: Page size must be finite and larger than zero"],
   [{ header: 5 }, "ok"], // (a number band is written as text, as takumi-pdf-js does)
-  [{ pages: { middle: {} } }, "bm-engine: unknown page rule: middle"],
-  [{ pages: { first: { body: "x" } } }, "bm-engine: unknown field of pages.first: body"],
-  [{ pageRanges: 3 }, "bm-engine: invalid pageRanges: expected an array of page numbers or { from, to } spans"],
-  [{ pageRanges: [0] }, "bm-engine: Page range is invalid: 0. Pages are numbered from 1."],
-  [{ pageRanges: [{ from: 5, to: 2 }] }, "bm-engine: Page range is invalid: 5-2. Pages are numbered from 1."],
-  [{ pageRanges: [{ from: 5 }] }, "bm-engine: The page ranges select none of the document's 1 pages"],
-  [{ pdfa: "1b" }, "bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`"],
-  [{ tagged: "ua3" }, "bm-engine: data did not match any variant of untagged enum TaggedInput"],
-  [{ uncoveredText: "skip" }, "bm-engine: unknown uncoveredText: skip"],
-  [{ outline: "yes" }, "bm-engine: invalid outline: expected a boolean"],
-  [{ lang: 5 }, "bm-engine: invalid lang: expected a string"],
-  [{ backgroundColor: 5 }, "bm-engine: invalid backgroundColor: expected a string"],
-  [{ backgroundColor: "paper" }, "bm-engine: backgroundColor is not a color: paper"],
-  [{ cssVariables: "x" }, "bm-engine: invalid cssVariables: expected an object of strings"],
-  [{ cssVariables: { accent: 1 } }, "bm-engine: invalid cssVariables: expected a string"],
-  [{ metadata: "x" }, "bm-engine: invalid metadata: expected an object"],
-  [{ metadata: { creationDate: "2026/01/01" } }, "bm-engine: invalid creationDate: expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"],
-  [{ attachments: {} }, "bm-engine: attachments takes an array"],
-  [{ attachments: [{ data: "x" }] }, "bm-engine: missing field `name`"],
-  [{ attachments: [{ name: "a.txt", data: 5 }] }, "bm-engine: attachment data must be bytes or a string: a.txt"],
-  [{ attachments: [{ name: "a.txt", data: "x", relationship: "parent" }] }, "bm-engine: unknown variant `parent`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified`"],
-  [{ attachments: [{ name: "a.txt", data: "x", mimeType: "plain" }] }, "bm-engine: Attachment mime type is not a type/subtype pair: plain"],
+  [{ pages: { middle: {} } }, "bm-render: unknown page rule: middle"],
+  [{ pages: { first: { body: "x" } } }, "bm-render: unknown field of pages.first: body"],
+  [{ pageRanges: 3 }, "bm-render: invalid pageRanges: expected an array of page numbers or { from, to } spans"],
+  [{ pageRanges: [0] }, "bm-render: Page range is invalid: 0. Pages are numbered from 1."],
+  [{ pageRanges: [{ from: 5, to: 2 }] }, "bm-render: Page range is invalid: 5-2. Pages are numbered from 1."],
+  [{ pageRanges: [{ from: 5 }] }, "bm-render: The page ranges select none of the document's 1 pages"],
+  [{ pdfa: "1b" }, "bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`"],
+  [{ tagged: "ua3" }, "bm-render: data did not match any variant of untagged enum TaggedInput"],
+  [{ uncoveredText: "skip" }, "bm-render: unknown uncoveredText: skip"],
+  [{ outline: "yes" }, "bm-render: invalid outline: expected a boolean"],
+  [{ lang: 5 }, "bm-render: invalid lang: expected a string"],
+  [{ backgroundColor: 5 }, "bm-render: invalid backgroundColor: expected a string"],
+  [{ backgroundColor: "paper" }, "bm-render: backgroundColor is not a color: paper"],
+  [{ cssVariables: "x" }, "bm-render: invalid cssVariables: expected an object of strings"],
+  [{ cssVariables: { accent: 1 } }, "bm-render: invalid cssVariables: expected a string"],
+  [{ metadata: "x" }, "bm-render: invalid metadata: expected an object"],
+  [{ metadata: { creationDate: "2026/01/01" } }, "bm-render: invalid creationDate: expected YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"],
+  [{ attachments: {} }, "bm-render: attachments takes an array"],
+  [{ attachments: [{ data: "x" }] }, "bm-render: missing field `name`"],
+  [{ attachments: [{ name: "a.txt", data: 5 }] }, "bm-render: attachment data must be bytes or a string: a.txt"],
+  [{ attachments: [{ name: "a.txt", data: "x", relationship: "parent" }] }, "bm-render: unknown variant `parent`, expected one of `source`, `data`, `alternative`, `supplement`, `unspecified`"],
+  [{ attachments: [{ name: "a.txt", data: "x", mimeType: "plain" }] }, "bm-render: Attachment mime type is not a type/subtype pair: plain"],
   [{ sise: "a4" }, "ok"],
 ];
 for (const [options, expected] of ERRORS) assert.equal(await messageOf(options), expected, JSON.stringify(options));
 // errors that depend on the document
 assert.equal(await messageOf({}, `<p style="font-family: Inter">日</p>`),
-  "bm-engine: No font the text can use draws 日 (U+65E5). Check each font's unicodeRange and the font-family stack, or register a font that draws them.");
-assert.equal(await messageOf({}, `<p style="font-family: Inter; filter: blur(2px)">x</p>`), "bm-engine: A PDF cannot draw filter: blur(2px)");
+  "bm-render: No font the text can use draws 日 (U+65E5). Check each font's unicodeRange and the font-family stack, or register a font that draws them.");
+assert.equal(await messageOf({}, `<p style="font-family: Inter; filter: blur(2px)">x</p>`), "bm-render: A PDF cannot draw filter: blur(2px)");
 
 // #region viewport-empty
 let emptyViewport;
@@ -280,12 +280,12 @@ try {
 } catch (e) {
   emptyViewport = e.message;
 }
-// bm-engine: Page size must be finite and larger than zero
+// bm-render: Page size must be finite and larger than zero
 // #endregion
-assert.equal(emptyViewport, "bm-engine: Page size must be finite and larger than zero");
+assert.equal(emptyViewport, "bm-render: Page size must be finite and larger than zero");
 
 // #region other-builds
-import { Renderer as FullRenderer } from "bm-engine/full";
+import { Renderer as FullRenderer } from "bm-render/full";
 
 let unsupported;
 try {
@@ -293,9 +293,9 @@ try {
 } catch (e) {
   unsupported = e.message;
 }
-// bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")
+// bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")
 // #endregion
-assert.equal(unsupported, 'bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")');
+assert.equal(unsupported, 'bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")');
 
 pdf.free();
 console.log(`pdf-api: ok (backend ${pdfEntry.backend}, pdftotext ${t1 === null ? "missing" : "used"})`);

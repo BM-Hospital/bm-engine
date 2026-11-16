@@ -5,7 +5,7 @@ const save = saver("typography");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "Roboto-Regular"]) {
@@ -95,7 +95,7 @@ const indent = renderer.renderSync(
 save("indent", indent);
 
 // #region truncation
-const long = "bm-engine renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
+const long = "bm-render renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
 const truncation = renderer.renderSync(
   page({}, [
     sample("textOverflow: ellipsis", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, [text(long)]),
@@ -269,7 +269,7 @@ if (existsSync(`${TF}/sil/scheherazade-new-v17-arabic-regular.woff2`) && existsS
   save("scripts", scriptsPng);
 
   // Same tree on standard (no bidi, default shaper): not shown as code.
-  const std = await import("bm-engine/standard");
+  const std = await import("bm-render/standard");
   const rs = new std.Renderer();
   for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "Roboto-Regular"]) rs.registerFont(readFileSync(`assets/fonts/${file}.ttf`));
   rs.registerFont(readFileSync(`${TF}/sil/scheherazade-new-v17-arabic-regular.woff2`));

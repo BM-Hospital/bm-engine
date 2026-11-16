@@ -21,7 +21,7 @@ repository and was executed by it.
 <!-- @example pdf-links-metadata#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -128,13 +128,13 @@ const described = await pdf.render(book, {
     description: "Setup and usage guide",
     authors: ["A. Writer", "B. Editor"],
     keywords: ["guide", "setup"],
-    creator: "bm-engine docs",
+    creator: "bm-render docs",
     creationDate: "2026-08-06T09:30:00", // UTC; or just "2026-08-06"
   },
 });
 ```
 
-The Info dictionary names `bm-engine` as the producer.
+The Info dictionary names `bm-render` as the producer.
 
 ## Custom XMP
 
@@ -197,6 +197,6 @@ for (const attachments of [
 ]) {
   try { await pdf.render("<p>x</p>", { attachments }); } catch (e) { messages.push(e.message); }
 }
-// bm-engine: Two attachments are named a.txt
-// bm-engine: Attachment mime type is not a type/subtype pair: plain
+// bm-render: Two attachments are named a.txt
+// bm-render: Attachment mime type is not a type/subtype pair: plain
 ```

@@ -1,6 +1,6 @@
 // Oracle comparison for bench/fixtures/layout2.mjs (or any case matching argv[2]): pixel verdict / % differing
 // pixels / SSIM (like probe/frontend/cmp.mjs) plus the measure() tree diff (positions / sizes > tol, child counts).
-// Usage (from bench/): BM_WASM=../zig-out/bin/bm_engine.wasm node probe/layout2/cmp.mjs [filter] [tol]
+// Usage (from bench/): BM_WASM=../zig-out/bin/bm_render.wasm node probe/layout2/cmp.mjs [filter] [tol]
 // LAY_OUT=1 writes takumi.png / bm.png / diff.png to bench/out/layout2/<id>/; LAY_TREE=1 prints both trees.
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
@@ -12,7 +12,7 @@ import { compare, verdict } from "../../lib/metrics.mjs";
 import { encodePng } from "../../lib/pipeline.mjs";
 import { fmt } from "./fmt.mjs";
 
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer();
 const t = new TR();
 for (const f of fontsFor()) {

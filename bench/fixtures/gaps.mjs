@@ -1,4 +1,4 @@
-// Features takumi supports that bm-engine does NOT implement (yet). They are part of the suite on
+// Features takumi supports that bm-render does NOT implement (yet). They are part of the suite on
 // purpose so the report shows the gaps honestly instead of only the cases we handle.
 import { c, col, t, root, rootCol } from "./_h.mjs";
 const F = "known-gaps";

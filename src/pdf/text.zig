@@ -69,7 +69,7 @@ pub const Glyph = struct {
 /// the byte range of its own (unmerged) cluster in the run text.
 pub const ShapedGlyph = struct { gid: u16, x: f32, y: f32, start: u32, end: u32 };
 
-/// The font instance of a run (bm-engine: `fonts.font(face)` and `fonts.face(face).index`).
+/// The font instance of a run (bm-render: `fonts.font(face)` and `fonts.face(face).index`).
 pub const FontRef = struct { font: *const ttf.Font, face_index: u32 = 0, variant: u32 = 0 };
 
 /// What krilla's `draw_glyphs` needs about a run.
@@ -753,7 +753,7 @@ fn blurredBitmapSilhouette(s: *sf.Surface, font: *const ttf.Font, gid: u16, size
     s.pop();
 }
 
-// ===================================================================== bm-engine adapter
+// ===================================================================== bm-render adapter
 
 const rt = @import("../render.zig");
 const font_mod = @import("../font/font.zig");
@@ -815,7 +815,7 @@ pub const FrameRunOptions = struct {
 
 /// Byte offset where the cluster starting at `start` ends: the next cluster start of the
 /// paragraph, cut after one character when the cluster is white space (collapsed white space is
-/// dropped by bm-engine's text engine but still lies between the cluster starts).
+/// dropped by bm-render's text engine but still lies between the cluster starts).
 fn clusterEnd(text: []const u8, starts: []const u32, start: u32) u32 {
     var lo: usize = 0;
     var hi: usize = starts.len;
@@ -921,7 +921,7 @@ fn ignorableContinues(cp: u32) bool {
 /// takumi shapes with HarfBuzz, which keeps a default-ignorable character (soft hyphen, zero-width
 /// space / joiner, direction marks, variation selectors, U+FEFF) as a glyph: the font's space
 /// glyph with no advance, in a cluster of its own unless the character continues the cluster
-/// before it. bm-engine's shaper drops the character and leaves its bytes at the end of the
+/// before it. bm-render's shaper drops the character and leaves its bytes at the end of the
 /// cluster before it, which would give that cluster's glyph the character as text (ToUnicode
 /// `a` -> `a` + U+200B, an /ActualText span around every plain `a`). This puts the invisible
 /// glyphs back (left-to-right runs; a font without a space glyph gets none, as in HarfBuzz).
@@ -1022,7 +1022,7 @@ fn opszVariant(f: *rt.Frame, g0: *const font_mod.PositionedGlyph, font: *const t
     return @bitCast(v);
 }
 
-/// The krilla run of bm-engine glyphs `gs` (one face and size): cluster ranges from the
+/// The krilla run of bm-render glyphs `gs` (one face and size): cluster ranges from the
 /// paragraph's cluster starts; without the paragraph text, a stand-in text made of each glyph's
 /// lowest cmap codepoint (so ToUnicode still maps simple text).
 fn buildRun(reg: *FontRegistry, a: Allocator, f: *rt.Frame, para: ?*const font_mod.Paragraph, gs: []const font_mod.PositionedGlyph, text_in: []const u8) !?Run {

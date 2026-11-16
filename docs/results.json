@@ -29,7 +29,7 @@
    "bm": {
     "available": true,
     "status": "available",
-    "wasmPath": "D:\\project\\bm-engine\\zig-out\\bin\\bm_engine.wasm"
+    "wasmPath": "D:\\project\\bm-engine\\zig-out\\bin\\bm_render.wasm"
    }
   }
  },
@@ -68,7 +68,7 @@
     "gzip9": 551143,
     "brotli": 464273
    },
-   "binaryFile": "zig-out/bin/bm_engine.wasm",
+   "binaryFile": "zig-out/bin/bm_render.wasm",
    "glue": {
     "files": [
      "engine.mjs",

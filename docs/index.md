@@ -1,10 +1,10 @@
 ---
 layout: home
-title: bm-engine
+title: bm-render
 titleTemplate: Node trees and HTML + CSS to images and PDF
 
 hero:
-  name: bm-engine
+  name: bm-render
   text: Node trees and HTML + CSS to images and PDF
   tagline: A rendering library written in Zig for Node.js, browsers, Bun, Deno and edge workers. Create social cards, banners, invoices and reports with one package.
   actions:

@@ -1,7 +1,7 @@
 // Verifies outputs-compared.md: the measure() walk, a print-resolution page render, that no paint-tree API exists and
-// that the default (full) build has no PDF writer (PDF output is the separate bm-engine/pdf profile).
+// that the default (full) build has no PDF writer (PDF output is the separate bm-render/pdf profile).
 import assert from "node:assert/strict";
-import * as bm from "bm-engine";
+import * as bm from "bm-render";
 import { getRenderer, card } from "./lib/og.mjs";
 import { check, done, pngSize } from "./lib/util.mjs";
 

@@ -1,5 +1,5 @@
 // Examples for docs/{en,vi}/pdf/frameworks.md. Run: node docs/examples/run-all.mjs pdf-frameworks
-// (and with BM_ENGINE_BACKEND=wasm). Calls the Request -> Response handler in-process and through node:http.
+// (and with BM_RENDER_BACKEND=wasm). Calls the Request -> Response handler in-process and through node:http.
 import "./_lib.mjs";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -8,7 +8,7 @@ process.env.PORT = "0"; // the example server below listens on PORT; here on an 
 // #region renderer
 // pdf.js — create the renderer once per process (or per isolate), not per request
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 let renderer;
 export function getPdfRenderer() {
@@ -114,5 +114,5 @@ assert.equal(new TextDecoder().decode(b3.subarray(0, 5)), "%PDF-");
 assert.equal(Number(res.headers.get("content-length")), b3.byteLength);
 server.close();
 
-const { backend } = await import("bm-engine/pdf");
+const { backend } = await import("bm-render/pdf");
 console.log("pdf-frameworks: ok", { backend, inProcessBytes: b1.byteLength, httpBytes: b3.byteLength, abort: abortError.name + ": " + abortError.message });

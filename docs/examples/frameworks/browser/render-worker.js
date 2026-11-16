@@ -1,8 +1,8 @@
 // Module Web Worker (recipes.md / vite-browser.md): owns the wasm instance and the fonts, renders off the main thread.
-import { init, Renderer } from "/node_modules/bm-engine/js/standard.mjs"; // with a bundler: "bm-engine/standard"
+import { init, Renderer } from "/node_modules/bm-render/js/standard.mjs"; // with a bundler: "bm-render/standard"
 
 const ready = (async () => {
-  await init(); // fetches bm_engine.standard.wasm next to standard.mjs
+  await init(); // fetches bm_render.standard.wasm next to standard.mjs
   const renderer = new Renderer();
   const font = await (await fetch("/fonts/Inter-Regular.ttf")).arrayBuffer();
   renderer.registerFont({ name: "Inter", data: font });

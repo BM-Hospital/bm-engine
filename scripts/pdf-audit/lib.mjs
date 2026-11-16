@@ -1,7 +1,7 @@
 // Shared helpers of the PDF audit probes (scripts/pdf-audit/*.probe.mjs, run by scripts/pdf-audit/run.mjs).
 //
-// A probe renders the same input with bm-engine/pdf (js/node-pdf.mjs: wasm, or the native addon with
-// BM_ENGINE_BACKEND=native) and, when it is available, with the published takumi-pdf npm package, and compares
+// A probe renders the same input with bm-render/pdf (js/node-pdf.mjs: wasm, or the native addon with
+// BM_RENDER_BACKEND=native) and, when it is available, with the published takumi-pdf npm package, and compares
 // structure: page count, page boxes, extracted text (poppler's `pdftotext`), catalog / Info / annotation /
 // structure-tree entries. The reference package is NOT a dependency of this repo: install it somewhere else
 //
@@ -81,7 +81,7 @@ async function renderWith(mod, source, options = {}, { fonts = DEFAULT_FONTS, me
   }
 }
 
-/** bm-engine/pdf render (see renderWith). */
+/** bm-render/pdf render (see renderWith). */
 export const bmRender = (source, options, extra) => renderWith(bmMod, source, options, extra);
 /** takumi-pdf render, or null when the reference is not installed. */
 export const refRender = (source, options, extra) => (refMod ? renderWith(refMod, source, options, extra) : Promise.resolve(null));
@@ -318,8 +318,8 @@ export function sameDocument(t, r, { text = true, boxes = true } = {}) {
   return good;
 }
 
-/** bm-engine prefixes its messages with `bm-engine: `; takumi-pdf's wasm glue sometimes with `Error: `. */
-export const errNorm = (m) => (m == null ? m : String(m).replace(/^bm-engine: /, "").replace(/^Error: /, ""));
+/** bm-render prefixes its messages with `bm-render: `; takumi-pdf's wasm glue sometimes with `Error: `. */
+export const errNorm = (m) => (m == null ? m : String(m).replace(/^bm-render: /, "").replace(/^Error: /, ""));
 /** Messages serde generates for a value of the wrong shape: Rust implementation detail, not part of takumi-pdf's API. */
 export const isSerdeMessage = (m) => /did not match any variant|invalid type: |unknown variant|unknown field|missing field|invalid value: |invalid length|a band is a node, HTML, or false|expected .* at line \d+|EOF while parsing|key must be a string|invalid entry/.test(String(m)) || isGlueCrash(m);
 /**
@@ -352,5 +352,5 @@ export function pngRgba(w, h, pixel = (x, y) => ((x + y) & 1 ? [220, 30, 30, 255
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr.set([8, 6, 0, 0, 0], 8);
   return new Uint8Array(Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]));
 }
-/** `/Producer` is the one Info entry that names the engine: "bm-engine" vs "takumi-pdf <version>". */
-export const noProducer = (s) => (typeof s === "string" ? s.replace(/takumi-pdf \d+\.\d+\.\d+|bm-engine(?: \d+\.\d+\.\d+)?/g, "PRODUCER") : s);
+/** `/Producer` is the one Info entry that names the engine: "bm-render" vs "takumi-pdf <version>". */
+export const noProducer = (s) => (typeof s === "string" ? s.replace(/takumi-pdf \d+\.\d+\.\d+|bm-render(?: \d+\.\d+\.\d+)?/g, "PRODUCER") : s);

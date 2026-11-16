@@ -3,20 +3,20 @@
 [English](../../../en/image/frameworks/nextjs.md) · [Tiếng Việt](nextjs.md)
 
 Phục vụ ảnh Open Graph từ một route handler của Next.js App Router, hoặc để Next.js tự phát hiện chúng
-qua quy ước file `opengraph-image`. bm-engine thay `ImageResponse` của `next/og` bằng một renderer do
+qua quy ước file `opengraph-image`. bm-render thay `ImageResponse` của `next/og` bằng một renderer do
 bạn quản lý và một `Response` thông thường; ảnh là một node tree (hoặc HTML), không phải JSX — xem
 [Node tree không cần JSX](./index.md#node-tree-không-cần-jsx) để có một helper `h()` nhỏ.
 
 ::: info Trạng thái kiểm chứng
-Đã kiểm chứng với **Next.js 16.4.6 trên Windows x64, Node 26.13**, bm-engine và platform package
-`bm-engine-win32-x64-msvc` được cài từ các tarball đã đóng gói: `next build` với Turbopack (mặc định) và
+Đã kiểm chứng với **Next.js 16.4.6 trên Windows x64, Node 26.13**, bm-render và platform package
+`bm-render-win32-x64-msvc` được cài từ các tarball đã đóng gói: `next build` với Turbopack (mặc định) và
 với `--webpack`, rồi `next start`; với `output: "standalone"`, thư mục `.next/standalone` được chép ra một
 thư mục nằm ngoài project và chạy bằng `node server.js`, để không thứ gì có thể được resolve từ
-`node_modules` của máy build. Các route: một route handler Node.js dùng `bm-engine`, một dùng
-`bm-engine/full`, và một route Edge; mỗi route trả về một PNG. Kết quả nằm trong các bảng bên dưới. Chưa
+`node_modules` của máy build. Các route: một route handler Node.js dùng `bm-render`, một dùng
+`bm-render/full`, và một route Edge; mỗi route trả về một PNG. Kết quả nằm trong các bảng bên dưới. Chưa
 kiểm thử: deploy lên Vercel, máy chủ Linux / macOS, cấu trúc thư mục của pnpm / Yarn, các phiên bản
 Next.js khác. Không thể kiểm thử Edge runtime với builder webpack: trên Next.js 16.4.6, `next build
---webpack` thất bại với *mọi* route Edge trên máy này, kể cả một route không dùng bm-engine (`ENOENT ...
+--webpack` thất bại với *mọi* route Edge trên máy này, kể cả một route không dùng bm-render (`ENOENT ...
 route_client-reference-manifest.js`). Ứng dụng mẫu nằm ở
 [`docs/examples/frameworks/nextjs/`](../../../examples/frameworks/nextjs/).
 :::
@@ -24,18 +24,18 @@ route_client-reference-manifest.js`). Ứng dụng mẫu nằm ở
 ## 1. Cài đặt và cấu hình
 
 ```sh
-npm install bm-engine
+npm install bm-render
 ```
 
 ```js
 // next.config.mjs
 /** @type {import("next").NextConfig} */
 export default {
-  // Giữ bm-engine ngoài server bundle: Node nạp nó từ node_modules, và Next.js chép các file của nó
+  // Giữ bm-render ngoài server bundle: Node nạp nó từ node_modules, và Next.js chép các file của nó
   // vào output standalone / Vercel.
-  serverExternalPackages: ["bm-engine"],
+  serverExternalPackages: ["bm-render"],
   // Chép cả platform package native (file tracing của Turbopack không lần theo nó, xem bên dưới).
-  outputFileTracingIncludes: { "/*": ["./node_modules/bm-engine-*/**"] },
+  outputFileTracingIncludes: { "/*": ["./node_modules/bm-render-*/**"] },
 };
 ```
 
@@ -49,24 +49,24 @@ Với `next dev` / `next start` trên chính máy đã build ứng dụng thì k
 | Turbopack | `serverExternalPackages` | native | **wasm** (platform package không được chép) |
 | Turbopack | `serverExternalPackages` + `outputFileTracingIncludes` | native | **native** |
 | Turbopack | chỉ `outputFileTracingIncludes` | native | native |
-| webpack (`--webpack`) | không có gì | native | **lỗi**: `bm-engine: cannot find bm_engine.wasm (...)` (HTTP 500) |
+| webpack (`--webpack`) | không có gì | native | **lỗi**: `bm-render: cannot find bm_render.wasm (...)` (HTTP 500) |
 | webpack (`--webpack`) | `serverExternalPackages` | native | **native** (platform package được trace) |
 
 "wasm" là cơ chế fallback tự động: output đúng, chậm hơn, và các method async chặn event loop. Hãy log
-hoặc trả về `backend` (được `bm-engine` export) một lần để biết thứ gì đang chạy trên production.
+hoặc trả về `backend` (được `bm-render` export) một lần để biết thứ gì đang chạy trên production.
 
 Package hoạt động thế nào khi Next.js bundle nó: điểm vào Node tìm file `.wasm` ngay cạnh nó (hoặc asset
-mà Turbopack phát ra), sau đó qua package resolution, sau đó trong `<cwd>/node_modules/bm-engine/js/`;
+mà Turbopack phát ra), sau đó qua package resolution, sau đó trong `<cwd>/node_modules/bm-render/js/`;
 nếu tất cả đều thất bại, thông báo lỗi nêu tên `serverExternalPackages`. Platform package được require
 lúc chạy với một tên viết cứng cho mỗi nền tảng, có đánh dấu `turbopackIgnore` / `webpackIgnore`, nên
 build không bao giờ lỗi vì những platform package không được cài; cái giá phải trả là file tracing của
 Turbopack bỏ qua nó, vì vậy cần `outputFileTracingIncludes`. Với pnpm, các package nằm trong
-`node_modules/.pnpm/`: hãy sửa glob (ví dụ `"./node_modules/.pnpm/bm-engine-*/**"`); chưa kiểm thử.
+`node_modules/.pnpm/`: hãy sửa glob (ví dụ `"./node_modules/.pnpm/bm-render-*/**"`); chưa kiểm thử.
 
 ### Addon native khi triển khai
 
 Platform package được chọn lúc cài dependency, trên máy chạy lệnh cài: Vercel build trên Linux x64 và
-nhận `bm-engine-linux-x64-gnu`, bản đã được build và kiểm tra cấu trúc nhưng **chưa từng được chạy** (chỉ
+nhận `bm-render-linux-x64-gnu`, bản đã được build và kiểm tra cấu trúc nhưng **chưa từng được chạy** (chỉ
 `win32-x64-msvc` đã chạy, xem [Cài đặt](../../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)).
 Nếu nó không nạp được ở đó, route vẫn chạy bằng wasm. Một thư mục `node_modules` được build trên máy Mac
 hoặc Windows của bạn rồi tải lên máy chủ Linux sẽ mang theo binary sai (lúc chạy là wasm).
@@ -81,7 +81,7 @@ file font nằm trong repository:
 // lib/og.js
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Renderer, backend } from "bm-engine";
+import { Renderer, backend } from "bm-render";
 
 let renderer;
 
@@ -113,8 +113,8 @@ export function card({ title, description }) {
 }
 ```
 
-Trên Node, `bm-engine` là addon native hoặc binary wasm `full`. Nếu muốn cố định một profile wasm nhỏ
-hơn, hãy import `bm-engine/standard` hoặc `bm-engine/core` (luôn là wasm). Một renderer chỉ render một ảnh
+Trên Node, `bm-render` là addon native hoặc binary wasm `full`. Nếu muốn cố định một profile wasm nhỏ
+hơn, hãy import `bm-render/standard` hoặc `bm-render/core` (luôn là wasm). Một renderer chỉ render một ảnh
 tại một thời điểm; với backend native, vài renderer (cùng bộ font) render song song trên thread pool.
 
 ## 3. Một route handler
@@ -129,7 +129,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const png = await getRenderer().render(
     card({
-      title: searchParams.get("title") ?? "bm-engine + Next.js",
+      title: searchParams.get("title") ?? "bm-render + Next.js",
       description: searchParams.get("description") ?? "Rendered in a route handler",
     }),
     { width: 1200, height: 630 },
@@ -155,10 +155,10 @@ import { getRenderer, card } from "../lib/og.js";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "bm-engine + Next.js";
+export const alt = "bm-render + Next.js";
 
 export default async function Image() {
-  const png = await getRenderer().render(card({ title: "bm-engine + Next.js", description: "opengraph-image file convention" }), size);
+  const png = await getRenderer().render(card({ title: "bm-render + Next.js", description: "opengraph-image file convention" }), size);
   return new Response(png, { headers: { "content-type": "image/png" } });
 }
 ```
@@ -177,8 +177,8 @@ tương ứng:
 
 ```js
 // app/og-edge/route.js
-import { initSync, Renderer } from "bm-engine/core";
-import wasm from "bm-engine/core.wasm?module";
+import { initSync, Renderer } from "bm-render/core";
+import wasm from "bm-render/core.wasm?module";
 
 export const runtime = "edge";
 
@@ -207,9 +207,9 @@ export async function GET(request) {
 
 Với Turbopack, route này build được và trả về PNG 1200 × 630 khi chạy `next start` lẫn từ output standalone
 đã tách riêng. Lý do nó chạy được: Turbopack tra specifier trong `exports` của package **kể cả phần query**,
-nên bm-engine khai báo `"./core.wasm?module"` (và tương tự cho `standard`, `full`, `wasm`, `woff`) trỏ tới
+nên bm-render khai báo `"./core.wasm?module"` (và tương tự cho `standard`, `full`, `wasm`, `woff`) trỏ tới
 file và giữ nguyên query. Trước khi có mục này, lệnh import lỗi với
-`Module not found: Can't resolve 'bm-engine/core.wasm'`, còn một key mà target không giữ query thì cho
+`Module not found: Can't resolve 'bm-render/core.wasm'`, còn một key mà target không giữ query thì cho
 `Export default doesn't exist in target module`. webpack bỏ query trước khi resolve, nên cùng lệnh import
 này được kỳ vọng chạy với `--webpack`, nhưng không thể kiểm thử (xem khung ở đầu trang). Cách vòng
 `Object.setPrototypeOf` mà các phiên bản cũ của trang này cần đã không còn: `initSync` nhận module mà
@@ -222,7 +222,7 @@ runtime.
 
 ## Chuyển từ `next/og`
 
-| `next/og` | bm-engine |
+| `next/og` | bm-render |
 |:--|:--|
 | `new ImageResponse(jsx, { width, height })` | `new Response(await renderer.render(node, { width, height }), { headers })` hoặc [`imageResponse()`](./index.md#helper-imageresponse) |
 | JSX element | node object, chuỗi HTML, hoặc JSX thông qua [`h()`](./index.md#node-tree-không-cần-jsx) |

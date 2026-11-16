@@ -1,5 +1,5 @@
 {
-  "name": "bm-engine",
+  "name": "bm-render",
   "version": "0.1.0",
   "description": "Render JSX-like node trees / HTML + CSS to PNG, JPEG, WebP, SVG, animations and PDF with a dependency-free Zig engine: WebAssembly in Node.js, browsers, Bun, Deno and edge runtimes such as Cloudflare Workers, and a native Node-API addon on Node.js through optional per-platform packages (automatic wasm fallback).",
   "keywords": [
@@ -31,13 +31,13 @@
   ],
   "license": "MIT",
   "author": "hunghg255",
-  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
+  "homepage": "https://github.com/BM-Hospital/bm-render#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BM-Hospital/bm-engine.git"
+    "url": "git+https://github.com/BM-Hospital/bm-render.git"
   },
   "bugs": {
-    "url": "https://github.com/BM-Hospital/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-render/issues"
   },
   "type": "module",
   "main": "./js/node.mjs",
@@ -99,43 +99,43 @@
     },
     "./wasm": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.wasm"
+      "default": "./js/bm_render.wasm"
     },
     "./wasm?module": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.wasm?module"
+      "default": "./js/bm_render.wasm?module"
     },
     "./core.wasm": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.core.wasm"
+      "default": "./js/bm_render.core.wasm"
     },
     "./core.wasm?module": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.core.wasm?module"
+      "default": "./js/bm_render.core.wasm?module"
     },
     "./standard.wasm": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.standard.wasm"
+      "default": "./js/bm_render.standard.wasm"
     },
     "./standard.wasm?module": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.standard.wasm?module"
+      "default": "./js/bm_render.standard.wasm?module"
     },
     "./full.wasm": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.wasm"
+      "default": "./js/bm_render.wasm"
     },
     "./full.wasm?module": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.wasm?module"
+      "default": "./js/bm_render.wasm?module"
     },
     "./pdf.wasm": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.pdf.wasm"
+      "default": "./js/bm_render.pdf.wasm"
     },
     "./pdf.wasm?module": {
       "types": "./js/wasm.d.mts",
-      "default": "./js/bm_engine.pdf.wasm?module"
+      "default": "./js/bm_render.pdf.wasm?module"
     },
     "./woff.wasm": {
       "types": "./js/wasm.d.mts",
@@ -181,10 +181,10 @@
     "js/addons.mjs",
     "js/addons.d.mts",
     "js/wasm.d.mts",
-    "js/bm_engine.core.wasm",
-    "js/bm_engine.standard.wasm",
-    "js/bm_engine.wasm",
-    "js/bm_engine.pdf.wasm",
+    "js/bm_render.core.wasm",
+    "js/bm_render.standard.wasm",
+    "js/bm_render.wasm",
+    "js/bm_render.pdf.wasm",
     "js/bm_woff.wasm",
     "js/build-manifest.json",
     "README.md",
@@ -238,13 +238,13 @@
     "vitepress": "^1.6.4"
   },
   "optionalDependencies": {
-    "bm-engine-win32-x64-msvc": "0.1.0",
-    "bm-engine-win32-arm64-msvc": "0.1.0",
-    "bm-engine-linux-x64-gnu": "0.1.0",
-    "bm-engine-linux-x64-musl": "0.1.0",
-    "bm-engine-linux-arm64-gnu": "0.1.0",
-    "bm-engine-linux-arm64-musl": "0.1.0",
-    "bm-engine-darwin-x64": "0.1.0",
-    "bm-engine-darwin-arm64": "0.1.0"
+    "bm-render-win32-x64-msvc": "0.1.0",
+    "bm-render-win32-arm64-msvc": "0.1.0",
+    "bm-render-linux-x64-gnu": "0.1.0",
+    "bm-render-linux-x64-musl": "0.1.0",
+    "bm-render-linux-arm64-gnu": "0.1.0",
+    "bm-render-linux-arm64-musl": "0.1.0",
+    "bm-render-darwin-x64": "0.1.0",
+    "bm-render-darwin-arm64": "0.1.0"
   }
 }

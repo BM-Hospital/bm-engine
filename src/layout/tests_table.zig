@@ -33,7 +33,7 @@ const expected_failures = [_][]const u8{
     "ctx/flex-width-below-min",
     // takumi bug (deviates from Blink): its measure pass reports a table's first-row fallback baseline at the
     // row's minimum height, the layout pass at its final height, so a table whose first row has no
-    // baseline-aligned content and grows (table height) is shifted up by the difference. bm-engine uses the
+    // baseline-aligned content and grows (table height) is shifted up by the difference. bm-render uses the
     // laid-out baseline in both passes.
     "quirk/nested-height-fallback-baseline",
     "quirk/flex-baseline-table-height",

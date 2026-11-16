@@ -26,14 +26,14 @@ node scripts/build.mjs --verify    # check js/*.wasm against the manifest (run b
 node scripts/build.mjs --test      # zig build test (also: npm test)
 ```
 
-Outputs: `js/bm_engine.core.wasm`, `js/bm_engine.standard.wasm`, `js/bm_engine.wasm` (full),
-`js/bm_engine.pdf.wasm` (full + PDF output), `js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, optimised), `js/build-manifest.json` (profile,
+Outputs: `js/bm_render.core.wasm`, `js/bm_render.standard.wasm`, `js/bm_render.wasm` (full),
+`js/bm_render.pdf.wasm` (full + PDF output), `js/bm_woff.wasm`, `zig-out/bin/bm_render.wasm` (full, optimised), `js/build-manifest.json` (profile,
 size, sha256 and feature bits per file) and a size table written to `bench/out/sizes.json`.
 
 Plain Zig commands:
 
 ```sh
-zig build                                   # full profile, optimize=small -> zig-out/bin/bm_engine.wasm (+ bm_woff.wasm)
+zig build                                   # full profile, optimize=small -> zig-out/bin/bm_render.wasm (+ bm_woff.wasm)
 zig build -Dprofile=standard -Dcss=false    # any profile + single-feature flags
 zig build -Dwasm-optimize=safe -Dstrip=false  # safety-checked build (for fuzzing / debugging)
 zig build addons                            # only the add-on modules
@@ -44,8 +44,8 @@ Options: `-Dprofile=core|standard|full|pdf`, one `-D<feature>=true|false` per fe
 [Profiles and size](profiles-and-size.md#custom-builds)), `-Dwasm-optimize=small|fast|safe|debug`,
 `-Dstrip=false`, `-Dstack-kib=<n>` (shadow stack, default 1024).
 
-In a source checkout, `import "bm-engine"` resolved to the repository (or `js/node.mjs` directly)
-prefers a fresh `zig-out/bin/bm_engine.wasm` over the packaged `js/bm_engine.wasm`. `BM_WASM=<path>`
+In a source checkout, `import "bm-render"` resolved to the repository (or `js/node.mjs` directly)
+prefers a fresh `zig-out/bin/bm_render.wasm` over the packaged `js/bm_render.wasm`. `BM_WASM=<path>`
 loads any binary.
 
 ## Tests
@@ -65,7 +65,7 @@ wasm trap instead of silent memory corruption):
 ```sh
 zig build -Dwasm-optimize=safe -Dstrip=false -p /tmp/bmsafe
 cd bench
-BM_WASM=/tmp/bmsafe/bin/bm_engine.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
+BM_WASM=/tmp/bmsafe/bin/bm_render.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
 ```
 
 ## Checking output

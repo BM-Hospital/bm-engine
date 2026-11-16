@@ -1,22 +1,22 @@
 {
-  "name": "bm-engine-linux-arm64-musl",
+  "name": "bm-render-linux-arm64-musl",
   "version": "0.1.0",
-  "description": "bm-engine native Node-API addon for Linux arm64, musl (Alpine). Installed automatically by bm-engine as an optional dependency; do not depend on it directly.",
+  "description": "bm-render native Node-API addon for Linux arm64, musl (Alpine). Installed automatically by bm-render as an optional dependency; do not depend on it directly.",
   "keywords": [
-    "bm-engine",
+    "bm-render",
     "napi",
     "native-addon"
   ],
   "license": "MIT",
   "author": "hunghg255",
-  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
+  "homepage": "https://github.com/BM-Hospital/bm-render#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BM-Hospital/bm-engine.git",
+    "url": "git+https://github.com/BM-Hospital/bm-render.git",
     "directory": "npm/linux-arm64-musl"
   },
   "bugs": {
-    "url": "https://github.com/BM-Hospital/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-render/issues"
   },
   "os": [
     "linux"
@@ -27,9 +27,9 @@
   "libc": [
     "musl"
   ],
-  "main": "bm-engine.linux-arm64-musl.node",
+  "main": "bm-render.linux-arm64-musl.node",
   "files": [
-    "bm-engine.linux-arm64-musl.node",
+    "bm-render.linux-arm64-musl.node",
     "LICENSE",
     "NOTICE",
     "THIRD-PARTY-NOTICES.md"

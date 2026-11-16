@@ -82,7 +82,7 @@ const CASES = {
   "target-and-rel-attributes": [`<p><a href="https://example.com/" target="_blank" rel="noopener" title="Tooltip" download>attrs</a></p>`],
   "link.title-or-aria-label-as-contents": [`<p><a href="https://example.com/" title="Title text" aria-label="Aria text">visible</a></p>`],
   // takumi-pdf 0.20.0 measures an inline link from its block's border box: the rectangle sits padding + border up and
-  // left of the text it covers. bm-engine places it over the text (kept: the takumi rectangle misses the link).
+  // left of the text it covers. bm-render places it over the text (kept: the takumi rectangle misses the link).
   "inline-rect-in-padded-block": [`<p style="padding:10px;border:3px solid"><a href="https://example.com/">padded</a></p>`],
   // an anonymous block's inline content (inline elements next to block-level siblings) is not linked by takumi-pdf
   "inline-link-in-anonymous-block": [`<div>block</div><a href="https://a.example/">a</a> <span href="https://s.example/">s</span><p><span href="https://p.example/">in p</span></p>`],

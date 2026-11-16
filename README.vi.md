@@ -1,4 +1,4 @@
-# bm-engine
+# bm-render
 
 [English](README.md) · [Tiếng Việt](README.vi.md)
 
@@ -7,14 +7,14 @@ Thư viện viết bằng Zig để chuyển cây node hoặc HTML + CSS thành 
 ## Cài đặt
 
 ```sh
-npm install bm-engine
+npm install bm-render
 ```
 
 ## Ví dụ tạo ảnh
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("./fonts/Inter-Regular.ttf"));
@@ -26,7 +26,7 @@ const png = await renderer.render({
     alignItems: "center", justifyContent: "center",
     backgroundColor: "#18181b", color: "white", fontSize: 64,
   },
-  children: [{ type: "text", text: "Hello from bm-engine" }],
+  children: [{ type: "text", text: "Hello from bm-render" }],
 }, { width: 1200, height: 630 });
 
 writeFileSync("card.png", png);
@@ -46,6 +46,6 @@ Chuẩn bị file font ở đường dẫn trong ví dụ trước khi chạy. T
 
 ## Giấy phép và ghi công
 
-bm-engine được cấp phép theo [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
-Mã và dữ liệu bên thứ ba mà bm-engine dựa vào được ghi công trong [NOTICE](NOTICE) và
+bm-render được cấp phép theo [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
+Mã và dữ liệu bên thứ ba mà bm-render dựa vào được ghi công trong [NOTICE](NOTICE) và
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

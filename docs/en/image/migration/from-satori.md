@@ -4,12 +4,12 @@
 
 [satori](https://github.com/vercel/satori) turns JSX into an SVG string; a second tool such as
 `@resvg/resvg-js` (or sharp) turns the SVG into a PNG, and `next/og` / `@vercel/og` package both steps
-behind `ImageResponse`. bm-engine replaces the whole pipeline with one call that returns PNG, JPEG or
+behind `ImageResponse`. bm-render replaces the whole pipeline with one call that returns PNG, JPEG or
 WebP bytes directly (or SVG with `renderSvg`). This page shows how each piece maps, how to bring your
 JSX along, and what each side can do that the other cannot.
 
 ::: info Verification status
-Everything stated about bm-engine was executed on Node 26.13 (`docs/examples/frameworks/check-helpers.mjs`:
+Everything stated about bm-render was executed on Node 26.13 (`docs/examples/frameworks/check-helpers.mjs`:
 the `h()` JSX factory through esbuild, `flexByDefault()`, `renderSvg` + PNG output). satori, resvg and
 `next/og` were **not installed or run**: statements about them are widely known characteristics of
 those projects at the time of writing, hedged where versions differ — check their current READMEs.
@@ -31,8 +31,8 @@ const png = new Resvg(svg).render().asPng();
 ```
 
 ```js
-// after: bm-engine
-import { Renderer } from "bm-engine/standard";
+// after: bm-render
+import { Renderer } from "bm-render/standard";
 import { h } from "./h.js"; // JSX factory, see below
 
 const renderer = new Renderer(); // once per process
@@ -42,7 +42,7 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 // need the SVG too?  renderer.renderSvgSync(node, { width: 1200, height: 630 })  (full profile)
 ```
 
-| satori / resvg / next/og | bm-engine |
+| satori / resvg / next/og | bm-render |
 |:--|:--|
 | `satori(element, { width, height, fonts })` → SVG | `renderer.renderSvgSync(node, { width, height })` → SVG (`full` profile); text becomes outlines, as in satori's default output |
 | `new Resvg(svg).render().asPng()` | not needed: `renderer.renderSync(node, options)` returns PNG (`format: "jpeg" \| "webp"` for others) |
@@ -55,13 +55,13 @@ const png = renderer.renderSync(Card({ title: "Hello" }), { width: 1200, height:
 
 ## Converting JSX
 
-satori consumes React elements. bm-engine consumes plain node objects. Choose one:
+satori consumes React elements. bm-render consumes plain node objects. Choose one:
 
 2. **Use plain node objects** for templates you want to share without React. See the [integration checklist](checklist.md).
 
 ### `display: flex` everywhere
 
-satori (and therefore `next/og`) treats every element as a flex container. bm-engine uses CSS defaults: every node is `display: inline` until you say otherwise, and inline containers ignore `width` /
+satori (and therefore `next/og`) treats every element as a flex container. bm-render uses CSS defaults: every node is `display: inline` until you say otherwise, and inline containers ignore `width` /
 `height`. Templates written for satori often rely on the flex default, so either add `display: "flex"`
 where needed, or apply satori's default to the whole tree:
 
@@ -80,17 +80,17 @@ line with no child boxes; after `flexByDefault()` the children sat in a row at x
 ## Fonts
 
 - satori requires `fonts` and reads TTF, OTF and WOFF (not WOFF2, as far as its README states).
-  bm-engine reads TTF on every profile, OTF (CFF) and WOFF / WOFF2 on `standard` / `full`, WOFF / WOFF2 on
+  bm-render reads TTF on every profile, OTF (CFF) and WOFF / WOFF2 on `standard` / `full`, WOFF / WOFF2 on
   `core` through the [WOFF add-on](../api.md#woff-add-on).
-- Like satori, bm-engine has no system fonts and no default font: text without a registered font is not
+- Like satori, bm-render has no system fonts and no default font: text without a registered font is not
   drawn (no error).
 - Variable fonts follow `font-weight` / `font-variation-settings` on `standard` / `full`.
 - Register fonts **once** per renderer instead of passing the bytes on every call; parsing them is the
   expensive part.
 
-## What bm-engine adds
+## What bm-render adds
 
-Verified on the bm-engine side (see the [CSS support](../css-support.md) matrix for details):
+Verified on the bm-render side (see the [CSS support](../css-support.md) matrix for details):
 
 - Direct raster output: PNG, JPEG, WebP, raw RGBA (and ICO on `full`) — no resvg step.
 - Layout beyond flexbox: block, inline, grid, floats and tables (`tables` / `floats` on `standard`).
@@ -101,15 +101,15 @@ Verified on the bm-engine side (see the [CSS support](../css-support.md) matrix 
 - `measure()` for layout boxes and text line runs (see [Measure](../measure.md)).
 - Synchronous API, no dependencies, one `.wasm` per profile (489.6 KiB – 1.12 MiB raw).
 
-## What satori has that bm-engine does not
+## What satori has that bm-render does not
 
 Hedged — based on satori's documented features, not on running it:
 
-- Accepts React elements directly (bm-engine needs a conversion step, above).
+- Accepts React elements directly (bm-render needs a conversion step, above).
 - The `loadAdditionalAsset` callback to fetch fonts or emoji images on demand while rendering.
 - `graphemeImages` to map characters to images.
 - A JavaScript-only distribution of the layout step (satori uses Yoga compiled to WebAssembly; resvg is a
-  separate binary or wasm module) — bm-engine is one WebAssembly binary you load with `init` on
+  separate binary or wasm module) — bm-render is one WebAssembly binary you load with `init` on
   non-Node runtimes.
 - A larger ecosystem: `next/og` is built in to Next.js, and many templates target satori's flex-default
   behaviour.

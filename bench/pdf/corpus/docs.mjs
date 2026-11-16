@@ -1,5 +1,5 @@
 // Documents modelled on the PDF guide (docs/en/pdf/*.md, docs/examples/pdf*.mjs) plus the scaled stress
-// documents. Every input uses only what both bm-engine/pdf and takumi-pdf accept with the same meaning: HTML or
+// documents. Every input uses only what both bm-render/pdf and takumi-pdf accept with the same meaning: HTML or
 // node trees, the same font bytes registered under the same family / weight / style, images passed as bytes
 // (`images`), the takumi-pdf option names (size, margin, header, footer, pages, outline, metadata, lang, pdfa,
 // tagged, attachments, viewport).
@@ -156,7 +156,7 @@ export function docsCorpus() {
     base("ticket", { source: () => TICKET, options: () => ({ viewport: { width: 560 } }), viewport: true }),
     base("multipage-text", { source: () => `<div style="font-family:Inter;font-size:12px;line-height:1.5;color:#0f172a"><h1>Multi-page text</h1>${paragraphs(60)}</div>`, options: () => ({ size: "letter", margin: 56 }) }),
     base("headers-footers", { source: () => `<div style="font-family:Inter;font-size:12px;color:#0f172a">${paragraphs(45)}</div>`, options: () => ({ size: "a4", header: `<div style="font:10px Inter;color:#475569;padding:0 40px;display:flex;justify-content:space-between"><span>Quarterly report</span><span>Confidential</span></div>`, footer: `<div style="font:10px Inter;color:#475569;text-align:center">Page <span class="pageNumber"></span> / <span class="totalPages"></span></div>`, pages: { first: { header: false }, even: { footer: `<div style="font:10px Inter;color:#be123c;text-align:left;padding:0 40px">Even page <span class="pageNumber" ></span></div>` } } }) }),
-    base("links-outline", { source: () => LINKS_HTML, options: () => ({ size: "a5", outline: true, lang: "en", metadata: { title: "Links and outline", description: "Internal and external links, bookmarks", authors: ["bm-engine bench"], keywords: ["links", "outline"], creator: "bench/pdf", creationDate: DATE } }) }),
+    base("links-outline", { source: () => LINKS_HTML, options: () => ({ size: "a5", outline: true, lang: "en", metadata: { title: "Links and outline", description: "Internal and external links, bookmarks", authors: ["bm-render bench"], keywords: ["links", "outline"], creator: "bench/pdf", creationDate: DATE } }) }),
     base("images", { source: () => IMAGES_HTML, options: () => ({ size: "a4", images: IMAGES() }) }),
     base("images-viewport", { source: () => IMAGES_HTML, options: () => ({ viewport: { width: 640, height: 420 }, images: IMAGES() }), viewport: true }),
     base("effects", { source: () => EFFECTS_HTML, options: () => ({ viewport: { width: 720, height: 360 } }), viewport: true }),

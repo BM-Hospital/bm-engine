@@ -1,13 +1,13 @@
-# bm-engine architecture
+# bm-render architecture
 
-bm-engine is a Zig 0.17 re-implementation of the core of [takumi](https://github.com/kane50613/takumi)
+bm-render is a Zig 0.17 re-implementation of the core of [takumi](https://github.com/kane50613/takumi)
 (node tree → image, and node tree → paged PDF), built as small `wasm32-freestanding` binaries (three feature profiles, plus a `pdf` profile) that run unchanged in browsers,
 Node.js, Bun, Deno and edge runtimes. It accepts takumi's node format so the same inputs can be rendered
 by both engines and compared.
 
 ## Goals and budget
 
-| | takumi 2.20 (`@takumi-rs/wasm`) | bm-engine target |
+| | takumi 2.20 (`@takumi-rs/wasm`) | bm-render target |
 |---|---|---|
 | `.wasm` size | 4.34 MB (4 235 KiB) | phase 1: 321 KiB (one build). Phase 2 / final 0.1.0 (after wasm-opt): **core 489.6 KiB, standard 936.5 KiB, full 1 143.6 KiB** (+ 84.4 KiB WOFF add-on) |
 | JS glue | ~38 KB + wasm-bindgen marshalling | dependency-free ESM (`js/engine.mjs` + small entry files) |
@@ -26,7 +26,7 @@ are shipped:
 | core | 489.6 KiB | node JSON + inline styles, var() / calc(), block / inline / flex / grid / absolute, static TTF / TTC + default OpenType shaper, every border style, outline, text decorations, PNG / JPEG in, PNG / JPEG / WebP / raw out |
 | standard | 936.5 KiB | core + stylesheets / selectors (`css`), Tailwind (`tw`), HTML, SVG images, WOFF / WOFF2, variable fonts, CFF, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables, floats, WebP / GIF in, text-wrap balance |
 | full | 1 143.6 KiB | standard + complex text (bidi, Arabic, Hebrew, Indic, Thai), colour emoji, animations + renderAnimation, lossy WebP / animated codecs / ICO, renderSvg |
-| pdf | about 1.9 MB raw | full + `renderPdf` / `measurePdf` (the `pdf` flag): the PDF pipeline below, block fragmentation (`src/layout/fragment.zig`) and the paged-media CSS properties. `bm-engine/pdf`, `js/bm_engine.pdf.wasm` |
+| pdf | about 1.9 MB raw | full + `renderPdf` / `measurePdf` (the `pdf` flag): the PDF pipeline below, block fragmentation (`src/layout/fragment.zig`) and the paged-media CSS properties. `bm-render/pdf`, `js/bm_render.pdf.wasm` |
 
 `bm_features()` exports the flag bits; the JS wrapper exposes them as `features`. The WOFF decoder is
 also built as a separate add-on module (`src/addon_woff.zig` → `bm_woff.wasm`). User-facing details:
@@ -37,7 +37,7 @@ also built as a separate add-on module (`src/addon_woff.zig` → `bm_woff.wasm`)
 1. **Marshalling**: takumi walks the JS object tree through `serde-wasm-bindgen` (one JS↔wasm call per
    property). We `JSON.stringify` once in JS, copy one UTF-8 buffer, and parse it in wasm with a tiny
    DOM parser. Binary payloads (fonts, images) are copied once into wasm memory and referenced by id.
-2. **Own CSS stack**: takumi links `cssparser` + `selectors` (Servo). bm-engine has small hand-written
+2. **Own CSS stack**: takumi links `cssparser` + `selectors` (Servo). bm-render has small hand-written
    value parsers (`src/style/`) and, in the standard / full profiles, its own stylesheet parser, selector
    matcher and cascade (`src/css/`) that mirror takumi's lossy parsing and matching rules.
 3. **Memory**: one chunk-reusing bump allocator per render (`src/bump.zig`) — steady-state renders do no
@@ -57,9 +57,9 @@ also built as a separate add-on module (`src/addon_woff.zig` → `bm_woff.wasm`)
 
 ```
 js/engine.mjs         binding around one wasm instance: init/initSync, Renderer, features (createBinding)
-js/index.mjs          "bm-engine" (neutral entry, explicit init); js/node.mjs = Node entry, inits on import
+js/index.mjs          "bm-render" (neutral entry, explicit init); js/node.mjs = Node entry, inits on import
 js/{core,standard,full}.mjs, js/node-{core,standard,full}.mjs   profile entries (own instances)
-js/addons.mjs         "bm-engine/woff": WOFF add-on loader
+js/addons.mjs         "bm-render/woff": WOFF add-on loader
 src/wasm.zig          wasm exports (C ABI): alloc/free, font/image registration, render, results, bm_features
 src/config.zig        compile-time feature flags (profiles from build.zig)
 src/root.zig          native root (unit tests of every module)
@@ -80,7 +80,7 @@ src/animate.zig       CSS animation sampling at timeMs
 src/codec/            inflate / deflate, PNG, JPEG, WebP (lossless + VP8), GIF, ICO, animation encoders
 src/pdf/              PDF output (the `pdf` flag only): see "PDF pipeline" below
 src/layout/fragment.zig  block fragmentation (pagination), compiled with the `pdf` flag
-js/pdf.mjs, js/node-pdf.mjs, js/pdf-api.mjs   "bm-engine/pdf": PdfRenderer (pdf-api.mjs, shared), render / measure / prepare, page counter helpers; pdf.mjs is the wasm-only entry, node-pdf.mjs the Node entry (native addon when present, else wasm)
+js/pdf.mjs, js/node-pdf.mjs, js/pdf-api.mjs   "bm-render/pdf": PdfRenderer (pdf-api.mjs, shared), render / measure / prepare, page counter helpers; pdf.mjs is the wasm-only entry, node-pdf.mjs the Node entry (native addon when present, else wasm)
 src/render.zig        pipeline: source -> DOM -> style -> layout -> paint -> encode; options, caches, renderAnimation
 src/bump.zig, src/pages.zig   per-render bump arena, page allocator
 bench/                fixtures shared with takumi, benchmark + pixel-equivalence harness, probes, browser test

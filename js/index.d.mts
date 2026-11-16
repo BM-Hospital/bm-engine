@@ -1,4 +1,4 @@
-// Public API of bm-engine (js/index.mjs = `bm-engine`; the profile entries bm-engine/core, /standard, /full
+// Public API of bm-render (js/index.mjs = `bm-render`; the profile entries bm-render/core, /standard, /full
 // add `profile`, `wasmUrl` and a default for init(), see core.d.mts). The node format and options follow
 // `@takumi-rs/wasm` 2.20; see the parity table at the top of js/index.mjs.
 
@@ -26,7 +26,7 @@ export type OutputBytes = ReturnType<Uint8Array["slice"]>;
 export type StyleValue = string | number | null | undefined;
 
 /**
- * CSS declarations with camelCase keys: the properties bm-engine parses (src/style/props.zig). Properties
+ * CSS declarations with camelCase keys: the properties bm-render parses (src/style/props.zig). Properties
  * of a feature compiled out of the loaded build are accepted and ignored. Custom properties (`"--x"`) and
  * any other key are allowed by the index signature.
  */
@@ -262,7 +262,7 @@ export type WasmExports = Record<string, unknown>;
 /**
  * Instantiates the wasm module. Idempotent: once initialised, further calls resolve to the same instance
  * (their argument is ignored); concurrent calls share one instantiation; a failed call can be retried.
- * The `bm-engine` entry needs the argument; bm-engine/core, /standard and /full default to their own wasm
+ * The `bm-render` entry needs the argument; bm-render/core, /standard and /full default to their own wasm
  * file. On Node.js every entry is already initialised on import.
  */
 export declare function init(input: InitArgument): Promise<WasmExports>;
@@ -271,7 +271,7 @@ export declare function initSync(input: InitSyncArgument): WasmExports;
 export default init;
 /** accepted and ignored (fixed 8 MiB glyph budget) */
 export declare function setGlyphCacheMaxBytes(bytes: number): void;
-/** @internal used by bm-engine/woff (installs the WOFF -> sfnt converter shared by every entry) */
+/** @internal used by bm-render/woff (installs the WOFF -> sfnt converter shared by every entry) */
 export declare function setWoffDecoder(fn: ((bytes: Uint8Array) => Uint8Array) | null): void;
 
 /** Optional features of the loaded binary (filled by init / initSync; all false before). */
@@ -284,7 +284,7 @@ export type Features = {
   html: boolean;
   /** SVG images */
   svg: boolean;
-  /** WOFF / WOFF2 fonts built in (otherwise see bm-engine/woff) */
+  /** WOFF / WOFF2 fonts built in (otherwise see bm-render/woff) */
   woff: boolean;
   variableFonts: boolean;
   /** CFF / CFF2 outlines (.otf) */
@@ -309,16 +309,16 @@ export type Features = {
   extraCodecs: boolean;
   /** renderSvg */
   renderSvg: boolean;
-  /** renderPdf / measurePdf: true only on bm-engine/pdf (its wasm profile, or the native addon on Node.js); false on every other entry */
+  /** renderPdf / measurePdf: true only on bm-render/pdf (its wasm profile, or the native addon on Node.js); false on every other entry */
   pdf: boolean;
 };
 export declare const features: Readonly<Features>;
 /**
- * Which engine build serves this entry: "wasm", or "native" when `bm-engine` on Node.js (Bun, Deno) found the
- * Node-API addon for the platform (optional package `bm-engine-<platform>-<arch>`). Both have the same API and
+ * Which engine build serves this entry: "wasm", or "native" when `bm-render` on Node.js (Bun, Deno) found the
+ * Node-API addon for the platform (optional package `bm-render-<platform>-<arch>`). Both have the same API and
  * produce the same bytes; natively the async methods run on the thread pool and init() / initSync() are no-ops.
- * Force one with the environment variable BM_ENGINE_BACKEND=wasm|native, or by importing `bm-engine/full`
- * (always wasm) / `bm-engine/native` (native or an import error).
+ * Force one with the environment variable BM_RENDER_BACKEND=wasm|native, or by importing `bm-render/full`
+ * (always wasm) / `bm-render/native` (native or an import error).
  */
 export declare const backend: "wasm" | "native";
 
@@ -332,7 +332,7 @@ export type RendererOptions = {
 export declare class Renderer {
   /** Throws unless the entry is initialised. */
   constructor(options?: RendererOptions);
-  /** Registers every face of a TTF / OTF / TTC (WOFF / WOFF2 with the `woff` feature or bm-engine/woff). */
+  /** Registers every face of a TTF / OTF / TTC (WOFF / WOFF2 with the `woff` feature or bm-render/woff). */
   registerFont(font: ByteBuf | SyncFontDetails): RegisteredFamily[];
   /** URL strings, promises and lazy `data` make it asynchronous. */
   registerFont(font: FontLoader | Promise<FontLoader>): RegisteredFamily[] | Promise<RegisteredFamily[]>;
@@ -352,7 +352,7 @@ export declare class Renderer {
   /** SVG document output (`renderSvg` feature: the full profile; otherwise throws) */
   renderSvgSync(source: Source | Prepared, options?: RenderOptions): string;
   renderSvg(source: Source | Prepared, options?: RenderOptions): Promise<string>;
-  /** takumi-pdf output: a PDF file (`pdf` feature: bm-engine/pdf; otherwise throws "renderPdf is not supported by this build"). */
+  /** takumi-pdf output: a PDF file (`pdf` feature: bm-render/pdf; otherwise throws "renderPdf is not supported by this build"). */
   renderPdfSync(source: Source | Prepared, options?: PdfRenderOptions): OutputBytes;
   renderPdf(source: Source | Prepared, options?: PdfRenderOptions): Promise<OutputBytes>;
   /** takumi-pdf `measure`: laid-out size in CSS px at the page width (`pdf` feature). */

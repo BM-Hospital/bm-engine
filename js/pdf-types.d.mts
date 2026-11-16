@@ -1,5 +1,5 @@
-// PDF option types of bm-engine (takumi-pdf `PdfRenderOptions` and friends; names and shapes follow
-// takumi-pdf-js 's dts-header.d.ts / export.ts). Re-exported by bm-engine/pdf (pdf.d.mts); the `Renderer`
+// PDF option types of bm-render (takumi-pdf `PdfRenderOptions` and friends; names and shapes follow
+// takumi-pdf-js 's dts-header.d.ts / export.ts). Re-exported by bm-render/pdf (pdf.d.mts); the `Renderer`
 // methods `renderPdf` / `measurePdf` of every entry use them (they throw on builds without the `pdf` feature).
 import type { ByteBuf, CssInput, FontLoader, ImageSource, ImagesInput, Node, Prepared } from "./index.mjs";
 

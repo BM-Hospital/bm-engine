@@ -1,12 +1,12 @@
-// bm-engine/standard: the standard build profile (bm_engine.standard.wasm) with its own module instance. Same API as bm-engine
+// bm-render/standard: the standard build profile (bm_render.standard.wasm) with its own module instance. Same API as bm-render
 // (./index.d.mts); init() may be called without an argument (and on Node.js it already ran on import).
 import type { InitArgument, WasmExports } from "./index.mjs";
 
 export * from "./index.mjs";
 /**
- * Instantiates the standard wasm. Without an argument it loads bm_engine.standard.wasm from next to the module
- * (`new URL("./bm_engine.standard.wasm", import.meta.url)`, which bundlers emit as an asset). On Cloudflare Workers pass
- * the module: `import wasm from "bm-engine/standard.wasm"; await init(wasm)`. Idempotent.
+ * Instantiates the standard wasm. Without an argument it loads bm_render.standard.wasm from next to the module
+ * (`new URL("./bm_render.standard.wasm", import.meta.url)`, which bundlers emit as an asset). On Cloudflare Workers pass
+ * the module: `import wasm from "bm-render/standard.wasm"; await init(wasm)`. Idempotent.
  */
 export declare function init(input?: InitArgument): Promise<WasmExports>;
 export default init;

@@ -763,7 +763,7 @@ pub fn clusterUnicode(a: Allocator, c: *CidFont, glyphs: []const SpanGlyph, text
     return out;
 }
 
-/// Canonical decomposition (NFD) of UTF-8 `s`, appended to `out`. Uses bm-engine's
+/// Canonical decomposition (NFD) of UTF-8 `s`, appended to `out`. Uses bm-render's
 /// decomposition data (Latin, Greek, Cyrillic, Vietnamese, and the Hebrew / Arabic / Indic
 /// pairs below U+1100, see font/nfdata.zig) plus algorithmic Hangul; characters outside
 /// that data are kept as they are.

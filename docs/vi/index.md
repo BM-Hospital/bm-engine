@@ -1,10 +1,10 @@
 ---
 layout: home
-title: bm-engine
+title: bm-render
 titleTemplate: Cây node và HTML + CSS thành ảnh và PDF
 
 hero:
-  name: bm-engine
+  name: bm-render
   text: Cây node và HTML + CSS thành ảnh và PDF
   tagline: Thư viện render viết bằng Zig, chạy trên Node.js, trình duyệt, Bun, Deno và edge worker. Tạo ảnh chia sẻ, banner, hóa đơn và báo cáo bằng cùng một package.
   actions:

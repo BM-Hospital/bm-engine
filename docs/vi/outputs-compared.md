@@ -8,7 +8,7 @@ Chọn theo cách người dùng sẽ xem kết quả. Ảnh phù hợp để hi
 | Điểm ảnh RGBA để xử lý tiếp | `Renderer.render()` với `format: "raw"` | `core`, `standard`, `full` |
 | Đồ họa vector SVG | `Renderer.renderSvg()` | `full` |
 | Ảnh động WebP, APNG hoặc GIF | `Renderer.renderAnimation()` | `full` |
-| PDF nhiều trang, chữ tìm kiếm và bôi chọn được | `PdfRenderer.render()` từ `bm-engine/pdf` | `pdf` |
+| PDF nhiều trang, chữ tìm kiếm và bôi chọn được | `PdfRenderer.render()` từ `bm-render/pdf` | `pdf` |
 | Đo vị trí và kích thước trước khi vẽ | `Renderer.measure()` | `core`, `standard`, `full` |
 
 ## Ảnh và SVG
@@ -19,12 +19,12 @@ Xem [bắt đầu với ảnh](image/index.md) và [định dạng đầu ra](im
 
 ## PDF
 
-Dùng `bm-engine/pdf` cho tài liệu có khổ giấy, lề, phân trang, header và footer. PDF có thể chứa chữ, liên kết, bookmark, metadata và tệp đính kèm. Các yêu cầu PDF/A hoặc PDF/UA cần cấu hình và kiểm tra riêng cho tài liệu của bạn.
+Dùng `bm-render/pdf` cho tài liệu có khổ giấy, lề, phân trang, header và footer. PDF có thể chứa chữ, liên kết, bookmark, metadata và tệp đính kèm. Các yêu cầu PDF/A hoặc PDF/UA cần cấu hình và kiểm tra riêng cho tài liệu của bạn.
 
 Xem [bắt đầu với PDF](pdf/index.md), [phân trang](pdf/pagination.md) và [hạn chế đã biết](pdf/limitations.md).
 
 ## Đo layout
 
-`measure()` trả về cây hộp và vị trí các dòng chữ. Kết quả không chứa đầy đủ lệnh vẽ, màu đã tính hay vị trí từng glyph; bm-engine chưa cung cấp API xuất cây lệnh vẽ hoặc slide có thể chỉnh sửa.
+`measure()` trả về cây hộp và vị trí các dòng chữ. Kết quả không chứa đầy đủ lệnh vẽ, màu đã tính hay vị trí từng glyph; bm-render chưa cung cấp API xuất cây lệnh vẽ hoặc slide có thể chỉnh sửa.
 
 Xem [measure()](image/measure.md).

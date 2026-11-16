@@ -1,5 +1,5 @@
-import { initSync, Renderer } from "bm-engine/core";
-import wasm from "bm-engine/core.wasm?module";
+import { initSync, Renderer } from "bm-render/core";
+import wasm from "bm-render/core.wasm?module";
 
 export const runtime = "edge";
 

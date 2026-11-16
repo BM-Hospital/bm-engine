@@ -90,7 +90,7 @@ const lastJson = (r) => { try { return JSON.parse(r.out.trim().split(/\r?\n/).po
 const median = (a) => { const s = a.filter((x) => x != null).sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null; };
 const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))]; };
 const r2 = (v, d = 2) => (v == null ? null : +(+v).toFixed(d));
-const envFor = (e) => (e === "bm-wasm" ? { BM_ENGINE_BACKEND: "wasm" } : { BM_ENGINE_BACKEND: "" });
+const envFor = (e) => (e === "bm-wasm" ? { BM_RENDER_BACKEND: "wasm" } : { BM_RENDER_BACKEND: "" });
 const T0 = performance.now();
 
 // ---- stages ----
@@ -167,7 +167,7 @@ S.cold = async () => {
     if (o.error) { samples[n].push({ error: o.error }); continue; }
     cpu += o.cpuMs; samples[n].push({ wallMs: r.wallMs, ...o });
   }
-  const out = { runs: coldRuns, what: "spawn node -> import bm-engine/pdf (js/node-pdf.mjs; BM_ENGINE_BACKEND picks the backend) or takumi-pdf -> registerFont(Inter Regular) -> one-page A4 invoice -> exit; wall = parent clock spawn to exit", load: ls.stop(cpu), engines: {} };
+  const out = { runs: coldRuns, what: "spawn node -> import bm-render/pdf (js/node-pdf.mjs; BM_RENDER_BACKEND picks the backend) or takumi-pdf -> registerFont(Inter Regular) -> one-page A4 invoice -> exit; wall = parent clock spawn to exit", load: ls.stop(cpu), engines: {} };
   const baseMed = median(samples.none.filter((s) => !s.error).map((s) => s.wallMs));
   for (const n of names) {
     const ok = samples[n].filter((s) => !s.error);

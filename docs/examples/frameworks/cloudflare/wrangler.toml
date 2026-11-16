@@ -1,4 +1,4 @@
-name = "bm-engine-og"
+name = "bm-render-og"
 main = "src/worker.js"
 compatibility_date = "2025-06-01"
 

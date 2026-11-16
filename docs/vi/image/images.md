@@ -2,8 +2,8 @@
 
 [English](../../en/image/images.md) · [Tiếng Việt](images.md)
 
-Cách đưa hình ảnh vào một lần render của bm-engine: image node và `<img>` trong HTML, `background-image`
-và mask trong CSS, năm cách trao byte ảnh cho engine (bm-engine không bao giờ tự tải gì từ mạng), mỗi
+Cách đưa hình ảnh vào một lần render của bm-render: image node và `<img>` trong HTML, `background-image`
+và mask trong CSS, năm cách trao byte ảnh cho engine (bm-render không bao giờ tự tải gì từ mạng), mỗi
 profile giải mã được định dạng nào, ảnh được tính kích thước và đặt vào khung ra sao, và cache ảnh đã giải
 mã làm gì cho bạn. Mọi ví dụ trên trang này là một đoạn của `docs/examples/images.mjs` trong repository,
 đã chạy thật với package; hình ngay dưới mỗi đoạn mã là kết quả của chính nó.
@@ -22,26 +22,26 @@ mã làm gì cho bạn. Mọi ví dụ trên trang này là một đoạn của 
 
 ## Chuẩn bị và ảnh thử
 
-Các ví dụ dùng chung một renderer (trên Node.js, điểm vào `bm-engine` nạp profile `full`) đã đăng ký
+Các ví dụ dùng chung một renderer (trên Node.js, điểm vào `bm-render` nạp profile `full`) đã đăng ký
 Inter thường và đậm:
 
 <!-- @example images#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });
 ```
 
-Thay vì kèm file mẫu, các ví dụ tự render một ảnh thử bằng bm-engine rồi đưa byte PNG đó vào lại. Điều
+Thay vì kèm file mẫu, các ví dụ tự render một ảnh thử bằng bm-render rồi đưa byte PNG đó vào lại. Điều
 này cũng cho thấy đầu ra của một lần render hoàn toàn dùng được làm đầu vào cho lần sau (hữu ích khi muốn
 cache một ảnh con tốn công tạo):
 
 <!-- @example images#photo -->
 ```js
-// A 320 × 200 test picture, rendered by bm-engine itself. Any PNG / JPEG bytes work the same way.
+// A 320 × 200 test picture, rendered by bm-render itself. Any PNG / JPEG bytes work the same way.
 const photo = renderer.renderSync(
   {
     type: "container",
@@ -156,7 +156,7 @@ async function loadImages(urls) {
 
 `images[].data` cũng có thể là một hàm hoặc một promise. Các mục *lazy* như vậy được các method async
 (`render`, `renderAsDataUrl`, `measure`, `prepare`, ...) resolve; các method sync sẽ throw
-`bm-engine: lazy images[].data() needs the async API`:
+`bm-render: lazy images[].data() needs the async API`:
 
 <!-- @example images#lazy -->
 ```js
@@ -199,7 +199,7 @@ console.log(missing.children[0].width, missing.children[0].height); // 0 0, and 
 "—" nghĩa là ảnh không vẽ gì và đo được 0 × 0, giống hệt ảnh thiếu; không có gì throw. "chuyển động"
 nghĩa là khung hình tương ứng với `timeMs` được hiển thị (xem [Ảnh động làm nguồn](#ảnh-động-làm-nguồn)).
 Các cột core / standard / full đã được script ví dụ kiểm tra (nó assert kích thước đo được của nguồn PNG,
-JPEG, WebP lossless, GIF và SVG trên `bm-engine/core` và `bm-engine/standard`); WebP lossy được kiểm tra
+JPEG, WebP lossless, GIF và SVG trên `bm-render/core` và `bm-render/standard`); WebP lossy được kiểm tra
 bằng một file VP8 thật (0 × 0 trên standard, 1200 × 630 trên full). Không có bộ giải mã ICO, BMP, TIFF
 hay AVIF. `features.svg`, `features.webpGifDecode` và `features.extraCodecs` cho bạn biết lúc chạy binary
 đang nạp giải mã được gì.
@@ -368,7 +368,7 @@ Tất cả đều chạy trên mọi profile. Muốn cắt ảnh theo hình khô
 
 ## Ảnh SVG
 
-Trên `standard` và `full`, SVG được giải mã bằng bộ render SVG riêng của bm-engine và vẽ dạng vector ở
+Trên `standard` và `full`, SVG được giải mã bằng bộ render SVG riêng của bm-render và vẽ dạng vector ở
 kích thước cuối cùng, nên luôn sắc nét ở mọi tỉ lệ. SVG dùng được làm `src` của ảnh (mã hoặc URL
 `data:`), làm một mục của `images`, và trong nền và mask `url()`:
 

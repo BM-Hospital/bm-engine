@@ -1,6 +1,6 @@
 //! Tests of text.zig / font_objects.zig / type3.zig. The oracle is takumi-pdf's own output
 //! (tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs in tests/pdf_fixtures.rs):
-//! the same documents are laid out with bm-engine (Renderer + Frame), their text drawn through
+//! the same documents are laid out with bm-render (Renderer + Frame), their text drawn through
 //! `drawFrameRun`, and the text operators / font objects compared. Tests that need files from
 //! ref/ skip when they are missing. Set BM_PDF_TEXT_OUT to a directory to also write the PDFs
 //! (for pdftotext checks).

@@ -1,8 +1,8 @@
-# Benchmark: bm-engine and Takumi
+# Benchmark: bm-render and Takumi
 
 This is the guide’s comparison with Takumi. Measurements describe the test machine, not a performance guarantee for every application. Image and PDF tables come from separate runs; do not compare timings across those tables.
 
-A time ratio **below 1×** means bm-engine takes less time. **Geomean** is the geometric mean of per-fixture timings; **cold start** includes initialization and the first result. `identical` means byte-identical; `equivalent` allows small differences under the measurement thresholds and does not establish equivalence for every input.
+A time ratio **below 1×** means bm-render takes less time. **Geomean** is the geometric mean of per-fixture timings; **cold start** includes initialization and the first result. `identical` means byte-identical; `equivalent` allows small differences under the measurement thresholds and does not establish equivalence for every input.
 
 ## Images
 

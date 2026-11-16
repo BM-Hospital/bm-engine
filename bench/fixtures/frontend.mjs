@@ -20,7 +20,7 @@ const sel = [
     opts: { css: [cardCss] },
     node: { type: "container", className: "root", children: [
       { type: "container", className: "card", id: "hero", children: [
-        { type: "text", className: "title", text: "Stylesheets in bm-engine" },
+        { type: "text", className: "title", text: "Stylesheets in bm-render" },
         { type: "text", className: "body", text: "Selectors match className, id and descendant combinators." },
       ] },
       { type: "container", className: "card", children: [
@@ -87,7 +87,7 @@ const twCases = [
     node: { type: "container", tw: "flex flex-col w-full h-full p-16 gap-8 bg-slate-900 justify-between", children: [
       { type: "container", tw: "flex items-center gap-4", children: [
         { type: "container", tw: "w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-pink-600", children: [] },
-        { type: "text", tw: "text-3xl font-semibold text-slate-100", style: { fontFamily: "Inter" }, text: "Tailwind in bm-engine" },
+        { type: "text", tw: "text-3xl font-semibold text-slate-100", style: { fontFamily: "Inter" }, text: "Tailwind in bm-render" },
       ] },
       { type: "text", tw: "text-6xl font-bold text-white leading-tight tracking-tight", style: { fontFamily: "Inter" }, text: "Utility classes compiled to declarations at render time" },
       { type: "container", tw: "flex gap-3", children: ["flex", "gap", "rounded"].map((s) => ({ type: "text", tw: "px-4 py-1 rounded-full bg-sky-400/20 text-sky-300 text-xl", style: { fontFamily: "Inter" }, text: s })) },

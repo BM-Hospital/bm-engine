@@ -19,14 +19,14 @@ async function nextGET(request) {
   const { searchParams } = new URL(request.url);
   return imageResponse(
     getRenderer(),
-    card({ title: searchParams.get("title") ?? "bm-engine + Next.js", description: searchParams.get("description") ?? "Rendered in a route handler" }),
+    card({ title: searchParams.get("title") ?? "bm-render + Next.js", description: searchParams.get("description") ?? "Rendered in a route handler" }),
     { width: 1200, height: 630, headers: { "cache-control": "public, max-age=3600, s-maxage=86400" } },
   );
 }
 // app/opengraph-image.js
 const size = { width: 1200, height: 630 };
 async function OpenGraphImage() {
-  const png = await getRenderer().render(card({ title: "bm-engine + Next.js", description: "opengraph-image convention" }), size);
+  const png = await getRenderer().render(card({ title: "bm-render + Next.js", description: "opengraph-image convention" }), size);
   return new Response(png, { headers: { "content-type": "image/png" } });
 }
 await check("Next.js route handler GET(request)", async () => { await expectPng(await nextGET(new Request("http://localhost/og?title=Hello"))); });
@@ -34,7 +34,7 @@ await check("Next.js opengraph-image default export", async () => { await expect
 
 // ---------------------------------------------------------------- SvelteKit (sveltekit.md): src/routes/og.png/+server.js
 async function svelteGET({ url }) {
-  return imageResponse(getRenderer(), card({ title: url.searchParams.get("title") ?? "bm-engine + SvelteKit", description: "A +server.js endpoint" }), { width: 1200, height: 630 });
+  return imageResponse(getRenderer(), card({ title: url.searchParams.get("title") ?? "bm-render + SvelteKit", description: "A +server.js endpoint" }), { width: 1200, height: 630 });
 }
 await check("SvelteKit +server GET({ url })", async () => {
   const request = new Request("http://localhost/og.png?title=Svelte");
@@ -62,7 +62,7 @@ const routeOptions = {
     handlers: {
       GET: ({ request }) => {
         const url = new URL(request.url);
-        return imageResponse(getRenderer(), card({ title: url.searchParams.get("title") ?? "bm-engine + TanStack Start", description: "A server route" }), { width: 1200, height: 630 });
+        return imageResponse(getRenderer(), card({ title: url.searchParams.get("title") ?? "bm-render + TanStack Start", description: "A server route" }), { width: 1200, height: 630 });
       },
     },
   },

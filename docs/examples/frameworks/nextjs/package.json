@@ -1,6 +1,6 @@
 {
-  "//": "Verified by hand: copy this folder to a scratch dir, copy Inter-Regular.ttf / Inter-Bold.ttf to fonts/, npm i --ignore-scripts <bm-engine tarball> next@16.4.6 react react-dom (+ the platform package, see docs/en/image/frameworks/nextjs.md), next build, next start, fetch /og, /opengraph-image, /og-edge.",
-  "name": "bm-engine-nextjs-check",
+  "//": "Verified by hand: copy this folder to a scratch dir, copy Inter-Regular.ttf / Inter-Bold.ttf to fonts/, npm i --ignore-scripts <bm-render tarball> next@16.4.6 react react-dom (+ the platform package, see docs/en/image/frameworks/nextjs.md), next build, next start, fetch /og, /opengraph-image, /og-edge.",
+  "name": "bm-render-nextjs-check",
   "private": true,
   "type": "module",
   "scripts": {

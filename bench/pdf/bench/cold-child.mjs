@@ -3,7 +3,7 @@
 //   node bench/pdf/bench/cold-child.mjs <bm|takumi-pdf|none> <font.ttf> <doc.html>
 //
 // The font and the document are read before the clock starts (for "none" too). Then: import the engine the way a
-// user does (`bm-engine/pdf` = js/node-pdf.mjs, whose backend follows BM_ENGINE_BACKEND; `takumi-pdf`) -> register
+// user does (`bm-render/pdf` = js/node-pdf.mjs, whose backend follows BM_RENDER_BACKEND; `takumi-pdf`) -> register
 // one font -> render a one-page A4 invoice -> print one JSON line -> exit. The parent times spawn-to-exit.
 import { readFileSync } from "node:fs";
 import path from "node:path";

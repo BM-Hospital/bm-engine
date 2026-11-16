@@ -39,7 +39,7 @@ probe("metadata.producer", "/Producer and pdf:Producer text: `takumi-pdf <versio
   const r = await t.both(HTML, {});
   if (r.ref && !r.bm.error) {
     t.note(`Producer: bm ${JSON.stringify(r.bm.info.Producer)} | takumi ${JSON.stringify(r.ref.info.Producer)}`);
-    t.ok(/^bm-engine|^takumi-pdf/.test(r.bm.info.Producer || ""), "bm writes a /Producer");
+    t.ok(/^bm-render|^takumi-pdf/.test(r.bm.info.Producer || ""), "bm writes a /Producer");
     t.same("pdf:Producer equals /Producer", (xmp(r.bm).match(/<pdf:Producer>([^<]*)/) || [])[1] === r.bm.info.Producer, (xmp(r.ref).match(/<pdf:Producer>([^<]*)/) || [])[1] === r.ref.info.Producer);
   }
   const p = await t.both(HTML, { producer: "ACME Writer 1.0" });

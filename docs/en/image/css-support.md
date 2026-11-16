@@ -1,6 +1,6 @@
 # CSS and feature support
 
-This page lists bm-engine features and the smallest profile that includes them. **Supported** means available; **partial** has the stated constraints; **no** means unavailable. For PDF output, see [CSS in PDF](../pdf/css-support.md).
+This page lists bm-render features and the smallest profile that includes them. **Supported** means available; **partial** has the stated constraints; **no** means unavailable. For PDF output, see [CSS in PDF](../pdf/css-support.md).
 
 - [Conventions](#conventions)
 - [Layout](#layout)

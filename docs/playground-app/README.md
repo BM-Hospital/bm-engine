@@ -1,7 +1,7 @@
-# bm-engine playground (source)
+# bm-render playground (source)
 
 A static, framework-free playground (plain HTML + ES modules + CSS, no build step, no external requests) for
-the bm-engine WebAssembly renderer. It is published as part of the documentation site: the **Playground**
+the bm-render WebAssembly renderer. It is published as part of the documentation site: the **Playground**
 page ([docs/en/image/playground.md](../en/image/playground.md), [docs/vi/image/playground.md](../vi/image/playground.md); `/image/playground`
 and `/vi/image/playground` on the site) embeds a self-contained build of this folder.
 
@@ -17,7 +17,7 @@ npm run docs:build                                   # builds into docs/public/p
   this folder). It needs the prebuilt `js/*.wasm` (tracked in git), not Zig.
 - `?mode=image|pdf` picks the output (the Image | PDF switch in the header changes it in place; the docs
   site embeds the app with `&embed=1`, which hides that switch, on `/image/playground` and `/pdf/playground`).
-  PDF mode imports `js/pdf.mjs` + `bm_engine.pdf.wasm` on first use only; its preview is the browser's PDF viewer,
+  PDF mode imports `js/pdf.mjs` + `bm_render.pdf.wasm` on first use only; its preview is the browser's PDF viewer,
   or pages drawn by pdf.js (`third_party/pdfjs-<version>/`, Apache-2.0, legacy build, also loaded on demand) where
   the browser has none. `pdf-options.js` maps the options panel to `PdfRenderOptions` and writes the "Copy code"
   snippet; `pdf-templates.js` holds the PDF templates.
@@ -30,5 +30,5 @@ npm run docs:build                                   # builds into docs/public/p
 - Deployment: the build output is plain static files, so it is deployed with the docs site (Vercel, see
   `vercel.json` at the repository root). Any static host works if it serves `.wasm` as `application/wasm`.
 
-Tiếng Việt: mã nguồn playground của bm-engine. Trang **Playground** của trang tài liệu (`/vi/image/playground`, `/vi/pdf/playground`) nhúng bản
+Tiếng Việt: mã nguồn playground của bm-render. Trang **Playground** của trang tài liệu (`/vi/image/playground`, `/vi/pdf/playground`) nhúng bản
 build độc lập của thư mục này; `npm run playground` chạy bản phát triển tại `http://127.0.0.1:8080/docs/playground-app/`.

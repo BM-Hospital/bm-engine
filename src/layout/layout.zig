@@ -1,4 +1,4 @@
-//! bm-engine layout: CSS flexbox / block (with floats) / grid / tables / inline rows over a flat node tree, sized
+//! bm-render layout: CSS flexbox / block (with floats) / grid / tables / inline rows over a flat node tree, sized
 //! like Chrome (the takumi oracle is a Blink LayoutNG port). See `Tree` for the entry points.
 //! `TreeWith(.{ .tables = false, .floats = false, .inline_row = false })` compiles optional features out
 //! (`Tree` = `TreeWith(.{})`, everything on): table displays and inline rows then lay out as blocks, floats as

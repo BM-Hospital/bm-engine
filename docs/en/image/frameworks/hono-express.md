@@ -2,12 +2,12 @@
 
 [English](hono-express.md) · [Tiếng Việt](../../../vi/image/frameworks/hono-express.md)
 
-Plain Node.js servers are the most direct way to serve images with bm-engine: import a Node entry (it
+Plain Node.js servers are the most direct way to serve images with bm-render: import a Node entry (it
 initialises itself), create the renderer once, and write the bytes to the response. This page shows the
 same `/og.png` endpoint in Hono, Express and the bare `node:http` module.
 
 ::: info Verification status
-Verified on Node 26.13 with bm-engine installed from the packed tarball: each server below was started
+Verified on Node 26.13 with bm-render installed from the packed tarball: each server below was started
 on a random localhost port and fetched; every response was a 1200 × 630 PNG with the expected headers.
 Versions: **Hono 4.13.18 with @hono/node-server 2.1.7**, **Express 5.3.0**, `node:http`
 (`docs/examples/frameworks/check-servers.mjs`). Express 4.22.3 was checked only for how `res.send` handles a bare `Uint8Array` (see below).
@@ -98,7 +98,7 @@ createServer(async (req, res) => {
 
   const params = {
     title: url.searchParams.get("title") ?? "Hello",
-    description: url.searchParams.get("description") ?? "Rendered with bm-engine",
+    description: url.searchParams.get("description") ?? "Rendered with bm-render",
   };
   const etag = await etagFor(params);
   const headers = { etag, "cache-control": "public, max-age=3600, stale-while-revalidate=86400" };

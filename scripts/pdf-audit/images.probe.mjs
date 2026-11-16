@@ -1,13 +1,13 @@
 // Image probes: how each raster format, SVG and `object-fit` end up in the PDF (image XObject dictionary: size, colour
 // space, bits, filter, soft mask, ICC profile; passthrough or re-encoded; vector or raster SVG), compared between
-// bm-engine/pdf and takumi-pdf with the canonical pages of paint.probe.mjs. The decoded data of an image is part of
+// bm-render/pdf and takumi-pdf with the canonical pages of paint.probe.mjs. The decoded data of an image is part of
 // the comparison (a hash), so an image that is passed through by one engine and re-encoded by the other fails, and so
 // do different pixels.
 import zlib from "node:zlib";
 import { cases, cmp, dataUri, fileBytes, probeAs, summary, svgUri, vp } from "./paint.probe.mjs";
 
 const b64 = (buf, mime) => `data:${mime};base64,${Buffer.from(buf).toString("base64")}`;
-// inside a <div>: an <img> that is the only top-level element is stretched to the viewport by bm-engine (images.root-img)
+// inside a <div>: an <img> that is the only top-level element is stretched to the viewport by bm-render (images.root-img)
 const img = (src, style = "width:40px;height:40px") => `<div style="margin:10px"><img src="${src}" style="${style}"></div>`;
 const suite = (name) => dataUri(`src/codec/testdata/png_suite/${name}.png`);
 const codec = (name) => dataUri(`src/codec/testdata/${name}`);

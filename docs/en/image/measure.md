@@ -26,7 +26,7 @@ without a font has zero width.
 <!-- @example measure#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -158,12 +158,12 @@ an image of exactly that size (rounded up to whole pixels). `measure()` tells yo
 ```js
 // Without width / height the root is laid out at its max-content size: the result is
 // the size the image would have if you rendered it without a canvas size.
-const label = { type: "text", text: "Hello bm-engine", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
+const label = { type: "text", text: "Hello bm-render", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
 const { width, height } = renderer.measureSync(label); // { width: 258.71875, height: 39 }
 const tight = renderer.renderSync(label); // a 259 × 39 PNG
 ```
 
-![The bold label "Hello bm-engine" on a transparent 259 by 39 canvas](/img/guide/measure-intrinsic.png)
+![The bold label "Hello bm-render" on a transparent 259 by 39 canvas](/img/guide/measure-intrinsic.png)
 
 With `width` / `height` set, percentage sizes, `vw` / `vh` and `@media` queries resolve against them, as
 in a render.

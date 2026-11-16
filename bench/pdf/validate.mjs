@@ -1,4 +1,4 @@
-// External validation of bm-engine's PDF output (and takumi-pdf's, as the baseline), headless, as a gate.
+// External validation of bm-render's PDF output (and takumi-pdf's, as the baseline), headless, as a gate.
 //
 //   node bench/pdf/validate.mjs [--rebuild] [--filter=<regex>] [--max-stress=500] [--no-verapdf] [--jobs=4]
 //                               [--gate=all|bm-only|none]

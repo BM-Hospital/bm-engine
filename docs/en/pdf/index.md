@@ -2,11 +2,11 @@
 
 [English](index.md) · [Tiếng Việt](../../vi/pdf/index.md)
 
-bm-engine can write PDF files. The same layout engine that
+bm-render can write PDF files. The same layout engine that
 draws PNG and SVG lays a document out, breaks it into pages and writes it as vector graphics with real,
 selectable text and embedded subset fonts. It also writes headers and footers, links, bookmarks,
 metadata, attachments, tagged PDF and PDF/A. The PDF writer is only in the **`pdf` build profile**
-(`bm-engine/pdf`); `bm-engine` and the other entries do not expose it. This page covers the entry point, a
+(`bm-render/pdf`); `bm-render` and the other entries do not expose it. This page covers the entry point, a
 first render in Node.js and in a browser, `measure` and the options; every Node.js snippet is a section of
 `docs/examples/pdf.mjs` in the repository and was executed by it. Installing the package is described in
 [Getting started](../getting-started.md). The [PDF playground](playground.md) renders
@@ -25,23 +25,23 @@ these documents in your browser with the same wasm build.
 PDF output ships in the same npm package as the image engine:
 
 ```sh
-npm install bm-engine
+npm install bm-render
 ```
 
 | Import | Node.js | Everywhere else |
 |:--|:--|:--|
-| `bm-engine/pdf` | the native addon when it is installed, otherwise the `pdf` binary (`bm_engine.pdf.wasm`); initialised on import | `await init()` loads `bm_engine.pdf.wasm` next to the module, or pass the binary: `await init(wasm)` |
-| `bm-engine/pdf.wasm` | the raw binary, for bundler asset imports and Workers module imports | same |
+| `bm-render/pdf` | the native addon when it is installed, otherwise the `pdf` binary (`bm_render.pdf.wasm`); initialised on import | `await init()` loads `bm_render.pdf.wasm` next to the module, or pass the binary: `await init(wasm)` |
+| `bm-render/pdf.wasm` | the raw binary, for bundler asset imports and Workers module imports | same |
 
-`bm-engine/pdf` exports everything the image entries export (`init`, `initSync`, `Renderer`, `features`,
+`bm-render/pdf` exports everything the image entries export (`init`, `initSync`, `Renderer`, `features`,
 ...) and adds `PdfRenderer`, the shared functions `render`, `measure` and `prepare`, and the page counter
 helpers `PageNumber`, `TotalPages` and `TargetPageNumber`. Like the other profile entries it has **its
-own module instance**, so it can be loaded next to `bm-engine/full` in one process. `profile` is `"pdf"`
+own module instance**, so it can be loaded next to `bm-render/full` in one process. `profile` is `"pdf"`
 and `features.pdf` is `true` (every other feature is on as well: the profile is `full` plus PDF).
 
 ## Render HTML to a PDF
 
-`PdfRenderer` holds the registered fonts, so create one and reuse it. bm-engine ships no font, and a
+`PdfRenderer` holds the registered fonts, so create one and reuse it. bm-render ships no font, and a
 render fails when the text needs a character no registered font draws (see [Fonts in PDF](fonts.md)).
 With no font registered at all, a render of any text fails with `No font is registered to draw ...` (unless
 `uncoveredText: "blank"`). So register
@@ -50,14 +50,14 @@ fonts first:
 <!-- @example pdf#setup -->
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });
 ```
 
-A string source is HTML, as everywhere in bm-engine. The result is a `Uint8Array`:
+A string source is HTML, as everywhere in bm-render. The result is a `Uint8Array`:
 
 <!-- @example pdf#html -->
 ```js
@@ -158,8 +158,8 @@ snippets were not run here (the Node.js entry shares the same code):
 
 ```js
 // Browser, ES modules
-import { init, PdfRenderer } from "bm-engine/pdf";
-await init(); // fetches bm_engine.pdf.wasm
+import { init, PdfRenderer } from "bm-render/pdf";
+await init(); // fetches bm_render.pdf.wasm
 
 const pdf = new PdfRenderer();
 const font = await (await fetch("/fonts/Inter-Regular.ttf")).arrayBuffer();
@@ -172,8 +172,8 @@ window.open(url); // or set it as an <a download> / <iframe> source
 
 ```js
 // Cloudflare Workers
-import wasm from "bm-engine/pdf.wasm";
-import { init, PdfRenderer } from "bm-engine/pdf";
+import wasm from "bm-render/pdf.wasm";
+import { init, PdfRenderer } from "bm-render/pdf";
 
 await init(wasm);
 ```

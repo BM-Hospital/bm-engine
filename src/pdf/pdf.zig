@@ -130,7 +130,7 @@ pub fn poolStyles(a: Allocator, o: *opt.PdfOptions, kind: SourceKind, source: []
     o.pooled_styles = true;
 }
 
-/// Bytes some image decoder may read: a raster format bm-engine sniffs, SVG / XML text, or the magic of
+/// Bytes some image decoder may read: a raster format bm-render sniffs, SVG / XML text, or the magic of
 /// ICO, TIFF, AVIF / HEIF (ISO-BMFF), QOI, DDS, farbfeld, PNM.
 fn looksLikeImage(d: []const u8) bool {
     if (@import("../codec/codec.zig").sniff(d) != .unknown) return true;
@@ -190,7 +190,7 @@ fn parseOptions(r: *Renderer, opts_json: []const u8) Error!opt.PdfOptions {
         },
     };
     // takumi-pdf-js `decode_images`: every `images` entry is decoded before layout, and one in no image format
-    // fails the render (bm-engine decodes when an image is drawn: only bytes that are no image at all are
+    // fails the render (bm-render decodes when an image is drawn: only bytes that are no image at all are
     // rejected here, so a format bm reads and takumi does not, or the other way round, is not)
     for (r.images.items) |e| {
         if (e.width != 0 or std.mem.startsWith(u8, e.src, "bm-att:")) continue;

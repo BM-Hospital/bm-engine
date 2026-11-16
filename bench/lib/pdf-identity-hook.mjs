@@ -1,6 +1,6 @@
-// `node --import ./bench/lib/pdf-identity-hook.mjs <script>`: runs an existing script that uses `bm-engine/pdf`
+// `node --import ./bench/lib/pdf-identity-hook.mjs <script>`: runs an existing script that uses `bm-render/pdf`
 // (a docs example, scripts/pdf-test.mjs, scripts/pdf-compare.mjs) on the NATIVE addon, and replays every PDF
-// call it makes on the wasm pdf profile (js/bm_engine.pdf.wasm) with the same inputs: registerFont,
+// call it makes on the wasm pdf profile (js/bm_render.pdf.wasm) with the same inputs: registerFont,
 // unregisterFont, clearFonts, prepare, renderPdf / renderPdfSync, measurePdf / measurePdfSync. The script itself
 // sees only the native results; the bytes (or the error messages) of both backends are compared and the outcome
 // is written to $BM_PDF_IDENTITY_OUT (JSON) when the process exits. Used by bench/native-identity.mjs.
@@ -10,14 +10,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 
-process.env.BM_ENGINE_BACKEND = "native";
+process.env.BM_RENDER_BACKEND = "native";
 const root = new URL("../../", import.meta.url);
 const { nativePdfBinding, nativeError } = await import(new URL("js/native.mjs", root).href);
 const { createBinding } = await import(new URL("js/engine.mjs", root).href);
 const nb = nativePdfBinding();
 if (!nb) throw new Error("pdf-identity-hook: the native addon with PDF output is not available (" + nativeError() + ")");
 const wb = createBinding();
-wb.initSync(readFileSync(new URL("js/bm_engine.pdf.wasm", root)));
+wb.initSync(readFileSync(new URL("js/bm_render.pdf.wasm", root)));
 for (const [k, v] of Object.entries(wb.features)) if (nb.features[k] !== v) throw new Error(`pdf-identity-hook: feature ${k}: wasm ${v}, native ${nb.features[k]}`);
 
 const out = { script: process.argv[1], compared: 0, identical: 0, bothError: 0, bytes: 0, calls: {}, mismatches: [] };

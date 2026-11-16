@@ -68,7 +68,7 @@ B.env = (res, lang) => {
   const rows = [
     [L(lang, "Machine", "Máy"), `${m.cpu}, ${m.cpus} ${L(lang, "logical CPUs", "CPU logic")}, ${m.totalMemGiB} GiB, ${m.platform}`],
     ["Node.js", `${m.node} (V8 ${m.v8}, libuv ${m.uv})`],
-    ["bm-engine", `${e["bm-wasm"]?.version ?? "?"}, git \`${(m.git?.commit ?? "").slice(0, 10)}\` (${m.git?.branch}${m.git?.dirtyFiles ? `, ${m.git.dirtyFiles} ${L(lang, "modified files", "file đang sửa")}` : ""})`],
+    ["bm-render", `${e["bm-wasm"]?.version ?? "?"}, git \`${(m.git?.commit ?? "").slice(0, 10)}\` (${m.git?.branch}${m.git?.dirtyFiles ? `, ${m.git.dirtyFiles} ${L(lang, "modified files", "file đang sửa")}` : ""})`],
     ["bm-native", e["bm-native"]?.bytes ? `\`${e["bm-native"].file}\`, ${kib(e["bm-native"].bytes, lang)}, sha256 \`${e["bm-native"].sha256?.slice(0, 12)}\`` : L(lang, "not available in this checkout", "không có trong checkout này")],
     ["bm-wasm", `\`${e["bm-wasm"]?.file}\` (profile pdf), ${kib(e["bm-wasm"]?.bytes, lang)}, sha256 \`${e["bm-wasm"]?.sha256?.slice(0, 12)}\``],
     ["takumi-pdf", `npm \`takumi-pdf\` ${e["takumi-pdf"]?.version} (wasm, ${kib(e["takumi-pdf"]?.bytes, lang)}); ${L(lang, "no native build is published", "không có bản native nào được phát hành")}`],

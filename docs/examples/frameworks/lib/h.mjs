@@ -1,4 +1,4 @@
-// h(): a tiny hyperscript / JSX factory that builds bm-engine node trees (docs/{en,vi}/frameworks/index.md;
+// h(): a tiny hyperscript / JSX factory that builds bm-render node trees (docs/{en,vi}/frameworks/index.md;
 // keep the two in sync). Usable as a JSX factory: esbuild --jsx-factory=h --jsx-fragment=Fragment.
 
 /** h("div", { style }, ...children) -> container; h("img", { src, width, height }) -> image; strings -> text. */

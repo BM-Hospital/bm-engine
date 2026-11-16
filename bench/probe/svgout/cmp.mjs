@@ -20,7 +20,7 @@ const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); if (i < 0) return def; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = (name) => { const i = args.indexOf(name); if (i < 0) return false; args.splice(i, 1); return true; };
 const SCRATCH = "C:/Users/admini/AppData/Local/Temp/claude/46c8b6142d3c6b7e/eb762129-eac5-46a2-aaef-1b224d61f7d8/scratchpad/svgout";
-const wasmPath = opt("--wasm", process.env.BM_WASM || process.env.SVGOUT_WASM || path.resolve(here, "..", "..", "..", "zig-out", "bin", "bm_engine.wasm"));
+const wasmPath = opt("--wasm", process.env.BM_WASM || process.env.SVGOUT_WASM || path.resolve(here, "..", "..", "..", "zig-out", "bin", "bm_render.wasm"));
 const outDir = opt("--out", path.join(SCRATCH, "out"));
 const save = flag("--save");
 const json = flag("--json");

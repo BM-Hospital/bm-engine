@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "External validation, visual equivalence and benchmark of bm-engine's PDF output against takumi-pdf",
+  "description": "External validation, visual equivalence and benchmark of bm-render's PDF output against takumi-pdf",
   "scripts": {
     "setup": "node setup.mjs",
     "validate": "node validate.mjs",

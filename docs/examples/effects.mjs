@@ -1,11 +1,11 @@
 // Examples for docs/{en,vi}/image/effects.md. Run: node docs/examples/run-all.mjs effects
 import { saver, expectThrow } from "./_lib.mjs";
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 const save = saver("effects");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -158,7 +158,7 @@ save("transforms", transforms);
 const message = expectThrow(() =>
   renderer.renderSync({ type: "container", style: { width: 10, height: 10, transform: "rotateX(45deg)" } }, { width: 10, height: 10 }),
 );
-console.log(message); // bm-engine: invalid value for style property transform
+console.log(message); // bm-render: invalid value for style property transform
 // #endregion
 console.log(message);
 

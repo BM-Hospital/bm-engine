@@ -1,13 +1,13 @@
 // Cross-compiles the Node-API addon (src/native.zig) for every release target from any host with Zig 0.17,
 // and verifies each artifact structurally (nothing is executed here; see bench/native-tests.mjs for that).
 //
-//   node scripts/build-native.mjs                        all eight targets -> native/dist/<name>/bm-engine.<name>.node
+//   node scripts/build-native.mjs                        all eight targets -> native/dist/<name>/bm-render.<name>.node
 //   node scripts/build-native.mjs --target=<name>[,...]  some of them
 //   node scripts/build-native.mjs --optimize=safe        ReleaseSafe (default: fast; also small | debug)
 //   node scripts/build-native.mjs --verify-only          check the files already in native/dist
 //   (ZIG=<path to zig> overrides the compiler location)
 //
-// Targets (<name> is also the npm package suffix: bm-engine-<name>):
+// Targets (<name> is also the npm package suffix: bm-render-<name>):
 //   win32-x64-msvc, win32-arm64-msvc    PE DLL, no C runtime, imports kernel32 only; Node-API functions are
 //                                       looked up in the host process at load time (no import of node.exe)
 //   linux-x64-gnu, linux-arm64-gnu      ELF shared object against glibc >= 2.17
@@ -59,7 +59,7 @@ const MATH = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sin
   "pow", "sqrt", "cbrt", "hypot", "floor", "ceil", "round", "trunc", "rint", "nearbyint", "fmod", "remainder", "fma", "fabs", "fmin", "fmax", "ldexp", "frexp",
   "modf", "scalbn", "copysign", "lround", "lrint", "sincos"].flatMap((n) => [n, n + "f", n + "l"]));
 
-const fileOf = (name) => path.join(root, "native", "dist", name, `bm-engine.${name}.node`);
+const fileOf = (name) => path.join(root, "native", "dist", name, `bm-render.${name}.node`);
 
 /** The Node-API functions the addon uses: the field names of `Api` in src/native/napi.zig. */
 export function napiSymbols() {
@@ -350,7 +350,7 @@ function explainFused() {
   const prefix = path.join(root, "zig-out", "explain-fused");
   const r = spawnSync(zig.zig, ["build", "native", "-Dtarget=aarch64-linux-musl", "-Dnative-strip=false", "--prefix", prefix], { cwd: root, stdio: "inherit" });
   if (r.status !== 0) process.exit(1);
-  const b = readFileSync(path.join(prefix, "native", "bm-engine.linux-arm64-musl.node"));
+  const b = readFileSync(path.join(prefix, "native", "bm-render.linux-arm64-musl.node"));
   const u64 = (o) => Number(b.readBigUInt64LE(o));
   const shoff = u64(40), shentsize = b.readUInt16LE(58), shnum = b.readUInt16LE(60);
   const sh = [];
@@ -394,7 +394,7 @@ function main() {
       const r = spawnSync(zig.zig, ["build", "native", `-Dtarget=${t.zig}`, `-Dnative-optimize=${optimize}`], { cwd: root, stdio: "inherit" });
       if (r.status !== 0) { console.error(`${name}: zig build failed`); failed = true; rows.push({ name, status: "BUILD FAILED" }); continue; }
       mkdirSync(path.dirname(out), { recursive: true });
-      copyFileSync(path.join(root, "zig-out", "native", `bm-engine.${name}.node`), out);
+      copyFileSync(path.join(root, "zig-out", "native", `bm-render.${name}.node`), out);
       console.log(`${name}: built in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     } else if (!existsSync(out)) { rows.push({ name, status: "missing" }); failed = true; continue; }
     let v;
@@ -410,7 +410,7 @@ function main() {
     const manifest = path.join(root, "native", "dist", "manifest.json");
     let prev = {};
     try { prev = JSON.parse(readFileSync(manifest, "utf8")).files || {}; } catch {}
-    const mine = Object.fromEntries(rows.filter((r) => r.bytes).map((r) => [r.name, { file: `${r.name}/bm-engine.${r.name}.node`, zigTarget: r.zig, optimize, bytes: r.bytes, gzip: r.gzip, sha256: r.sha256, verified: r.status === "verified", facts: r.facts }]));
+    const mine = Object.fromEntries(rows.filter((r) => r.bytes).map((r) => [r.name, { file: `${r.name}/bm-render.${r.name}.node`, zigTarget: r.zig, optimize, bytes: r.bytes, gzip: r.gzip, sha256: r.sha256, verified: r.status === "verified", facts: r.facts }]));
     writeFileSync(manifest, JSON.stringify({ date: new Date().toISOString(), zig: zig.version, napi: napiSymbols(), files: { ...prev, ...mine } }, null, 2) + "\n");
   }
   process.exit(failed ? 1 : 0);

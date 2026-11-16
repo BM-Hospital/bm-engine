@@ -1,23 +1,23 @@
-# bm-engine-linux-x64-musl
+# bm-render-linux-x64-musl
 
-The native Node-API addon of [bm-engine](https://www.npmjs.com/package/bm-engine) for **Linux x64, musl (Alpine)**
+The native Node-API addon of [bm-render](https://www.npmjs.com/package/bm-render) for **Linux x64, musl (Alpine)**
 (`os: linux`, `cpu: x64`, `libc: musl`).
 
-Do not install this package yourself. `npm install bm-engine` lists every platform package as an optional
-dependency and your package manager installs only the one that matches the machine. `bm-engine` loads it
+Do not install this package yourself. `npm install bm-render` lists every platform package as an optional
+dependency and your package manager installs only the one that matches the machine. `bm-render` loads it
 when present and otherwise uses its WebAssembly build, with the same API and the same output bytes:
 
 ```js
-import { backend } from "bm-engine";
+import { backend } from "bm-render";
 console.log(backend); // "native" when this package is installed and loads, else "wasm"
 ```
 
-It is released together with `bm-engine` at the same version (0.1.0), which pins it exactly; an
-addon whose internal interface version does not match the installed `bm-engine` is ignored (wasm is used).
-Requires Node-API 6 (`engines.node`: `>=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0`); `bm-engine` itself requires Node.js 18+.
+It is released together with `bm-render` at the same version (0.1.0), which pins it exactly; an
+addon whose internal interface version does not match the installed `bm-render` is ignored (wasm is used).
+Requires Node-API 6 (`engines.node`: `>=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0`); `bm-render` itself requires Node.js 18+.
 
-The x64 binary needs an x86-64-v2 CPU (SSE4.2, 2009+); on older CPUs it refuses to load and `bm-engine` uses wasm.
+The x64 binary needs an x86-64-v2 CPU (SSE4.2, 2009+); on older CPUs it refuses to load and `bm-render` uses wasm.
 
-Status: cross-compiled and structurally verified (exports, imported symbols, CPU level), but **not yet executed on this platform** by the project; `bm-engine` falls back to WebAssembly if it does not load.
+Status: cross-compiled and structurally verified (exports, imported symbols, CPU level), but **not yet executed on this platform** by the project; `bm-render` falls back to WebAssembly if it does not load.
 
 License: MIT. See LICENSE, NOTICE and THIRD-PARTY-NOTICES.md.

@@ -1,5 +1,5 @@
 // node reduce.mjs <fixture-name | @file.json> [fixtures.json]  -> greedily shrinks a tree while takumi and
-// bm-engine still disagree on it; prints the minimal tree and both layouts. Needs BM_ONE_WASM (see cmp.mjs).
+// bm-render still disagree on it; prints the minimal tree and both layouts. Needs BM_ONE_WASM (see cmp.mjs).
 import { readFileSync } from "node:fs";
 import { ours, oracle } from "./cmp.mjs";
 

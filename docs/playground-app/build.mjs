@@ -2,7 +2,7 @@
 //   node docs/playground-app/build.mjs                         -> docs/playground-app/dist/
 //   node docs/playground-app/build.mjs --out ../public/playground-app   (relative to this folder; used by `npm run docs:build`)
 // Copies the playground sources + js/*.mjs (browser entry points, incl. engine.mjs, pdf.mjs, pdf-api.mjs) + js/*.wasm
-// (incl. bm_engine.pdf.wasm) + the default fonts into <out>/vendor/, the vendored pdf.js (third_party/pdfjs-<version>/)
+// (incl. bm_render.pdf.wasm) + the default fonts into <out>/vendor/, the vendored pdf.js (third_party/pdfjs-<version>/)
 // into <out>/vendor/pdfjs-<version>/, and writes <out>/config.js pointing at them, with the content hash of every wasm
 // file (fetched as <file>?v=<hash>, which vercel.json caches for a year). Needs the prebuilt js/*.wasm (tracked in
 // git) - no Zig. Nothing here is loaded up front except what Image mode needs: pdf.mjs, the pdf wasm and pdf.js are
@@ -28,14 +28,14 @@ const add = (group, n) => { sizes[group] = (sizes[group] || 0) + n; };
 for (const f of ["index.html", "style.css", "app.js", "i18n.js", "templates.js", "pdf-options.js", "pdf-templates.js"]) add("app", cp(path.join(HERE, f), path.join(DIST, f)));
 const wasm = readdirSync(path.join(ROOT, "js")).filter((f) => f.endsWith(".wasm"));
 if (wasm.length < 4) { console.error("js/*.wasm missing - build the engine first (node scripts/build.mjs)"); process.exit(1); }
-if (!wasm.includes("bm_engine.pdf.wasm") || !existsSync(path.join(ROOT, "js", "pdf.mjs"))) { console.error("js/pdf.mjs or js/bm_engine.pdf.wasm missing (PDF mode needs them)"); process.exit(1); }
+if (!wasm.includes("bm_render.pdf.wasm") || !existsSync(path.join(ROOT, "js", "pdf.mjs"))) { console.error("js/pdf.mjs or js/bm_render.pdf.wasm missing (PDF mode needs them)"); process.exit(1); }
 const versions = {};
 for (const f of readdirSync(path.join(ROOT, "js"))) {
   if (!/\.(mjs|wasm)$/.test(f) || /^node(-|\.)/.test(f)) continue;
   const n = cp(path.join(ROOT, "js", f), path.join(DIST, "vendor", f));
   if (f.endsWith(".wasm")) {
     versions[f] = createHash("sha256").update(readFileSync(path.join(ROOT, "js", f))).digest("hex").slice(0, 12);
-    add(f === "bm_engine.pdf.wasm" ? "pdf wasm (PDF mode only)" : "image wasm (one profile per page) + woff add-on", n);
+    add(f === "bm_render.pdf.wasm" ? "pdf wasm (PDF mode only)" : "image wasm (one profile per page) + woff add-on", n);
   } else add(/^pdf(-api)?\.mjs$/.test(f) ? "pdf entry (PDF mode only)" : "engine js", n);
 }
 const FONTS = ["Inter-Regular.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf", "Inter-Italic.ttf", "NotoSans-Regular.ttf", "NotoSans-Bold.ttf"];
@@ -52,7 +52,7 @@ export const config = {
   mode: "dist",
   jsBase: "./vendor/",
   fontsBase: "./vendor/fonts/",
-  wasm: { core: "bm_engine.core.wasm", standard: "bm_engine.standard.wasm", full: "bm_engine.wasm", pdf: "bm_engine.pdf.wasm" },
+  wasm: { core: "bm_render.core.wasm", standard: "bm_render.standard.wasm", full: "bm_render.wasm", pdf: "bm_render.pdf.wasm" },
   woffWasm: "bm_woff.wasm",
   pdfjsBase: "./vendor/${pdfjsDir}/",
   versions: ${JSON.stringify(versions)},

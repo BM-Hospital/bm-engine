@@ -1,5 +1,5 @@
 // Renders every fixture with two wasm builds and reports output differences (raw pixels) and PNG size totals.
-//   node bench/perf/compare-builds.mjs <old bm_engine.wasm> [<new bm_engine.wasm>]     (new: js/bm_engine.wasm)
+//   node bench/perf/compare-builds.mjs <old bm_render.wasm> [<new bm_render.wasm>]     (new: js/bm_render.wasm)
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,7 +8,7 @@ import { fontsFor } from "../lib/fonts.mjs";
 import { ALL_CASES } from "../fixtures/index.mjs";
 import { renderOpts } from "../lib/pipeline.mjs";
 
-const [oldFile, newFile = path.join(ROOT_DIR, "js", "bm_engine.wasm")] = process.argv.slice(2);
+const [oldFile, newFile = path.join(ROOT_DIR, "js", "bm_render.wasm")] = process.argv.slice(2);
 const { createBinding } = await import(pathToFileURL(path.join(ROOT_DIR, "js", "engine.mjs")).href);
 const mk = (f) => { const b = createBinding(); b.initSync(readFileSync(f)); return b; };
 const A = mk(oldFile), B = mk(newFile);

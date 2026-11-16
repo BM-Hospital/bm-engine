@@ -5,7 +5,7 @@ const log = (label, value) => console.log(label, JSON.stringify(value));
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -28,7 +28,7 @@ log("basic", measured);
 // #region intrinsic
 // Without width / height the root is laid out at its max-content size: the result is
 // the size the image would have if you rendered it without a canvas size.
-const label = { type: "text", text: "Hello bm-engine", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
+const label = { type: "text", text: "Hello bm-render", style: { fontFamily: "Inter", fontSize: 32, fontWeight: 700 } };
 const { width, height } = renderer.measureSync(label); // { width: 258.71875, height: 39 }
 const tight = renderer.renderSync(label); // a 259 × 39 PNG
 // #endregion

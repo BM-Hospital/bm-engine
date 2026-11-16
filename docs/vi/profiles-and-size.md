@@ -8,10 +8,10 @@ Chọn profile để chỉ tải những tính năng cần dùng. Các số đo 
 
 | Bản build | Gốc | gzip -9 | brotli (q11)  |
 |:--|--:|--:|--: |
-| `core` — `bm_engine.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
-| `standard` — `bm_engine.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
-| `full` — `bm_engine.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + đầu ra PDF) | 1 906.7 KiB | 938.1 KiB | 767.1 KiB  |
+| `core` — `bm_render.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
+| `standard` — `bm_render.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
+| `full` — `bm_render.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
+| `pdf` — `bm_render.pdf.wasm` (`full` + đầu ra PDF) | 1 906.7 KiB | 938.1 KiB | 767.1 KiB  |
 | Add-on WOFF — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB  |
 
 Lớp bọc JavaScript chỉ vài KiB ESM không phụ thuộc gì và giống nhau cho mọi profile. Các binary không
@@ -19,8 +19,8 @@ import gì từ môi trường chạy.
 
 ### Addon native (Node.js)
 
-Trên Node.js, `bm-engine` dùng addon native khi có addon cho nền tảng đang chạy (một optional dependency cho mỗi
-nền tảng; npm chỉ tải gói khớp với máy). Addon có tập tính năng `full` cộng đầu ra PDF (do `bm-engine/pdf` dùng); các profile
+Trên Node.js, `bm-render` dùng addon native khi có addon cho nền tảng đang chạy (một optional dependency cho mỗi
+nền tảng; npm chỉ tải gói khớp với máy). Addon có tập tính năng `full` cộng đầu ra PDF (do `bm-render/pdf` dùng); các profile
  ở trên chỉ áp dụng cho bản
 wasm. Mỗi addon lớn hơn bản wasm `full` vì được biên dịch để chạy nhanh (ReleaseFast) chứ không phải để nhỏ, và bản
 wasm vẫn nằm trong gói chính để làm phương án dự phòng. Nên dùng backend nào và so sánh hai backend:
@@ -29,14 +29,14 @@ wasm vẫn nằm trong gói chính để làm phương án dự phòng. Nên dù
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Trạng thái |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
-| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
-| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | đã chạy (benchmark này) |
+| `bm-render.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
+| `bm-render.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compile, kiểm tra cấu trúc, chưa từng chạy |
 | bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
 | bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
 | bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
@@ -75,9 +75,9 @@ Addon native lấy từ `native/dist/manifest.json` (build ngày 2026-11-13 vớ
 
 ### Profile `pdf`
 
-`bm_engine.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
-các thuộc tính CSS paged-media ([Đầu ra PDF](pdf/index.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-engine/pdf` trên Node.js (addon là
-tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-engine` không bao giờ cung cấp PDF. Nó thêm khoảng 0.6 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
+`bm_render.pdf.wasm` là `full` cộng tính năng `pdf`: bộ ghi PDF, bộ cắt subset font, phần dàn trang theo trang giấy và
+các thuộc tính CSS paged-media ([Đầu ra PDF](pdf/index.md)). Đây là binary wasm duy nhất có PDF; addon native cũng chứa bộ ghi PDF và phục vụ `bm-render/pdf` trên Node.js (addon là
+tập tính năng `full` cộng đầu ra PDF). `features.pdf` là `true` ở đó và `false` ở các binary khác, và `bm-render` không bao giờ cung cấp PDF. Nó thêm khoảng 0.6 MB vào `full`. Nó không nằm trong bảng bên dưới vì `pdf` không phải
 tính năng của `core`, `standard` hay `full`.
 
 ## Chi phí biên của từng tính năng
@@ -159,13 +159,13 @@ Các cờ: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects
 `tables`, `floats`, `webp_gif_decode`, `text_wrap_balance`, `color_fonts`, `complex_text`,
 `animation`, `extra_codecs`, `render_svg`, `pdf`. Các tùy chọn build khác: `-Dwasm-optimize=small|fast|safe|debug`
 (mặc định `small`), `-Dstrip=false`, `-Dstack-kib=<n>` (mặc định 1024). Kết quả nằm ở
-`zig-out/bin/bm_engine.wasm`; nạp nó bằng `init(bytes)` / `initSync(bytes)`, hoặc trong Node dùng
-`BM_WASM=path/to/bm_engine.wasm` với entry `bm-engine`. `features` báo đúng các cờ mà binary được build.
+`zig-out/bin/bm_render.wasm`; nạp nó bằng `init(bytes)` / `initSync(bytes)`, hoặc trong Node dùng
+`BM_WASM=path/to/bm_render.wasm` với entry `bm-render`. `features` báo đúng các cờ mà binary được build.
 
 ## Add-on WOFF
 
 `bm_woff.wasm` (84.4 KiB, 65.5 KiB brotli) là chính bộ giải mã WOFF / WOFF2 của engine (kể cả brotli)
-được tách thành module riêng. `loadWoff()` từ `bm-engine/woff` cài nó vào, sau đó `registerFont` chuyển
+được tách thành module riêng. `loadWoff()` từ `bm-render/woff` cài nó vào, sau đó `registerFont` chuyển
 WOFF / WOFF2 thành TTF / OTF trước khi giao cho bất kỳ entry nào. Font sau khi chuyển trùng từng byte với
 kết quả của bộ giải mã tích hợp. Add-on hữu ích trên `core` khi font của bạn ở dạng WOFF2 (ví dụ lấy từ
 Google Fonts); trên `standard` / `full` thì không cần. Xem

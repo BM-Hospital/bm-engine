@@ -443,7 +443,7 @@ pub fn draw(cx: *Ctx, bytes: ?[]const u8, bytes_hash: u64, pmx: ?*const raster.P
     return .{ .ref = regPixmap(cx, pm, key, filter) };
 }
 
-/// The intrinsic size takumi reads from an image's header when bm-engine cannot decode it (a CMYK
+/// The intrinsic size takumi reads from an image's header when bm-render cannot decode it (a CMYK
 /// JPEG, a PNG that fails to decode): PNG IHDR, JPEG frame header, WebP header; null otherwise.
 pub fn headerSize(bytes: []const u8) ?[2]u32 {
     const d = switch (codec.sniff(bytes)) {

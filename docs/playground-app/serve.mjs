@@ -66,5 +66,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const port = Number(opt("port", process.env.PORT || 8080));
   const host = opt("host", "127.0.0.1");
   const s = await startServer({ root, port, host });
-  console.log(`bm-engine playground (${dist ? "dist" : "dev"}): ${s.url}${dist ? "/" : "/docs/playground-app/"}`);
+  console.log(`bm-render playground (${dist ? "dist" : "dev"}): ${s.url}${dist ? "/" : "/docs/playground-app/"}`);
 }

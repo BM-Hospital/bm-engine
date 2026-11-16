@@ -2,7 +2,7 @@
 
 [English](styles.md) · [Tiếng Việt](../../vi/image/styles.md)
 
-bm-engine styles elements with real CSS: the same properties, values, cascade and layout algorithms as
+bm-render styles elements with real CSS: the same properties, values, cascade and layout algorithms as
 a browser. This page shows the three ways to attach styles —
 inline `style` objects, stylesheets through the `css` option, and Tailwind classes in `tw` — how they
 combine, and one worked example for each layout mode (flex, grid, block / inline flow, absolute
@@ -27,7 +27,7 @@ The examples share this setup:
 <!-- @example styles#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // stylesheets and Tailwind need the standard or full profile
+import { Renderer } from "bm-render"; // stylesheets and Tailwind need the standard or full profile
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -75,7 +75,7 @@ renderer.renderSync({ type: "container", style: { "background-color": "red", col
 
 // an invalid value for a known property throws
 expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 px" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property width"
+// "bm-render: invalid value for style property width"
 ```
 
 ::: warning Kebab-case keys are ignored
@@ -464,7 +464,7 @@ More on floats and their limits: [Tables and floats](./tables.md).
 
 ## Units
 
-| Unit | Meaning in bm-engine |
+| Unit | Meaning in bm-render |
 |:--|:--|
 | number, `px` | CSS px (× `devicePixelRatio` on the canvas) |
 | `%` | of the containing block; on the root, of the canvas |
@@ -474,7 +474,7 @@ More on floats and their limits: [Tables and floats](./tables.md).
 | `ch`, `ex`, `lh`, `rlh`, `cq*` | supported as in CSS |
 | `calc()`, `min()`, `max()`, `clamp()` and other math functions | supported everywhere a length or number is accepted |
 
-See [How bm-engine works](./concepts.md#numbers-units-and-the-viewport) for a measured example.
+See [How bm-render works](./concepts.md#numbers-units-and-the-viewport) for a measured example.
 
 ## Colours
 
@@ -505,10 +505,10 @@ On `core` the modern colour functions are not parsed, so an inline style using t
 
 <!-- @example styles#core-colors -->
 ```js
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync({ type: "container", style: { width: 10, height: 10, backgroundColor: "oklch(62% 0.2 30)" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property backgroundColor"
+// "bm-render: invalid value for style property backgroundColor"
 ```
 
 In a stylesheet the same declaration is simply dropped. Relative colour syntax
@@ -519,4 +519,4 @@ In a stylesheet the same declaration is simply dropped. Relative colour syntax
 - [CSS support](./css-support.md) — every property, value and its status
 - [HTML and Tailwind](./html-and-tailwind.md) — HTML sources and the Tailwind compiler
 - [Typography](./typography.md), [Effects](./effects.md), [Images](./images.md)
-- [How bm-engine works](./concepts.md) — defaults such as `display: inline` and `border-box`
+- [How bm-render works](./concepts.md) — defaults such as `display: inline` and `border-box`

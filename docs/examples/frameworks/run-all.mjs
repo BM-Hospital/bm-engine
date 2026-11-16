@@ -1,9 +1,9 @@
 // Runs every check-*.mjs of docs/examples/frameworks.
 //
-//   node docs/examples/frameworks/run-all.mjs                 in place: `bm-engine` resolves to this repository
+//   node docs/examples/frameworks/run-all.mjs                 in place: `bm-render` resolves to this repository
 //                                                             (package self-reference); optional frameworks SKIP
 //   node docs/examples/frameworks/run-all.mjs --app=<dir>     copies the examples to <dir>/fw and runs them there,
-//                                                             against the bm-engine installed in <dir>/node_modules
+//                                                             against the bm-render installed in <dir>/node_modules
 //                                                             (npm pack + npm i <tarball> hono @hono/node-server express h3 esbuild)
 import { spawnSync } from "node:child_process";
 import { cpSync, readdirSync, mkdirSync } from "node:fs";

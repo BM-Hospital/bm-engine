@@ -9,7 +9,7 @@ const mediaBox = (b) => /\/MediaBox\[0 0 ([\d.]+) ([\d.]+)\]/.exec(latin1(b)).sl
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -143,7 +143,7 @@ try {
 } catch (e) {
   rangeError = e.message;
 }
-// bm-engine: The page ranges select none of the document's 1 pages
+// bm-render: The page ranges select none of the document's 1 pages
 // #endregion
 assert.match(rangeError, /The page ranges select none of the document's 1 pages/);
 console.log("pdf-pagination: ok", pageCount(flowing), pageCount(table), pageCount(oneLine), pageCount(whole));

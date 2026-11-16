@@ -2,14 +2,14 @@
 
 [English](recipes.md) · [Tiếng Việt](../../vi/image/recipes.md)
 
-Task-oriented snippets for things people build with bm-engine: files on disk, HTTP endpoints with proper
+Task-oriented snippets for things people build with bm-render: files on disk, HTTP endpoints with proper
 caching, batches, worker pools, build-time generation, rendering in the browser, high-DPI output, text
 that fits, remote images, error handling and multilingual fonts. Each recipe is short and complete;
 most import `getRenderer()` and `card()` from the `og.js` module described in
 [Frameworks → The universal pattern](./frameworks/index.md#the-universal-pattern).
 
 ::: info Verification status
-Every recipe was executed on Node 26.13 against the packed bm-engine 0.1.0 tarball
+Every recipe was executed on Node 26.13 against the packed bm-render 0.1.0 tarball
 (`docs/examples/frameworks/check-recipes.mjs`, `check-servers.mjs`, `check-browser.mjs`); timings are from
 one Windows 11 test machine and only indicate orders of magnitude. The Web Worker recipe ran in headless
 Edge 157.
@@ -31,7 +31,7 @@ Edge 157.
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine/core";
+import { Renderer } from "bm-render/core";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("fonts/Inter-Regular.ttf") });
@@ -67,7 +67,7 @@ async function etagFor(params) {
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname !== "/og.png") return res.writeHead(404).end();
-  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-engine" };
+  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-render" };
   const etag = await etagFor(params);
   const headers = { etag, "cache-control": "public, max-age=3600, stale-while-revalidate=86400" };
   if (req.headers["if-none-match"] === etag) return res.writeHead(304, headers).end();
@@ -110,12 +110,12 @@ More numbers: [Performance](./performance.md) and [Benchmark](../benchmark.md).
 ## Worker threads pool
 
 The engine is single-threaded and a render blocks its thread. For throughput, or to keep an HTTP server's
-event loop free, run one bm-engine instance per worker. A minimal pool without dependencies:
+event loop free, run one bm-render instance per worker. A minimal pool without dependencies:
 
 ```js
 // render-worker.js
 import { parentPort } from "node:worker_threads";
-import { getRenderer, card } from "./og.js"; // each worker imports bm-engine: its own wasm instance and fonts
+import { getRenderer, card } from "./og.js"; // each worker imports bm-render: its own wasm instance and fonts
 
 parentPort.on("message", ({ id, props, options }) => {
   try {
@@ -222,7 +222,7 @@ In the browser, run the engine in a module worker and send back the bytes (trans
 
 ```js
 // render-worker.js
-import { init, Renderer } from "bm-engine/standard";
+import { init, Renderer } from "bm-render/standard";
 
 const ready = (async () => {
   await init();
@@ -298,7 +298,7 @@ measuring: `lineClamp` / `textOverflow: "ellipsis"` (see [Typography](./typograp
 
 ## Embed remote images
 
-bm-engine never downloads anything: an image `src` is a key into the `images` option. Fetch the bytes
+bm-render never downloads anything: an image `src` is a key into the `images` option. Fetch the bytes
 yourself (with a timeout), then render:
 
 ```js
@@ -334,13 +334,13 @@ if URLs come from users. Formats per profile (SVG and WebP need `standard`) are 
 try {
   const png = await renderer.render(node, { width: 1200, height: 630, signal: AbortSignal.timeout(2000) });
 } catch (error) {
-  // "bm-engine: invalid value for style property width", "bm-engine: canvas too large", signal.reason, ...
+  // "bm-render: invalid value for style property width", "bm-render: canvas too large", signal.reason, ...
 }
 ```
 
 What was verified:
 
-- An invalid inline style value throws (`bm-engine: invalid value for style property width`); a zero
+- An invalid inline style value throws (`bm-render: invalid value for style property width`); a zero
   `width` throws. Invalid stylesheet or Tailwind input is dropped silently instead.
 - `signal` is checked **before** rasterising, after the async `fonts` / lazy `images` have resolved:
   an already-aborted signal rejects with its reason, and a signal that fires while a lazy font loads also

@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
 import { fontsFor } from "../../lib/fonts.mjs";
 import { asset } from "../../fixtures/_h.mjs";
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer();
 for (const f of fontsFor()) r.registerFont({ name: f.name, data: readFileSync(f.path), weight: f.weight, style: f.style });
 const arg = process.argv[2];

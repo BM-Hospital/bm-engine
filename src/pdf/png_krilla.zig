@@ -3,7 +3,7 @@
 //! grayscale below 8 bits is scaled to 8 bits, a `tRNS` colour key becomes an alpha channel,
 //! 16-bit samples stay 16-bit (big-endian, as PDF wants them), gamma / sRGB chunks are ignored.
 //! The result is split into the colour samples and the alpha samples of the image XObject and its
-//! soft mask. Unlike bm-engine's own decoder (src/codec/png.zig) it checks every CRC up to the end
+//! soft mask. Unlike bm-render's own decoder (src/codec/png.zig) it checks every CRC up to the end
 //! of the image data and fails with the `png` crate's messages, which takumi-pdf reports as
 //! `Writing the PDF failed: failed to process image: <message>`.
 const std = @import("std");

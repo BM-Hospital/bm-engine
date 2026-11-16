@@ -2,11 +2,11 @@
 
 [English](../../en/pdf/api.md) · [Tiếng Việt](api.md)
 
-Mọi thứ mà `bm-engine/pdf` export, với chữ ký đúng như trong `js/pdf.d.mts` và `js/pdf-types.d.mts`, cùng
+Mọi thứ mà `bm-render/pdf` export, với chữ ký đúng như trong `js/pdf.d.mts` và `js/pdf-types.d.mts`, cùng
 các lỗi mà từng lời gọi ném ra. Định dạng node, `registerFont` và những phần dùng chung với đầu ra ảnh chỉ
 được mô tả một lần, trong [tham chiếu API ảnh](../image/api.md). Mọi đoạn mã là một phần của
 `docs/examples/pdf-api.mjs` trong repository và đã được chính file đó chạy trên addon native và trên
-WebAssembly (`BM_ENGINE_BACKEND=wasm`), cho cùng một kết quả.
+WebAssembly (`BM_RENDER_BACKEND=wasm`), cho cùng một kết quả.
 
 - [Các export của module](#module-exports)
 - [`PdfRenderer`](#pdfrenderer)
@@ -23,7 +23,7 @@ WebAssembly (`BM_ENGINE_BACKEND=wasm`), cho cùng một kết quả.
 
 <!-- @example pdf-api#exports -->
 ```js
-import * as pdfEntry from "bm-engine/pdf";
+import * as pdfEntry from "bm-render/pdf";
 
 pdfEntry.profile;      // "pdf"
 pdfEntry.features.pdf; // true (and every other feature of the full profile)
@@ -35,7 +35,7 @@ pdfEntry.backend;      // "native" with the platform package on Node.js, else "w
 | `PdfRenderer` | class | Renderer giữ các font đã đăng ký và ghi ra file PDF ([bên dưới](#pdfrenderer)). |
 | `render`, `measure`, `prepare` | hàm | Các method tương ứng trên một `PdfRenderer` dùng chung, được tạo khi cần ([bên dưới](#module-level-render-measure-and-prepare)). |
 | `PageNumber`, `TotalPages`, `TargetPageNumber` | hàm | Node bộ đếm trang cho header, footer và tham chiếu chéo ([bên dưới](#page-counters)). |
-| `init(input?)`, `default` | `Promise<WasmExports>` | Nạp binary wasm. Trên Node.js entry đã sẵn sàng ngay khi import và `init()` trả về ngay; trong trình duyệt `await init()` tải `bm_engine.pdf.wasm` nằm cạnh module, hoặc bạn tự truyền binary. |
+| `init(input?)`, `default` | `Promise<WasmExports>` | Nạp binary wasm. Trên Node.js entry đã sẵn sàng ngay khi import và `init()` trả về ngay; trong trình duyệt `await init()` tải `bm_render.pdf.wasm` nằm cạnh module, hoặc bạn tự truyền binary. |
 | `initSync(input)` | `WasmExports` | `init` đồng bộ với bytes hoặc một `WebAssembly.Module`. |
 | `wasmUrl()` | `URL` | URL mà `init()` nạp mặc định. |
 | `profile` | `"pdf"` | Profile build của entry, kể cả trên backend native. |
@@ -43,8 +43,8 @@ pdfEntry.backend;      // "native" with the platform package on Node.js, else "w
 | `features` | object | Build đang nạp có những gì; `features.pdf` chỉ là `true` ở đây. |
 | `Renderer`, `Prepared`, `setGlyphCacheMaxBytes`, `setWoffDecoder` | | API ảnh của cùng instance module ([tham chiếu API ảnh](../image/api.md)). `Renderer` của nó có thêm [`renderPdf`](#rendererrenderpdf-and-measurepdf). |
 
-Entry này có instance module riêng: font đăng ký trên một `Renderer` của `bm-engine` không được
-`bm-engine/pdf` nhìn thấy. Phần định nghĩa kiểu còn export mọi kiểu của `bm-engine` và của `pdf-types.d.mts`
+Entry này có instance module riêng: font đăng ký trên một `Renderer` của `bm-render` không được
+`bm-render/pdf` nhìn thấy. Phần định nghĩa kiểu còn export mọi kiểu của `bm-render` và của `pdf-types.d.mts`
 ([Kiểu dữ liệu](#types)).
 
 ## `PdfRenderer` {#pdfrenderer}
@@ -67,7 +67,7 @@ class PdfRenderer {
 }
 ```
 
-`PdfRenderer` bọc một `Renderer` ảnh của instance `bm-engine/pdf`; hàm khởi tạo nhận cùng
+`PdfRenderer` bọc một `Renderer` ảnh của instance `bm-render/pdf`; hàm khởi tạo nhận cùng
 `RendererOptions` ([tham chiếu API ảnh](../image/api.md#hàm-khởi-tạo)). Hãy tạo một instance, đăng ký font,
 rồi dùng lại nó cho mọi tài liệu.
 
@@ -76,7 +76,7 @@ rồi dùng lại nó cho mọi tài liệu.
 <!-- @example pdf-api#renderer -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const families = pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -93,7 +93,7 @@ pdf.unregisterFont("Missing"); // false
 pdf.clearFonts();              // removes every registered font
 ```
 
-bm-engine không kèm font nào và không bao giờ đọc font hệ thống. Khi **chưa đăng ký font nào cả**, chữ
+bm-render không kèm font nào và không bao giờ đọc font hệ thống. Khi **chưa đăng ký font nào cả**, chữ
 không được vẽ và lần render không báo lỗi; khi đã có ít nhất một font, một ký tự mà không font nào vẽ được
 sẽ làm render thất bại theo mặc định ([Font trong PDF](fonts.md#ký-tự-không-font-nào-có)):
 
@@ -165,7 +165,7 @@ const a5 = await pdf.render(prepared, { margin: 24 }); // options merge over the
 }
 const done = new PdfRenderer();
 done.free();
-// done.renderSync(...) now throws "bm-engine: renderer has been freed"
+// done.renderSync(...) now throws "bm-render: renderer has been freed"
 ```
 
 ## Nguồn đầu vào {#sources}
@@ -189,7 +189,7 @@ font, nên hãy dùng chúng cho tài liệu không có chữ, hoặc truyền f
 
 <!-- @example pdf-api#module-level -->
 ```js
-import { render, measure } from "bm-engine/pdf";
+import { render, measure } from "bm-render/pdf";
 
 const plain = await render(`<div style="width: 200px; height: 100px; background: #0ea5e9"></div>`, {
   viewport: { width: 200 },
@@ -206,11 +206,11 @@ Font truyền qua `fonts` vẫn được đăng ký trên renderer dùng chung c
 
 Mọi `Renderer` đều có `renderPdf`, `renderPdfSync`, `measurePdf` và `measurePdfSync`, với tham số và kết quả
 giống `PdfRenderer.render` / `renderSync` / `measure` / `measureSync` (`PdfRenderer` chỉ là một lớp bọc mỏng
-quanh chúng). Chúng chạy được trên `Renderer` mà `bm-engine/pdf` export:
+quanh chúng). Chúng chạy được trên `Renderer` mà `bm-render/pdf` export:
 
 <!-- @example pdf-api#renderer-methods -->
 ```js
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const r = new Renderer();
 const viaRenderer = await r.renderPdf(`<div style="width: 40px; height: 40px; background: red"></div>`, {
@@ -219,11 +219,11 @@ const viaRenderer = await r.renderPdf(`<div style="width: 40px; height: 40px; ba
 r.measurePdfSync(`<div style="width: 40px; height: 40px"></div>`, { viewport: { width: 40 } }); // { width: 40, height: 40 }
 ```
 
-Trên mọi build khác chúng đều ném lỗi, kể cả `bm-engine` khi chạy trên addon native:
+Trên mọi build khác chúng đều ném lỗi, kể cả `bm-render` khi chạy trên addon native:
 
 <!-- @example pdf-api#other-builds -->
 ```js
-import { Renderer as FullRenderer } from "bm-engine/full";
+import { Renderer as FullRenderer } from "bm-render/full";
 
 let unsupported;
 try {
@@ -231,7 +231,7 @@ try {
 } catch (e) {
   unsupported = e.message;
 }
-// bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")
+// bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")
 ```
 
 ## Tùy chọn render {#render-options}
@@ -292,7 +292,7 @@ bao quanh gần nhất, có `href` thì nó tự render liên kết của mình.
 
 <!-- @example pdf-api#counters -->
 ```js
-import { PageNumber, TotalPages, TargetPageNumber } from "bm-engine/pdf";
+import { PageNumber, TotalPages, TargetPageNumber } from "bm-render/pdf";
 
 PageNumber({ format: "upper-roman", style: { color: "#64748b" } });
 // { type: "container", tagName: "span", style: { color: "#64748b" }, className: "pageNumber upper-roman" }
@@ -328,7 +328,7 @@ dung sinh ra (`content: counter(page)`, `target-counter()`) cũng hoạt động
 
 ## Lỗi {#errors}
 
-Mọi lỗi đều là một `Error` có thông điệp bắt đầu bằng `bm-engine:`, trừ một lần render bị hủy: khi đó
+Mọi lỗi đều là một `Error` có thông điệp bắt đầu bằng `bm-render:`, trừ một lần render bị hủy: khi đó
 promise bị từ chối với lý do của signal (một `DOMException` tên `AbortError` khi gọi `controller.abort()`):
 
 <!-- @example pdf-api#abort -->
@@ -355,22 +355,22 @@ const messageOf = async (options, source = html) => {
   }
 };
 await messageOf({ size: "tabloid" });
-// bm-engine: unknown page size: tabloid
+// bm-render: unknown page size: tabloid
 await messageOf({ margin: "1in" });
-// bm-engine: invalid margin: expected a number or "auto"
+// bm-render: invalid margin: expected a number or "auto"
 await messageOf({ viewport: { width: 300 }, size: "a4" });
-// bm-engine: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
+// bm-render: viewport is mutually exclusive with the paged options (size, landscape, margin, header, footer, pages, pageRanges)
 await messageOf({ pageRanges: [{ from: 5, to: 2 }] });
-// bm-engine: Page range is invalid: 5-2. Pages are numbered from 1.
+// bm-render: Page range is invalid: 5-2. Pages are numbered from 1.
 await messageOf({ pdfa: "1b" });
-// bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
+// bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 await messageOf({ backgroundColor: "paper" });
-// bm-engine: backgroundColor is not a color: paper
+// bm-render: backgroundColor is not a color: paper
 await messageOf({ sise: "a4" });
 // "ok": an unknown option name is ignored
 ```
 
-Script ví dụ kiểm tra từng thông điệp dưới đây (phần chữ sau `bm-engine: `):
+Script ví dụ kiểm tra từng thông điệp dưới đây (phần chữ sau `bm-render: `):
 
 | Nguyên nhân | Thông điệp |
 |:--|:--|
@@ -406,14 +406,14 @@ Script ví dụ kiểm tra từng thông điệp dưới đây (phần chữ sau
 | một ký tự không font đã đăng ký nào vẽ được (`uncoveredText: "error"`) | `No font the text can use draws 日 (U+65E5). Check each font's unicodeRange and the font-family stack, or register a font that draws them.` |
 | `filter: blur(2px)` trong tài liệu | `A PDF cannot draw filter: blur(2px)` |
 | gọi trên renderer đã free | `renderer has been freed` |
-| `renderPdf` trên build khác | `renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")` |
+| `renderPdf` trên build khác | `renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")` |
 
 Các vi phạm PDF/A và PDF/UA, những tổ hợp chuẩn không thể có và thông điệp của chúng được liệt kê ở
 [Phiên bản và tổ hợp](accessibility.md#phiên-bản-và-tổ-hợp).
 
 ## Kiểu dữ liệu {#types}
 
-`js/pdf-types.d.mts` (được `bm-engine/pdf` export lại) định nghĩa `PdfRenderOptions`, `PdfMeasureOptions`,
+`js/pdf-types.d.mts` (được `bm-render/pdf` export lại) định nghĩa `PdfRenderOptions`, `PdfMeasureOptions`,
 `MeasuredSize` (`{ width, height }` theo CSS px), `PageSizeName`, `PageSize`, `Dimensions`,
 `ViewportInput`, `PageMargin`, `PageMarginSide`, `Band`, `PageOverride`, `PageRules`, `PageRange`,
 `PdfMetadata`, `XmpSchema`, `XmpProperty`, `Attachment`, `ArchivalAttachment` (tệp đính kèm có `mimeType` và

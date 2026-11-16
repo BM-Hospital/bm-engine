@@ -8,7 +8,7 @@ Choose based on how people will use the result. Images work well for display and
 | RGBA pixels for further processing | `Renderer.render()` with `format: "raw"` | `core`, `standard`, `full` |
 | Vector SVG | `Renderer.renderSvg()` | `full` |
 | Animated WebP, APNG or GIF | `Renderer.renderAnimation()` | `full` |
-| Multi-page PDF with searchable, selectable text | `PdfRenderer.render()` from `bm-engine/pdf` | `pdf` |
+| Multi-page PDF with searchable, selectable text | `PdfRenderer.render()` from `bm-render/pdf` | `pdf` |
 | Box positions and sizes before painting | `Renderer.measure()` | `core`, `standard`, `full` |
 
 ## Images and SVG
@@ -19,12 +19,12 @@ See the [image quick start](image/index.md) and [output formats](image/formats.m
 
 ## PDF
 
-Use `bm-engine/pdf` for paper sizes, margins, pagination, headers and footers. PDFs can contain text, links, bookmarks, metadata and attachments. PDF/A and PDF/UA requirements need configuration and validation for your document.
+Use `bm-render/pdf` for paper sizes, margins, pagination, headers and footers. PDFs can contain text, links, bookmarks, metadata and attachments. PDF/A and PDF/UA requirements need configuration and validation for your document.
 
 See the [PDF quick start](pdf/index.md), [pagination](pdf/pagination.md) and [known limitations](pdf/limitations.md).
 
 ## Layout measurements
 
-`measure()` returns a box tree and text-line positions. It does not include complete drawing commands, resolved colors or individual glyph positions. bm-engine does not currently expose a paint tree or editable-slide export.
+`measure()` returns a box tree and text-line positions. It does not include complete drawing commands, resolved colors or individual glyph positions. bm-render does not currently expose a paint tree or editable-slide export.
 
 See [measure()](image/measure.md).

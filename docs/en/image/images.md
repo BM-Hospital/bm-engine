@@ -2,8 +2,8 @@
 
 [English](images.md) · [Tiếng Việt](../../vi/image/images.md)
 
-How pictures get into a bm-engine render: image nodes and HTML `<img>`, CSS `background-image` and
-masks, the five ways to hand over the bytes (bm-engine never downloads anything), which formats each
+How pictures get into a bm-render render: image nodes and HTML `<img>`, CSS `background-image` and
+masks, the five ways to hand over the bytes (bm-render never downloads anything), which formats each
 profile decodes, how an image is sized and fitted into its box, and what the decoded-image cache does for
 you. Every example on this page is a section of
 `docs/examples/images.mjs` in the repository, run against the real package; the pictures below each
@@ -23,26 +23,26 @@ snippet are its output.
 
 ## Setup and a test picture
 
-The examples share one renderer (the `bm-engine` entry loads the `full` profile on Node.js) with Inter
+The examples share one renderer (the `bm-render` entry loads the `full` profile on Node.js) with Inter
 regular and bold registered:
 
 <!-- @example images#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });
 ```
 
-Instead of shipping sample files, the examples render their own test picture with bm-engine and feed the
+Instead of shipping sample files, the examples render their own test picture with bm-render and feed the
 PNG bytes back in. This also shows that the output of one render is a perfectly good input for the next
 (useful for caching an expensive sub-image):
 
 <!-- @example images#photo -->
 ```js
-// A 320 × 200 test picture, rendered by bm-engine itself. Any PNG / JPEG bytes work the same way.
+// A 320 × 200 test picture, rendered by bm-render itself. Any PNG / JPEG bytes work the same way.
 const photo = renderer.renderSync(
   {
     type: "container",
@@ -142,7 +142,7 @@ const pixelated = renderer.renderSync(
 
 ![The 4 × 4 checkerboard scaled smoothly into a blurred pattern, the same with sharp pixel edges, and a background tiled with sharp checkerboards](/img/guide/images-pixelated.png)
 
-::: warning bm-engine has no network access
+::: warning bm-render has no network access
 A URL in `src` (or in `url(...)`) is **never fetched**, not even by `prepare()`. Download the bytes yourself and pass them in `images`. The same
 applies to `@font-face` URLs in stylesheets.
 :::
@@ -160,7 +160,7 @@ async function loadImages(urls) {
 
 `images[].data` may also be a function or a promise. Such *lazy* entries are resolved by the async
 methods (`render`, `renderAsDataUrl`, `measure`, `prepare`, ...); the sync methods throw
-`bm-engine: lazy images[].data() needs the async API`:
+`bm-render: lazy images[].data() needs the async API`:
 
 <!-- @example images#lazy -->
 ```js
@@ -203,7 +203,7 @@ console.log(missing.children[0].width, missing.children[0].height); // 0 0, and 
 "—" means the image paints nothing and measures 0 × 0, exactly like a missing image; nothing throws.
 "animated" means the frame current at `timeMs` is shown (see [Animated sources](#animated-sources)).
 The core / standard / full columns were checked by the example script (it asserts the measured size of
-a PNG, JPEG, lossless WebP, GIF and SVG source on `bm-engine/core` and `bm-engine/standard`); lossy
+a PNG, JPEG, lossless WebP, GIF and SVG source on `bm-render/core` and `bm-render/standard`); lossy
 WebP was checked with a real VP8 file (0 × 0 on standard, 1200 × 630 on full). There is no ICO, BMP,
 TIFF or AVIF decoder. `features.svg`, `features.webpGifDecode` and `features.extraCodecs` tell you at
 runtime what the loaded binary decodes.
@@ -372,7 +372,7 @@ All of these work on every profile. For non-rectangular cut-outs use `clipPath` 
 
 ## SVG images
 
-On `standard` and `full`, SVG is decoded by bm-engine's own SVG renderer and drawn as vectors at the
+On `standard` and `full`, SVG is decoded by bm-render's own SVG renderer and drawn as vectors at the
 final size, so it stays sharp at any scale. It works as an image `src` (markup or `data:` URL), as an
 `images` entry, and in `url()` backgrounds and masks:
 

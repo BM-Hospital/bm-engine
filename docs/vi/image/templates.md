@@ -6,7 +6,7 @@ Mười một mẫu hoàn chỉnh, copy là dùng được: thẻ Open Graph, �
 repository, thẻ trích dẫn, thẻ sản phẩm, vé sự kiện, giấy chứng nhận, báo cáo tuần có biểu đồ cột, thẻ đa
 ngôn ngữ và banner sự kiện. Mỗi mẫu là một hàm bình thường nhận dữ liệu của bạn và trả về một cây node
 (hoặc một chuỗi HTML), nên bạn có thể đặt nó vào route handler, script build hay worker. Tất cả đều đã
-được render bằng `docs/examples/templates.mjs` với bm-engine 0.1.0; ảnh dưới mỗi đoạn mã là kết quả thật,
+được render bằng `docs/examples/templates.mjs` với bm-render 0.1.0; ảnh dưới mỗi đoạn mã là kết quả thật,
 không phải ảnh dựng minh họa.
 
 [[toc]]
@@ -21,7 +21,7 @@ không phải ảnh dựng minh họa.
   `width: 1200, height: 630`: layout giữ nguyên còn mọi độ dài được nhân lên (xem
   [handler](#phục-vụ-mẫu-từ-một-handler) ở cuối trang và [Định dạng đầu ra](./formats.md)).
 - **Profile.** Phần lớn các mẫu chỉ dùng cây node với style inline và chạy trên mọi profile (kể cả
-  `bm-engine/core`). Thẻ sản phẩm (ảnh SVG), giấy chứng nhận (HTML + `<style>`) và thẻ đa ngôn ngữ
+  `bm-render/core`). Thẻ sản phẩm (ảnh SVG), giấy chứng nhận (HTML + `<style>`) và thẻ đa ngôn ngữ
   (Tailwind `tw`) cần `standard` hoặc `full`; từng phần đều ghi rõ.
 - **Cho chữ vừa khung.** Tiêu đề dùng `lineClamp` để nội dung dài không làm vỡ layout. Muốn tiêu đề tự
   thu nhỏ cho vừa, xem [measure](./measure.md). Chi tiết về chữ có ở [Typography](./typography.md).
@@ -31,7 +31,7 @@ không phải ảnh dựng minh họa.
 <!-- @example templates#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "NotoSans-Regular", "NotoSans-Bold"]) {
@@ -197,7 +197,7 @@ function repoCard({ owner, repo, description, language, stars, forks, issues }) 
 }
 
 const repoPng = renderer.renderSync(repoCard({
-  owner: "acme", repo: "bm-engine",
+  owner: "acme", repo: "bm-render",
   description: "Render node trees, HTML and Tailwind to PNG, JPEG, WebP and SVG with a dependency-free WebAssembly engine.",
   language: { name: "Zig", color: "#ec915c" },
   stars: "4.2k", forks: "186", issues: "23",
@@ -238,7 +238,7 @@ const quotePng = renderer.renderSync(quoteCard({
 
 ![Thẻ trích dẫn trên nền xanh mòng két đậm với dấu ngoặc kép lớn, câu nghiêng và tác giả](/img/guide/templates-quote.png)
 
-- `fontStyle: "italic"` dùng face `Inter-Italic.ttf` đã đăng ký. Nếu không có face nghiêng, bm-engine tự
+- `fontStyle: "italic"` dùng face `Inter-Italic.ttf` đã đăng ký. Nếu không có face nghiêng, bm-render tự
   giả lập bằng cách làm nghiêng face thường (xem [Font](./fonts.md)).
 - Dấu ngoặc kép là `“` cỡ 120 px với `lineHeight: "60px"` và `height: 60`, nên glyph lớn không đẩy
   câu trích dẫn xuống.
@@ -550,7 +550,7 @@ console.log(res.status, res.headers.get("content-type"), (await res.arrayBuffer(
 ```
 
 - `devicePixelRatio: 1.5` biến thiết kế 800 × 420 thành ảnh 1200 × 630 mà không phải sửa mẫu.
-- bm-engine không có helper `ImageResponse`; chỉ cần `new Response(png, ...)`, vì kết quả là một
+- bm-render không có helper `ImageResponse`; chỉ cần `new Response(png, ...)`, vì kết quả là một
   `Uint8Array` sở hữu buffer của riêng nó.
 - Render là thao tác đồng bộ và tốn CPU. Hãy cache kết quả (ở đây bằng `cache-control`) và xem
   [Hiệu năng](./performance.md) để dùng worker pool.

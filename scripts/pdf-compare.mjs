@@ -1,4 +1,4 @@
-// Compares bm-engine's PDF graphics output with takumi-pdf's golden fixtures
+// Compares bm-render's PDF graphics output with takumi-pdf's golden fixtures
 // (tests/upstream/takumi/takumi-pdf/tests/fixtures-generated/*.pdf, inputs from tests/pdf_fixtures.rs).
 //
 //   node scripts/pdf-compare.mjs [--verbose] [--dump=<fixture>] [name ...]
@@ -434,7 +434,7 @@ function png(rgba, w, h) {
 }
 /**
  * 16 pixels of alpha `a` and colour `c`. A takumi fixture's `ImageBuffer::from_rgba_bytes` premultiplies straight
- * pixels, which the PDF writer demultiplies again: (192, 192) comes out as colour 193. bm-engine gets the fixture's
+ * pixels, which the PDF writer demultiplies again: (192, 192) comes out as colour 193. bm-render gets the fixture's
  * bitmap as a PNG, which krilla embeds as it is, so the PNG holds the colour takumi's bitmap stands for.
  */
 const rgbaOver = (a, c) => Uint8Array.from({ length: 64 }, (_, i) => (i % 4 === 3 ? a : c));
@@ -729,7 +729,7 @@ const FIXTURES = [
       html: doc(`<h1 id="top" style="font-size: 22px; margin: 0;">Report</h1>`, [["b", "Beta", 4], ["c", "Gamma", 4], ["d", "Delta", 4], ["e", "Epsilon", 4]], "") },
   ])((id, title, lines) => `<div id="${id}" style="display: flex; flex-direction: column; break-before: page;"><h2 style="font-size: 18px; margin: 0;">${title}</h2>${Array.from({ length: lines }, (_, k) => `<div>${title}, line ${k + 1}</div>`).join("")}</div>`,
     (head, sections, tail) => `<div style="display: flex; flex-direction: column; width: 100%; font-size: 14px; color: #141414;">${head}${sections.map(([i, t, n]) => `<div id="${i}" style="display: flex; flex-direction: column; break-before: page;"><h2 style="font-size: 18px; margin: 0;">${t}</h2>${Array.from({ length: n }, (_, k) => `<div>${t}, line ${k + 1}</div>`).join("")}</div>`).join("")}${tail}</div>`),
-  // `@page` rules and named pages (takumi page_kinds.rs): not supported by bm-engine (pages keep the size / margin options)
+  // `@page` rules and named pages (takumi page_kinds.rs): not supported by bm-render (pages keep the size / margin options)
   { name: "at-page-first-left-right", page: { size: "a4", css: `
     @page { size: A5; margin: 10mm }
     @page :first { size: A5 landscape; margin-top: 20mm }
@@ -747,7 +747,7 @@ const FIXTURES = [
     @page :right { margin-right: var(--inner) }
     p { margin: 0 0 6px; font-size: 11px; line-height: 15px }
   ` }, html: `<html><body>${Array.from({ length: 90 }, (_, k) => `<p>Paragraph ${k + 1} wraps across the width each page leaves it.</p>`).join("")}</body></html>` },
-  // named pages of different widths: not supported by bm-engine (page_rules.zig), kept to track the gap
+  // named pages of different widths: not supported by bm-render (page_rules.zig), kept to track the gap
   { name: "named-pages", page: { size: "a4", css: `
     @page { size: A5; margin: 15mm }
     @page cover { margin: 40mm 20mm }
@@ -876,6 +876,6 @@ for (const fx of FIXTURES) {
 console.log(`\n${rows.length} compared (${counts.TEXT} with text): ${counts.IDENTICAL} identical, ${counts.CLOSE} close (numeric tolerance or verified fixture equivalence), ${counts.DIFFER} differ, ${counts.ERROR} errors; object layout identical in ${counts.OBJ}; fonts identical in ${counts.FONTS}`);
 console.log(`interchange (same / close / differ): ${Object.entries(ixCounts).map(([k, c]) => `${k} ${c.same}/${c.close}/${c.differ}`).join(", ")}`); // [interchange]
 writeFileSync(path.join(outDir, "results.json"), JSON.stringify({ backend: pdfMod.backend, reference: provenance, node: process.version,
-  wasmSha256: pdfMod.backend === "wasm" ? sha256(readFileSync(path.join(root, "js", "bm_engine.pdf.wasm"))) : null,
+  wasmSha256: pdfMod.backend === "wasm" ? sha256(readFileSync(path.join(root, "js", "bm_render.pdf.wasm"))) : null,
   counts, uncovered, missing, interchange: ixCounts, rows }, null, 2) + "\n");
 if (counts.ERROR || missing.length || uncovered.length || (argv.includes("--strict") && (counts.DIFFER || Object.values(ixCounts).some((c) => c.differ)))) process.exitCode = 1;

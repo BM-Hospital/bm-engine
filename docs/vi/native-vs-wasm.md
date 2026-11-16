@@ -6,20 +6,20 @@ Chọn backend theo môi trường chạy. Trên Node.js, package ưu tiên addo
 
 | Mã của bạn chạy ở đâu | Backend | Cách dùng |
 |:--|:--|:--|
-| Node.js, Bun, Deno (server, CLI, script build) | **native**, tự động quay về wasm | `import { Renderer, backend } from "bm-engine"`; `backend` là `"native"` hoặc `"wasm"` |
-| Trình duyệt, Web Worker | wasm (lựa chọn duy nhất) | `bm-engine` trỏ tới bản wasm ở đó |
+| Node.js, Bun, Deno (server, CLI, script build) | **native**, tự động quay về wasm | `import { Renderer, backend } from "bm-render"`; `backend` là `"native"` hoặc `"wasm"` |
+| Trình duyệt, Web Worker | wasm (lựa chọn duy nhất) | `bm-render` trỏ tới bản wasm ở đó |
 | Cloudflare Workers, Vercel / Netlify Edge, Deno Deploy và các runtime edge khác | wasm (lựa chọn duy nhất) | cùng câu import |
-| Node.js nhưng vẫn muốn wasm (ví dụ để tái tạo đúng từng bit ảnh render trong trình duyệt, hoặc trên nền tảng mà addon chưa được kiểm thử) | wasm | `import ... from "bm-engine/full"` hoặc `BM_ENGINE_BACKEND=wasm` |
-| Node.js, Bun, Deno và bạn muốn đầu ra PDF | **native**, tự động quay về profile wasm `pdf` | `import { PdfRenderer, backend } from "bm-engine/pdf"`; xem [Đầu ra PDF](./pdf/native-and-wasm.md#backend-native-trên-nodejs) |
-| Node.js và muốn báo lỗi thay vì lặng lẽ quay về wasm | native | `import ... from "bm-engine/native"` hoặc `BM_ENGINE_BACKEND=native` |
+| Node.js nhưng vẫn muốn wasm (ví dụ để tái tạo đúng từng bit ảnh render trong trình duyệt, hoặc trên nền tảng mà addon chưa được kiểm thử) | wasm | `import ... from "bm-render/full"` hoặc `BM_RENDER_BACKEND=wasm` |
+| Node.js, Bun, Deno và bạn muốn đầu ra PDF | **native**, tự động quay về profile wasm `pdf` | `import { PdfRenderer, backend } from "bm-render/pdf"`; xem [Đầu ra PDF](./pdf/native-and-wasm.md#backend-native-trên-nodejs) |
+| Node.js và muốn báo lỗi thay vì lặng lẽ quay về wasm | native | `import ... from "bm-render/native"` hoặc `BM_RENDER_BACKEND=native` |
 
 Việc quay về wasm diễn ra im lặng: nếu không có addon cho nền tảng, nếu CPU cũ hơn x86-64-v2 (SSE4.2), hoặc nếu
-addon không qua bước kiểm tra dấu phẩy động lúc nạp, `bm-engine` nạp bản wasm và mọi thứ vẫn chạy, chỉ chậm hơn
+addon không qua bước kiểm tra dấu phẩy động lúc nạp, `bm-render` nạp bản wasm và mọi thứ vẫn chạy, chỉ chậm hơn
 và các lời gọi async chạy trên main thread. Hãy ghi log `backend` một lần lúc khởi động nếu bạn cần biết.
 
-`bm-engine/pdf` theo cùng quy tắc: trên Node.js nó dùng addon khi đã cài, nếu không thì dùng profile wasm `pdf`, tạo
+`bm-render/pdf` theo cùng quy tắc: trên Node.js nó dùng addon khi đã cài, nếu không thì dùng profile wasm `pdf`, tạo
 ra byte PDF giống hệt trên cả hai, và khi chạy native thì các phương thức async chạy trên thread pool của libuv.
-Bản thân `bm-engine` không cung cấp PDF trên backend nào, dù binary addon có chứa bộ ghi PDF.
+Bản thân `bm-render` không cung cấp PDF trên backend nào, dù binary addon có chứa bộ ghi PDF.
 
 
 ## Mô hình thread
@@ -36,7 +36,7 @@ Với backend native, cái gì chạy ở đâu:
   việc cho chúng:
 
 ```js
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const fonts = [/* { name, data, weight, style } ... */];
 const renderers = Array.from({ length: 4 }, () => {

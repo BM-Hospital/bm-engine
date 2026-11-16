@@ -1,13 +1,13 @@
 // Examples for docs/{en,vi}/image/images.md. Run: node docs/examples/run-all.mjs images
 import { saver } from "./_lib.mjs";
 import assert from "node:assert/strict";
-import * as core from "bm-engine/core";
-import * as standard from "bm-engine/standard";
+import * as core from "bm-render/core";
+import * as standard from "bm-render/standard";
 const save = saver("images");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -15,7 +15,7 @@ renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bo
 // #endregion
 
 // #region photo
-// A 320 × 200 test picture, rendered by bm-engine itself. Any PNG / JPEG bytes work the same way.
+// A 320 × 200 test picture, rendered by bm-render itself. Any PNG / JPEG bytes work the same way.
 const photo = renderer.renderSync(
   {
     type: "container",

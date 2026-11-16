@@ -1,13 +1,13 @@
 // imageResponse(): the ~30-line helper shown in docs/{en,vi}/frameworks/index.md (keep the two in sync).
-// bm-engine has no ImageResponse class; this wraps Renderer#render in a Web-standard Response.
+// bm-render has no ImageResponse class; this wraps Renderer#render in a Web-standard Response.
 
 const CONTENT_TYPES = { png: "image/png", jpeg: "image/jpeg", jpg: "image/jpeg", webp: "image/webp", ico: "image/x-icon" };
 
 /**
  * Renders `source` (node tree, `{ json }` or HTML string) and answers with the encoded image.
- * @param {import("bm-engine").Renderer} renderer  a long-lived renderer with fonts already registered
- * @param {import("bm-engine").Source} source
- * @param {import("bm-engine").RenderOptions & { headers?: HeadersInit, status?: number, onError?: (e: unknown) => void }} [options]
+ * @param {import("bm-render").Renderer} renderer  a long-lived renderer with fonts already registered
+ * @param {import("bm-render").Source} source
+ * @param {import("bm-render").RenderOptions & { headers?: HeadersInit, status?: number, onError?: (e: unknown) => void }} [options]
  * @returns {Promise<Response>}
  */
 export async function imageResponse(renderer, source, options = {}) {

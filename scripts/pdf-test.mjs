@@ -1,13 +1,13 @@
 // Tests of the PDF plumbing (renderPdf / measurePdf, options, JS API) against the pdf build profile.
 //
 //   node scripts/pdf-test.mjs [--no-build]      (npm run test:pdf)
-//   BM_ENGINE_BACKEND=wasm | native selects the backend of bm-engine/pdf (default: the native addon when it is built /
+//   BM_RENDER_BACKEND=wasm | native selects the backend of bm-render/pdf (default: the native addon when it is built /
 //   installed, else wasm); the checks are the same and must pass on both.
 //
-// Builds js/bm_engine.pdf.wasm first (`node scripts/build.mjs --profile=pdf`; --no-build reuses the file in js/),
-// then drives the public entries on Node: bm-engine/pdf (js/node-pdf.mjs) for node-tree and HTML input, option
+// Builds js/bm_render.pdf.wasm first (`node scripts/build.mjs --profile=pdf`; --no-build reuses the file in js/),
+// then drives the public entries on Node: bm-render/pdf (js/node-pdf.mjs) for node-tree and HTML input, option
 // validation errors, attachments, prepare handles and measure; checks every produced PDF with `pdftotext`
-// (poppler; skipped with a note if not installed); and checks that bm-engine/full (no `pdf` feature) rejects
+// (poppler; skipped with a note if not installed); and checks that bm-render/full (no `pdf` feature) rejects
 // renderPdf with the "not supported by this build" error, both from the JS wrapper and from the raw wasm export.
 import { spawnSync } from "node:child_process";
 import { findBin } from "../bench/pdf/lib/tools.mjs";
@@ -27,7 +27,7 @@ if (!args.has("--no-build")) {
 const pdfMod = await import(pathToFileURL(path.join(root, "js", "node-pdf.mjs")).href);
 const fullMod = await import(pathToFileURL(path.join(root, "js", "node-full.mjs")).href);
 const { PdfRenderer, PageNumber, TotalPages, TargetPageNumber } = pdfMod;
-console.log(`bm-engine/pdf backend: ${pdfMod.backend} (BM_ENGINE_BACKEND=wasm | native selects one; both must pass)`);
+console.log(`bm-render/pdf backend: ${pdfMod.backend} (BM_RENDER_BACKEND=wasm | native selects one; both must pass)`);
 
 let fails = 0;
 let passes = 0;
@@ -440,8 +440,8 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
   isPdf(md, "metadata: document");
   {
     const s = latin1(md); const u = Buffer.from(md).toString("utf8");
-    const info = /<<\/Producer\(bm-engine\)[^\n]*>>/.exec(s);
-    check(!!info, "metadata: Info with /Producer(bm-engine)");
+    const info = /<<\/Producer\(bm-render\)[^\n]*>>/.exec(s);
+    check(!!info, "metadata: Info with /Producer(bm-render)");
     const ti = info && /\/Title(<[^>]*>|\([^)]*\))/.exec(info[0]);
     check(ti && textOf(ti[1]) === "Báo cáo 年报 & <more>", `metadata: Info /Title round-trips (UTF-16): ${ti && JSON.stringify(textOf(ti[1]))}`);
     check(info && /\/Author<FEFF/.test(info[0]) && /\/Keywords\(a, b\)/.test(info[0]) && /\/Creator\(unit test\)/.test(info[0]), "metadata: /Author (joined), /Keywords (joined), /Creator");
@@ -452,7 +452,7 @@ isPdf(await r.render(node, { uncoveredText: "blank", tagged: false }), "uncovere
     const id = /\/ID\[\(([^)]*)\)\(([^)]*)\)\]/.exec(s);
     check(id && id[1] !== id[2] && u.includes(`<xmpMM:DocumentID>${id[1]}</xmpMM:DocumentID>`) && u.includes(`<xmpMM:InstanceID>${id[2]}</xmpMM:InstanceID>`), "metadata: document id derived from title + authors, both ids in the XMP");
     const plain = await r.render(node, { viewport: { width: 200, height: 100 }, tagged: false, lang: "en" });
-    check(/<pdf:Producer>bm-engine<\/pdf:Producer><xmpTPg:NPages>1<\/xmpTPg:NPages>/.test(latin1(plain)) && !/\/Lang/.test(latin1(plain)), "metadata: an XMP packet without metadata; no /Lang untagged without metadata");
+    check(/<pdf:Producer>bm-render<\/pdf:Producer><xmpTPg:NPages>1<\/xmpTPg:NPages>/.test(latin1(plain)) && !/\/Lang/.test(latin1(plain)), "metadata: an XMP packet without metadata; no /Lang untagged without metadata");
   }
   // attachments: binary and text data, bytes recovered from the streams
   const bin = Uint8Array.from({ length: 256 }, (_, k) => k);
@@ -745,7 +745,7 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
 
   // 3. a content-sized page of no height: takumi-pdf's InvalidPageSize; measure reports the zero size; the
   //    page is as tall as the root's margin box, unrounded
-  await rejects(() => r.render("<div></div>", { viewport: { width: 300 } }), /^bm-engine: Page size must be finite and larger than zero$/, "empty content, viewport without height");
+  await rejects(() => r.render("<div></div>", { viewport: { width: 300 } }), /^bm-render: Page size must be finite and larger than zero$/, "empty content, viewport without height");
   {
     const m = await r.measure("<div></div>", { viewport: { width: 300 } });
     check(m.width === 300 && m.height === 0, `measure of empty content: ${JSON.stringify(m)}`);
@@ -853,8 +853,8 @@ isPdf(rendererAfterErrors, "renderer still works after errors", [30, 30]);
   try { f.renderPdfSync(node); check(false, "full build: renderPdfSync throws"); } catch (e) { check(expect.test(e.message), "full build: renderPdfSync throws: " + e.message); }
   try { f.measurePdfSync(node); check(false, "full build: measurePdfSync throws"); } catch (e) { check(/renderPdf/.test(e.message), "full build: measurePdfSync throws"); }
   // the wasm export itself (no JS feature gate): the Zig-side error
-  // (BM_FULL_WASM overrides the file, e.g. a fresh `zig build` output while js/bm_engine.wasm predates the export)
-  const fullPath = process.env.BM_FULL_WASM || path.join(root, "js", "bm_engine.wasm");
+  // (BM_FULL_WASM overrides the file, e.g. a fresh `zig build` output while js/bm_render.wasm predates the export)
+  const fullPath = process.env.BM_FULL_WASM || path.join(root, "js", "bm_render.wasm");
   const { instance } = await WebAssembly.instantiate(readFileSync(fullPath), {});
   const w = instance.exports;
   if (typeof w.bm_render_pdf === "function") {

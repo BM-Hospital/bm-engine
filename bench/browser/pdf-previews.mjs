@@ -1,6 +1,6 @@
 // Page previews of the PDFs the docs link to: docs/public/pdf/examples/<name>.pdf -> docs/public/img/guide/<name>.png.
 // The PDF is opened in headless Edge's built-in PDF viewer (the real file, rendered by the browser's PDF engine, not
-// by bm-engine), screenshotted without the toolbar and cropped to the pages; several pages appear stacked vertically.
+// by bm-render), screenshotted without the toolbar and cropped to the pages; several pages appear stacked vertically.
 //   node bench/browser/pdf-previews.mjs [name ...] [--pages=N] [--width=640] [--browser=<exe>]
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

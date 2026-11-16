@@ -1,15 +1,15 @@
-// renderAnimation oracle comparison: the same 2-scene animation rendered by @takumi-rs/wasm and bm-engine in
+// renderAnimation oracle comparison: the same 2-scene animation rendered by @takumi-rs/wasm and bm-render in
 // every format. Compares the container frame lists (count + per-frame delays, parsed here without any codec)
 // and the pixels of every frame: both outputs are decoded by takumi itself (an `image` node whose src is the
 // animation, sampled with `timeMs` = frame start, takumi's animated-source frame selection).
-// Usage (from bench/): BM_WASM=../zig-out/bin/bm_engine.wasm node probe/anim/renderanim.mjs [fps]
+// Usage (from bench/): BM_WASM=../zig-out/bin/bm_render.wasm node probe/anim/renderanim.mjs [fps]
 import { readFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
 import { Renderer as TR } from "@takumi-rs/wasm/node";
 import { fontsFor } from "../../lib/fonts.mjs";
 import { compare } from "../../lib/metrics.mjs";
 
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer();
 const t = new TR();
 for (const f of fontsFor()) {

@@ -22,7 +22,7 @@ export const Route = createFileRoute("/og-image")({
       GET: ({ request }) => {
         const url = new URL(request.url);
         return imageResponse(getRenderer(), card({
-          title: url.searchParams.get("title") ?? "bm-engine + TanStack Start",
+          title: url.searchParams.get("title") ?? "bm-render + TanStack Start",
           description: url.searchParams.get("description") ?? "A server route",
         }), {
           width: 1200,
@@ -51,13 +51,13 @@ export const Route = createFileRoute("/posts/$slug")({
 ## Dùng JSX
 
 Dự án TanStack Start vốn đã biên dịch JSX bằng automatic runtime của React, vốn tạo ra React element chứ
-không phải node của bm-engine. Các lựa chọn:
+không phải node của bm-render. Các lựa chọn:
 
-- Render React component thành HTML trên server rồi truyền chuỗi đó vào bm-engine.
+- Render React component thành HTML trên server rồi truyền chuỗi đó vào bm-render.
 
 ## Đích triển khai (cấu hình dự kiến)
 
 TanStack Start build qua Vite và triển khai lên Node (mặc định), Vercel, Netlify, Cloudflare và các đích
-khác. Trên các đích dựa trên Node, đoạn mã trên chạy nguyên vẹn; giữ `bm-engine` là dependency lúc runtime
+khác. Trên các đích dựa trên Node, đoạn mã trên chạy nguyên vẹn; giữ `bm-render` là dependency lúc runtime
 để các file `.wasm` của nó có mặt cạnh `js/node-*.mjs`. Trên Cloudflare hãy dùng
 [mẫu Workers](./cloudflare-workers.md). Chưa build thử đích nào trong số này ở đây.

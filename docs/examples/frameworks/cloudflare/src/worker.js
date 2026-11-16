@@ -1,5 +1,5 @@
-import { initSync, Renderer } from "bm-engine/core";
-import wasm from "bm-engine/core.wasm"; // a WebAssembly.Module (wrangler compiles .wasm imports)
+import { initSync, Renderer } from "bm-render/core";
+import wasm from "bm-render/core.wasm"; // a WebAssembly.Module (wrangler compiles .wasm imports)
 import interRegular from "./Inter-Regular.ttf"; // an ArrayBuffer (the "Data" rule in wrangler.toml)
 import interBold from "./Inter-Bold.ttf";
 

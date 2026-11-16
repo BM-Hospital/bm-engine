@@ -7,7 +7,7 @@ import * as bm from "../../../js/index.mjs";
 import { Renderer as TR } from "@takumi-rs/wasm/node";
 import anim from "../../fixtures/anim.mjs";
 import { fontsFor } from "../../lib/fonts.mjs";
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer();
 const t = new TR();
 for (const f of fontsFor()) {

@@ -2,7 +2,7 @@
 
 [English](../../en/image/typography.md) · [Tiếng Việt](typography.md)
 
-bm-engine dàn trang và vẽ chữ như thế nào: xuống dòng và `white-space`, ngắt từ dài, chiều cao dòng và
+bm-render dàn trang và vẽ chữ như thế nào: xuống dòng và `white-space`, ngắt từ dài, chiều cao dòng và
 khoảng cách, căn lề, cắt bớt bằng dấu ba chấm và `line-clamp`, tiêu đề cân dòng, trang trí chữ, đổ bóng
 và viền chữ, đổi hoa thường, trộn span, inline-block và ảnh trong cùng một dòng, các feature OpenType, và
 [profile](../profiles-and-size.md) nào cần cho chữ hai chiều và hệ chữ phức tạp. Chữ cần một font đã đăng
@@ -19,7 +19,7 @@ viền để bạn thấy hộp chữ kết thúc ở đâu:
 <!-- @example typography#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 for (const file of ["Inter-Regular", "Inter-SemiBold", "Inter-Bold", "Inter-Italic", "Roboto-Regular"]) {
@@ -172,7 +172,7 @@ Chỉ dòng đầu của block được thụt. `textAlignLast` được parse n
 
 <!-- @example typography#truncation -->
 ```js
-const long = "bm-engine renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
+const long = "bm-render renders node trees, HTML and Tailwind to images without a browser, in a few milliseconds.";
 const truncation = renderer.renderSync(
   page({}, [
     sample("textOverflow: ellipsis", { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, [text(long)]),
@@ -387,7 +387,7 @@ const inline = renderer.renderSync(
 
 ## Feature OpenType
 
-Mặc định bm-engine áp dụng các feature GSUB / GPOS của font (kerning, ligature, contextual alternate, định
+Mặc định bm-render áp dụng các feature GSUB / GPOS của font (kerning, ligature, contextual alternate, định
 vị dấu). CSS điều khiển chúng:
 
 <!-- @example typography#features -->

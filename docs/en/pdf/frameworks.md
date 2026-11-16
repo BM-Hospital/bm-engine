@@ -11,7 +11,7 @@ to PDF output; this page lists only what is different and gives a handler you ca
 ::: info Verification status
 Every snippet on this page is a section of `docs/examples/pdf-frameworks.mjs` in the repository and was
 executed by it on Node 26.13, once on the native addon (`backend` reported `"native"`) and once with
-`BM_ENGINE_BACKEND=wasm` (`backend` reported `"wasm"`): the handler was called in-process with a real
+`BM_RENDER_BACKEND=wasm` (`backend` reported `"wasm"`): the handler was called in-process with a real
 `Request`, and through the `node:http` server below on a local port with `fetch`. Both runs checked the
 status, `content-type: application/pdf`, `content-disposition`, `content-length` and the `%PDF-` file
 header, and that an already aborted request rejects with `AbortError`. The framework adapters themselves
@@ -29,19 +29,19 @@ were not run with PDF output.
 
 | | Image | PDF |
 |:--|:--|:--|
-| Import | `bm-engine` or a profile entry (`bm-engine/core`, `/standard`, `/full`) | `bm-engine/pdf` only; the other entries throw on `renderPdf` ([PDF quick start](index.md)) |
+| Import | `bm-render` or a profile entry (`bm-render/core`, `/standard`, `/full`) | `bm-render/pdf` only; the other entries throw on `renderPdf` ([PDF quick start](index.md)) |
 | Renderer | `Renderer` | `PdfRenderer` (same font API: `registerFont`, `loadFont`, ...) |
 | Size of the result | set by `width` / `height` | set by the document: one or more pages (`size`, `margin`, `viewport`) |
 | `content-type` | `image/png`, `image/webp`, ... | `application/pdf` |
 | `content-disposition` | usually not set | `inline` (shown in the browser's viewer) or `attachment` (saved as a file), with a `filename` |
 | Caching | OG images are a pure function of the URL: cache hard | documents are often per user: `private, no-store` unless they are public |
-| wasm binary for Workers / browsers | `bm_engine.wasm` and smaller profiles | `bm_engine.pdf.wasm`: 1 906.7 KiB raw, 938.1 KiB gzip, 767.1 KiB brotli |
+| wasm binary for Workers / browsers | `bm_render.wasm` and smaller profiles | `bm_render.pdf.wasm`: 1 906.7 KiB raw, 938.1 KiB gzip, 767.1 KiB brotli |
 
 `render()` returns the whole file as one `Uint8Array` once the document is finished; there is no
 streaming API. The examples on this page are 15 KiB; the [recipes](recipes.md) are 19 to 40 KiB, most of
 it subset fonts. Set `content-length` from `byteLength`.
 
-On Node.js `bm-engine/pdf` uses the native addon when it is installed: then `render()` runs on the libuv
+On Node.js `bm-render/pdf` uses the native addon when it is installed: then `render()` runs on the libuv
 thread pool and does not block the event loop. On the wasm backend (and everywhere outside Node.js) the
 render is synchronous work on the calling thread, as for images; see [Native and
 WebAssembly](native-and-wasm.md) and, for a worker pool, [Image recipes](../image/recipes.md#worker-threads-pool).
@@ -55,7 +55,7 @@ As for images, create the `PdfRenderer` lazily, once per process or isolate, and
 ```js
 // pdf.js — create the renderer once per process (or per isolate), not per request
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 let renderer;
 export function getPdfRenderer() {
@@ -128,7 +128,7 @@ export async function handleReport(request) {
   document: an aborted request rejects with `AbortError` instead of rendering. It does not interrupt a
   render that has already started.
 - On Next.js and other bundling deployers, the setup of the Image section applies unchanged (for example
-  `serverExternalPackages: ["bm-engine"]` and copying the platform package:
+  `serverExternalPackages: ["bm-render"]` and copying the platform package:
   [Next.js](../image/frameworks/nextjs.md)); the PDF entry lives in the same package.
 
 ## node:http
@@ -164,18 +164,18 @@ node:http](../image/frameworks/hono-express.md).
 
 ## Edge runtimes and browsers
 
-Outside Node.js, `bm-engine/pdf` is the wasm `pdf` profile and must be initialised once before the first
-render: `await init()` fetches `bm_engine.pdf.wasm` next to the module (browsers, bundlers), and on
+Outside Node.js, `bm-render/pdf` is the wasm `pdf` profile and must be initialised once before the first
+render: `await init()` fetches `bm_render.pdf.wasm` next to the module (browsers, bundlers), and on
 Cloudflare Workers you import the binary as a module and pass it:
 
 ```js
-import wasm from "bm-engine/pdf.wasm";
-import { init, PdfRenderer } from "bm-engine/pdf";
+import wasm from "bm-render/pdf.wasm";
+import { init, PdfRenderer } from "bm-render/pdf";
 
 await init(wasm);
 ```
 
-This snippet was not run under wrangler. The compressed size of `bm_engine.pdf.wasm` (938.1 KiB gzip)
+This snippet was not run under wrangler. The compressed size of `bm_render.pdf.wasm` (938.1 KiB gzip)
 counts against the Workers script-size limit of your plan; see [Cloudflare
 Workers](../image/frameworks/cloudflare-workers.md) for the rest of the setup and the [PDF quick
 start](index.md) for a browser example that opens the result with a

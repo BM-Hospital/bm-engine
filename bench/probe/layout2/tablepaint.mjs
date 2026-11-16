@@ -5,7 +5,7 @@ import * as bm from "../../../js/index.mjs";
 import { Renderer as TR } from "@takumi-rs/wasm/node";
 import { compare, verdict } from "../../lib/metrics.mjs";
 import { encodePng } from "../../lib/pipeline.mjs";
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer(), t = new TR();
 const data = readFileSync("../assets/fonts/Inter-Regular.ttf");
 r.registerFont({ name: "Inter", data }); await t.registerFont({ name: "Inter", data });

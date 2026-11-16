@@ -3,38 +3,38 @@
 [English](nextjs.md) · [Tiếng Việt](../../../vi/image/frameworks/nextjs.md)
 
 Serve Open Graph images from a Next.js App Router route handler, or let Next.js discover them through the
-`opengraph-image` file convention. bm-engine replaces `next/og`'s `ImageResponse` with a renderer you own
+`opengraph-image` file convention. bm-render replaces `next/og`'s `ImageResponse` with a renderer you own
 and a plain `Response`; the image is a node tree (or HTML), not JSX — see
 [Node trees without JSX](./index.md#node-trees-without-jsx) for a small `h()` helper.
 
 ::: info Verification status
-Verified with **Next.js 16.4.6 on Windows x64, Node 26.13**, bm-engine and its `bm-engine-win32-x64-msvc`
+Verified with **Next.js 16.4.6 on Windows x64, Node 26.13**, bm-render and its `bm-render-win32-x64-msvc`
 platform package installed from packed tarballs: `next build` with Turbopack (the default) and with
 `--webpack`, then `next start`, and for `output: "standalone"` the `.next/standalone` folder copied to a
 directory outside the project and started with `node server.js`, so that nothing could be resolved from
-the build machine's `node_modules`. Routes: a Node.js route handler on `bm-engine`, one on
-`bm-engine/full`, and an Edge route; each returned a PNG. The results are in the tables below. Not tested:
+the build machine's `node_modules`. Routes: a Node.js route handler on `bm-render`, one on
+`bm-render/full`, and an Edge route; each returned a PNG. The results are in the tables below. Not tested:
 Vercel deployments, Linux / macOS hosts, pnpm / Yarn layouts, other Next.js versions. The Edge runtime
 could not be tested with the webpack builder: in Next.js 16.4.6, `next build --webpack` failed for *any*
-Edge route on this machine, including one without bm-engine (`ENOENT ... route_client-reference-manifest.js`).
+Edge route on this machine, including one without bm-render (`ENOENT ... route_client-reference-manifest.js`).
 The example app is in [`docs/examples/frameworks/nextjs/`](../../../examples/frameworks/nextjs/).
 :::
 
 ## 1. Install and configure
 
 ```sh
-npm install bm-engine
+npm install bm-render
 ```
 
 ```js
 // next.config.mjs
 /** @type {import("next").NextConfig} */
 export default {
-  // Keep bm-engine out of the server bundle: Node loads it from node_modules, and Next.js copies its files
+  // Keep bm-render out of the server bundle: Node loads it from node_modules, and Next.js copies its files
   // into standalone / Vercel output.
-  serverExternalPackages: ["bm-engine"],
+  serverExternalPackages: ["bm-render"],
   // Copy the native platform package too (Turbopack's file tracing does not follow it, see below).
-  outputFileTracingIncludes: { "/*": ["./node_modules/bm-engine-*/**"] },
+  outputFileTracingIncludes: { "/*": ["./node_modules/bm-render-*/**"] },
 };
 ```
 
@@ -48,24 +48,24 @@ Vercel and other hosts that copy only the traced files):
 | Turbopack | `serverExternalPackages` | native | **wasm** (platform package not copied) |
 | Turbopack | `serverExternalPackages` + `outputFileTracingIncludes` | native | **native** |
 | Turbopack | `outputFileTracingIncludes` only | native | native |
-| webpack (`--webpack`) | nothing | native | **fails**: `bm-engine: cannot find bm_engine.wasm (...)` (HTTP 500) |
+| webpack (`--webpack`) | nothing | native | **fails**: `bm-render: cannot find bm_render.wasm (...)` (HTTP 500) |
 | webpack (`--webpack`) | `serverExternalPackages` | native | **native** (the platform package is traced) |
 
 "wasm" is the automatic fallback: correct output, slower, and the async methods block the event loop. Log
-or return `backend` (exported by `bm-engine`) once to see what runs in production.
+or return `backend` (exported by `bm-render`) once to see what runs in production.
 
 How the package behaves when Next.js bundles it: the Node entry finds its `.wasm` file next to itself (or
-the asset Turbopack emits), then through package resolution, then in `<cwd>/node_modules/bm-engine/js/`;
+the asset Turbopack emits), then through package resolution, then in `<cwd>/node_modules/bm-render/js/`;
 if all fail, the error names `serverExternalPackages`. The platform package is required at run time with
 a literal name per platform marked `turbopackIgnore` / `webpackIgnore`, so builds never fail on the
 platform packages that are not installed; the price is that Turbopack's file tracing skips it, hence
 `outputFileTracingIncludes`. With pnpm the packages live under `node_modules/.pnpm/`: adapt the glob (for
-example `"./node_modules/.pnpm/bm-engine-*/**"`); not tested.
+example `"./node_modules/.pnpm/bm-render-*/**"`); not tested.
 
 ### Native addon in deployments
 
 The platform package is chosen when dependencies are installed, on the machine that runs the install:
-Vercel builds on Linux x64 and gets `bm-engine-linux-x64-gnu`, which is built and structurally verified
+Vercel builds on Linux x64 and gets `bm-render-linux-x64-gnu`, which is built and structurally verified
 but has **never been executed** (only `win32-x64-msvc` has, see
 [Install](../../getting-started.md#native-on-nodejs-webassembly-everywhere-else)). If it does not load there,
 the route still works on wasm. A `node_modules` built on your Mac or Windows machine and uploaded to a
@@ -81,7 +81,7 @@ the repository:
 // lib/og.js
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Renderer, backend } from "bm-engine";
+import { Renderer, backend } from "bm-render";
 
 let renderer;
 
@@ -113,8 +113,8 @@ export function card({ title, description }) {
 }
 ```
 
-`bm-engine` on Node is the native addon or the `full` wasm binary. To pin a smaller wasm profile instead,
-import `bm-engine/standard` or `bm-engine/core` (always wasm). One renderer renders one image at a time; on
+`bm-render` on Node is the native addon or the `full` wasm binary. To pin a smaller wasm profile instead,
+import `bm-render/standard` or `bm-render/core` (always wasm). One renderer renders one image at a time; on
 the native backend, a few renderers (with the same fonts) render in parallel on the thread pool.
 
 ## 3. A route handler
@@ -129,7 +129,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const png = await getRenderer().render(
     card({
-      title: searchParams.get("title") ?? "bm-engine + Next.js",
+      title: searchParams.get("title") ?? "bm-render + Next.js",
       description: searchParams.get("description") ?? "Rendered in a route handler",
     }),
     { width: 1200, height: 630 },
@@ -155,10 +155,10 @@ import { getRenderer, card } from "../lib/og.js";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "bm-engine + Next.js";
+export const alt = "bm-render + Next.js";
 
 export default async function Image() {
-  const png = await getRenderer().render(card({ title: "bm-engine + Next.js", description: "opengraph-image file convention" }), size);
+  const png = await getRenderer().render(card({ title: "bm-render + Next.js", description: "opengraph-image file convention" }), size);
   return new Response(png, { headers: { "content-type": "image/png" } });
 }
 ```
@@ -176,8 +176,8 @@ entry:
 
 ```js
 // app/og-edge/route.js
-import { initSync, Renderer } from "bm-engine/core";
-import wasm from "bm-engine/core.wasm?module";
+import { initSync, Renderer } from "bm-render/core";
+import wasm from "bm-render/core.wasm?module";
 
 export const runtime = "edge";
 
@@ -206,9 +206,9 @@ export async function GET(request) {
 
 With Turbopack this built and returned a 1200 × 630 PNG under `next start` and from the isolated
 standalone output. Why it works: Turbopack looks the specifier up in the package's `exports` **including
-the query**, so bm-engine declares `"./core.wasm?module"` (and the same for `standard`, `full`, `wasm`,
+the query**, so bm-render declares `"./core.wasm?module"` (and the same for `standard`, `full`, `wasm`,
 `woff`) pointing at the file with the query kept. Before that entry existed the import failed with
-`Module not found: Can't resolve 'bm-engine/core.wasm'`, and a key without the query in its target gave
+`Module not found: Can't resolve 'bm-render/core.wasm'`, and a key without the query in its target gave
 `Export default doesn't exist in target module`. webpack strips the query before resolving, so the same
 import is expected to work with `--webpack`, but that could not be tested (see the box at the top). The
 `Object.setPrototypeOf` workaround older versions of this page needed is gone: `initSync` accepts the
@@ -220,7 +220,7 @@ build prints a warning) and has no native addon: prefer the Node.js runtime.
 
 ## Coming from `next/og`
 
-| `next/og` | bm-engine |
+| `next/og` | bm-render |
 |:--|:--|
 | `new ImageResponse(jsx, { width, height })` | `new Response(await renderer.render(node, { width, height }), { headers })` or [`imageResponse()`](./index.md#an-imageresponse-helper) |
 | JSX elements | node objects, HTML strings, or JSX through [`h()`](./index.md#node-trees-without-jsx) |

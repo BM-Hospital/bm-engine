@@ -1,4 +1,4 @@
-// Hospital report / print-form checks for bm-engine/pdf: the documents a hospital prints (lab results,
+// Hospital report / print-form checks for bm-render/pdf: the documents a hospital prints (lab results,
 // prescriptions, discharge summaries, consent forms, batch printing) and what typically goes wrong with
 // them (Vietnamese diacritics, medical symbols, long tables across pages, signatures split by a page
 // break, page numbers, scanned images, unbreakable codes, archiving as PDF/A, determinism, throughput).
@@ -20,9 +20,9 @@ const argv = process.argv.slice(2);
 const backendArg = (argv.find((a) => a.startsWith("--backend="))?.slice(10)) || "both";
 const only = argv.filter((a) => !a.startsWith("--"));
 
-// ---- engines (the public bm-engine/pdf entry; BM_ENGINE_BACKEND picks wasm or the native addon)
+// ---- engines (the public bm-render/pdf entry; BM_RENDER_BACKEND picks wasm or the native addon)
 async function loadBackend(name) {
-  process.env.BM_ENGINE_BACKEND = name;
+  process.env.BM_RENDER_BACKEND = name;
   const url = pathToFileURL(path.join(root, "js", "node-pdf.mjs")).href + "?b=" + name;
   const m = await import(url);
   return m.backend === name ? m : null;
@@ -32,7 +32,7 @@ for (const b of backendArg === "both" ? ["native", "wasm"] : [backendArg]) {
   const m = await loadBackend(b).catch(() => null);
   if (m) backends[b] = m; else console.log(`(backend ${b} unavailable, skipped)`);
 }
-delete process.env.BM_ENGINE_BACKEND;
+delete process.env.BM_RENDER_BACKEND;
 
 const font = (f) => new Uint8Array(readFileSync(path.join(root, "assets", "fonts", f)));
 const FONTS = [

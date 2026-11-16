@@ -1,8 +1,8 @@
-# Benchmark: bm-engine và Takumi
+# Benchmark: bm-render và Takumi
 
 Trang duy nhất trong bộ hướng dẫn dành cho so sánh với Takumi. Các số đo là kết quả trên máy thử, không phải cam kết tốc độ cho mọi ứng dụng. Bảng ảnh và bảng PDF đến từ hai lượt chạy khác nhau; không so thời gian giữa hai bảng.
 
-Tỉ lệ thời gian **dưới 1×** nghĩa là bm-engine dùng ít thời gian hơn. **Geomean** là trung bình nhân của thời gian từng mẫu; **cold start** gồm khởi tạo và kết quả đầu tiên. `identical` là trùng từng byte; `equivalent` cho phép sai khác nhỏ theo ngưỡng của phép đo, không có nghĩa mọi đầu vào đều giống nhau.
+Tỉ lệ thời gian **dưới 1×** nghĩa là bm-render dùng ít thời gian hơn. **Geomean** là trung bình nhân của thời gian từng mẫu; **cold start** gồm khởi tạo và kết quả đầu tiên. `identical` là trùng từng byte; `equivalent` cho phép sai khác nhỏ theo ngưỡng của phép đo, không có nghĩa mọi đầu vào đều giống nhau.
 
 ## Ảnh
 

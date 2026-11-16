@@ -88,7 +88,7 @@ function snippet() {
   return `<style>.page{font-family:Inter;width:100%;height:100%;background:#fff;color:#0f172a;font-size:16px;position:relative}</style><div class="page">${s}</div>`;
 }
 
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 let r = new bm.Renderer();
 const fonts = fontsFor();
 const reg = (x) => { for (const f of fonts) x.registerFont({ name: f.name, data: readFileSync(f.path), weight: f.weight, style: f.style }); };
@@ -125,7 +125,7 @@ for (let i = 0; i < count; i++) {
       traps++;
       console.log("TRAP", i, msg, "\n", html);
       // the instance is poisoned after a trap
-      bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+      bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
       r = new bm.Renderer();
       reg(r);
     } else { errors++; if (shown++ < show) console.log("ERROR", i, msg.slice(0, 200), "\n", html); }

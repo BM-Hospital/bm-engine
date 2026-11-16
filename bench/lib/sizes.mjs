@@ -18,7 +18,7 @@ function filesJs(dir, names) {
 }
 
 /** Binary + JS glue sizes for each engine (null when the file doesn't exist). bm also lists the
- *  release binaries of every build profile (js/bm_engine.{core,standard}.wasm, js/bm_engine.wasm = full)
+ *  release binaries of every build profile (js/bm_render.{core,standard}.wasm, js/bm_render.wasm = full)
  *  and the WOFF add-on (js/bm_woff.wasm) when `node scripts/build.mjs` has produced them. */
 export function collectSizes(ALL) {
   const tw = path.join(BENCH_DIR, "node_modules/@takumi-rs/wasm");
@@ -32,9 +32,9 @@ export function collectSizes(ALL) {
       binary: fileSize(ALL.bm.wasmPath), binaryFile: path.relative(ROOT_DIR, ALL.bm.wasmPath).split(path.sep).join("/"),
       glue: filesJs(js, ["engine.mjs", "index.mjs", "node.mjs"]), glueFile: "js/engine.mjs + js/index.mjs + js/node.mjs",
       profiles: {
-        core: fileSize(path.join(js, "bm_engine.core.wasm")),
-        standard: fileSize(path.join(js, "bm_engine.standard.wasm")),
-        full: fileSize(path.join(js, "bm_engine.wasm")),
+        core: fileSize(path.join(js, "bm_render.core.wasm")),
+        standard: fileSize(path.join(js, "bm_render.standard.wasm")),
+        full: fileSize(path.join(js, "bm_render.wasm")),
         woffAddon: fileSize(path.join(js, "bm_woff.wasm")),
       },
     },

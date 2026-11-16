@@ -2,11 +2,11 @@
 //! on top of the emitter's surface (emit_surface.zig).
 //!
 //!  * `glyphPath`: an outline in font units (y up), transformed (krilla `glyph_path`).
-//!  * `drawColorGlyph` (krilla `draw_color_glyph`): COLR (v0 and v1, through bm-engine's COLR
+//!  * `drawColorGlyph` (krilla `draw_color_glyph`): COLR (v0 and v1, through bm-render's COLR
 //!    walker, font/color.zig) turned into krilla's instruction tree (layers, composites, clipped
 //!    fills; gradients become shading patterns, `SrcIn` / `DestIn` soft masks) and replayed onto
 //!    the surface; PNG bitmap glyphs (CBDT / sbix) as image XObjects. SVG glyphs are not drawn
-//!    (bm-engine has no SVG-in-OpenType renderer): they fall back to the outline, like krilla does
+//!    (bm-render has no SVG-in-OpenType renderer): they fall back to the outline, like krilla does
 //!    for a glyph whose colour data it cannot read.
 //!  * `drawGlyph` (krilla `glyph::draw_glyph`): colour glyph, else the outline with the surface's
 //!    current fill / stroke.
@@ -172,7 +172,7 @@ const Ins = union(enum) {
     filled: struct { fill: sf.Fill, clips: []const Path },
 };
 
-/// krilla `ColrBuilder` as a bm-engine COLR painter.
+/// krilla `ColrBuilder` as a bm-render COLR painter.
 const Builder = struct {
     a: Allocator,
     font: *const ttf.Font,

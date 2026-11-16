@@ -1,7 +1,7 @@
 // Animation oracle comparison: renders bench/fixtures/anim.mjs cases (or any case matching argv[2]) with
-// bm-engine and @takumi-rs/wasm, forwarding the case `opts` (timeMs, css, keyframes), and prints % differing
+// bm-render and @takumi-rs/wasm, forwarding the case `opts` (timeMs, css, keyframes), and prints % differing
 // pixels + SSIM. Writes PNGs to bench/out/anim/<id>/ when FE_OUT=1.
-// Usage (from bench/): BM_WASM=../zig-out/bin/bm_engine.wasm node probe/anim/cmp.mjs [filter]
+// Usage (from bench/): BM_WASM=../zig-out/bin/bm_render.wasm node probe/anim/cmp.mjs [filter]
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
 import { Renderer as TR } from "@takumi-rs/wasm/node";
@@ -11,7 +11,7 @@ import { fontsFor } from "../../lib/fonts.mjs";
 import { compare, verdict } from "../../lib/metrics.mjs";
 import { encodePng } from "../../lib/pipeline.mjs";
 
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const r = new bm.Renderer();
 const t = new TR();
 for (const f of fontsFor()) {

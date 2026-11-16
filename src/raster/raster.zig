@@ -1,4 +1,4 @@
-//! bm-engine 2D rasterization / compositing.
+//! bm-render 2D rasterization / compositing.
 //!
 //! * Surfaces are PREMULTIPLIED RGBA8 (`Pixmap`); colours passed in (`Color`) are straight sRGB.
 //! * Source-over everywhere (sRGB-encoded u8, exact div-255 rounding); the CSS blend modes are

@@ -2,7 +2,7 @@
 
 [English](page-size-and-viewport.md) · [Tiếng Việt](../../vi/pdf/page-size-and-viewport.md)
 
-A PDF from bm-engine is either **paged** (the default: A4 pages with 10 mm margins, content flowing from
+A PDF from bm-render is either **paged** (the default: A4 pages with 10 mm margins, content flowing from
 one page to the next) or a **single page** of a size you choose (`viewport`). This page covers the
 options that set the page geometry and the paper colour, and how a document's own `@page` rules take
 part. The snippets are sections of `docs/examples/pdf.mjs`, which renders them; `pdf` is a

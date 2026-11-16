@@ -2,17 +2,17 @@
 
 [English](../en/publishing.md) · [Tiếng Việt](publishing.md)
 
-Một bản release của bm-engine là **chín package npm cùng một version**: `bm-engine` (JavaScript, typings và
-các binary wasm) và tám platform package `bm-engine-<platform>`, mỗi cái chứa một bản build Node-API
-native. `bm-engine` liệt kê tám package này trong `optionalDependencies`, ghim đúng version của chính nó,
+Một bản release của bm-render là **chín package npm cùng một version**: `bm-render` (JavaScript, typings và
+các binary wasm) và tám platform package `bm-render-<platform>`, mỗi cái chứa một bản build Node-API
+native. `bm-render` liệt kê tám package này trong `optionalDependencies`, ghim đúng version của chính nó,
 nên tất cả phải có mặt trên registry, ở đúng version đó, trước khi người dùng cài. Trang này là quy trình;
 thiết kế nằm trong [docs/NATIVE.md](../NATIVE.md), hành vi phía người dùng nằm trong
 [Bắt đầu](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác).
 
 | Package | Build từ | Nội dung |
 |:--|:--|:--|
-| `bm-engine` | thư mục gốc của repository (`files` trong `package.json`) | `js/`, bốn file `.wasm`, README, license; **không có file `.node`** |
-| `bm-engine-win32-x64-msvc`, `-win32-arm64-msvc`, `-linux-x64-gnu`, `-linux-x64-musl`, `-linux-arm64-gnu`, `-linux-arm64-musl`, `-darwin-x64`, `-darwin-arm64` | `npm/<platform>/`, sinh bởi `npm run build:npm` | `bm-engine.<platform>.node` (là `main` của nó), `package.json` với `os` / `cpu` / `libc`, README, license |
+| `bm-render` | thư mục gốc của repository (`files` trong `package.json`) | `js/`, bốn file `.wasm`, README, license; **không có file `.node`** |
+| `bm-render-win32-x64-msvc`, `-win32-arm64-msvc`, `-linux-x64-gnu`, `-linux-x64-musl`, `-linux-arm64-gnu`, `-linux-arm64-musl`, `-darwin-x64`, `-darwin-arm64` | `npm/<platform>/`, sinh bởi `npm run build:npm` | `bm-render.<platform>.node` (là `main` của nó), `package.json` với `os` / `cpu` / `libc`, README, license |
 
 `npm/<platform>/package.json` và `README.md` được commit; các file `.node` và bản sao license trong `npm/`
 là output của bước build (bị git bỏ qua). Các `package.json` của platform package được sinh từ
@@ -21,7 +21,7 @@ là output của bước build (bị git bỏ qua). Các `package.json` của pl
 ## Thiết lập một lần
 
 1. `author`, `homepage`, `repository` và `bugs` đã được đặt trong `package.json` gốc (hunghg255,
-   https://github.com/BM-Hospital/bm-engine). Sau khi đổi bất kỳ trường nào, chạy `npm run build:npm` để
+   https://github.com/BM-Hospital/bm-render). Sau khi đổi bất kỳ trường nào, chạy `npm run build:npm` để
    chép chúng sang `npm/*/package.json`.
 2. Một tài khoản npm có xác thực hai lớp. Lần `npm publish` đầu tiên của mỗi tên sẽ tạo package và đặt
    bạn làm owner; thêm đồng maintainer cho **cả chín** package bằng `npm owner add <user> <pkg>`. Ngày
@@ -41,12 +41,12 @@ npm run release -- 0.1.1       # release thật
 `npm run release -- <version>` (scripts/publish.mjs) đặt version ở mọi nơi, build lại wasm và manifest
 (`npm run build`), commit `Release <version>`, build addon native cho 8 nền tảng và các thư mục
 `npm/<platform>/`, chạy mọi kiểm tra (`npm run release:check`: verify, test Zig, test PDF, test native,
-pack test), publish 8 platform package trước và bm-engine sau cùng, rồi gắn tag `v<version>` và push commit
+pack test), publish 8 platform package trước và bm-render sau cùng, rồi gắn tag `v<version>` và push commit
 cùng tag. Script từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`. Gói nào đã publish ở
 version đó thì bỏ qua, nên một lần release bị ngắt (OTP hết hạn, mạng) chỉ cần chạy lại đúng lệnh đó. Tuỳ
 chọn: `--otp=<mã>`, `--tag=<dist-tag>` (ví dụ `next`), `--skip-checks`, `--publish-only` (chỉ chạy lại bước publish khi các kiểm tra đã qua trên commit này). Không có `--otp` thì npm hỏi mã OTP
 (hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên `npm publish` trực
-tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
+tiếp cho bm-render không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
 
 ### 1. Đặt version (một lệnh)
 
@@ -55,7 +55,7 @@ npm run version:set -- 0.2.0
 ```
 
 Lệnh này ghi lại cùng lúc: `version` trong `package.json`, tám `optionalDependencies` (đúng `0.2.0`),
-`package-lock.json` (mục gốc; các mục `node_modules/bm-engine-*` cũ bị bỏ đi), và mọi
+`package-lock.json` (mục gốc; các mục `node_modules/bm-render-*` cũ bị bỏ đi), và mọi
 `npm/<platform>/package.json` + `README.md`. `npm run verify` sẽ thất bại bất cứ khi nào chúng không khớp
 nhau (`node scripts/npm-platform-packages.mjs --check`). Đừng chỉ dùng `npm version`: lệnh đó không đụng
 tới optional dependency hay các platform package.
@@ -84,8 +84,8 @@ for d in npm/*/; do npm pack --dry-run "$d"; done
 ```
 
 `test:pack` chạy các kịch bản cài đặt với tarball thật: npm chọn đúng platform package, fallback sang wasm
-khi không có nó (`--omit=optional`, thiếu, binary hỏng hoặc của hệ điều hành khác), `BM_ENGINE_BACKEND`,
-`bm-engine/native`, worker thread, bundler. Trên máy cục bộ chỉ binary của máy đó chạy được; các binary
+khi không có nó (`--omit=optional`, thiếu, binary hỏng hoặc của hệ điều hành khác), `BM_RENDER_BACKEND`,
+`bm-render/native`, worker thread, bundler. Trên máy cục bộ chỉ binary của máy đó chạy được; các binary
 còn lại được chạy bởi ma trận test của CI ([con đường CI](#con-đường-ci)). **Đừng phát hành một nền tảng
 chưa từng qua `native-identity.mjs` và `native-tests.mjs` trên đúng hệ điều hành và CPU của nó**, trừ khi
 bạn chấp nhận rằng người dùng nền tảng đó có thể lặng lẽ nhận wasm (fallback), hoặc tệ hơn, một binary nạp
@@ -97,9 +97,9 @@ bạn chấp nhận rằng người dùng nền tảng đó có thể lặng l�
 git commit -am "Release 0.2.0" && git tag v0.2.0
 ```
 
-### 5. Publish: platform package trước, rồi tới bm-engine
+### 5. Publish: platform package trước, rồi tới bm-render
 
-Thứ tự là quan trọng. Nếu `bm-engine@0.2.0` được publish trước, các lần cài trong vài phút sau đó sẽ bỏ qua
+Thứ tự là quan trọng. Nếu `bm-render@0.2.0` được publish trước, các lần cài trong vài phút sau đó sẽ bỏ qua
 những optional dependency chưa tồn tại (lặng lẽ: wasm), và lockfile tạo ra lúc đó sẽ không có chúng.
 
 ```sh
@@ -111,8 +111,8 @@ npm publish ./npm/linux-arm64-gnu --access public
 npm publish ./npm/linux-arm64-musl --access public
 npm publish ./npm/darwin-x64 --access public
 npm publish ./npm/darwin-arm64 --access public
-npm view bm-engine-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
-npm publish --access public                     # bm-engine itself (prepublishOnly runs npm run release:check)
+npm view bm-render-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
+npm publish --access public                     # bm-render itself (prepublishOnly runs npm run release:check)
 ```
 
 `--access public` đã có sẵn trong `publishConfig` của mỗi package, nó được lặp lại cho rõ.
@@ -129,28 +129,28 @@ mỗi `package.json` đúng là repository mà workflow đang chạy (thêm mộ
 ### 6. Kiểm tra bản release
 
 ```sh
-npm view bm-engine@0.2.0 optionalDependencies
-mkdir /tmp/check && cd /tmp/check && npm init -y && npm i bm-engine@0.2.0
-node --input-type=module -e 'const m = await import("bm-engine"); console.log(m.backend)'   # native
+npm view bm-render@0.2.0 optionalDependencies
+mkdir /tmp/check && cd /tmp/check && npm init -y && npm i bm-render@0.2.0
+node --input-type=module -e 'const m = await import("bm-render"); console.log(m.backend)'   # native
 ```
 
 ## Khi có sự cố
 
 - **Một lần publish platform package thất bại** (mạng, OTP hết hạn, gõ sai tên): chưa có gì hỏng,
-  `bm-engine` chưa được publish. Sửa nguyên nhân rồi publish các platform package còn lại; những package
+  `bm-render` chưa được publish. Sửa nguyên nhân rồi publish các platform package còn lại; những package
   đã publish sẽ trả lời `You cannot publish over the previously published versions` và có thể bỏ qua. Chỉ
-  publish `bm-engine` khi đủ cả tám.
-- **`bm-engine` đã ra, thiếu một platform package**: người dùng nền tảng đó nhận wasm (fallback), không
+  publish `bm-render` khi đủ cả tám.
+- **`bm-render` đã ra, thiếu một platform package**: người dùng nền tảng đó nhận wasm (fallback), không
   phải lỗi. Publish package còn thiếu với **cùng** version càng sớm càng tốt; các lần cài mới sẽ nhận nó.
   Lockfile được ghi trong khoảng thời gian đó có thể thiếu nó: những người dùng này cần cài lại.
 - **Một binary platform đã publish bị hỏng**: một version trên npm không bao giờ ghi đè được, và việc
   unpublish chỉ làm được trong vòng 72 giờ và khóa vĩnh viễn số version đó. Thay vào đó hãy deprecate:
-  `npm deprecate bm-engine-<platform>@0.2.0 "broken, use 0.2.1"` (và cả `bm-engine@0.2.0`), rồi release
+  `npm deprecate bm-render-<platform>@0.2.0 "broken, use 0.2.1"` (và cả `bm-render@0.2.0`), rồi release
   0.2.1 cho **cả chín** package (các version luôn đi cùng nhau; `version:set` làm việc đó). Trong lúc chờ,
-  người dùng có thể ép wasm bằng `BM_ENGINE_BACKEND=wasm`.
+  người dùng có thể ép wasm bằng `BM_RENDER_BACKEND=wasm`.
 - **Lệch version** không thể xảy ra qua các script (`verify` kiểm tra), nhưng nếu một platform package của
   version khác được cài, addon của nó chỉ được nạp khi version giao diện nội bộ (`abi`) bằng đúng giá trị
-  mà `bm-engine` mong đợi; nếu không, `bm-engine` dùng wasm.
+  mà `bm-render` mong đợi; nếu không, `bm-render` dùng wasm.
 
 ## Prerelease và dist-tag
 
@@ -162,9 +162,9 @@ npm publish --access public --tag next
 ```
 
 Luôn truyền `--tag next` (hoặc `beta`) cho một prerelease, trên cả chín package, để `latest` vẫn trỏ tới bản
-ổn định; người dùng chủ động chọn bằng `npm i bm-engine@next`. Vì optional dependency ghim đúng version, tag
+ổn định; người dùng chủ động chọn bằng `npm i bm-render@next`. Vì optional dependency ghim đúng version, tag
 của các platform package không ảnh hưởng tới việc resolve, nhưng hãy giữ chúng nhất quán. Để nâng một
-version lên sau này: `npm dist-tag add bm-engine@0.3.0 latest` (và tương tự cho tám platform package).
+version lên sau này: `npm dist-tag add bm-render@0.3.0 latest` (và tương tự cho tám platform package).
 
 ## Con đường CI
 
@@ -173,7 +173,7 @@ wasm và cross-compile tám addon bằng Zig 0.17.1 được ghim version và ki
 **chạy thật** từng addon trên đúng nền tảng của nó (Ubuntu x64 và arm64, Alpine x64 và arm64 trong Docker,
 macOS x64 và arm64, Windows x64 và arm64) với Node 18, bản LTS hiện tại và bản mới nhất
 (`native-identity.mjs`, `native-tests.mjs`, và các kịch bản cài đặt một lần cho mỗi nền tảng); chỉ khi tất
-cả đều xanh, job publish mới phát hành tám platform package rồi tới `bm-engine`, với `--provenance`,
+cả đều xanh, job publish mới phát hành tám platform package rồi tới `bm-render`, với `--provenance`,
 `--tag next` cho prerelease, và bỏ qua các version đã có trên registry (nên một lần chạy lỗi có thể chạy
 lại). Yêu cầu: secret `NPM_TOKEN` của repository (hoặc npm trusted publishing được cấu hình cho từng
 package, sau lần publish thủ công đầu tiên), các placeholder đã được điền, SHA của action và nhãn runner

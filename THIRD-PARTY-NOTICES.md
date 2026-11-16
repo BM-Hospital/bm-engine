@@ -1,8 +1,8 @@
 # Third-party notices
 
-bm-engine is a Zig port of [takumi](https://github.com/kane50613/takumi) (Copyright (c) 2025 Kane Wang,
+bm-render is a Zig port of [takumi](https://github.com/kane50613/takumi) (Copyright (c) 2025 Kane Wang,
 MIT OR Apache-2.0). The npm package contains JavaScript wrappers and WebAssembly binaries compiled from
-bm-engine's Zig sources. Parts of those sources are transliterations of takumi code that itself follows
+bm-render's Zig sources. Parts of those sources are transliterations of takumi code that itself follows
 Chromium / Blink, Skia and other projects, or follow third-party algorithms and data directly. This file
 carries the notices those sources require. The npm package does not include the vendored test corpus
 in `tests/upstream/takumi`, whose reference fonts and license files are retained in the source repository.
@@ -24,7 +24,7 @@ in `tests/upstream/takumi`, whose reference fonts and license files are retained
 
 ## 1. Chromium (Blink) and Skia
 
-bm-engine's layout (LayoutUnit arithmetic, inline line boxes, tables, floats), border / outline /
+bm-render's layout (LayoutUnit arithmetic, inline line boxes, tables, floats), border / outline /
 decoration painting, table painting, font selection and fallback, colour helpers, dash fitting, the
 Gaussian blur (`src/raster/blur.zig`, Skia `SkBlurEngine`), the HTML UA styles and related code are ports
 of the takumi-core parts listed below (the list names takumi's Rust files). The following text is
@@ -821,7 +821,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-krilla 0.8.2 also ships this acknowledgement of code it takes from other projects. bm-engine's Zig files follow
+krilla 0.8.2 also ships this acknowledgement of code it takes from other projects. bm-render's Zig files follow
 krilla's structure and can contain translations of the parts named here:
 
 - [`resvg`](https://github.com/RazrFalcon/resvg), available under the Mozilla Public License 2.0
@@ -829,7 +829,7 @@ krilla's structure and can contain translations of the parts named here:
 - [`typst`](https://github.com/typst/typst), Apache License 2.0: the `GroupByKey` struct, the `SliceExt` trait, the
   `Prehashed` struct, the implementation of `SipHashable`, the implementation of writing CID-keyed fonts and of
   writing PDF metadata.
-- [`svg2pdf`](https://github.com/typst/svg2pdf), Apache License 2.0: krilla's SVG conversion (bm-engine's SVG-to-PDF
+- [`svg2pdf`](https://github.com/typst/svg2pdf), Apache License 2.0: krilla's SVG conversion (bm-render's SVG-to-PDF
   path, `emit_svg.zig`, follows takumi-pdf's `svg.rs`, not this code).
 - [`vello`](https://github.com/linebender/vello), Apache License 2.0: the logic for bitmap glyphs.
 
@@ -924,7 +924,7 @@ SOFTWARE.
 The PDF object model and file serialisation in `src/pdf/writer.zig` follow
 [pdf-writer](https://github.com/typst/pdf-writer) 0.15, and the XMP packet in `src/pdf/metadata.zig` follows
 [xmp-writer](https://github.com/typst/xmp-writer) 0.3, the two crates takumi-pdf (through krilla) builds on. Both
-are published by their authors (the Typst project) under MIT OR Apache-2.0; bm-engine follows their structure and
+are published by their authors (the Typst project) under MIT OR Apache-2.0; bm-render follows their structure and
 byte layout and carries no copy of them. The Apache License 2.0 text is in the
 appendix at the end of this file.
 
@@ -938,7 +938,7 @@ copyright tag reads "CC0"). No attribution is required; it is given here as cred
 
 ## 14. Geist
 
-The PDF builds (`js/bm_engine.pdf.wasm` and the native addon) embed `geist-latin-wght-300-800.ttf`, the
+The PDF builds (`js/bm_render.pdf.wasm` and the native addon) embed `geist-latin-wght-300-800.ttf`, the
 Latin subset of Geist that takumi-pdf embeds as its last-resort font, unmodified
 (src/pdf/geist/geist-latin-wght-300-800.ttf). Copyright 2024 The Geist Project Authors
 (https://github.com/vercel/geist-font). Licensed under the SIL Open Font License, Version 1.1; the
@@ -1046,7 +1046,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ## Appendix: Apache License 2.0
 
 The full text of the Apache License 2.0, referenced by sections 7, 10 and 12 above. It applies to those
-third-party components only; bm-engine itself is licensed under the MIT License (`LICENSE`).
+third-party components only; bm-render itself is licensed under the MIT License (`LICENSE`).
 
 ```text
                                  Apache License

@@ -4,7 +4,7 @@ const save = saver("formats");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // Node: the full profile
+import { Renderer } from "bm-render"; // Node: the full profile
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -19,7 +19,7 @@ const card = {
     backgroundImage: "linear-gradient(135deg, #f97316, #db2777 55%, #7c3aed)",
   },
   children: [
-    { type: "text", text: "bm-engine", style: { fontSize: 40, fontWeight: 700, color: "white" } },
+    { type: "text", text: "bm-render", style: { fontSize: 40, fontWeight: 700, color: "white" } },
     { type: "text", text: "PNG · JPEG · WebP · SVG", style: { fontSize: 20, color: "rgba(255,255,255,0.85)" } },
   ],
 };
@@ -155,7 +155,7 @@ try {
 // #endregion
 
 // #region core
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 
 const small = new core.Renderer();
 small.renderSync({ type: "container", style: { width: 16, height: 16, backgroundColor: "red" } },
@@ -163,6 +163,6 @@ small.renderSync({ type: "container", style: { width: 16, height: 16, background
 try {
   small.renderSync({ type: "container" }, { width: 16, height: 16, format: "ico" });
 } catch (err) {
-  console.log(err.message); // "bm-engine: this build has no ICO output support (use the full build)"
+  console.log(err.message); // "bm-render: this build has no ICO output support (use the full build)"
 }
 // #endregion

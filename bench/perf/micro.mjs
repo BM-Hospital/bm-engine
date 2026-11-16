@@ -4,9 +4,9 @@
 //                             [--filter=<regex on scenario name>] [--no-takumi]
 //
 // Engines, interleaved round by round with a rotating order (medians are reported):
-//   bm-native   native/dist/<platform>/bm-engine.<platform>.node   (renderSync; `:async` where the group asks)
-//   bm-wasm     js/bm_engine.wasm (full profile)                   (renderSync)
-//   base-native / base-wasm   the same two files taken from --base=<dir> (`bm-engine.node`, `bm_engine.wasm`):
+//   bm-native   native/dist/<platform>/bm-render.<platform>.node   (renderSync; `:async` where the group asks)
+//   bm-wasm     js/bm_render.wasm (full profile)                   (renderSync)
+//   base-native / base-wasm   the same two files taken from --base=<dir> (`bm-render.node`, `bm_render.wasm`):
 //               a build of an earlier commit, loaded side by side in the same process for before / after numbers
 //   takumi-native  @takumi-rs/core (async only)
 // Every scenario also checks that bm-native and bm-wasm return the same bytes, and reports whether the output
@@ -34,11 +34,11 @@ const wasmBinding = (file) => { const b = createBinding(); b.initSync(readFileSy
 const nativeBinding = (file) => createBinding(undefined, nativeBackend(dlopen(file)));
 
 const mods = {};
-const nat = process.env.BM_ENGINE_NATIVE_PATH || path.join(ROOT_DIR, "native", "dist", nativeName, `bm-engine.${nativeName}.node`);
+const nat = process.env.BM_RENDER_NATIVE_PATH || path.join(ROOT_DIR, "native", "dist", nativeName, `bm-render.${nativeName}.node`);
 if (existsSync(nat)) mods["bm-native"] = nativeBinding(nat);
-mods["bm-wasm"] = wasmBinding(process.env.BM_WASM || path.join(ROOT_DIR, "js", "bm_engine.wasm"));
+mods["bm-wasm"] = wasmBinding(process.env.BM_WASM || path.join(ROOT_DIR, "js", "bm_render.wasm"));
 if (args.base) {
-  const bn = path.join(path.resolve(String(args.base)), "bm-engine.node"), bw = path.join(path.resolve(String(args.base)), "bm_engine.wasm");
+  const bn = path.join(path.resolve(String(args.base)), "bm-render.node"), bw = path.join(path.resolve(String(args.base)), "bm_render.wasm");
   if (existsSync(bn)) mods["base-native"] = nativeBinding(bn);
   if (existsSync(bw)) mods["base-wasm"] = wasmBinding(bw);
 }

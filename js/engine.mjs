@@ -1,13 +1,13 @@
-// bm-engine internal: the JS binding around one engine backend (a bm_engine.wasm instance, or the native
+// bm-render internal: the JS binding around one engine backend (a bm_render.wasm instance, or the native
 // Node-API addon: see "backend" in createBinding and docs/NATIVE.md).
 /** True for a WebAssembly.Module from any realm (Next.js Edge, vm contexts, iframes), where `instanceof` fails. */
 const isWasmModule = (x) => Object.prototype.toString.call(x) === "[object WebAssembly.Module]";
 //
 // `createBinding(defaultWasm?)` returns `{ init, initSync, Renderer, features, ... }` bound to its own
 // module instance. Every public entry creates exactly one binding when it is first evaluated:
-//   js/index.mjs  (bm-engine, explicit init)      js/node.mjs   (bm-engine on Node: index.mjs + auto-init)
+//   js/index.mjs  (bm-render, explicit init)      js/node.mjs   (bm-render on Node: index.mjs + auto-init)
 //   js/core.mjs / standard.mjs / full.mjs          js/node-core.mjs / node-standard.mjs / node-full.mjs
-//   (bm-engine/<profile>, init() finds the wasm)    (bm-engine/<profile> on Node: same binding + auto-init)
+//   (bm-render/<profile>, init() finds the wasm)    (bm-render/<profile> on Node: same binding + auto-init)
 // so one process can load several profiles side by side; within one binding the first successful
 // init wins (later calls return the same instance). This file is not part of the public API.
 
@@ -59,22 +59,22 @@ function normalizeUnicodeRange(value) {
   if (value == null) return null;
   const input = Array.isArray(value) ? value : typeof value === "string" ? value.split(",").map((part) => {
     const m = /^\s*U\+([0-9a-f?]{1,6})(?:-([0-9a-f]{1,6}))?\s*$/i.exec(part);
-    if (!m) throw new TypeError(`bm-engine: invalid unicodeRange: ${part}`);
+    if (!m) throw new TypeError(`bm-render: invalid unicodeRange: ${part}`);
     return [parseInt(m[1].replaceAll("?", "0"), 16), parseInt(m[2] ?? m[1].replaceAll("?", "f"), 16)];
   }) : null;
-  if (!input) throw new TypeError("bm-engine: unicodeRange must be ranges or a CSS unicode-range string");
+  if (!input) throw new TypeError("bm-render: unicodeRange must be ranges or a CSS unicode-range string");
   return input.map((range) => {
     if (!Array.isArray(range) || range.length !== 2 || !Number.isInteger(range[0]) || !Number.isInteger(range[1]) ||
-        range[0] < 0 || range[1] > 0x10ffff || range[0] > range[1]) throw new TypeError("bm-engine: invalid unicodeRange bounds");
+        range[0] < 0 || range[1] > 0x10ffff || range[0] > range[1]) throw new TypeError("bm-render: invalid unicodeRange bounds");
     return [range[0], range[1]];
   });
 }
 
 function unsupported(what) {
-  return new Error(`bm-engine: ${what} is not supported in bm-engine`);
+  return new Error(`bm-render: ${what} is not supported in bm-render`);
 }
 
-const PREPARED = Symbol.for("bm-engine.prepared");
+const PREPARED = Symbol.for("bm-render.prepared");
 
 /** Handle returned by `prepare` / `prepareAnimation` (opaque, like takumi's `Prepared`). */
 export class Prepared {
@@ -86,12 +86,12 @@ export class Prepared {
 function unwrap(source, options, kind) {
   const p = source && source[PREPARED];
   if (!p) return [source, options];
-  if (p.kind !== kind) throw new TypeError(`bm-engine: this prepared handle is for ${p.kind === "anim" ? "renderAnimation" : "render"}`);
+  if (p.kind !== kind) throw new TypeError(`bm-render: this prepared handle is for ${p.kind === "anim" ? "renderAnimation" : "render"}`);
   return [p.source, { ...p.options, ...options }];
 }
 
 function throwIfAborted(signal) {
-  if (signal && signal.aborted) throw signal.reason ?? new Error("bm-engine: aborted");
+  if (signal && signal.aborted) throw signal.reason ?? new Error("bm-render: aborted");
 }
 
 function imageList(images) {
@@ -121,12 +121,12 @@ function dataUrl(format, bytes) {
 }
 
 function mimeCheck(options) {
-  if (!MIME[options.format || "png"]) throw new Error("bm-engine: renderAsDataUrl needs an encoded format");
+  if (!MIME[options.format || "png"]) throw new Error("bm-render: renderAsDataUrl needs an encoded format");
 }
 
-const NEEDS_INPUT = "bm-engine: init() needs the wasm binary: bytes, a URL / Request / Response, or a WebAssembly.Module " +
-  "(e.g. `import wasm from \"bm-engine/full.wasm\"` on Cloudflare Workers). The profile entries bm-engine/core, " +
-  "bm-engine/standard and bm-engine/full locate their wasm file themselves.";
+const NEEDS_INPUT = "bm-render: init() needs the wasm binary: bytes, a URL / Request / Response, or a WebAssembly.Module " +
+  "(e.g. `import wasm from \"bm-render/full.wasm\"` on Cloudflare Workers). The profile entries bm-render/core, " +
+  "bm-render/standard and bm-render/full locate their wasm file themselves.";
 
 /**
  * @param {(() => URL) | undefined} defaultWasm  where `init()` without an argument loads the wasm from
@@ -154,8 +154,8 @@ export function createBinding(defaultWasm, external) {
   const FULL_ONLY = new Set(["renderSvg", "animation", "extraCodecs", "colorFonts", "complexText"]);
   function requireFeature(name) {
     if (!features[name]) {
-      if (name === "pdf") throw new Error("bm-engine: renderPdf is not supported by this build (use the pdf build: import from \"bm-engine/pdf\")");
-      throw new Error(`bm-engine: this build has no ${FEATURE_LABELS[name] || name} support (use the ${FULL_ONLY.has(name) ? "full" : "standard / full"} build${name === "woff" ? ", or load the WOFF add-on: import { loadWoff } from \"bm-engine/woff\"; await loadWoff()" : ""})`);
+      if (name === "pdf") throw new Error("bm-render: renderPdf is not supported by this build (use the pdf build: import from \"bm-render/pdf\")");
+      throw new Error(`bm-render: this build has no ${FEATURE_LABELS[name] || name} support (use the ${FULL_ONLY.has(name) ? "full" : "standard / full"} build${name === "woff" ? ", or load the WOFF add-on: import { loadWoff } from \"bm-render/woff\"; await loadWoff()" : ""})`);
     }
   }
 
@@ -167,7 +167,7 @@ export function createBinding(defaultWasm, external) {
   function copyIn(bytes) {
     const len = bytes.length;
     const ptr = wasm.bm_alloc(len || 1);
-    if (!ptr) throw new Error("bm-engine: out of memory");
+    if (!ptr) throw new Error("bm-render: out of memory");
     u8().set(bytes, ptr);
     return [ptr, len];
   }
@@ -176,7 +176,7 @@ export function createBinding(defaultWasm, external) {
     // Worst case 3 bytes per UTF-16 unit; encodeInto avoids an intermediate buffer.
     const cap = str.length * 3 || 1;
     const ptr = wasm.bm_alloc(cap);
-    if (!ptr) throw new Error("bm-engine: out of memory");
+    if (!ptr) throw new Error("bm-render: out of memory");
     const { written } = enc.encodeInto(str, u8().subarray(ptr, ptr + cap));
     return [ptr, written, cap];
   }
@@ -188,7 +188,7 @@ export function createBinding(defaultWasm, external) {
   }
 
   function check(status) {
-    if (status !== 0) throw new Error("bm-engine: " + (lastError() || "error " + status));
+    if (status !== 0) throw new Error("bm-render: " + (lastError() || "error " + status));
   }
 
   function adopt(instance) {
@@ -213,7 +213,7 @@ export function createBinding(defaultWasm, external) {
   //       the font file), "unregisterFont" (input = family; result [0 | 1]), "clearFonts".
   //       `attachments`: null or a flat array of [key, bytes, flags, width, height] groups; for the source
   //       ops they are the call's image sources (flags bit 0 = raw RGBA width x height, bit 1 = premultiplied).
-  //       Returns a fresh Uint8Array, or with `text` the result decoded as UTF-8. Throws Error("bm-engine: ...").
+  //       Returns a fresh Uint8Array, or with `text` the result decoded as UTF-8. Throws Error("bm-render: ...").
   //   runAsync?(same) -> Promise   optional: the same off the calling thread, inputs snapshotted at the call
   //                        (native). Without it the async API runs `run`.
   //   memoryBytes()        bytes the engine currently holds
@@ -268,7 +268,7 @@ export function createBinding(defaultWasm, external) {
           : -1;
         wasm.bm_free(jptr, jcap);
         wasm.bm_free(optr, ocap);
-        if (status === -1) throw new Error("bm-engine: this wasm build does not accept HTML sources");
+        if (status === -1) throw new Error("bm-render: this wasm build does not accept HTML sources");
         check(status);
         return take(h, text, true);
       }
@@ -327,15 +327,15 @@ export function createBinding(defaultWasm, external) {
       try {
         url = defaultWasm();
       } catch (e) {
-        throw new Error("bm-engine: cannot locate the wasm file in this runtime (no usable import.meta.url); pass it to init() " +
-          "explicitly, e.g. `import wasm from \"bm-engine/core.wasm\"; await init(wasm)` (" + (e && e.message) + ")");
+        throw new Error("bm-render: cannot locate the wasm file in this runtime (no usable import.meta.url); pass it to init() " +
+          "explicitly, e.g. `import wasm from \"bm-render/core.wasm\"; await init(wasm)` (" + (e && e.message) + ")");
       }
       input = url.protocol === "file:" ? await readFileUrl(url) : url;
     }
     if (typeof input === "string" || (typeof URL !== "undefined" && input instanceof URL) ||
         (typeof Request !== "undefined" && input instanceof Request)) {
       const res = await fetch(input);
-      if (!res.ok) throw new Error(`bm-engine: failed to fetch the wasm (${res.status} ${res.statusText || ""}): ${res.url || input}`);
+      if (!res.ok) throw new Error(`bm-render: failed to fetch the wasm (${res.status} ${res.statusText || ""}): ${res.url || input}`);
       input = res;
     }
     if (typeof Response !== "undefined" && input instanceof Response) {
@@ -376,14 +376,14 @@ export function createBinding(defaultWasm, external) {
     #atts = [];
 
     constructor(options = {}) {
-      if (!backend.ready()) throw new Error("bm-engine: call init()/initSync() before creating a Renderer");
+      if (!backend.ready()) throw new Error("bm-render: call init()/initSync() before creating a Renderer");
       this.#h = backend.create();
-      if (!this.#h) throw new Error("bm-engine: out of memory");
+      if (!this.#h) throw new Error("bm-render: out of memory");
       void options;
     }
 
     #handle() {
-      if (!this.#h) throw new Error("bm-engine: renderer has been freed");
+      if (!this.#h) throw new Error("bm-render: renderer has been freed");
       return this.#h;
     }
 
@@ -396,13 +396,13 @@ export function createBinding(defaultWasm, external) {
     registerFont(font) {
       if (typeof font === "string" || (typeof URL !== "undefined" && font instanceof URL)) {
         return fetch(font).then((res) => {
-          if (!res.ok) throw new Error(`bm-engine: failed to fetch font ${font}: ${res.status}`);
+          if (!res.ok) throw new Error(`bm-render: failed to fetch font ${font}: ${res.status}`);
           return res.arrayBuffer();
         }).then((buf) => this.registerFont(new Uint8Array(buf)));
       }
       if (font && typeof font.then === "function") return font.then((f) => this.registerFont(f));
       const details = isBinary(font) ? { data: font } : font;
-      if (!details || details.data == null) throw new TypeError("bm-engine: registerFont expects bytes or { data }");
+      if (!details || details.data == null) throw new TypeError("bm-render: registerFont expects bytes or { data }");
       if (typeof details.data === "function" || typeof details.data.then === "function") {
         return Promise.resolve(typeof details.data === "function" ? details.data() : details.data)
           .then((data) => this.registerFont({ ...details, data }));
@@ -476,7 +476,7 @@ export function createBinding(defaultWasm, external) {
     /** Attaches the `images` option entries the source text references. */
     #putImages(images, text, own) {
       for (const img of imageList(images)) {
-        if (typeof img.data === "function") throw new TypeError("bm-engine: lazy images[].data() needs the async API");
+        if (typeof img.data === "function") throw new TypeError("bm-render: lazy images[].data() needs the async API");
         const needle = JSON.stringify(String(img.src)).slice(1, -1);
         if (!own || text.includes(needle)) this.#putImage(img.src, img.data);
       }
@@ -564,11 +564,11 @@ export function createBinding(defaultWasm, external) {
     #extrasSync(options) {
       if (!options.fonts) return options;
       const loaders = options.fonts;
-      if (typeof loaders.then === "function" || !loaders[Symbol.iterator]) throw new TypeError("bm-engine: a fonts promise needs the async API");
+      if (typeof loaders.then === "function" || !loaders[Symbol.iterator]) throw new TypeError("bm-render: a fonts promise needs the async API");
       for (const f of loaders) {
         const lazy = typeof f === "string" || (typeof URL !== "undefined" && f instanceof URL) || (f && typeof f.then === "function") ||
           (f && !isBinary(f) && (typeof f.data === "function" || (f.data && typeof f.data.then === "function")));
-        if (lazy) throw new TypeError("bm-engine: fonts[] entries given as a URL, a promise or a lazy data() loader need the async API");
+        if (lazy) throw new TypeError("bm-render: fonts[] entries given as a URL, a promise or a lazy data() loader need the async API");
       }
       const names = [];
       for (const f of loaders) {
@@ -636,7 +636,7 @@ export function createBinding(defaultWasm, external) {
       const { images: _i, fonts: _f, signal: _s, attachments, ...rest } = options;
       const o = { ...rest };
       if (attachments != null) {
-        if (!Array.isArray(attachments)) throw new TypeError("bm-engine: attachments takes an array");
+        if (!Array.isArray(attachments)) throw new TypeError("bm-render: attachments takes an array");
         o.attachments = attachments.map((a) => {
           if (a == null || typeof a !== "object") return a;
           let { data, ...meta } = a;
@@ -665,7 +665,7 @@ export function createBinding(defaultWasm, external) {
     }
 
     /**
-     * takumi-pdf `render`: the source as a PDF file. Needs a build with `pdf` (bm-engine/pdf). Options: takumi-pdf's
+     * takumi-pdf `render`: the source as a PDF file. Needs a build with `pdf` (bm-render/pdf). Options: takumi-pdf's
      * `PdfRenderOptions` (`viewport` | `size` / `landscape` / `margin` / `header` / `footer` / `pages` /
      * `pageRanges`, `metadata`, `outline`, `pdfa`, `tagged`, `attachments`, `uncoveredText`, `backgroundColor`,
      * `css`, `cssVariables`, `fontFamilies`, `lang`, `images`, `fonts`, `signal`); see js/pdf-types.d.mts.
@@ -709,7 +709,7 @@ export function createBinding(defaultWasm, external) {
 
     /**
      * takumi `prepare`: resolves `fonts` / lazy `images` and returns a handle for `render`,
-     * `renderAsDataUrl` and `measure` (whose options are merged over the prepared ones). bm-engine does
+     * `renderAsDataUrl` and `measure` (whose options are merged over the prepared ones). bm-render does
      * not fetch remote resources here (no `needs` pass): pass image bytes via `images`.
      */
     async prepare(source, options = {}) {
@@ -738,7 +738,7 @@ export function createBinding(defaultWasm, external) {
       let scenes = options.scenes;
       if (options[PREPARED]) {
         const p = options[PREPARED];
-        if (p.kind !== "anim") throw new TypeError("bm-engine: this prepared handle is for render");
+        if (p.kind !== "anim") throw new TypeError("bm-render: this prepared handle is for render");
         scenes = p.source;
         options = { ...p.options };
       }
@@ -783,7 +783,7 @@ export function createBinding(defaultWasm, external) {
     }
   }
 
-  /** takumi module function. bm-engine's glyph-mask budget is fixed (8 MiB): accepted and ignored. */
+  /** takumi module function. bm-render's glyph-mask budget is fixed (8 MiB): accepted and ignored. */
   function setGlyphCacheMaxBytes(bytes) {
     void bytes;
   }

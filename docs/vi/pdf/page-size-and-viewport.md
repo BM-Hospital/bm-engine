@@ -2,7 +2,7 @@
 
 [English](../../en/pdf/page-size-and-viewport.md) · [Tiếng Việt](page-size-and-viewport.md)
 
-PDF do bm-engine tạo ra hoặc là **nhiều trang** (mặc định: trang A4, lề 10 mm, nội dung chảy từ trang này
+PDF do bm-render tạo ra hoặc là **nhiều trang** (mặc định: trang A4, lề 10 mm, nội dung chảy từ trang này
 sang trang sau) hoặc là **một trang duy nhất** với kích thước bạn chọn (`viewport`). Trang này nói về các tùy
 chọn đặt hình dạng trang và màu giấy, và cách các quy tắc `@page` của chính tài liệu tham gia vào. Các đoạn
 mã là các phần của `docs/examples/pdf.mjs` và đã được file đó chạy; `pdf` là một `PdfRenderer` đã đăng ký

@@ -2,10 +2,10 @@
 
 [English](charts.md) · [Tiếng Việt](../../vi/image/charts.md)
 
-bm-engine has no chart component, and it does not need one: bars and columns are flex boxes whose width
+bm-render has no chart component, and it does not need one: bars and columns are flex boxes whose width
 or height is a percentage, rings and pies are `conic-gradient`s, heatmaps are CSS grids, and lines are a
 small inline SVG built from your data. This page builds each kind from scratch. Every example on it was
-run against bm-engine 0.1.0 by `docs/examples/charts.mjs`, and the image under each snippet is that
+run against bm-render 0.1.0 by `docs/examples/charts.mjs`, and the image under each snippet is that
 script's output.
 
 [[toc]]
@@ -20,8 +20,8 @@ script's output.
 | Inline SVG (`<svg>` markup as an image `src`) | sparklines, line and area charts, anything with paths | `standard` / `full` (on `core` an SVG image paints nothing) |
 | HTML string or Tailwind `tw` | the same charts written as markup / utility classes | `standard` / `full` |
 
-The examples on this page use the default `bm-engine` entry (the `full` profile on Node). All the
-flex, grid and gradient charts render the same on `bm-engine/core`.
+The examples on this page use the default `bm-render` entry (the `full` profile on Node). All the
+flex, grid and gradient charts render the same on `bm-render/core`.
 
 ## Setup
 
@@ -32,7 +32,7 @@ explicit `display`); `text()` makes a text node.
 <!-- @example charts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -136,7 +136,7 @@ const columnsPng = renderer.renderSync(columns, { width: 600, height: 260 });
 ![Column chart with twelve gradient columns, a y axis and grid lines](/img/guide/charts-columns.png)
 
 ::: tip Paint order of positioned boxes
-bm-engine follows the CSS painting order: positioned boxes paint **after** the in-flow content of
+bm-render follows the CSS painting order: positioned boxes paint **after** the in-flow content of
 their whole stacking context, whatever their order in `children`. Without `position: "relative"` on the columns, the grid
 lines would be drawn across them. Making the columns positioned too lets document order decide (lines
 first, then columns); `zIndex` works as well.
@@ -367,8 +367,8 @@ const kpisPng = renderer.renderSync(kpis, { width: 560, height: 180 });
 ![Two KPI cards, each with a value, a delta and a sparkline](/img/guide/charts-sparkline.png)
 
 ::: warning SVG needs standard or full
-On `bm-engine/core` an SVG image is not decoded and paints nothing (no error). This was checked: the
-sparkline above renders zero opaque pixels on `core`. Use `bm-engine/standard` or `bm-engine/full` for
+On `bm-render/core` an SVG image is not decoded and paints nothing (no error). This was checked: the
+sparkline above renders zero opaque pixels on `core`. Use `bm-render/standard` or `bm-render/full` for
 any SVG-based chart, or stay with the flex / gradient techniques.
 :::
 
@@ -412,7 +412,7 @@ const linePng = renderer.renderSync({ type: "image", src: chartSvg, width: W, he
 
 ### What SVG text supports
 
-SVG text in bm-engine 0.1.0 is deliberately simple. Each `<text>` element becomes **one run** at its `x` /
+SVG text in bm-render 0.1.0 is deliberately simple. Each `<text>` element becomes **one run** at its `x` /
 `y`, using `font-family`, `font-size`, `font-weight`, `text-anchor` and a **solid** `fill` (inherited from
 ancestors such as the root `<svg>`, as above). This test shows the limits:
 
@@ -442,7 +442,7 @@ const svgTextPng = renderer.renderSync({ type: "image", src: textTest, width: 42
 
 Libraries that can produce an SVG string without a browser (ECharts with `ssr: true` +
 `renderToSVGString()`, Vega's `toSVG()`, d3-shape / d3-scale paths, React SVG components through
-`renderToStaticMarkup()`) can feed bm-engine the same way: pass the string as the `src` of an image node,
+`renderToStaticMarkup()`) can feed bm-render the same way: pass the string as the `src` of an image node,
 with `width` / `height`. Nothing in this guide was tested with those libraries, so check their output
 against two constraints:
 

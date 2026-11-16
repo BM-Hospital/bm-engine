@@ -25,7 +25,7 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), "bmsz-"));
 function measure(profile, extra) {
   const prefix = path.join(tmp, "b");
   execFileSync(zig, ["build", `-Dprofile=${profile}`, ...extra, "-p", prefix], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
-  const file = path.join(prefix, "bin", "bm_engine.wasm");
+  const file = path.join(prefix, "bin", "bm_render.wasm");
   const small = readFileSync(file).length;
   if (!args.opt) return { small };
   execFileSync(process.execPath, [wasmOpt, file, "-Oz", "--enable-simd", "--enable-bulk-memory", "--enable-sign-ext",

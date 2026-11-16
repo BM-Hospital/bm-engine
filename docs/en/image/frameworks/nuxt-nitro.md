@@ -3,9 +3,9 @@
 [English](nuxt-nitro.md) · [Tiếng Việt](../../../vi/image/frameworks/nuxt-nitro.md)
 
 Nuxt's server side is Nitro, and Nitro routes are [h3](https://h3.dev) event handlers. An h3 handler may
-return a Web `Response`, so a bm-engine route is the [universal pattern](./index.md#the-universal-pattern)
+return a Web `Response`, so a bm-render route is the [universal pattern](./index.md#the-universal-pattern)
 inside `defineEventHandler`. This page covers Nuxt `server/routes`, standalone Nitro, and what changes on
-edge presets. There is no Nuxt module for bm-engine.
+edge presets. There is no Nuxt module for bm-render.
 
 ::: info Verification status
 Verified: the handler below ran under **h3 2.0.8** (`new H3().get(...)`, requested through `app.fetch`)
@@ -20,7 +20,7 @@ expected configuration, not tested.
 ```ts
 // server/utils/og.ts — auto-imported in server code
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard";
+import { Renderer } from "bm-render/standard";
 
 let renderer: Renderer | undefined;
 
@@ -40,7 +40,7 @@ import { card } from "~/server/utils/card";            // the card() template fr
 import { imageResponse } from "~/server/utils/image-response"; // the helper from the overview
 
 export default defineEventHandler((event) => {
-  const { title = "bm-engine + Nuxt", description = "A Nitro server route" } = getQuery(event);
+  const { title = "bm-render + Nuxt", description = "A Nitro server route" } = getQuery(event);
   return imageResponse(getOgRenderer(), card({ title: String(title), description: String(description) }), {
     width: 1200,
     height: 630,
@@ -84,10 +84,10 @@ in Nuxt, `routes/` standalone).
 
 | Preset | What to do |
 |:--|:--|
-| `node-server` (default), `vercel` (Node functions), `netlify` | `import ... from "bm-engine/standard"` as above. Nitro traces dependencies into `.output/server/node_modules`; bm-engine's Node entry then reads its `.wasm` from there. If the `.wasm` file is missing at runtime, make sure bm-engine stays external (do not list it in `nitro.externals.inline`) and that its `js/*.wasm` files were copied. |
+| `node-server` (default), `vercel` (Node functions), `netlify` | `import ... from "bm-render/standard"` as above. Nitro traces dependencies into `.output/server/node_modules`; bm-render's Node entry then reads its `.wasm` from there. If the `.wasm` file is missing at runtime, make sure bm-render stays external (do not list it in `nitro.externals.inline`) and that its `js/*.wasm` files were copied. |
 | `cloudflare-module`, `cloudflare-pages`, `vercel-edge` | no `node:fs`: import the binary as a module and call `initSync(module)`, and bundle fonts as data. Nitro's WebAssembly support (unwasm) controls how `.wasm` imports are handled; the pattern on the [Cloudflare Workers page](./cloudflare-workers.md) is the target shape. Not tested with Nitro. |
 
-bm-engine instantiates its binary itself and needs either the bytes or an uninstantiated
+bm-render instantiates its binary itself and needs either the bytes or an uninstantiated
 `WebAssembly.Module`; a bundler integration that instantiates `.wasm` imports for you (ESM-integration
 style) is not compatible. If `initSync` throws `Argument 0 must be a buffer source` although you passed
 a module, see the cross-realm note on the [Next.js page](./nextjs.md#edge-runtime).
@@ -105,7 +105,7 @@ useSeoMeta({
 });
 ```
 
-bm-engine does not render Vue components. Build
+bm-render does not render Vue components. Build
 the node tree in the server route (or render a Vue component to an HTML string with Vue's server
 renderer and pass the string — HTML input needs the `standard` or `full` profile; see
 [HTML and Tailwind](../html-and-tailwind.md); not tested with Vue).

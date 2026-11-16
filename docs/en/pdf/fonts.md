@@ -20,7 +20,7 @@ and was executed by it.
 
 ## Subsetting
 
-bm-engine ships no font and no PDF viewer has yours, so every font a page uses is embedded. It is
+bm-render ships no font and no PDF viewer has yours, so every font a page uses is embedded. It is
 embedded as a subset: only the glyphs the document actually draws, renumbered and written as a CID-keyed
 font. The subsetter is a port of the Rust `subsetter` crate and reads TrueType
 (`glyf`) fonts, TrueType collections and CFF (`.otf`) fonts; WOFF and WOFF2 are decoded first. The
@@ -29,7 +29,7 @@ font. The subsetter is a port of the Rust `subsetter` crate and reads TrueType
 <!-- @example pdf-fonts#subset -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const inter = readFileSync("assets/fonts/Inter-Regular.ttf"); // about 400 KB
@@ -136,7 +136,7 @@ try {
 } catch (e) {
   message = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
+// bm-render: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
 // or register a font that draws them.
 ```
 
@@ -159,7 +159,7 @@ try {
 } catch (e) {
   archival = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
+// bm-render: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
 ```
 
 ## PDF/A and font licences

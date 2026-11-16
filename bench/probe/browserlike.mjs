@@ -1,7 +1,7 @@
 // Exercises the browser-style entry (js/index.mjs + async init from a Response), no node.mjs helper.
 import { readFileSync } from "node:fs";
 import init, { Renderer } from "../../js/index.mjs";
-const bytes = readFileSync(new URL("../../js/bm_engine.wasm", import.meta.url));
+const bytes = readFileSync(new URL("../../js/bm_render.wasm", import.meta.url));
 await init(new Response(bytes, { headers: { "content-type": "application/wasm" } }));   // instantiateStreaming path
 const r = new Renderer();
 r.registerFont(readFileSync("../assets/fonts/Inter-Regular.ttf").buffer.slice(0));       // ArrayBuffer input, like fetch().arrayBuffer()

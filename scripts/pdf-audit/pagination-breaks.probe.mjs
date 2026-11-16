@@ -62,7 +62,7 @@ probe("pagination.break.tailwind", "break utilities in the tw attribute", async 
     if (r.bm.error) return t.ok(false, `${label}: ${r.bm.error}`);
     const actual = r.bm.textPages.map((s) => s.replace(/\s+/g, " ").trim());
     t.ok(JSON.stringify(actual) === JSON.stringify(expected), `${label}: ${JSON.stringify(actual)}`);
-    t.note("bm-engine applies the tw break utility; the pinned oracle ignores tw attributes");
+    t.note("bm-render applies the tw break utility; the pinned oracle ignores tw attributes");
   };
   for (const c of ["break-before-page", "break-before-all", "break-before-left", "break-before-right"])
     await expectPages(c, tw(c), ["L01 L02 L03", "X L04 L05 L06"]);
@@ -240,7 +240,7 @@ probe("pagination.monolithic.boxes", "monolithic: inline-block, overflow, line-c
     const all = pages.flat();
     t.ok(pages.length >= 3 && expected.every((word) => all.includes(word)), `all inline-block lines survive pagination: ${JSON.stringify(pages)}`);
     t.ok(expected.every((word) => all.filter((x) => x === word).length === 1), "each fragmented inline-block line is emitted once");
-    t.note("pinned Takumi drops the content of an inline-block taller than a page; bm-engine preserves its fragments");
+    t.note("pinned Takumi drops the content of an inline-block taller than a page; bm-render preserves its fragments");
   }
 });
 
@@ -295,7 +295,7 @@ probe("pagination.box-decoration-break.block", "box-decoration-break: slice / cl
     const spans = (x0, x1) => vertical.some(([a, y0, b, y1]) => a === x0 && b === x1 && y1 - y0 > 100);
     t.ok(spans(7.5, 12), `middle fragment has a continuous straight left border: ${middle.join(" | ")}`);
     t.ok(spans(213, 217.5), `middle fragment has a continuous straight right border: ${middle.join(" | ")}`);
-    t.note("pinned Takumi rounds the middle slice fragment; bm-engine preserves the continuous, unrounded side borders");
+    t.note("pinned Takumi rounds the middle slice fragment; bm-render preserves the continuous, unrounded side borders");
   }
 });
 probe("pagination.box-decoration-break.inline", "box-decoration-break on an inline box wrapping across lines / pages", async (t) => {
@@ -307,7 +307,7 @@ probe("pagination.box-decoration-break.inline", "box-decoration-break on an inli
 
   // In slice mode a later fragment must not acquire a new top border. In clone mode, each fragment
   // is wrapped independently, so the final fragment's border must end with its text. Takumi paints
-  // a long top border into the next page; comparing its raw paths with bm-engine's clipped paths
+  // a long top border into the next page; comparing its raw paths with bm-render's clipped paths
   // hides this source-rendering error.
   const slice = await t.both(span("slice"), P);
   const clone = await t.both(span("clone"), P);
@@ -319,7 +319,7 @@ probe("pagination.box-decoration-break.inline", "box-decoration-break on an inli
     const cloneMarks = black(clone.bm);
     t.ok(!sliceMarks.some(([, y0, , y1]) => y0 >= 141 && y1 >= 142), `slice continuation has no new top border: ${JSON.stringify(sliceMarks)}`);
     t.ok(cloneMarks.length > 0 && cloneMarks.every(([, , x1]) => x1 <= 52), `cloned border ends at the final text fragment: ${JSON.stringify(cloneMarks)}`);
-    t.note("Poppler raster inspection confirms bm-engine keeps the slice continuation unbroken and bounds the cloned border to its fragment; Takumi extends a border beyond the fragment");
+    t.note("Poppler raster inspection confirms bm-render keeps the slice continuation unbroken and bounds the cloned border to its fragment; Takumi extends a border beyond the fragment");
   }
 });
 probe("pagination.background.sliced", "backgrounds and borders of a box split by a page (paint operators)", async (t) => {

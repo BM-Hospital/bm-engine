@@ -22,7 +22,7 @@ export const Route = createFileRoute("/og-image")({
       GET: ({ request }) => {
         const url = new URL(request.url);
         return imageResponse(getRenderer(), card({
-          title: url.searchParams.get("title") ?? "bm-engine + TanStack Start",
+          title: url.searchParams.get("title") ?? "bm-render + TanStack Start",
           description: url.searchParams.get("description") ?? "A server route",
         }), {
           width: 1200,
@@ -51,13 +51,13 @@ export const Route = createFileRoute("/posts/$slug")({
 ## Using JSX
 
 TanStack Start projects already compile JSX with React's automatic runtime, which produces React
-elements, not bm-engine nodes. Options:
+elements, not bm-render nodes. Options:
 
-- Render React components to an HTML string on the server, then pass that string to bm-engine.
+- Render React components to an HTML string on the server, then pass that string to bm-render.
 
 ## Deployment targets (expected configuration)
 
 TanStack Start builds through Vite and deploys to Node (default), Vercel, Netlify, Cloudflare and other
-targets. On Node-based targets the code above runs as is; keep `bm-engine` as a runtime dependency so its
+targets. On Node-based targets the code above runs as is; keep `bm-render` as a runtime dependency so its
 `.wasm` files are present next to `js/node-*.mjs`. On Cloudflare use the
 [Workers pattern](./cloudflare-workers.md). None of these targets were built here.

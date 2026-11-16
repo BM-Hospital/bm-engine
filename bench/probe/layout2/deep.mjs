@@ -1,7 +1,7 @@
 // Nesting-depth probe (extends probe/deep.mjs): heavy alternating grid/flex/block chains with shadows, clips,
 // opacity, gradients, transforms and a text leaf; block chains with an inline-block at every level (line
 // containers add layout levels); table > row > cell chains. Each run renders (png) AND measures.
-// Usage (from bench/): BM_WASM=<dir>/bin/bm_engine.wasm node probe/layout2/deep.mjs [depths...]
+// Usage (from bench/): BM_WASM=<dir>/bin/bm_render.wasm node probe/layout2/deep.mjs [depths...]
 import { readFileSync } from "node:fs";
 const wmod = new WebAssembly.Module(readFileSync(process.env.BM_WASM));
 let seq = 0;

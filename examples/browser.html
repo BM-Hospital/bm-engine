@@ -1,14 +1,14 @@
 <!doctype html>
 <meta charset="utf-8" />
-<title>bm-engine browser demo</title>
+<title>bm-render browser demo</title>
 <body style="font-family: system-ui; margin: 24px">
-  <h3>bm-engine in the browser</h3>
+  <h3>bm-render in the browser</h3>
   <p id="info">rendering…</p>
   <img id="out" style="max-width: 100%; border: 1px solid #ccc" />
   <script type="module">
     // Serve the repository root over HTTP (e.g. `npx serve .`) and open /examples/browser.html
     import init, { Renderer } from "../js/index.mjs";
-    await init(fetch(new URL("../js/bm_engine.wasm", import.meta.url)));
+    await init(fetch(new URL("../js/bm_render.wasm", import.meta.url)));
     const renderer = new Renderer();
     const font = await (await fetch("../assets/fonts/Inter-Regular.ttf")).arrayBuffer();
     renderer.registerFont({ name: "Inter", data: font });
@@ -16,7 +16,7 @@
       type: "container",
       style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center",
                backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)" },
-      children: [{ type: "text", text: "Xin chào từ bm-engine!", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
+      children: [{ type: "text", text: "Xin chào từ bm-render!", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
     };
     const t0 = performance.now();
     const png = renderer.renderSync(node, { width: 1200, height: 630 });

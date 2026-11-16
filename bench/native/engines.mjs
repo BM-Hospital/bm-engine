@@ -1,7 +1,7 @@
 // The four engines of the native benchmark (bench/run-native.mjs), created directly through their public APIs.
 //
 //   bm-native      js/node-native.mjs (the Node-API addon)       renderSync (calling thread), render (libuv pool)
-//   bm-wasm        js/engine.mjs createBinding + js/bm_engine.wasm (full profile)   renderSync, render (same thread)
+//   bm-wasm        js/engine.mjs createBinding + js/bm_render.wasm (full profile)   renderSync, render (same thread)
 //   takumi-native  @takumi-rs/core                                render (async only: napi AsyncTask on the libuv
 //                                                                 pool, rayon pool inside for some stages)
 //   takumi-wasm    @takumi-rs/wasm dist/export.mjs + initSync     render (async wrapper, runs on the calling thread)
@@ -19,7 +19,7 @@ export const ENGINES = ["bm-native", "bm-wasm", "takumi-native", "takumi-wasm"];
 const require = createRequire(path.join(BENCH_DIR, "package.json"));
 const TK = path.join(BENCH_DIR, "node_modules", "@takumi-rs");
 export const PATHS = {
-  bmWasm: process.env.BM_WASM ? path.resolve(process.env.BM_WASM) : path.join(ROOT_DIR, "js", "bm_engine.wasm"),
+  bmWasm: process.env.BM_WASM ? path.resolve(process.env.BM_WASM) : path.join(ROOT_DIR, "js", "bm_render.wasm"),
   takumiWasm: path.join(TK, "wasm", "pkg", "takumi_wasm_bg.wasm"),
   takumiWasmGlue: path.join(TK, "wasm", "dist", "export.mjs"),
   takumiNative: path.join(TK, "core-win32-x64-msvc", "core.win32-x64-msvc.node"),
@@ -103,11 +103,11 @@ export function engineVersions() {
   let manifest = null;
   try { manifest = JSON.parse(readFileSync(manifestPath, "utf8")); } catch {}
   const nativeName = process.platform === "win32" ? `win32-${process.arch}-msvc` : null;
-  const nativeFile = process.env.BM_ENGINE_NATIVE_PATH || (nativeName && path.join(ROOT_DIR, "native", "dist", nativeName, `bm-engine.${nativeName}.node`));
+  const nativeFile = process.env.BM_RENDER_NATIVE_PATH || (nativeName && path.join(ROOT_DIR, "native", "dist", nativeName, `bm-render.${nativeName}.node`));
   const rel = (p) => path.relative(ROOT_DIR, p).split(path.sep).join("/");
   return {
-    "bm-native": { package: "bm-engine", version: pkgVersion(ROOT_DIR), file: nativeFile && rel(nativeFile), bytes: nativeFile && existsSync(nativeFile) ? statSync(nativeFile).size : null, sha256: nativeFile && sha256(nativeFile), zig: manifest?.zig ?? null, optimize: manifest?.files?.[nativeName]?.optimize ?? null },
-    "bm-wasm": { package: "bm-engine", version: pkgVersion(ROOT_DIR), profile: "full", file: rel(PATHS.bmWasm), bytes: existsSync(PATHS.bmWasm) ? statSync(PATHS.bmWasm).size : null, sha256: sha256(PATHS.bmWasm) },
+    "bm-native": { package: "bm-render", version: pkgVersion(ROOT_DIR), file: nativeFile && rel(nativeFile), bytes: nativeFile && existsSync(nativeFile) ? statSync(nativeFile).size : null, sha256: nativeFile && sha256(nativeFile), zig: manifest?.zig ?? null, optimize: manifest?.files?.[nativeName]?.optimize ?? null },
+    "bm-wasm": { package: "bm-render", version: pkgVersion(ROOT_DIR), profile: "full", file: rel(PATHS.bmWasm), bytes: existsSync(PATHS.bmWasm) ? statSync(PATHS.bmWasm).size : null, sha256: sha256(PATHS.bmWasm) },
     "takumi-native": { package: "@takumi-rs/core", version: pkgVersion(path.join(TK, "core")), binaryPackage: "@takumi-rs/core-win32-x64-msvc", binaryVersion: pkgVersion(path.join(TK, "core-win32-x64-msvc")), bytes: existsSync(PATHS.takumiNative) ? statSync(PATHS.takumiNative).size : null, sha256: sha256(PATHS.takumiNative) },
     "takumi-wasm": { package: "@takumi-rs/wasm", version: pkgVersion(path.join(TK, "wasm")), bytes: existsSync(PATHS.takumiWasm) ? statSync(PATHS.takumiWasm).size : null, sha256: sha256(PATHS.takumiWasm) },
   };

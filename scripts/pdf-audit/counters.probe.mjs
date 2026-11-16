@@ -40,7 +40,7 @@ probe("counters.class-hooks", "pageNumber / totalPages class hooks in a band", a
     ["a counter makes a wider band on later pages (10 -> two digits)", doc(lines(1, 99) + lines(1, 99, () => "", "M")), { size: S, footer: foot(`<span style="display:inline-block;width:14px"></span>${PN}`, "width:30px;margin-left:270px") }],
   ], G);
 });
-/** A footer built with an engine's own helpers: takumi-pdf's return JSX elements, bm-engine's return node trees. */
+/** A footer built with an engine's own helpers: takumi-pdf's return JSX elements, bm-render's return node trees. */
 const helperFooter = (mod, kids) => {
   const children = kids(mod);
   const jsx = children.some((c) => c && typeof c === "object" && c.$$typeof);

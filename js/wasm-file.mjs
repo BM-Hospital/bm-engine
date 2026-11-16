@@ -1,14 +1,14 @@
-// bm-engine internal (Node.js / Bun / Deno only): reads one of the package's wasm files from disk, for the Node
+// bm-render internal (Node.js / Bun / Deno only): reads one of the package's wasm files from disk, for the Node
 // entries (js/node.mjs, node-core.mjs, node-standard.mjs, node-full.mjs, node-pdf.mjs), in a way that survives bundling.
 //
 // Tried in order, first readable wins:
 //   1. next to this module: new URL("./<file>", import.meta.url), written literally per file so that bundlers
 //      that understand the pattern (webpack 5, Turbopack, Rollup / Vite SSR) emit / trace the asset and give
 //      back its new location;
-//   2. the installed package: createRequire(<this module>).resolve("bm-engine/<subpath>") (the subpath exports
+//   2. the installed package: createRequire(<this module>).resolve("bm-render/<subpath>") (the subpath exports
 //      of package.json), which still works when a bundler moved this module but node_modules is present;
-//   3. <cwd>/node_modules/bm-engine/js/<file>.
-// When all fail the error names every location and the usual fixes (keep bm-engine external to the bundler).
+//   3. <cwd>/node_modules/bm-render/js/<file>.
+// When all fail the error names every location and the usual fixes (keep bm-render external to the bundler).
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -30,25 +30,25 @@ export function moduleBase() {
     if (typeof __filename === "string" && __filename) return pathToFileURL(__filename).href;
   } catch {}
   try {
-    return pathToFileURL(join(proc.cwd ? proc.cwd() : ".", "bm-engine-base.js")).href;
+    return pathToFileURL(join(proc.cwd ? proc.cwd() : ".", "bm-render-base.js")).href;
   } catch {}
-  return "file:///bm-engine-base.js";
+  return "file:///bm-render-base.js";
 }
 
 const SUBPATH = {
-  "bm_engine.wasm": "full.wasm",
-  "bm_engine.core.wasm": "core.wasm",
-  "bm_engine.standard.wasm": "standard.wasm",
-  "bm_engine.pdf.wasm": "pdf.wasm",
+  "bm_render.wasm": "full.wasm",
+  "bm_render.core.wasm": "core.wasm",
+  "bm_render.standard.wasm": "standard.wasm",
+  "bm_render.pdf.wasm": "pdf.wasm",
 };
 
 /** new URL(<literal>, import.meta.url) for each shipped file (literal: see 1. above). */
 function siblingUrl(file) {
   switch (file) {
-    case "bm_engine.wasm": return new URL("./bm_engine.wasm", import.meta.url);
-    case "bm_engine.core.wasm": return new URL("./bm_engine.core.wasm", import.meta.url);
-    case "bm_engine.standard.wasm": return new URL("./bm_engine.standard.wasm", import.meta.url);
-    case "bm_engine.pdf.wasm": return new URL("./bm_engine.pdf.wasm", import.meta.url);
+    case "bm_render.wasm": return new URL("./bm_render.wasm", import.meta.url);
+    case "bm_render.core.wasm": return new URL("./bm_render.core.wasm", import.meta.url);
+    case "bm_render.standard.wasm": return new URL("./bm_render.standard.wasm", import.meta.url);
+    case "bm_render.pdf.wasm": return new URL("./bm_render.pdf.wasm", import.meta.url);
   }
   return new URL("./" + file, moduleBase());
 }
@@ -83,11 +83,11 @@ export function readPackageWasm(file) {
     }
   };
   const bytes = attempt("next to the module", () => toPath(siblingUrl(file)))
-    ?? attempt("package resolution", () => createRequire(moduleBase()).resolve(`bm-engine/${SUBPATH[file] ?? file}`))
-    ?? attempt("working directory", () => join(proc.cwd(), "node_modules", "bm-engine", "js", file));
+    ?? attempt("package resolution", () => createRequire(moduleBase()).resolve(`bm-render/${SUBPATH[file] ?? file}`))
+    ?? attempt("working directory", () => join(proc.cwd(), "node_modules", "bm-render", "js", file));
   if (bytes) return bytes;
-  throw new Error(`bm-engine: cannot find ${file} (${tried.join("; ")}). This happens when a bundler moved bm-engine's ` +
-    `Node.js entry away from its package: keep the package external (Next.js: serverExternalPackages: ["bm-engine"]; ` +
-    `esbuild: --external:bm-engine; webpack: externals) or copy node_modules/bm-engine/js/${file} next to the bundle; ` +
+  throw new Error(`bm-render: cannot find ${file} (${tried.join("; ")}). This happens when a bundler moved bm-render's ` +
+    `Node.js entry away from its package: keep the package external (Next.js: serverExternalPackages: ["bm-render"]; ` +
+    `esbuild: --external:bm-render; webpack: externals) or copy node_modules/bm-render/js/${file} next to the bundle; ` +
     `or name the file with BM_WASM=<path>.`);
 }

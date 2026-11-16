@@ -17,7 +17,7 @@ export function renderMarkdown(R) {
   const avail = (n) => R.meta.engines?.[n]?.available;
   const present = ENG.filter(avail);
   const hasBm = avail("bm");
-  out.push("# bm-engine vs takumi — benchmark & equivalence results", "");
+  out.push("# bm-render vs takumi — benchmark & equivalence results", "");
   out.push(`- Date: ${R.meta.date}  |  Node ${R.meta.node}  |  ${R.meta.platform}`);
   out.push(`- CPU: ${R.meta.cpu} (${R.meta.cpus} logical)  |  RAM ${R.meta.totalMemGB} GB`);
   out.push(`- Command: \`node run.mjs ${(R.meta.args || []).join(" ")}\`  |  iterations: ${R.meta.config.iters ? "fixed " + R.meta.config.iters : `>=${R.meta.config.minIters} and >=${R.meta.config.minMs}ms (cap ${R.meta.config.maxMs}ms), ${R.meta.config.warmup} warm-up`}`);

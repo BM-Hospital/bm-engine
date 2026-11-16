@@ -7,14 +7,14 @@ source render, và **class Tailwind** trong trường `tw` của node (hoặc th
 Trình parse HTML và trình biên dịch Tailwind nhận tập
 con. Trang này nói về những gì trình parse HTML hiểu, style user-agent nào được áp dụng, cái gì bị bỏ
 qua, và trình biên dịch Tailwind đi được tới đâu — variant, giá trị tùy ý, Preflight, biến theme và các
-lỗ hổng. Toàn bộ mã là `docs/examples/html-and-tailwind.mjs`, chạy với `bm-engine/standard`.
+lỗ hổng. Toàn bộ mã là `docs/examples/html-and-tailwind.mjs`, chạy với `bm-render/standard`.
 
 [[toc]]
 
 <!-- @example html-and-tailwind#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // HTML and Tailwind need standard or full
+import { Renderer } from "bm-render/standard"; // HTML and Tailwind need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -26,12 +26,12 @@ Trên `core` cả hai loại đầu vào đều ném lỗi:
 
 <!-- @example html-and-tailwind#core-errors -->
 ```js
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync("<div></div>", { width: 10, height: 10 }));
-// "bm-engine: this build has no HTML input support (use the standard / full build)"
+// "bm-render: this build has no HTML input support (use the standard / full build)"
 expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10, height: 10 }));
-// "bm-engine: Tailwind (`tw`) is not supported by this build"
+// "bm-render: Tailwind (`tw`) is not supported by this build"
 ```
 
 ## Source HTML {#html-sources}
@@ -447,4 +447,4 @@ hoặc `className` (node tree).
 - [Style](./styles.md) — style inline, stylesheet, cascade và các chế độ layout
 - [Hỗ trợ CSS](./css-support.md#đầu-vào-html) — bảng trạng thái HTML và Tailwind
 - [Ảnh](./images.md) — nguồn ảnh cho `<img>`
-- [bm-engine hoạt động thế nào](./concepts.md) — pipeline và ba loại đầu vào
+- [bm-render hoạt động thế nào](./concepts.md) — pipeline và ba loại đầu vào

@@ -12,7 +12,7 @@ trong số đó.
 ::: info Tình trạng kiểm chứng
 Mọi đoạn mã trên trang này là một đoạn của `docs/examples/pdf-frameworks.mjs` trong repository và đã được
 chính file đó chạy trên Node 26.13, một lần trên addon native (`backend` báo `"native"`) và một lần với
-`BM_ENGINE_BACKEND=wasm` (`backend` báo `"wasm"`): handler được gọi trực tiếp trong tiến trình với một
+`BM_RENDER_BACKEND=wasm` (`backend` báo `"wasm"`): handler được gọi trực tiếp trong tiến trình với một
 `Request` thật, và qua server `node:http` bên dưới trên một cổng cục bộ bằng `fetch`. Cả hai lần đều kiểm
 tra status, `content-type: application/pdf`, `content-disposition`, `content-length` và phần đầu tệp
 `%PDF-`, và việc một request đã bị huỷ sẽ reject với `AbortError`. Bản thân các adapter của framework chưa
@@ -30,19 +30,19 @@ tra status, `content-type: application/pdf`, `content-disposition`, `content-len
 
 | | Ảnh | PDF |
 |:--|:--|:--|
-| Import | `bm-engine` hoặc một profile entry (`bm-engine/core`, `/standard`, `/full`) | chỉ `bm-engine/pdf`; các entry khác throw khi gọi `renderPdf` ([Bắt đầu nhanh với PDF](index.md)) |
+| Import | `bm-render` hoặc một profile entry (`bm-render/core`, `/standard`, `/full`) | chỉ `bm-render/pdf`; các entry khác throw khi gọi `renderPdf` ([Bắt đầu nhanh với PDF](index.md)) |
 | Renderer | `Renderer` | `PdfRenderer` (cùng API font: `registerFont`, `loadFont`, ...) |
 | Kích thước kết quả | do `width` / `height` quyết định | do tài liệu quyết định: một hoặc nhiều trang (`size`, `margin`, `viewport`) |
 | `content-type` | `image/png`, `image/webp`, ... | `application/pdf` |
 | `content-disposition` | thường không đặt | `inline` (hiện trong trình xem của trình duyệt) hoặc `attachment` (lưu thành tệp), kèm `filename` |
 | Cache | ảnh OG là hàm thuần của URL: cache mạnh tay | tài liệu thường riêng cho từng người dùng: `private, no-store` trừ khi là tài liệu công khai |
-| Tệp wasm cho Workers / trình duyệt | `bm_engine.wasm` và các profile nhỏ hơn | `bm_engine.pdf.wasm`: 1 906.7 KiB thô, 938.1 KiB gzip, 767.1 KiB brotli |
+| Tệp wasm cho Workers / trình duyệt | `bm_render.wasm` và các profile nhỏ hơn | `bm_render.pdf.wasm`: 1 906.7 KiB thô, 938.1 KiB gzip, 767.1 KiB brotli |
 
 `render()` trả về cả tệp dưới dạng một `Uint8Array` khi tài liệu đã xong; không có API streaming. Các ví dụ
 trên trang này nặng 15 KiB; các [công thức](recipes.md) từ 19 tới 40 KiB, phần lớn là font đã subset. Hãy
 đặt `content-length` từ `byteLength`.
 
-Trên Node.js, `bm-engine/pdf` dùng addon native khi nó được cài: khi đó `render()` chạy trên thread pool của
+Trên Node.js, `bm-render/pdf` dùng addon native khi nó được cài: khi đó `render()` chạy trên thread pool của
 libuv và không chặn event loop. Trên backend wasm (và ở mọi nơi ngoài Node.js), việc render là công việc
 đồng bộ trên thread gọi nó, giống như với ảnh; xem [Native và WebAssembly](native-and-wasm.md) và, nếu cần
 worker pool, [Công thức cho ảnh](../image/recipes.md#pool-worker-threads).
@@ -56,7 +56,7 @@ Giống như với ảnh, hãy tạo `PdfRenderer` một cách lười (lazy), m
 ```js
 // pdf.js — create the renderer once per process (or per isolate), not per request
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 let renderer;
 export function getPdfRenderer() {
@@ -129,7 +129,7 @@ export async function handleReport(request) {
 - **`signal: request.signal`** kiểm tra `AbortSignal` của request trước khi render đọc và vẽ tài liệu: một
   request đã bị huỷ sẽ reject với `AbortError` thay vì render. Nó không ngắt một lần render đã bắt đầu.
 - Trên Next.js và các công cụ deploy có bundle, phần thiết lập của mục Ảnh áp dụng y nguyên (ví dụ
-  `serverExternalPackages: ["bm-engine"]` và chép package nền tảng:
+  `serverExternalPackages: ["bm-render"]` và chép package nền tảng:
   [Next.js](../image/frameworks/nextjs.md)); entry PDF nằm trong cùng package.
 
 ## node:http
@@ -165,18 +165,18 @@ node:http](../image/frameworks/hono-express.md).
 
 ## Edge runtime và trình duyệt
 
-Ngoài Node.js, `bm-engine/pdf` là profile wasm `pdf` và phải được khởi tạo một lần trước lần render đầu
-tiên: `await init()` tải `bm_engine.pdf.wasm` nằm cạnh module (trình duyệt, bundler), còn trên Cloudflare
+Ngoài Node.js, `bm-render/pdf` là profile wasm `pdf` và phải được khởi tạo một lần trước lần render đầu
+tiên: `await init()` tải `bm_render.pdf.wasm` nằm cạnh module (trình duyệt, bundler), còn trên Cloudflare
 Workers bạn import tệp nhị phân như một module rồi truyền vào:
 
 ```js
-import wasm from "bm-engine/pdf.wasm";
-import { init, PdfRenderer } from "bm-engine/pdf";
+import wasm from "bm-render/pdf.wasm";
+import { init, PdfRenderer } from "bm-render/pdf";
 
 await init(wasm);
 ```
 
-Đoạn này chưa được chạy dưới wrangler. Kích thước nén của `bm_engine.pdf.wasm` (938.1 KiB gzip) được tính
+Đoạn này chưa được chạy dưới wrangler. Kích thước nén của `bm_render.pdf.wasm` (938.1 KiB gzip) được tính
 vào giới hạn kích thước script của gói Workers bạn dùng; xem [Cloudflare
 Workers](../image/frameworks/cloudflare-workers.md) cho phần còn lại của thiết lập và [Bắt đầu nhanh với
 PDF](index.md) cho ví dụ trên trình duyệt mở kết quả bằng một URL `Blob`.

@@ -1,9 +1,9 @@
 // The PDF engines of bench/pdf, created through their public APIs with one call shape.
 //
-//   bm-native    js/node-pdf.mjs on the native addon (`bm-engine/pdf` on Node.js when the addon is installed / built:
-//                native/dist/<platform>/ or $BM_ENGINE_NATIVE_PATH). renderSync on the calling thread, render on the
+//   bm-native    js/node-pdf.mjs on the native addon (`bm-render/pdf` on Node.js when the addon is installed / built:
+//                native/dist/<platform>/ or $BM_RENDER_NATIVE_PATH). renderSync on the calling thread, render on the
 //                libuv pool.
-//   bm-wasm      js/pdf.mjs + js/bm_engine.pdf.wasm (the wasm `pdf` profile; what `bm-engine/pdf` falls back to).
+//   bm-wasm      js/pdf.mjs + js/bm_render.pdf.wasm (the wasm `pdf` profile; what `bm-render/pdf` falls back to).
 //                renderSync and render both run on the calling thread.
 //   takumi-pdf   npm takumi-pdf (wasm; takumi-pdf has no native build: no @takumi-rs/pdf-* / optional dependency
 //                exists on npm as of 0.20.0). dist/export.mjs + initSync, so the wasm memory is observable. Its
@@ -34,15 +34,15 @@ if (pinned) {
   }
 }
 export const PATHS = {
-  bmPdfWasm: path.join(ROOT, "js", "bm_engine.pdf.wasm"),
-  bmNative: process.env.BM_ENGINE_NATIVE_PATH || path.join(ROOT, "native", "dist", `${process.platform}-${process.arch}-msvc`, `bm-engine.${process.platform}-${process.arch}-msvc.node`),
+  bmPdfWasm: path.join(ROOT, "js", "bm_render.pdf.wasm"),
+  bmNative: process.env.BM_RENDER_NATIVE_PATH || path.join(ROOT, "native", "dist", `${process.platform}-${process.arch}-msvc`, `bm-render.${process.platform}-${process.arch}-msvc.node`),
   takumiWasm: pinnedDir ? path.join(pinnedDir, 'wasm', 'takumi_pdf_wasm_bg.wasm') : path.join(TK_DIR, "pkg", "takumi_pdf_wasm_bg.wasm"),
   takumiGlue: pinnedDir ? path.join(pinnedDir, 'export.mjs') : path.join(TK_DIR, "dist", "export.mjs"),
 };
 
 let nodePdf, wasmPdf, takumi, takumiMemory;
 async function loadBmNodePdf() {
-  // the entry a Node.js user gets for `import "bm-engine/pdf"`; BM_ENGINE_BACKEND=wasm in the environment makes
+  // the entry a Node.js user gets for `import "bm-render/pdf"`; BM_RENDER_BACKEND=wasm in the environment makes
   // it the wasm build (then bm-native is reported unavailable)
   return (nodePdf ??= await import(pathToFileURL(path.join(ROOT, "js", "node-pdf.mjs")).href));
 }
@@ -77,7 +77,7 @@ const u8 = (b) => (b instanceof Uint8Array && b.constructor === Uint8Array ? b :
 export async function createEngine(name) {
   if (name === "bm-native" || name === "bm-wasm") {
     const mod = name === "bm-native" ? await loadBmNodePdf() : await loadBmWasm();
-    if (name === "bm-native" && mod.backend !== "native") throw new Error("bm-native unavailable: bm-engine/pdf loaded the wasm backend (no native addon built for this checkout, or BM_ENGINE_BACKEND=wasm)");
+    if (name === "bm-native" && mod.backend !== "native") throw new Error("bm-native unavailable: bm-render/pdf loaded the wasm backend (no native addon built for this checkout, or BM_RENDER_BACKEND=wasm)");
     const r = new mod.PdfRenderer();
     let img = null; // an image Renderer with the same fonts, created on first use
     const fonts = [];
@@ -120,8 +120,8 @@ export function engineVersions() {
   let manifest = null;
   try { manifest = JSON.parse(readFileSync(path.join(ROOT, "native", "dist", "manifest.json"), "utf8")); } catch {}
   return {
-    "bm-native": { package: "bm-engine", version: pkgVersion(ROOT), file: rel(PATHS.bmNative), bytes: existsSync(PATHS.bmNative) ? statSync(PATHS.bmNative).size : null, sha256: sha256(PATHS.bmNative), zig: manifest?.zig ?? null, built: manifest?.date ?? null },
-    "bm-wasm": { package: "bm-engine", version: pkgVersion(ROOT), profile: "pdf", file: rel(PATHS.bmPdfWasm), bytes: existsSync(PATHS.bmPdfWasm) ? statSync(PATHS.bmPdfWasm).size : null, sha256: sha256(PATHS.bmPdfWasm) },
+    "bm-native": { package: "bm-render", version: pkgVersion(ROOT), file: rel(PATHS.bmNative), bytes: existsSync(PATHS.bmNative) ? statSync(PATHS.bmNative).size : null, sha256: sha256(PATHS.bmNative), zig: manifest?.zig ?? null, built: manifest?.date ?? null },
+    "bm-wasm": { package: "bm-render", version: pkgVersion(ROOT), profile: "pdf", file: rel(PATHS.bmPdfWasm), bytes: existsSync(PATHS.bmPdfWasm) ? statSync(PATHS.bmPdfWasm).size : null, sha256: sha256(PATHS.bmPdfWasm) },
     "takumi-pdf": { package: "takumi-pdf", version: pinned?.version ?? pkgVersion(TK_DIR), reference: pinned ?? { kind: 'published-npm' }, file: rel(PATHS.takumiWasm), bytes: existsSync(PATHS.takumiWasm) ? statSync(PATHS.takumiWasm).size : null, sha256: sha256(PATHS.takumiWasm), native: "not used" },
   };
 }

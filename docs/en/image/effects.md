@@ -2,7 +2,7 @@
 
 [English](effects.md) · [Tiếng Việt](../../vi/image/effects.md)
 
-The visual effects bm-engine paints: gradients, borders and radius, outlines, box and text shadows,
+The visual effects bm-render paints: gradients, borders and radius, outlines, box and text shadows,
 gradient text and text stroke, filters, opacity, 2D transforms, clip paths, masks, blend modes and
 backdrop filters. Each section has a small example and states the profile it needs; most effects are in
 every profile, while clip-path, masks, blend modes, backdrop-filter and modern colour spaces need
@@ -31,7 +31,7 @@ draws a labelled 130 × 90 box and `grid(tiles)` lays tiles out in rows.
 <!-- @example effects#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -284,7 +284,7 @@ values. In an inline style they make the whole render throw:
 const message = expectThrow(() =>
   renderer.renderSync({ type: "container", style: { width: 10, height: 10, transform: "rotateX(45deg)" } }, { width: 10, height: 10 }),
 );
-console.log(message); // bm-engine: invalid value for style property transform
+console.log(message); // bm-render: invalid value for style property transform
 ```
 
 In a stylesheet or `tw` class the invalid declaration is dropped instead (CSS error recovery).

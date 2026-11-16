@@ -1,4 +1,4 @@
-// Visual equivalence of bm-engine's PDFs, headless, as a gate.
+// Visual equivalence of bm-render's PDFs, headless, as a gate.
 //
 //   node bench/pdf/visual.mjs [--rebuild] [--filter=<regex>] [--rasterisers=pdfium,mupdf] [--dpi=96,144]
 //                             [--max-pages=6] [--worst=16] [--gate=different|none]
@@ -168,10 +168,10 @@ const summary = {
 const out = { date: new Date().toISOString(), build: manifest.date, args: process.argv.slice(2), summary, docs: rows, pdfVsImage: imageRows, seconds: +((performance.now() - T0) / 1000).toFixed(1) };
 writeFileSync(path.join(OUT_DIR, "visual.json"), JSON.stringify(out, null, 1));
 writeFileSync(path.join(OUT_DIR, "VISUAL.md"), md(out));
-// A golden fixture that bm-engine draws differently from the published takumi-pdf 0.20.0 is checked against
+// A golden fixture that bm-render draws differently from the published takumi-pdf 0.20.0 is checked against
 // takumi-pdf's own vendored golden PDF of it (takumi-pdf/tests/fixtures-generated, written by a takumi newer than
-// 0.20.0): when bm-engine matches the golden (identical / equivalent under some rasteriser), the difference is
-// 0.20.0's, not bm-engine's, and does not fail the gate. Recorded per document as `golden`.
+// 0.20.0): when bm-render matches the golden (identical / equivalent under some rasteriser), the difference is
+// 0.20.0's, not bm-render's, and does not fail the gate. Recorded per document as `golden`.
 for (const x of done.filter((r) => r.consensus === "different" && r.id.startsWith("golden/"))) {
   const gp = path.join(ROOT, "tests", "upstream", "takumi", "takumi-pdf", "tests", "fixtures-generated", x.id.slice(7) + ".pdf");
   let G;

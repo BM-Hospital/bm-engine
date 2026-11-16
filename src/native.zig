@@ -1,5 +1,5 @@
 //! Node-API addon entry point: the same engine as src/wasm.zig, exposed to Node.js as
-//! `bm-engine.<platform>-<arch>[-<abi>].node` (`zig build native`, scripts/build-native.mjs).
+//! `bm-render.<platform>-<arch>[-<abi>].node` (`zig build native`, scripts/build-native.mjs).
 //! JavaScript side: js/native.mjs (loader) and the native backend in js/node-backend.mjs; the
 //! public API is the one implementation in js/engine.mjs. Contract and design: docs/NATIVE.md.
 //!
@@ -62,11 +62,11 @@ fn panicImpl(msg: []const u8, _: ?usize) noreturn {
             extern "kernel32" fn WriteFile(h: ?*anyopaque, p: [*]const u8, n: u32, written: ?*u32, ov: ?*anyopaque) callconv(.winapi) c_int;
         };
         const h = k.GetStdHandle(@bitCast(@as(i32, -12)));
-        _ = k.WriteFile(h, "bm-engine panic: ", 17, null, null);
+        _ = k.WriteFile(h, "bm-render panic: ", 17, null, null);
         _ = k.WriteFile(h, msg.ptr, @intCast(msg.len), null, null);
         _ = k.WriteFile(h, "\n", 1, null, null);
     } else {
-        _ = std.c.write(2, "bm-engine panic: ", 17);
+        _ = std.c.write(2, "bm-render panic: ", 17);
         _ = std.c.write(2, msg.ptr, msg.len);
         _ = std.c.write(2, "\n", 1);
     }
@@ -503,7 +503,7 @@ fn makeBytes(env: Env, data: []const u8) Value {
 
 fn makeError(env: Env, msg: []const u8, type_error: bool) Value {
     var buf: [4096]u8 = undefined;
-    const prefix = "bm-engine: ";
+    const prefix = "bm-render: ";
     @memcpy(buf[0..prefix.len], prefix);
     const n = @min(msg.len, buf.len - prefix.len);
     @memcpy(buf[prefix.len..][0..n], msg[0..n]);
@@ -716,7 +716,7 @@ fn jsRunAsync(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
     var promise: Value = null;
     var name: Value = null;
     if (api.napi_create_promise(env, &j.deferred, &promise) != .ok or
-        api.napi_create_string_utf8(env, "bm-engine", 9, &name) != .ok or
+        api.napi_create_string_utf8(env, "bm-render", 9, &name) != .ok or
         api.napi_create_async_work(env, null, name, Job.execute, Job.complete, j, &j.work) != .ok)
     {
         // (a promise that was created is simply dropped)

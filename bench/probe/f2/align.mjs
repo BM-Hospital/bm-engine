@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
 import { Renderer as TR } from "@takumi-rs/wasm/node";
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 const B = new bm.Renderer(), T = new TR();
 const o = { width: 100, height: 60 };
 const all = process.argv.includes("--all");

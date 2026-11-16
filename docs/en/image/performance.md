@@ -2,7 +2,7 @@
 
 [English](performance.md) · [Tiếng Việt](../../vi/image/performance.md)
 
-bm-engine is fast by default — a typical card renders in a few milliseconds — but a few habits decide
+bm-render is fast by default — a typical card renders in a few milliseconds — but a few habits decide
 whether a server spends its time rendering or re-parsing fonts, decoding the same photo, and growing
 memory it can never give back. This page collects them: reuse one renderer, register fonts once,
 understand cold start, pick the smallest profile, use raw output when you post-process, let the image
@@ -20,7 +20,7 @@ once, and reuse it for every request:
 <!-- @example performance#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 // Create the renderer and register fonts ONCE, at module load, and reuse them for every request.
 const renderer = new Renderer();
@@ -53,7 +53,7 @@ A renderer per request multiplies font parsing and memory; if you really need a 
 
 ## Cold start
 
-On Node.js the `bm-engine` entries read and instantiate their binary synchronously **on import**, so
+On Node.js the `bm-render` entries read and instantiate their binary synchronously **on import**, so
 the first `new Renderer()` can follow immediately. Cold start is the sum of instantiating the module,
 registering fonts and the first render (which also fills the glyph cache) — 78.1 ms in total for the
 og-card fixture in the benchmark.
@@ -90,9 +90,9 @@ share:
 
 | Profile | wasm raw / brotli | Use it for |
 |:--|--:|:--|
-| `bm-engine/core` | 489.6 / 195.3 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
-| `bm-engine/standard` | 936.5 / 398.6 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
-| `bm-engine/full` (and `bm-engine` on Node) | 1 143.6 / 470.8 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
+| `bm-render/core` | 489.6 / 195.3 KiB | node trees with inline styles, static TTF, PNG / JPEG images |
+| `bm-render/standard` | 936.5 / 398.6 KiB | + stylesheets, Tailwind, HTML, SVG, WOFF2, variable / CFF fonts, effects, tables, floats |
+| `bm-render/full` (and `bm-render` on Node) | 1 143.6 / 470.8 KiB | + bidi / complex scripts, colour emoji, animation, `renderSvg`, ICO, lossy WebP input |
 
 Size matters in browsers and on edge runtimes with a script-size limit; on a Node server the difference
 is a few hundred KiB read once at startup. Check the loaded profile at startup instead of discovering a
@@ -100,11 +100,11 @@ missing feature on the first request:
 
 <!-- @example performance#features -->
 ```js
-import { features } from "bm-engine";
+import { features } from "bm-render";
 
 // Fail fast at startup if the loaded profile cannot render your templates.
 for (const need of ["css", "tw", "html"]) {
-  if (!features[need]) throw new Error(`bm-engine profile lacks "${need}": import bm-engine/standard or /full`);
+  if (!features[need]) throw new Error(`bm-render profile lacks "${need}": import bm-render/standard or /full`);
 }
 ```
 
@@ -190,7 +190,7 @@ console.log(asPng.length, asJpeg.length);
 ## Memory
 
 All renderers of one entry share one WebAssembly linear memory, and **WebAssembly memory can grow but
-never shrink**. bm-engine reuses memory between renders (a per-render arena, fixed-budget caches), so a
+never shrink**. bm-render reuses memory between renders (a per-render arena, fixed-budget caches), so a
 steady workload plateaus: 11.6 MiB of wasm memory after 50 og-card renders in the benchmark. What makes it grow is the largest thing you ever rendered:
 
 <!-- @example performance#memory -->
@@ -242,7 +242,7 @@ render. Limits: 16 384 px per side and 40 megapixels per canvas (`canvas too lar
 ## Concurrency: worker pools
 
 ::: tip Native backend on Node.js
-With the native backend (used by `import "bm-engine"` on Node.js when the addon for the platform is
+With the native backend (used by `import "bm-render"` on Node.js when the addon for the platform is
 installed), the async methods (`render()`, `measure()`, ...) run on the libuv thread pool and do not block
 the event loop. Parallelism there comes from several `Renderer` instances (one call at a time each) and
 the size of that pool, `UV_THREADPOOL_SIZE`, rather than from worker threads. See
@@ -252,8 +252,8 @@ measured throughput. The rest of this section applies to the wasm backend.
 
 The engine is single-threaded and `render` is synchronous: one render blocks the thread that calls it.
 The async methods (`render()`, `measure()`, ...) only exist for API compatibility and for resolving
-async options — they do not move work off the thread. To use several cores, run one bm-engine instance
-per worker thread. Each worker imports bm-engine (getting its own wasm instance and memory) and
+async options — they do not move work off the thread. To use several cores, run one bm-render instance
+per worker thread. Each worker imports bm-render (getting its own wasm instance and memory) and
 registers its own fonts:
 
 <!-- @example _performance-worker#worker -->
@@ -261,7 +261,7 @@ registers its own fonts:
 // render-worker.mjs: one wasm instance + one renderer per worker, fonts registered once.
 import { parentPort } from "node:worker_threads";
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });

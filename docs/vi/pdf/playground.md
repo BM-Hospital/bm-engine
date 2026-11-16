@@ -9,7 +9,7 @@ pageClass: playground-page
 
 [English](../../en/pdf/playground.md) · [Tiếng Việt](playground.md)
 
-Playground PDF chạy bản build WebAssembly thật của `bm-engine/pdf` (`bm_engine.pdf.wasm`) ngay trong trình
+Playground PDF chạy bản build WebAssembly thật của `bm-render/pdf` (`bm_render.pdf.wasm`) ngay trong trình
 duyệt: viết node JSON, HTML hoặc Tailwind, đặt khổ trang, header, footer, metadata và các tiêu chuẩn, rồi xem
 file PDF mà engine ghi ra. Không có gì được tải lên máy chủ; font và ảnh bạn thêm vào chỉ nằm trong trang.
 
@@ -47,6 +47,6 @@ các font này không có cần tải font lên (hoặc dùng `uncoveredText`).
 npm run playground          # http://127.0.0.1:8080/docs/playground-app/?mode=pdf
 ```
 
-Engine PDF (`js/pdf.mjs` và `bm_engine.pdf.wasm`, khoảng 1,5 MiB) chỉ được tải khi dùng chế độ PDF, nên
+Engine PDF (`js/pdf.mjs` và `bm_render.pdf.wasm`, khoảng 1,5 MiB) chỉ được tải khi dùng chế độ PDF, nên
 playground ảnh không phải tải nó. Ứng dụng cũng nhận `?mode=image|pdf`, `?lang=en|vi` và
 `?theme=light|dark`; mã nguồn nằm ở [docs/playground-app/](../../playground-app/README.md).

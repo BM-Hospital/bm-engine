@@ -2,7 +2,7 @@
 
 [English](api.md) · [Tiếng Việt](../../vi/image/api.md)
 
-The public API of bm-engine: initialization, `Renderer`, node objects, render options, errors and memory. Type declarations ship in `js/index.d.mts` and the profile-specific `.d.mts` files. Byte results are fresh `Uint8Array` values that can be passed to `Response` or `Blob`.
+The public API of bm-render: initialization, `Renderer`, node objects, render options, errors and memory. Type declarations ship in `js/index.d.mts` and the profile-specific `.d.mts` files. Byte results are fresh `Uint8Array` values that can be passed to `Response` or `Blob`.
 
 - [Module exports](#module-exports): [`init`](#init), [`initSync`](#initsync), [`features`](#features), [`profile` / `wasmUrl`](#profile-and-wasmurl), [`setGlyphCacheMaxBytes`](#setglyphcachemaxbytes)
 - [`Renderer`](#renderer): [constructor](#constructor), [`registerFont`](#registerfont), [`unregisterFont`](#unregisterfont), [`clearFonts`](#clearfonts), [`render`](#render--rendersync), [`renderAsDataUrl`](#renderasdataurl--renderasdataurlsync), [`renderSvg`](#rendersvg--rendersvgsync), [`measure`](#measure--measuresync), [`renderAnimation`](#renderanimation--renderanimationsync), [`prepare`](#prepare--prepareanimation), [`memoryBytes`](#memorybytes), [`free`](#free--symboldispose)
@@ -11,13 +11,13 @@ The public API of bm-engine: initialization, `Renderer`, node objects, render op
 - [Errors](#errors)
 - [Limits](#limits)
 - [Memory, instances and threads](#memory-instances-and-threads)
-- [WOFF add-on (`bm-engine/woff`)](#woff-add-on)
+- [WOFF add-on (`bm-render/woff`)](#woff-add-on)
 
 ## Module exports
 
-Every entry (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/pdf`, `bm-engine/native`) exports
-the same names and owns one engine instance (a wasm instance; on Node.js, `bm-engine` may run the native addon
-instead, and `bm-engine/native` always does); `bm-engine/pdf` adds `PdfRenderer` and the page counter helpers
+Every entry (`bm-render`, `bm-render/core`, `bm-render/standard`, `bm-render/full`, `bm-render/pdf`, `bm-render/native`) exports
+the same names and owns one engine instance (a wasm instance; on Node.js, `bm-render` may run the native addon
+instead, and `bm-render/native` always does); `bm-render/pdf` adds `PdfRenderer` and the page counter helpers
 ([PDF output](../pdf/index.md)). See [Package entry points](../getting-started.md#package-entry-points).
 
 | Export | Kind |
@@ -28,7 +28,7 @@ instead, and `bm-engine/native` always does); `bm-engine/pdf` adds `PdfRenderer`
 | `features` | `Readonly<Features>` |
 | `Prepared` | opaque class of `prepare()` handles (not constructible by you) |
 | `setGlyphCacheMaxBytes` | no-op, accepted for API compatibility; ignored |
-| `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-engine`, `bm-engine/native` and `bm-engine/pdf` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](../getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
+| `backend` | `"wasm" \| "native"`: which engine build serves this entry (`"native"` only for `bm-render`, `bm-render/native` and `bm-render/pdf` on Node.js with the platform package installed); same API and output either way, see [Native on Node.js](../getting-started.md#native-on-nodejs-webassembly-everywhere-else) |
 | `profile` | `"core" \| "standard" \| "full" \| "pdf"` (profile entries only) |
 | `wasmUrl` | `() => URL` (profile entries only) |
 
@@ -43,7 +43,7 @@ Instantiates the binary. Strings, `URL`s and `Request`s are fetched; a `Response
 `application/wasm` is compiled with `WebAssembly.instantiateStreaming`, any other `Response` through
 `arrayBuffer()`. `init` is idempotent: once an entry is initialised, further calls resolve to the same
 instance and their argument is ignored; concurrent calls share one instantiation; a failed call can be
-retried. The profile entries default to their own binary (`wasmUrl()`); the generic `bm-engine` entry
+retried. The profile entries default to their own binary (`wasmUrl()`); the generic `bm-render` entry
 in browsers needs the argument. On Node.js every entry is already initialised when the import resolves.
 
 ### `initSync`
@@ -79,12 +79,12 @@ A frozen-shape object of booleans describing the loaded binary; all `false` befo
 | `animation` | CSS animations (`timeMs`), `renderAnimation`, animated image sources | | | ✓ |
 | `extraCodecs` | lossy WebP decode, animated GIF / APNG / WebP decode and encode, ICO output | | | ✓ |
 | `renderSvg` | `renderSvg()` | | | ✓ |
-| `pdf` | `renderPdf()` / `measurePdf()` (PDF output) | | | `false` in `full` and on `bm-engine` (also on the native addon); `true` only in `bm-engine/pdf` (native or wasm), which has every other feature too |
+| `pdf` | `renderPdf()` / `measurePdf()` (PDF output) | | | `false` in `full` and on `bm-render` (also on the native addon); `true` only in `bm-render/pdf` (native or wasm), which has every other feature too |
 
 ### `profile` and `wasmUrl`
 
-Only on `bm-engine/core`, `/standard`, `/full` and `/pdf`: `profile` is the entry's profile name; `wasmUrl()`
-returns the URL `init()` loads by default (`new URL("./bm_engine[.<profile>].wasm", import.meta.url)`)
+Only on `bm-render/core`, `/standard`, `/full` and `/pdf`: `profile` is the entry's profile name; `wasmUrl()`
+returns the URL `init()` loads by default (`new URL("./bm_render[.<profile>].wasm", import.meta.url)`)
 and throws where `import.meta.url` is not usable.
 
 ### `setGlyphCacheMaxBytes`
@@ -106,7 +106,7 @@ On WebAssembly, both variants perform rendering on the calling thread. On the na
 new Renderer(options?: { cacheMaxBytes?: number; fontCacheMaxBytes?: number })
 ```
 
-Throws `bm-engine: call init()/initSync() before creating a Renderer` before initialisation. Both
+Throws `bm-render: call init()/initSync() before creating a Renderer` before initialisation. Both
 options are accepted and ignored (fixed budgets: 96 MiB of decoded images, 8 MiB of glyph masks).
 
 ### `registerFont`
@@ -135,8 +135,8 @@ r.registerFont({ name: "Brand", data: readFileSync("Inter-Bold.ttf"), weight: 70
 // [{ name: "Brand", faces: [{ weight: 700, ... }], weight: 700, style: "normal" }]
 ```
 
-Errors: `bm-engine: invalid font data`, `bm-engine: unsupported font format` (for example CFF on `core`),
-and for WOFF on a build without it: `bm-engine: this build has no WOFF/WOFF2 font support (use the
+Errors: `bm-render: invalid font data`, `bm-render: unsupported font format` (for example CFF on `core`),
+and for WOFF on a build without it: `bm-render: this build has no WOFF/WOFF2 font support (use the
 standard / full build, or load the WOFF add-on: ...)`.
 
 ### `unregisterFont`
@@ -171,12 +171,12 @@ const fromHtml = r.renderSync("<div style='display:flex;width:100px;height:50px;
 ### `renderAsDataUrl` / `renderAsDataUrlSync`
 
 Same arguments as `render`. Returns `data:image/png;base64,...` (or `image/jpeg`, `image/webp`,
-`image/x-icon`). `format: "raw"` throws `bm-engine: renderAsDataUrl needs an encoded format` (`"jpg"` is accepted as an alias of `"jpeg"`).
+`image/x-icon`). `format: "raw"` throws `bm-render: renderAsDataUrl needs an encoded format` (`"jpg"` is accepted as an alias of `"jpeg"`).
 
 ### `renderSvg` / `renderSvgSync`
 
 Returns an SVG document string (needs `features.renderSvg`, i.e. the `full` profile; otherwise throws
-`bm-engine: this build has no renderSvg support ...`). Boxes become `<rect>`/`<path>`, gradients
+`bm-render: this build has no renderSvg support ...`). Boxes become `<rect>`/`<path>`, gradients
 `<linearGradient>`/`<radialGradient>` (conic gradients as wedges), shadows `<filter>`s, images are
 embedded as `data:` URLs, text becomes glyph outlines (`<use>` of paths in `<defs>`; no font embedding,
 the text is not selectable). `format`, `quality` and `devicePixelRatio` are ignored (always ratio 1).
@@ -188,10 +188,10 @@ const svg = r.renderSvgSync(node, { width: 400, height: 200 });
 
 ### `renderPdf` / `measurePdf` and the `*Sync` twins
 
-Every `Renderer` has `renderPdf(source, options)` and `measurePdf(source, options)`, but only `bm-engine/pdf` exposes the
-PDF writer; on any other build, including `bm-engine` on the native addon, they throw `bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")`.
-On Node.js, `bm-engine/pdf` runs on the native addon when it is installed (the same PDF bytes as the wasm `pdf` profile), and then the async twins run off the main thread on the libuv thread pool.
-The options are described in [PDF output](../pdf/index.md); `PdfRenderer` in `bm-engine/pdf` is the usual way to call them.
+Every `Renderer` has `renderPdf(source, options)` and `measurePdf(source, options)`, but only `bm-render/pdf` exposes the
+PDF writer; on any other build, including `bm-render` on the native addon, they throw `bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")`.
+On Node.js, `bm-render/pdf` runs on the native addon when it is installed (the same PDF bytes as the wasm `pdf` profile), and then the async twins run off the main thread on the libuv thread pool.
+The options are described in [PDF output](../pdf/index.md); `PdfRenderer` in `bm-render/pdf` is the usual way to call them.
 
 ### `measure` / `measureSync`
 
@@ -269,7 +269,7 @@ prepareAnimation(options: RenderAnimationOptions): Promise<Prepared>
 Resolves the asynchronous parts of the options once (registers `fonts`, awaits lazy `images`) and
 returns a handle. `render*`, `renderAsDataUrl*`, `renderSvg*` and `measure*` accept a `prepare` handle
 and merge their own options over the prepared ones; `renderAnimation*` accepts a `prepareAnimation`
-handle. Passing the wrong kind throws `bm-engine: this prepared handle is for renderAnimation` (or
+handle. Passing the wrong kind throws `bm-render: this prepared handle is for renderAnimation` (or
 `... for render`).
 
 `prepare` **does not fetch anything**: there is no "needs" pass that discovers remote
@@ -291,7 +291,7 @@ entry's wasm linear memory, shared by all renderers of that entry. See [Memory](
 
 `free()` releases the renderer's fonts, caches and canvas inside the wasm heap (the memory is reused by
 later allocations; the linear memory itself never shrinks). Calling methods afterwards throws
-`bm-engine: renderer has been freed`; calling `free()` twice is harmless. `using r = new Renderer()`
+`bm-render: renderer has been freed`; calling `free()` twice is harmless. `using r = new Renderer()`
 calls it automatically where explicit resource management is available.
 
 ## Node format
@@ -314,8 +314,8 @@ type Meta = {
 };
 ```
 
-- `type` is required (`bm-engine: node is missing \`type\``); a text node needs `text`
-  (`bm-engine: text node is missing \`text\``). Unknown keys are ignored. `null` / `undefined`
+- `type` is required (`bm-render: node is missing \`type\``); a text node needs `text`
+  (`bm-render: text node is missing \`text\``). Unknown keys are ignored. `null` / `undefined`
   children are skipped.
 - **Style keys are camelCase** (`backgroundColor`, `WebkitLineClamp`). Kebab-case keys
   (`"background-color"`) and unknown property names are ignored silently. Custom
@@ -355,7 +355,7 @@ The [CSS support](css-support.md) page lists every supported property and value.
 
 ## Errors
 
-All errors are plain `Error`s whose message starts with `bm-engine: `.
+All errors are plain `Error`s whose message starts with `bm-render: `.
 
 | Situation | Behaviour |
 |:--|:--|
@@ -390,7 +390,7 @@ all three profiles.
 ## Memory, instances and threads
 
 - **One wasm instance per entry.** All renderers created from the same entry share its linear memory.
-  `bm-engine`, `bm-engine/core`, `/standard` and `/full` each have their own instance, so different
+  `bm-render`, `bm-render/core`, `/standard` and `/full` each have their own instance, so different
   profiles can coexist in one process.
 - **Linear memory only grows.** WebAssembly memory cannot shrink. A typical session (Inter registered,
   50 renders at 1200 × 630) uses about 6 MiB; one 3000 × 2000 render grows it to about 29 MiB, and that
@@ -408,14 +408,14 @@ all three profiles.
   loads in `worker_threads`. Details: [docs/NATIVE.md](../../NATIVE.md).
 - **Threads (wasm).** The binary is single-threaded and the API is synchronous: a render blocks the calling
   thread (a 1200 × 630 card takes a few ms; see [Benchmark](../benchmark.md)). For parallelism, run one
-  instance per worker thread (`node:worker_threads`, Web Workers); each worker imports bm-engine and
+  instance per worker thread (`node:worker_threads`, Web Workers); each worker imports bm-render and
   registers its own fonts (verified with `node:worker_threads`: four workers rendering in parallel).
   Renderers and `Prepared` handles cannot be shared between workers; transfer the output bytes.
 
 ## WOFF add-on
 
 ```ts
-import { loadWoff, decodeWoff } from "bm-engine/woff";
+import { loadWoff, decodeWoff } from "bm-render/woff";
 loadWoff(input?: ByteBuf | WebAssembly.Module | URL | string | Request | Response | Promise<...>): Promise<{ builtIn: boolean }>
 decodeWoff(bytes: ByteBuf): Uint8Array   // WOFF / WOFF2 -> TTF / OTF, after loadWoff()
 ```
@@ -423,9 +423,9 @@ decodeWoff(bytes: ByteBuf): Uint8Array   // WOFF / WOFF2 -> TTF / OTF, after loa
 `loadWoff()` instantiates `bm_woff.wasm` (84 KiB, no imports) and installs it as the WOFF converter for
 every entry in the process; afterwards `registerFont` accepts WOFF / WOFF2 even on `core`. Without an
 argument it reads the file next to the module (Node) or fetches it relative to the module (browsers and
-bundlers). On Workers pass the module: `import woff from "bm-engine/woff.wasm"`. The returned
-`builtIn` reports `features.woff` of the generic `bm-engine` entry. `decodeWoff` throws
-`bm-engine: invalid WOFF/WOFF2 font data` on bad input.
+bundlers). On Workers pass the module: `import woff from "bm-render/woff.wasm"`. The returned
+`builtIn` reports `features.woff` of the generic `bm-render` entry. `decodeWoff` throws
+`bm-render: invalid WOFF/WOFF2 font data` on bad input.
 
 There is no other add-on: see [Profiles and size](../profiles-and-size.md#why-there-are-no-other-lazy-add-ons).
 

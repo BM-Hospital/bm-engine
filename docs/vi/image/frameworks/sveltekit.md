@@ -3,8 +3,8 @@
 [English](../../../en/image/frameworks/sveltekit.md) · [Tiếng Việt](sveltekit.md)
 
 Một endpoint của SvelteKit (`+server.js`) là một hàm nhận request event và trả về `Response`, đúng thứ
-bm-engine cần. Trang này trình bày một endpoint động, một endpoint được prerender, và cách đưa HTML của
-một Svelte component vào bm-engine.
+bm-render cần. Trang này trình bày một endpoint động, một endpoint được prerender, và cách đưa HTML của
+một Svelte component vào bm-render.
 
 ::: info Trạng thái kiểm chứng
 Đã kiểm chứng: handler `GET` dưới đây được gọi trên Node 26.13 với dạng event mà SvelteKit truyền vào
@@ -26,7 +26,7 @@ import { imageResponse } from "$lib/server/image-response.js";
 export async function GET({ url }) {
   return imageResponse(
     getRenderer(),
-    card({ title: url.searchParams.get("title") ?? "bm-engine + SvelteKit", description: "A +server.js endpoint" }),
+    card({ title: url.searchParams.get("title") ?? "bm-render + SvelteKit", description: "A +server.js endpoint" }),
     { width: 1200, height: 630, headers: { "cache-control": "public, max-age=3600" } },
   );
 }
@@ -69,7 +69,7 @@ deploy lên một adapter edge (chỉ các PNG tĩnh được đưa lên).
 ## Render một Svelte component
 
 Bạn có thể render một component bằng `svelte/server` rồi truyền `head + body` dưới
-dạng HTML. Cách này cũng chạy với đầu vào HTML của bm-engine, vốn cần profile `standard` hoặc `full`
+dạng HTML. Cách này cũng chạy với đầu vào HTML của bm-render, vốn cần profile `standard` hoặc `full`
 (phân tích HTML, cộng với tính năng `css` cho khối `<style>` được chèn vào). Font vẫn đến từ renderer:
 đăng ký chúng một lần thay vì truyền URL font theo mỗi response:
 
@@ -87,14 +87,14 @@ export async function GET({ url }) {
 ```
 
 Biến thể này chưa được chạy (chưa cài Svelte). Kiểm tra các tính năng HTML và CSS bạn dựa vào trong
-[HTML và Tailwind](../html-and-tailwind.md); nhớ rằng bm-engine chỉ render, nó không chạy script của
+[HTML và Tailwind](../html-and-tailwind.md); nhớ rằng bm-render chỉ render, nó không chạy script của
 component.
 
 ## Adapter (cấu hình dự kiến)
 
 | Adapter | Ghi chú |
 |:--|:--|
-| `adapter-node` | chạy như mọi server Node; giữ `bm-engine` là dependency lúc chạy (SvelteKit mặc định để `dependencies` ở dạng external). |
-| `adapter-vercel` (Node runtime), `adapter-netlify` | như Node; bảo đảm các file `.wasm` trong `node_modules/bm-engine/js/` có mặt trong bundle của function. |
+| `adapter-node` | chạy như mọi server Node; giữ `bm-render` là dependency lúc chạy (SvelteKit mặc định để `dependencies` ở dạng external). |
+| `adapter-vercel` (Node runtime), `adapter-netlify` | như Node; bảo đảm các file `.wasm` trong `node_modules/bm-render/js/` có mặt trong bundle của function. |
 | `adapter-cloudflare` | không có `node:fs`: làm theo mẫu [Cloudflare Workers](./cloudflare-workers.md) (`initSync` với một module được import, font dưới dạng data) — hoặc prerender các ảnh. |
 | `adapter-static` | prerender mọi thứ (ở trên). |

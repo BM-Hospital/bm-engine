@@ -2,7 +2,7 @@
 
 [English](../../en/image/performance.md) · [Tiếng Việt](performance.md)
 
-Mặc định bm-engine đã nhanh — một card điển hình render trong vài mili giây — nhưng vài thói quen quyết
+Mặc định bm-render đã nhanh — một card điển hình render trong vài mili giây — nhưng vài thói quen quyết
 định server của bạn dành thời gian để render, hay để parse lại font, giải mã lại cùng một tấm ảnh và nở
 bộ nhớ mà không bao giờ trả lại được. Trang này gom chúng lại: dùng lại một renderer, đăng ký font một
 lần, hiểu cold start, chọn profile nhỏ nhất, dùng đầu ra raw khi cần hậu xử lý, để cache ảnh làm việc,
@@ -20,7 +20,7 @@ request:
 <!-- @example performance#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 // Create the renderer and register fonts ONCE, at module load, and reuse them for every request.
 const renderer = new Renderer();
@@ -53,7 +53,7 @@ request nhân bội việc parse font và bộ nhớ; nếu thật sự cần re
 
 ## Cold start
 
-Trên Node.js, các điểm vào `bm-engine` đọc và instantiate binary một cách đồng bộ **ngay khi import**, nên
+Trên Node.js, các điểm vào `bm-render` đọc và instantiate binary một cách đồng bộ **ngay khi import**, nên
 `new Renderer()` đầu tiên có thể theo ngay sau. Cold start là tổng của việc instantiate module, đăng ký font
 và lần render đầu (lần này còn lấp đầy cache glyph) — tổng cộng 78.1 ms với fixture og-card trong benchmark,.
 
@@ -87,9 +87,9 @@ Ba binary khác nhau về dung lượng tải và về khả năng, chứ không
 
 | Profile | wasm raw / brotli | Dùng cho |
 |:--|--:|:--|
-| `bm-engine/core` | 489.6 / 195.3 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
-| `bm-engine/standard` | 936.5 / 398.6 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
-| `bm-engine/full` (và `bm-engine` trên Node) | 1 143.6 / 470.8 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
+| `bm-render/core` | 489.6 / 195.3 KiB | cây node với style inline, TTF tĩnh, ảnh PNG / JPEG |
+| `bm-render/standard` | 936.5 / 398.6 KiB | + stylesheet, Tailwind, HTML, SVG, WOFF2, font variable / CFF, hiệu ứng, bảng, float |
+| `bm-render/full` (và `bm-render` trên Node) | 1 143.6 / 470.8 KiB | + bidi / chữ phức, emoji màu, animation, `renderSvg`, ICO, đầu vào WebP lossy |
 
 Dung lượng quan trọng trong trình duyệt và trên edge runtime có giới hạn kích thước script; trên server
 Node, khác biệt chỉ là vài trăm KiB đọc một lần khi khởi động. Hãy kiểm tra profile đã nạp ngay khi khởi
@@ -97,11 +97,11 @@ Node, khác biệt chỉ là vài trăm KiB đọc một lần khi khởi độn
 
 <!-- @example performance#features -->
 ```js
-import { features } from "bm-engine";
+import { features } from "bm-render";
 
 // Fail fast at startup if the loaded profile cannot render your templates.
 for (const need of ["css", "tw", "html"]) {
-  if (!features[need]) throw new Error(`bm-engine profile lacks "${need}": import bm-engine/standard or /full`);
+  if (!features[need]) throw new Error(`bm-render profile lacks "${need}": import bm-render/standard or /full`);
 }
 ```
 
@@ -186,7 +186,7 @@ console.log(asPng.length, asJpeg.length);
 ## Bộ nhớ
 
 Mọi renderer của cùng một điểm vào dùng chung một vùng nhớ tuyến tính WebAssembly, và **bộ nhớ
-WebAssembly chỉ tăng chứ không bao giờ co lại**. bm-engine dùng lại bộ nhớ giữa các lần render (arena cho
+WebAssembly chỉ tăng chứ không bao giờ co lại**. bm-render dùng lại bộ nhớ giữa các lần render (arena cho
 mỗi lần render, cache có ngân sách cố định), nên một tải ổn định sẽ chững lại: 11.6 MiB bộ nhớ wasm sau 50
 lần render og-card trong benchmark. Thứ làm nó tăng là thứ lớn nhất bạn từng render:
 
@@ -238,7 +238,7 @@ render 2× (`devicePixelRatio: 2` với canvas gấp đôi) có số điểm ả
 ## Song song: worker pool
 
 ::: tip Backend native trên Node.js
-Với backend native (được `import "bm-engine"` dùng trên Node.js khi đã cài addon cho nền tảng), các phương
+Với backend native (được `import "bm-render"` dùng trên Node.js khi đã cài addon cho nền tảng), các phương
 thức async (`render()`, `measure()`, ...) chạy trên thread pool của libuv và không chặn event loop. Khi đó
 xử lý song song đến từ nhiều instance `Renderer` (mỗi cái chạy một lần gọi một lúc) và kích thước của pool
 đó, `UV_THREADPOOL_SIZE`, thay vì từ worker thread. Xem
@@ -248,15 +248,15 @@ xử lý song song đến từ nhiều instance `Renderer` (mỗi cái chạy m�
 
 Engine chạy đơn luồng và `render` là đồng bộ: một lần render chặn luồng gọi nó. Các phương thức async
 (`render()`, `measure()`, ...) chỉ tồn tại để tương thích API và để giải quyết tuỳ chọn async — chúng không
-đẩy việc sang luồng khác. Để dùng nhiều nhân CPU, hãy chạy một instance bm-engine cho mỗi worker thread. Mỗi
-worker import bm-engine (có instance wasm và bộ nhớ riêng) và đăng ký font riêng:
+đẩy việc sang luồng khác. Để dùng nhiều nhân CPU, hãy chạy một instance bm-render cho mỗi worker thread. Mỗi
+worker import bm-render (có instance wasm và bộ nhớ riêng) và đăng ký font riêng:
 
 <!-- @example _performance-worker#worker -->
 ```js
 // render-worker.mjs: one wasm instance + one renderer per worker, fonts registered once.
 import { parentPort } from "node:worker_threads";
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Bold.ttf") });

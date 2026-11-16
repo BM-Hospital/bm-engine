@@ -13,7 +13,7 @@
 //!  * `CFF ` outlines: see subset_cff.zig (desubroutinised, SID -> CID-keyed);
 //!  * variable fonts: like the Rust crate, a TrueType font at a non-default location and every
 //!    CFF2 font are *instanced*: each kept glyph is drawn at the location (here through
-//!    bm-engine's own variation code, `ttf.Font.outline`, instead of skrifa) and re-encoded as
+//!    bm-render's own variation code, `ttf.Font.outline`, instead of skrifa) and re-encoded as
 //!    a simple `glyf` glyph (cubics split into quadratics with kurbo's `to_quads(0.025)`), with
 //!    advances / lsb / maxp synthesised. The output of a CFF2 font is therefore TrueType.
 //!
@@ -43,7 +43,7 @@ pub const Error = error{
 
 pub const Flavor = enum { truetype, cff };
 
-/// Instancing (variable glyf at a non-default location, CFF2) needs bm-engine's variation or
+/// Instancing (variable glyf at a non-default location, CFF2) needs bm-render's variation or
 /// CFF outline code; with both compiled out (core profile) the interjector is not built.
 const can_instance = ttf.enable_variations or ttf.enable_cff;
 
@@ -332,7 +332,7 @@ pub fn subset(a: Allocator, data: []const u8, face_index: u32, variations: []con
     return subsetImpl(a, data, face_index, if (inst) |*f| f else null, mapper);
 }
 
-/// Like `subset`, for a bm-engine `ttf.Font` whose variation coordinates (`withVariations` /
+/// Like `subset`, for a bm-render `ttf.Font` whose variation coordinates (`withVariations` /
 /// a collection instance) select the instance. `face_index` must be the index the font was
 /// created with (0 for a plain .ttf/.otf).
 pub fn subsetFont(a: Allocator, font: *const ttf.Font, face_index: u32, mapper: *const GlyphRemapper) Error!Subset {
@@ -623,7 +623,7 @@ const El = union(enum) {
     close,
 };
 
-/// Records an outline (bm-engine path sink) as a kurbo-style element list, converting cubics
+/// Records an outline (bm-render path sink) as a kurbo-style element list, converting cubics
 /// to quadratics exactly like the Rust interjector (`CubicBez::to_quads(0.025)`).
 const PathRec = struct {
     a: Allocator,
@@ -694,12 +694,12 @@ const PathRec = struct {
 
 /// skrifa draws a varied glyf outline in 26.6 fixed point: every point is the unscaled
 /// coordinate plus its 16.16 delta floored to 1/64, and the path is emitted in FreeType's
-/// `FT_Outline_Decompose` order with exact midpoints for implied on-curve points. bm-engine's
+/// `FT_Outline_Decompose` order with exact midpoints for implied on-curve points. bm-render's
 /// varied outline is f32. To reproduce skrifa's path (which decides which implied points
 /// write-fonts drops and how coordinates round), recover every source point of the glyph from
 /// the recorded path using the glyph's on/off-curve flags, snap it to 1/64 and re-emit the
 /// contour like skrifa. When the structure cannot be matched (malformed glyph, components
-/// bm-engine skips), all coordinates are just snapped.
+/// bm-render skips), all coordinates are just snapped.
 fn skrifaPath(a: Allocator, f: *const ttf.Font, gid: u16, path: *PathRec) Error!void {
     var flags: std.ArrayList(bool) = .empty;
     var ends: std.ArrayList(u32) = .empty;
@@ -748,14 +748,14 @@ fn skrifaPath(a: Allocator, f: *const ttf.Font, gid: u16, path: *PathRec) Error!
 }
 
 fn snap64(v: f64) f64 {
-    // + 1/100 of a 26.6 step: absorbs the f32 noise of bm-engine's deltas around exact steps
+    // + 1/100 of a 26.6 step: absorbs the f32 noise of bm-render's deltas around exact steps
     return @floor(std.math.clamp(v, -1e9, 1e9) * 64.0 + 0.01) / 64.0;
 }
 
 /// On/off-curve flags of the contours of `gid` in the order `ttf.Font.outline` draws them
 /// (composites expanded with the same depth / component budget). `ends` gets the end index
 /// (exclusive) in `flags` of every contour. False when the data is malformed or contains a
-/// contour bm-engine does not draw.
+/// contour bm-render does not draw.
 fn collectContours(a: Allocator, f: *const ttf.Font, gid: u16, depth: u32, budget: *u32, flags: *std.ArrayList(bool), ends: *std.ArrayList(u32)) Error!bool {
     const g = f.glyphData(gid);
     if (g.len < 10) return true;
@@ -782,7 +782,7 @@ fn collectContours(a: Allocator, f: *const ttf.Font, gid: u16, depth: u32, budge
         for (0..n) |ci| {
             const end = @as(usize, be16(g, 10 + ci * 2).?) + 1;
             if (end <= prev or end > npts) return false;
-            // a lone off-curve point draws nothing in bm-engine
+            // a lone off-curve point draws nothing in bm-render
             if (end - prev == 1 and !flags.items[base + prev]) return false;
             try ends.append(a, @intCast(base + end));
             prev = end;
@@ -803,7 +803,7 @@ fn collectContours(a: Allocator, f: *const ttf.Font, gid: u16, depth: u32, budge
     return true;
 }
 
-/// Recovers the points of one contour (flags `fl`) from the elements bm-engine drew for it
+/// Recovers the points of one contour (flags `fl`) from the elements bm-render drew for it
 /// (`move ... close`, the walk of ttf.simpleOutline / variations.emitContours).
 fn absorbContour(fl: []const bool, els: []const El, pts: [][2]f64) bool {
     if (els.len < 2 or els[0] != .move or els[els.len - 1] != .close) return false;

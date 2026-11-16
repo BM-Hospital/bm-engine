@@ -1,7 +1,7 @@
 // JS API parity smoke test for js/index.mjs (takumi Renderer surface). Usage (from bench/): node probe/anim/api.mjs
 import { readFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
-bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_engine.wasm"));
+bm.initSync(readFileSync(process.env.BM_WASM || "../zig-out/bin/bm_render.wasm"));
 bm.setGlyphCacheMaxBytes(1 << 20);
 const font = readFileSync("../src/font/testdata/Inter-Regular.ttf");
 const node = { type: "container", style: { width: 16, height: 16, backgroundColor: "red" }, children: [{ type: "text", text: "a" }] };

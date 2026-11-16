@@ -1,6 +1,6 @@
 # PDF limitations
 
-Use `bm-engine/pdf` to create PDFs. On Node.js this entry uses the native backend when available, with automatic WebAssembly fallback.
+Use `bm-render/pdf` to create PDFs. On Node.js this entry uses the native backend when available, with automatic WebAssembly fallback.
 
 ## Known limitations
 

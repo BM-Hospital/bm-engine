@@ -1,5 +1,5 @@
 // Verifies the Web Worker recipe (recipes.md, vite-browser.md) in a real headless Chromium-based browser:
-// browser/index.html starts a module Worker that runs `await init()` from bm-engine/standard (no bundler),
+// browser/index.html starts a module Worker that runs `await init()` from bm-render/standard (no bundler),
 // renders at devicePixelRatio, transfers the PNG, and the page shows it via a blob URL and createImageBitmap.
 // Needs puppeteer-core (repo: bench/node_modules) and Edge / Chrome (BROWSER_PATH); otherwise SKIPPED.
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { check, done, FONTS } from "./lib/util.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const pkgJs = path.dirname(fileURLToPath(import.meta.resolve("bm-engine/standard")));
+const pkgJs = path.dirname(fileURLToPath(import.meta.resolve("bm-render/standard")));
 const repo = process.env.BM_REPO || path.resolve(here, "..", "..", "..");
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm", ".ttf": "font/ttf" };
 
@@ -30,7 +30,7 @@ await check("module Web Worker renders, page shows it via blob URL + createImage
   const server = createServer((req, res) => {
     const u = decodeURIComponent(new URL(req.url, "http://x").pathname);
     let file;
-    if (u.startsWith("/node_modules/bm-engine/js/")) file = path.join(pkgJs, u.slice("/node_modules/bm-engine/js/".length));
+    if (u.startsWith("/node_modules/bm-render/js/")) file = path.join(pkgJs, u.slice("/node_modules/bm-render/js/".length));
     else if (u.startsWith("/fonts/")) file = fileURLToPath(new URL(u.slice(7), FONTS));
     else file = path.join(here, "browser", u === "/" ? "index.html" : u);
     if (!existsSync(file)) return res.writeHead(404).end();

@@ -301,7 +301,7 @@ const Layout = struct {
     }
 
     /// The element's style: the inherited properties of `parent` with its own declarations
-    /// (colours bm-engine's SVG parser does not read go through the CSS parser).
+    /// (colours bm-render's SVG parser does not read go through the CSS parser).
     fn styleOf(l: *const Layout, n: *const Node, parent: *const sstyle.Style) sstyle.Style {
         var st = parent.*;
         st.apply(n);
@@ -1879,7 +1879,7 @@ fn blendOf(v: []const u8) sf.Blend {
     return .normal;
 }
 
-/// A colour the CSS parser reads (oklch(), lab(), ... which bm-engine's SVG parser does not).
+/// A colour the CSS parser reads (oklch(), lab(), ... which bm-render's SVG parser does not).
 fn cssColor(v: []const u8) ?raster.Color {
     const parsed = cssc.parse(v) catch return null;
     return switch (parsed) {

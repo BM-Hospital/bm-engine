@@ -7,7 +7,7 @@ const log = (label, value) => console.log(label, JSON.stringify(value));
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 const families = renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -159,7 +159,7 @@ log("memory start / grown (bytes)", [start, grown]);
 
 // Profile behaviour (logged, not shown).
 {
-  const core = await import("bm-engine/core");
+  const core = await import("bm-render/core");
   const rc = new core.Renderer();
   log("core features.variableFonts", core.features.variableFonts);
   const vfPath = "ref/takumi/assets/fonts/geist/Geist[wght].woff2";
@@ -194,7 +194,7 @@ if (existsSync(ARCHIVO)) {
 
   // #region variable-core
   // The same tree on core: the font registers, but only its default instance is drawn.
-  const { Renderer: CoreRenderer } = await import("bm-engine/core");
+  const { Renderer: CoreRenderer } = await import("bm-render/core");
   const coreRenderer = new CoreRenderer();
   coreRenderer.registerFont({ name: "Archivo", data: archivo });
   const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200 });
@@ -209,8 +209,8 @@ if (existsSync(GEIST)) {
   renderer.registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
 
   // ... and on core after loading the 84 KiB WOFF add-on once per process.
-  const { Renderer: CoreRenderer } = await import("bm-engine/core");
-  const { loadWoff } = await import("bm-engine/woff");
+  const { Renderer: CoreRenderer } = await import("bm-render/core");
+  const { loadWoff } = await import("bm-render/woff");
   await loadWoff();
   const geist = new CoreRenderer().registerFont(readFileSync("ref/takumi/assets/fonts/geist/Geist[wght].woff2"));
   // geist: [{ name: "Geist", faces: [{ weight: 400, ... }], ... }]
@@ -233,7 +233,7 @@ if (existsSync(EMOJI)) {
   save("emoji", emoji);
 
   // Same on core (not shown as code): CBDT bitmaps have no outlines, so no emoji is drawn.
-  const coreMod = await import("bm-engine/core");
+  const coreMod = await import("bm-render/core");
   const rc = new coreMod.Renderer();
   rc.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
   rc.registerFont(readFileSync(EMOJI));

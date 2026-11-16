@@ -24,7 +24,7 @@ const count = (text, re) => (text.match(re) || []).length;
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -88,7 +88,7 @@ const described = await pdf.render(book, {
     description: "Setup and usage guide",
     authors: ["A. Writer", "B. Editor"],
     keywords: ["guide", "setup"],
-    creator: "bm-engine docs",
+    creator: "bm-render docs",
     creationDate: "2026-08-06T09:30:00", // UTC; or just "2026-08-06"
   },
 });
@@ -138,8 +138,8 @@ for (const attachments of [
 ]) {
   try { await pdf.render("<p>x</p>", { attachments }); } catch (e) { messages.push(e.message); }
 }
-// bm-engine: Two attachments are named a.txt
-// bm-engine: Attachment mime type is not a type/subtype pair: plain
+// bm-render: Two attachments are named a.txt
+// bm-render: Attachment mime type is not a type/subtype pair: plain
 // #endregion
-assert.deepEqual(messages, ["bm-engine: Two attachments are named a.txt", "bm-engine: Attachment mime type is not a type/subtype pair: plain"]);
+assert.deepEqual(messages, ["bm-render: Two attachments are named a.txt", "bm-render: Attachment mime type is not a type/subtype pair: plain"]);
 console.log("pdf-links-metadata: ok");

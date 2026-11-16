@@ -2,7 +2,7 @@
 
 [English](../../en/image/api.md) · [Tiếng Việt](api.md)
 
-Tham chiếu API bm-engine: khởi tạo, `Renderer`, định dạng node, tùy chọn render, lỗi và bộ nhớ. Khai báo kiểu nằm trong `js/index.d.mts` và các file `.d.mts` của từng profile. Kết quả dạng byte là một `Uint8Array` mới, có thể truyền vào `Response` hoặc `Blob`.
+Tham chiếu API bm-render: khởi tạo, `Renderer`, định dạng node, tùy chọn render, lỗi và bộ nhớ. Khai báo kiểu nằm trong `js/index.d.mts` và các file `.d.mts` của từng profile. Kết quả dạng byte là một `Uint8Array` mới, có thể truyền vào `Response` hoặc `Blob`.
 
 - [Các export của module](#các-export-của-module): [`init`](#init), [`initSync`](#initsync), [`features`](#features), [`profile` / `wasmUrl`](#profile-và-wasmurl), [`setGlyphCacheMaxBytes`](#setglyphcachemaxbytes)
 - [`Renderer`](#renderer): [hàm khởi tạo](#hàm-khởi-tạo), [`registerFont`](#registerfont), [`unregisterFont`](#unregisterfont), [`clearFonts`](#clearfonts), [`render`](#render--rendersync), [`renderAsDataUrl`](#renderasdataurl--renderasdataurlsync), [`renderSvg`](#rendersvg--rendersvgsync), [`measure`](#measure--measuresync), [`renderAnimation`](#renderanimation--renderanimationsync), [`prepare`](#prepare--prepareanimation), [`memoryBytes`](#memorybytes), [`free`](#free--symboldispose)
@@ -11,13 +11,13 @@ Tham chiếu API bm-engine: khởi tạo, `Renderer`, định dạng node, tùy 
 - [Lỗi](#lỗi)
 - [Giới hạn](#giới-hạn)
 - [Bộ nhớ, instance và luồng](#bộ-nhớ-instance-và-luồng)
-- [Add-on WOFF (`bm-engine/woff`)](#add-on-woff)
+- [Add-on WOFF (`bm-render/woff`)](#add-on-woff)
 
 ## Các export của module
 
-Mọi điểm vào (`bm-engine`, `bm-engine/core`, `bm-engine/standard`, `bm-engine/full`, `bm-engine/pdf`, `bm-engine/native`)
-export cùng các tên và sở hữu một instance engine (một instance wasm; trên Node.js, `bm-engine` có thể chạy
-addon native thay vào đó, còn `bm-engine/native` thì luôn như vậy); `bm-engine/pdf` thêm `PdfRenderer` và các hàm tạo bộ đếm trang ([Đầu ra PDF](../pdf/index.md)). Xem [Các điểm vào của package](../getting-started.md#các-điểm-vào-của-package).
+Mọi điểm vào (`bm-render`, `bm-render/core`, `bm-render/standard`, `bm-render/full`, `bm-render/pdf`, `bm-render/native`)
+export cùng các tên và sở hữu một instance engine (một instance wasm; trên Node.js, `bm-render` có thể chạy
+addon native thay vào đó, còn `bm-render/native` thì luôn như vậy); `bm-render/pdf` thêm `PdfRenderer` và các hàm tạo bộ đếm trang ([Đầu ra PDF](../pdf/index.md)). Xem [Các điểm vào của package](../getting-started.md#các-điểm-vào-của-package).
 
 | Export | Loại |
 |:--|:--|
@@ -27,7 +27,7 @@ addon native thay vào đó, còn `bm-engine/native` thì luôn như vậy); `bm
 | `features` | `Readonly<Features>` |
 | `Prepared` | lớp mờ (opaque) của các handle do `prepare()` trả về (bạn không tự tạo được) |
 | `setGlyphCacheMaxBytes` | không làm gì, để tương thích API |
-| `backend` | `"wasm" \| "native"`: bản build engine nào phục vụ điểm vào này (`"native"` chỉ với `bm-engine` / `bm-engine/native` trên Node.js khi đã cài platform package); API và output như nhau, xem [Native trên Node.js](../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác) |
+| `backend` | `"wasm" \| "native"`: bản build engine nào phục vụ điểm vào này (`"native"` chỉ với `bm-render` / `bm-render/native` trên Node.js khi đã cài platform package); API và output như nhau, xem [Native trên Node.js](../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác) |
 | `profile` | `"core" \| "standard" \| "full" \| "pdf"` (chỉ có ở điểm vào theo profile) |
 | `wasmUrl` | `() => URL` (chỉ có ở điểm vào theo profile) |
 
@@ -43,7 +43,7 @@ Khởi tạo binary. Chuỗi, `URL` và `Request` sẽ được fetch; một `Re
 `arrayBuffer()`. `init` là idempotent: khi một điểm vào đã khởi tạo xong, các lần gọi sau trả về cùng
 instance và bỏ qua đối số; các lần gọi đồng thời dùng chung một lần khởi tạo; lần gọi thất bại có thể
 thử lại. Các điểm vào theo profile mặc định dùng binary của chính chúng (`wasmUrl()`); điểm vào chung
-`bm-engine` trong trình duyệt bắt buộc phải có đối số. Trên Node.js, mọi điểm vào đã được khởi tạo sẵn khi
+`bm-render` trong trình duyệt bắt buộc phải có đối số. Trên Node.js, mọi điểm vào đã được khởi tạo sẵn khi
 import hoàn tất.
 
 ### `initSync`
@@ -79,12 +79,12 @@ Một object gồm các giá trị boolean mô tả binary đang nạp; tất c�
 | `animation` | CSS animation (`timeMs`), `renderAnimation`, ảnh nguồn động | | | ✓ |
 | `extraCodecs` | giải mã WebP lossy, giải mã và mã hoá GIF / APNG / WebP động, xuất ICO | | | ✓ |
 | `renderSvg` | `renderSvg()` | | | ✓ |
-| `pdf` | `renderPdf()` / `measurePdf()` (đầu ra PDF) | | | `false` ở `full` và ở `bm-engine` (kể cả trên addon native); `true` chỉ ở `bm-engine/pdf` (native hoặc wasm), nơi mọi tính năng khác cũng có |
+| `pdf` | `renderPdf()` / `measurePdf()` (đầu ra PDF) | | | `false` ở `full` và ở `bm-render` (kể cả trên addon native); `true` chỉ ở `bm-render/pdf` (native hoặc wasm), nơi mọi tính năng khác cũng có |
 
 ### `profile` và `wasmUrl`
 
-Chỉ có trên `bm-engine/core`, `/standard`, `/full` và `/pdf`: `profile` là tên profile của điểm vào; `wasmUrl()`
-trả về URL mà `init()` nạp theo mặc định (`new URL("./bm_engine[.<profile>].wasm", import.meta.url)`) và
+Chỉ có trên `bm-render/core`, `/standard`, `/full` và `/pdf`: `profile` là tên profile của điểm vào; `wasmUrl()`
+trả về URL mà `init()` nạp theo mặc định (`new URL("./bm_render[.<profile>].wasm", import.meta.url)`) và
 ném lỗi ở nơi không dùng được `import.meta.url`.
 
 ### `setGlyphCacheMaxBytes`
@@ -107,7 +107,7 @@ việc render đều đồng bộ và chặn luồng đang gọi; bản async ch
 new Renderer(options?: { cacheMaxBytes?: number; fontCacheMaxBytes?: number })
 ```
 
-Ném `bm-engine: call init()/initSync() before creating a Renderer` nếu chưa khởi tạo. Cả hai tùy chọn
+Ném `bm-render: call init()/initSync() before creating a Renderer` nếu chưa khởi tạo. Cả hai tùy chọn
 đều được nhận nhưng bỏ qua (ngân sách cố định: 96 MiB ảnh đã giải mã, 8 MiB mask glyph).
 
 ### `registerFont`
@@ -137,8 +137,8 @@ r.registerFont({ name: "Brand", data: readFileSync("Inter-Bold.ttf"), weight: 70
 // [{ name: "Brand", faces: [{ weight: 700, ... }], weight: 700, style: "normal" }]
 ```
 
-Lỗi: `bm-engine: invalid font data`, `bm-engine: unsupported font format` (ví dụ CFF trên `core`), và với
-WOFF trên bản build không hỗ trợ: `bm-engine: this build has no WOFF/WOFF2 font support (use the
+Lỗi: `bm-render: invalid font data`, `bm-render: unsupported font format` (ví dụ CFF trên `core`), và với
+WOFF trên bản build không hỗ trợ: `bm-render: this build has no WOFF/WOFF2 font support (use the
 standard / full build, or load the WOFF add-on: ...)`.
 
 ### `unregisterFont`
@@ -173,12 +173,12 @@ const fromHtml = r.renderSync("<div style='display:flex;width:100px;height:50px;
 ### `renderAsDataUrl` / `renderAsDataUrlSync`
 
 Đối số giống `render`. Trả về `data:image/png;base64,...` (hoặc `image/jpeg`, `image/webp`,
-`image/x-icon`). `format: "raw"` ném `bm-engine: renderAsDataUrl needs an encoded format` (`"jpg"` được chấp nhận như bí danh của `"jpeg"`).
+`image/x-icon`). `format: "raw"` ném `bm-render: renderAsDataUrl needs an encoded format` (`"jpg"` được chấp nhận như bí danh của `"jpeg"`).
 
 ### `renderSvg` / `renderSvgSync`
 
 Trả về một chuỗi tài liệu SVG (cần `features.renderSvg`, tức profile `full`; nếu không sẽ ném
-`bm-engine: this build has no renderSvg support ...`). Hộp thành `<rect>`/`<path>`, gradient thành
+`bm-render: this build has no renderSvg support ...`). Hộp thành `<rect>`/`<path>`, gradient thành
 `<linearGradient>`/`<radialGradient>` (gradient conic thành các hình quạt), đổ bóng thành `<filter>`,
 ảnh được nhúng dưới dạng URL `data:`, chữ thành outline glyph (`<use>` trỏ tới path trong `<defs>`; không
 nhúng font, chữ không chọn/copy được). `format`, `quality` và `devicePixelRatio` bị bỏ qua (luôn là tỉ lệ 1,
@@ -191,10 +191,10 @@ const svg = r.renderSvgSync(node, { width: 400, height: 200 });
 
 ### `renderPdf` / `measurePdf` và các bản `*Sync`
 
-Mọi `Renderer` đều có `renderPdf(source, options)` và `measurePdf(source, options)`, nhưng chỉ `bm-engine/pdf` cung cấp bộ ghi PDF;
-ở mọi build khác, kể cả `bm-engine` trên addon native, chúng ném `bm-engine: renderPdf is not supported by this build (use the pdf build: import from "bm-engine/pdf")`.
-Các tùy chọn được mô tả ở [Đầu ra PDF](../pdf/index.md); `PdfRenderer` trong `bm-engine/pdf` là cách gọi thông thường.
-Trên Node.js, `bm-engine/pdf` chạy trên addon native khi đã cài (byte PDF giống hệt profile wasm `pdf`), và khi đó các bản async chạy ngoài main thread, trên thread pool của libuv.
+Mọi `Renderer` đều có `renderPdf(source, options)` và `measurePdf(source, options)`, nhưng chỉ `bm-render/pdf` cung cấp bộ ghi PDF;
+ở mọi build khác, kể cả `bm-render` trên addon native, chúng ném `bm-render: renderPdf is not supported by this build (use the pdf build: import from "bm-render/pdf")`.
+Các tùy chọn được mô tả ở [Đầu ra PDF](../pdf/index.md); `PdfRenderer` trong `bm-render/pdf` là cách gọi thông thường.
+Trên Node.js, `bm-render/pdf` chạy trên addon native khi đã cài (byte PDF giống hệt profile wasm `pdf`), và khi đó các bản async chạy ngoài main thread, trên thread pool của libuv.
 
 ### `measure` / `measureSync`
 
@@ -272,7 +272,7 @@ prepareAnimation(options: RenderAnimationOptions): Promise<Prepared>
 Xử lý một lần các phần bất đồng bộ của tùy chọn (đăng ký `fonts`, chờ `images` nạp lười) rồi trả về một
 handle. `render*`, `renderAsDataUrl*`, `renderSvg*` và `measure*` nhận handle của `prepare` và gộp tùy
 chọn riêng của chúng đè lên tùy chọn đã chuẩn bị; `renderAnimation*` nhận handle của `prepareAnimation`.
-Truyền nhầm loại sẽ ném `bm-engine: this prepared handle is for renderAnimation` (hoặc `... for render`).
+Truyền nhầm loại sẽ ném `bm-render: this prepared handle is for renderAnimation` (hoặc `... for render`).
 
 `prepare` **không tải gì cả**: không có bước "needs" để tìm ảnh từ xa hay file
 `@font-face`. Hãy cung cấp bytes ảnh qua `images` và font qua `fonts` / `registerFont`.
@@ -293,7 +293,7 @@ của bộ nhớ tuyến tính wasm của điểm vào, dùng chung cho mọi re
 
 `free()` giải phóng font, cache và canvas của renderer bên trong heap wasm (vùng nhớ được dùng lại cho các
 lần cấp phát sau; bản thân bộ nhớ tuyến tính không bao giờ co lại). Gọi method sau đó sẽ ném
-`bm-engine: renderer has been freed`; gọi `free()` hai lần thì vô hại. `using r = new Renderer()` tự gọi
+`bm-render: renderer has been freed`; gọi `free()` hai lần thì vô hại. `using r = new Renderer()` tự gọi
 nó ở nơi có hỗ trợ explicit resource management.
 
 ## Định dạng node
@@ -316,8 +316,8 @@ type Meta = {
 };
 ```
 
-- `type` là bắt buộc (`bm-engine: node is missing \`type\``); node chữ cần `text`
-  (`bm-engine: text node is missing \`text\``). Khoá lạ bị bỏ qua. Con là `null` / `undefined` bị bỏ qua.
+- `type` là bắt buộc (`bm-render: node is missing \`type\``); node chữ cần `text`
+  (`bm-render: text node is missing \`text\``). Khoá lạ bị bỏ qua. Con là `null` / `undefined` bị bỏ qua.
 - **Khoá style viết camelCase** (`backgroundColor`, `WebkitLineClamp`). Khoá kebab-case
   (`"background-color"`) và tên thuộc tính lạ bị bỏ qua mà không báo. Custom property giữ
   nguyên dấu gạch: `{ "--accent": "#7c3aed", color: "var(--accent)" }`.
@@ -356,7 +356,7 @@ Trang [Hỗ trợ CSS](css-support.md) liệt kê mọi thuộc tính và giá t
 
 ## Lỗi
 
-Mọi lỗi đều là `Error` thông thường với thông báo bắt đầu bằng `bm-engine: `.
+Mọi lỗi đều là `Error` thông thường với thông báo bắt đầu bằng `bm-render: `.
 
 | Tình huống | Hành vi |
 |:--|:--|
@@ -391,7 +391,7 @@ an toàn cho cả ba profile.
 ## Bộ nhớ, instance và luồng
 
 - **Một instance wasm cho mỗi điểm vào.** Mọi renderer tạo từ cùng một điểm vào dùng chung bộ nhớ tuyến
-  tính của nó. `bm-engine`, `bm-engine/core`, `/standard` và `/full` mỗi cái có instance riêng, nên các
+  tính của nó. `bm-render`, `bm-render/core`, `/standard` và `/full` mỗi cái có instance riêng, nên các
   profile khác nhau có thể cùng tồn tại trong một tiến trình.
 - **Bộ nhớ tuyến tính chỉ tăng.** Bộ nhớ WebAssembly không thể co lại. Một phiên điển hình (đăng ký
   Inter, 50 lần render 1200 × 630) dùng khoảng 6 MiB; một lần render 3000 × 2000 đẩy lên khoảng 29 MiB và
@@ -410,14 +410,14 @@ an toàn cho cả ba profile.
   được trong `worker_threads`. Chi tiết: [docs/NATIVE.md](../../NATIVE.md).
 - **Luồng (wasm).** Binary là đơn luồng và API là đồng bộ: một lần render chặn luồng đang gọi (một thẻ
   1200 × 630 mất vài ms; xem [Benchmark](../benchmark.md)). Để chạy song song, hãy dùng một instance cho mỗi
-  worker thread (`node:worker_threads`, Web Workers); mỗi worker tự import bm-engine và đăng ký font riêng
+  worker thread (`node:worker_threads`, Web Workers); mỗi worker tự import bm-render và đăng ký font riêng
   (đã kiểm chứng với `node:worker_threads`: bốn worker render song song). Không thể chia sẻ renderer và
   handle `Prepared` giữa các worker; hãy chuyển byte đầu ra.
 
 ## Add-on WOFF
 
 ```ts
-import { loadWoff, decodeWoff } from "bm-engine/woff";
+import { loadWoff, decodeWoff } from "bm-render/woff";
 loadWoff(input?: ByteBuf | WebAssembly.Module | URL | string | Request | Response | Promise<...>): Promise<{ builtIn: boolean }>
 decodeWoff(bytes: ByteBuf): Uint8Array   // WOFF / WOFF2 -> TTF / OTF, after loadWoff()
 ```
@@ -425,8 +425,8 @@ decodeWoff(bytes: ByteBuf): Uint8Array   // WOFF / WOFF2 -> TTF / OTF, after loa
 `loadWoff()` khởi tạo `bm_woff.wasm` (84 KiB, không có import) và cài nó làm bộ chuyển đổi WOFF cho mọi
 điểm vào trong tiến trình; sau đó `registerFont` nhận WOFF / WOFF2 kể cả trên `core`. Không có đối số thì
 nó đọc file nằm cạnh module (Node) hoặc tải tương đối theo module (trình duyệt và bundler). Trên Workers
-hãy truyền module: `import woff from "bm-engine/woff.wasm"`. Giá trị `builtIn` trả về phản ánh
-`features.woff` của điểm vào chung `bm-engine`. `decodeWoff` ném `bm-engine: invalid WOFF/WOFF2 font data`
+hãy truyền module: `import woff from "bm-render/woff.wasm"`. Giá trị `builtIn` trả về phản ánh
+`features.woff` của điểm vào chung `bm-render`. `decodeWoff` ném `bm-render: invalid WOFF/WOFF2 font data`
 khi đầu vào hỏng.
 
 Không có add-on nào khác: xem [Profile và kích thước](../profiles-and-size.md#vì-sao-không-có-add-on-tải-lười-nào-khác).

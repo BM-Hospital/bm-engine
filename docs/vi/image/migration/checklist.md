@@ -1,6 +1,6 @@
 # Checklist tích hợp
 
-Làm theo thứ tự này khi đưa bm-engine vào một ứng dụng hoặc chuyển mẫu ảnh có sẵn sang thư viện.
+Làm theo thứ tự này khi đưa bm-render vào một ứng dụng hoặc chuyển mẫu ảnh có sẵn sang thư viện.
 
 1. **Chọn đầu vào.** Dùng cây node thuần hoặc HTML với `standard` / `full`. Với JSX, xem [hàm dựng node](../frameworks/index.md#node-tree-không-cần-jsx).
 2. **Đăng ký font.** Nạp dữ liệu font một lần cho mỗi renderer. Chữ không hiện nếu chưa có font.

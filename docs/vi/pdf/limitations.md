@@ -1,6 +1,6 @@
 # Hạn chế PDF
 
-Chỉ dùng `bm-engine/pdf` để tạo PDF. Trên Node.js, entry này dùng native khi có sẵn và tự chuyển sang WebAssembly khi cần.
+Chỉ dùng `bm-render/pdf` để tạo PDF. Trên Node.js, entry này dùng native khi có sẵn và tự chuyển sang WebAssembly khi cần.
 
 ## Hạn chế đã biết
 

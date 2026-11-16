@@ -1875,7 +1875,7 @@ pub const Emitter = struct {
                 iw = sz[0];
                 ih = sz[1];
             } else if (eimg.sourceBytes(e.f.r, e.a, layer.image.url)) |bytes| {
-                // a bitmap bm-engine does not decode (a CMYK JPEG): its header size (takumi-core
+                // a bitmap bm-render does not decode (a CMYK JPEG): its header size (takumi-core
                 // `EncodedBitmap`), the bytes embedded as krilla takes them
                 const hs = eimg.headerSize(bytes) orelse return null;
                 im = .{ .bitmap = .{ .pm = null, .src = layer.image.url } };
@@ -2279,7 +2279,7 @@ pub const Emitter = struct {
         }.ap, .key = fl.key() };
     }
 
-    /// The image XObject for the image source `src` (decoded to `pmx` when bm-engine decodes it):
+    /// The image XObject for the image source `src` (decoded to `pmx` when bm-render decodes it):
     /// emit_image.zig `draw`; null when nothing is drawn (a failure is kept: `fail`).
     fn imageRef(e: *Emitter, pmx: ?*const raster.Pixmap, src: []const u8) Error!?w.Ref {
         // (`keep`: an embedded JPEG / PNG stream refers to these bytes until the file is written)
@@ -3095,7 +3095,7 @@ pub fn repeatingFixed(a: Allocator, f: *const Frame) Error![]const u32 {
 }
 
 pub const DocOptions = struct {
-    producer: []const u8 = "bm-engine",
+    producer: []const u8 = "bm-render",
     /// Flate-compress content streams (off: readable output for tests / debugging)
     compress: bool = true,
     /// the `uncoveredText` option: characters no font draws fail the render, or draw as

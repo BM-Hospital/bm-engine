@@ -1,7 +1,7 @@
-// bm-engine/pdf: the pdf build profile (bm_engine.pdf.wasm = full + PDF output) with its own module instance, and the
+// bm-render/pdf: the pdf build profile (bm_render.pdf.wasm = full + PDF output) with its own module instance, and the
 // takumi-pdf style API on top of it. init() may be called without an argument (and on Node.js it already ran on import).
 // On Node.js / Bun / Deno the engine is the native addon when it is installed (`backend` is "native": the same addon as
-// `bm-engine`, the same PDF bytes, async methods on the thread pool), else this wasm build; BM_ENGINE_BACKEND=wasm | native
+// `bm-render`, the same PDF bytes, async methods on the thread pool), else this wasm build; BM_RENDER_BACKEND=wasm | native
 // forces one. See docs/NATIVE.md.
 import type {
   ByteBuf, ContainerNode, FontLoader, InitArgument, OutputBytes, Prepared, RegisteredFamily, RendererOptions, Source, Style,

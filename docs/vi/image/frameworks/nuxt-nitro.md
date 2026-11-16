@@ -3,10 +3,10 @@
 [English](../../../en/image/frameworks/nuxt-nitro.md) · [Tiếng Việt](nuxt-nitro.md)
 
 Phía server của Nuxt là Nitro, và route của Nitro là các event handler của [h3](https://h3.dev). Một
-handler h3 được phép trả về một `Response` chuẩn Web, nên một route dùng bm-engine chính là
+handler h3 được phép trả về một `Response` chuẩn Web, nên một route dùng bm-render chính là
 [mẫu chung](./index.md#mẫu-chung) đặt bên trong `defineEventHandler`. Trang này nói về `server/routes`
 của Nuxt, Nitro độc lập, và những gì thay đổi trên các preset edge. Không có Nuxt module nào cho
-bm-engine.
+bm-render.
 
 ::: info Trạng thái kiểm chứng
 Đã kiểm chứng: handler dưới đây chạy dưới **h3 2.0.8** (`new H3().get(...)`, gửi request qua `app.fetch`)
@@ -21,7 +21,7 @@ ghi chú về bundle bên dưới là cấu hình dự kiến, chưa được th
 ```ts
 // server/utils/og.ts — auto-imported in server code
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard";
+import { Renderer } from "bm-render/standard";
 
 let renderer: Renderer | undefined;
 
@@ -41,7 +41,7 @@ import { card } from "~/server/utils/card";            // the card() template fr
 import { imageResponse } from "~/server/utils/image-response"; // the helper from the overview
 
 export default defineEventHandler((event) => {
-  const { title = "bm-engine + Nuxt", description = "A Nitro server route" } = getQuery(event);
+  const { title = "bm-render + Nuxt", description = "A Nitro server route" } = getQuery(event);
   return imageResponse(getOgRenderer(), card({ title: String(title), description: String(description) }), {
     width: 1200,
     height: 630,
@@ -84,10 +84,10 @@ trong Nuxt, `routes/` khi dùng độc lập).
 
 | Preset | Cần làm gì |
 |:--|:--|
-| `node-server` (mặc định), `vercel` (Node function), `netlify` | `import ... from "bm-engine/standard"` như trên. Nitro trace các dependency vào `.output/server/node_modules`; Node entry của bm-engine sau đó đọc `.wasm` từ đó. Nếu lúc chạy thiếu file `.wasm`, hãy bảo đảm bm-engine vẫn ở dạng external (đừng liệt kê nó trong `nitro.externals.inline`) và các file `js/*.wasm` của nó đã được chép sang. |
+| `node-server` (mặc định), `vercel` (Node function), `netlify` | `import ... from "bm-render/standard"` như trên. Nitro trace các dependency vào `.output/server/node_modules`; Node entry của bm-render sau đó đọc `.wasm` từ đó. Nếu lúc chạy thiếu file `.wasm`, hãy bảo đảm bm-render vẫn ở dạng external (đừng liệt kê nó trong `nitro.externals.inline`) và các file `js/*.wasm` của nó đã được chép sang. |
 | `cloudflare-module`, `cloudflare-pages`, `vercel-edge` | không có `node:fs`: import binary dưới dạng module rồi gọi `initSync(module)`, và bundle font dưới dạng data. Hỗ trợ WebAssembly của Nitro (unwasm) quyết định cách xử lý các import `.wasm`; mẫu trên [trang Cloudflare Workers](./cloudflare-workers.md) là hình dạng cần đạt. Chưa thử với Nitro. |
 
-bm-engine tự instantiate binary của nó và cần hoặc các byte, hoặc một `WebAssembly.Module` chưa được
+bm-render tự instantiate binary của nó và cần hoặc các byte, hoặc một `WebAssembly.Module` chưa được
 instantiate; một tích hợp bundler tự instantiate các import `.wasm` cho bạn (kiểu ESM-integration) là
 không tương thích. Nếu `initSync` ném `Argument 0 must be a buffer source` dù bạn đã truyền một module,
 xem ghi chú về realm trên [trang Next.js](./nextjs.md#edge-runtime).
@@ -105,7 +105,7 @@ useSeoMeta({
 });
 ```
 
-bm-engine không render Vue component. Hãy
+bm-render không render Vue component. Hãy
 dựng node tree trong server route (hoặc render một Vue component thành chuỗi HTML bằng server renderer
 của Vue rồi truyền chuỗi đó — đầu vào HTML cần profile `standard` hoặc `full`; xem
 [HTML và Tailwind](../html-and-tailwind.md); chưa thử với Vue).

@@ -1,5 +1,5 @@
 // Random tables (spans, collapsed borders of every style, col / colgroup, captions, collapsed rows / columns,
-// stray boxes, lone rows / cells, nesting) rendered by bm only: no trap, no non-"bm-engine:" error.
+// stray boxes, lone rows / cells, nesting) rendered by bm only: no trap, no non-"bm-render:" error.
 // Usage (from bench/): BM_WASM=<ReleaseSafe wasm> node probe/f2/tablefuzz.mjs [seed=1] [n=800]
 import fs, { readFileSync } from "node:fs";
 import * as bm from "../../../js/index.mjs";
@@ -53,7 +53,7 @@ for (let i = 0; i < N; i++) {
   try { r.renderSync(html, { width: pick([1, 40, 300, 640]), height: pick([1, 60, 240]), format: "raw" }); ok++; }
   catch (e) {
     const m = String(e.message || e);
-    if (!m.startsWith("bm-engine:")) { console.log("TRAP at seed state", s0, "case", i, m.slice(0, 200)); console.log(html.slice(0, 3000)); process.exit(1); }
+    if (!m.startsWith("bm-render:")) { console.log("TRAP at seed state", s0, "case", i, m.slice(0, 200)); console.log(html.slice(0, 3000)); process.exit(1); }
     const k = m.replace(/property .*/, "property …").slice(0, 80); errs[k] = (errs[k] || 0) + 1;
   }
   const dt = performance.now() - t0;

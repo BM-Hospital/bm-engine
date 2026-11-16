@@ -1,4 +1,4 @@
-# bm-engine engineering conventions (read first)
+# bm-render engineering conventions (read first)
 
 Project: Zig 0.17 port of takumi (node tree -> image). Ships as a SMALL `wasm32-freestanding` binary
 (optimize mode `.small`), plus native unit tests.

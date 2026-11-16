@@ -27,7 +27,7 @@ probe("api.exports", "module exports (render, measure, prepare, PdfRenderer, Pre
     if (refMod) t.ok(typeof refMod[name] === "function" || name.endsWith("Pages") || name.endsWith("Number"), `takumi exports ${name}`);
   }
   if (refMod) t.note("takumi-pdf exports: " + Object.keys(refMod).sort().join(", "));
-  t.note("bm-engine/pdf exports: " + Object.keys(bmMod).sort().join(", "));
+  t.note("bm-render/pdf exports: " + Object.keys(bmMod).sort().join(", "));
   const r = new bmMod.PdfRenderer();
   for (const m of ["render", "measure", "prepare", "registerFont", "unregisterFont", "clearFonts", "free"]) t.ok(typeof r[m] === "function", `PdfRenderer#${m}`);
   t.ok(typeof r[Symbol.dispose] === "function", "PdfRenderer[Symbol.dispose]");
@@ -405,7 +405,7 @@ probe("api.signal", "signal: an aborted signal rejects render / measure / prepar
     const run = async (mod) => {
       const c = new AbortController(); c.abort();
       const r = new mod.PdfRenderer();
-      await r.registerFont(font(INTER)); // (bm-engine bundles no font; only the signal is under test here)
+      await r.registerFont(font(INTER)); // (bm-render bundles no font; only the signal is under test here)
       try { await r[method]("<p>x</p>", { signal: c.signal }); return "(no error)"; } catch (e) { return `${e.name}`; } finally { r.free(); }
     };
     const a = await run(bmMod);
@@ -552,7 +552,7 @@ probe("api.renderer.fonts", "PdfRenderer: registerFont result, unregisterFont, c
       out.unregisterKnown = r.unregisterFont({ name: "Alias" }); // (takumi-pdf takes a family: `{ name }`)
       out.unregisterUnknown = r.unregisterFont({ name: "Nope" });
       r.clearFonts();
-      try { await r.render(`<p style="font-family: Inter">Zażółć</p>`, { viewport: { width: 200, height: 50 } }); out.afterClear = "renders"; } catch (e) { out.afterClear = errNorm(e.message); } // (bm-engine prefixes its errors: compared without it, as sameError does)
+      try { await r.render(`<p style="font-family: Inter">Zażółć</p>`, { viewport: { width: 200, height: 50 } }); out.afterClear = "renders"; } catch (e) { out.afterClear = errNorm(e.message); } // (bm-render prefixes its errors: compared without it, as sameError does)
     } catch (e) { out.error = e.message; } finally { r.free(); }
     return out;
   };
@@ -582,7 +582,7 @@ probe("api.primitives", "PageNumber / TotalPages / TargetPageNumber: class hooks
     const b = refMod.PageNumber({ format: "lower-roman", className: "x" });
     t.same("PageNumber className", a.className, b.props.className);
     t.same("TargetPageNumber element", { tag: tp.tagName, child: tp.children[0].className }, (() => { const e = refMod.TargetPageNumber({ href: "#a" }); return { tag: e.type, child: e.props.children.props.className }; })());
-    t.note("takumi's primitives are React elements (they go through fromJsx); bm-engine's are node objects");
+    t.note("takumi's primitives are React elements (they go through fromJsx); bm-render's are node objects");
   }
   // the hooks render the same numbers in a footer band, per counter style
   const styles = ["decimal", "decimal-leading-zero", "lower-roman", "upper-roman", "lower-alpha", "lower-latin", "upper-alpha", "upper-latin", "lower-greek"];

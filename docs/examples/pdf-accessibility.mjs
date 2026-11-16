@@ -26,7 +26,7 @@ const outcome = async (promise) => { try { await promise; return "ok"; } catch (
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -53,11 +53,11 @@ assert.ok(inside(ua1).includes("pdfuaid"));
 
 // #region ua1-errors
 const noTitle = await outcome(pdf.render(doc, { tagged: "ua1", lang: "en" }));
-// bm-engine: Writing the PDF failed: validation failed with 1 error
+// bm-render: Writing the PDF failed: validation failed with 1 error
 const noHeading = await outcome(pdf.render(`<p style="font-family: Inter">Text only</p>`, { tagged: "ua1", metadata: { title: "T" } }));
-// bm-engine: Writing the PDF failed: validation failed with 1 error   (a PDF/UA document needs an outline)
+// bm-render: Writing the PDF failed: validation failed with 1 error   (a PDF/UA document needs an outline)
 // #endregion
-assert.match(noTitle, /^bm-engine: Writing the PDF failed: validation failed with 1 error$/);
+assert.match(noTitle, /^bm-render: Writing the PDF failed: validation failed with 1 error$/);
 assert.match(noHeading, /validation failed with 1 error/);
 
 // #region alt
@@ -117,15 +117,15 @@ const results = {
   "3b + attachment without description": await outcome(pdf.render(doc, { pdfa: "3b", metadata: { creationDate: "2026-01-31" }, attachments: [{ name: "a.xml", data: "x", mimeType: "application/xml" }] })),
   "unknown level": await outcome(pdf.render(doc, { pdfa: "1b" })),
 };
-// "2b + ua2":  bm-engine: The requested archival standard is not available
-// "4 + ua1":   bm-engine: The requested archival standard is not available
-// "2b + attachments": bm-engine: Writing the PDF failed: validation failed with 1 error
-// "3b + attachment without description": bm-engine: Writing the PDF failed: validation failed with 1 error
-// "unknown level": bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
+// "2b + ua2":  bm-render: The requested archival standard is not available
+// "4 + ua1":   bm-render: The requested archival standard is not available
+// "2b + attachments": bm-render: Writing the PDF failed: validation failed with 1 error
+// "3b + attachment without description": bm-render: Writing the PDF failed: validation failed with 1 error
+// "unknown level": bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`
 // #endregion
-assert.equal(results["2b + ua2"], "bm-engine: The requested archival standard is not available");
-assert.equal(results["4 + ua1"], "bm-engine: The requested archival standard is not available");
-assert.equal(results["2b + attachments"], "bm-engine: Writing the PDF failed: validation failed with 1 error");
-assert.equal(results["3b + attachment without description"], "bm-engine: Writing the PDF failed: validation failed with 1 error");
-assert.equal(results["unknown level"], "bm-engine: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`");
+assert.equal(results["2b + ua2"], "bm-render: The requested archival standard is not available");
+assert.equal(results["4 + ua1"], "bm-render: The requested archival standard is not available");
+assert.equal(results["2b + attachments"], "bm-render: Writing the PDF failed: validation failed with 1 error");
+assert.equal(results["3b + attachment without description"], "bm-render: Writing the PDF failed: validation failed with 1 error");
+assert.equal(results["unknown level"], "bm-render: unknown variant `1b`, expected one of `2a`, `3a`, `2b`, `2u`, `3b`, `3u`, `4`, `4f`");
 console.log("pdf-accessibility: ok");

@@ -1,9 +1,9 @@
-// bm-engine playground: plain ES modules, no build step, no network access beyond same-origin files.
+// bm-render playground: plain ES modules, no build step, no network access beyond same-origin files.
 // Two output modes share the editor (source, CSS, fonts, images):
-//   Image: js/index.mjs + bm_engine.{core,standard,}.wasm. Profile switching: js/index.mjs keeps ONE wasm instance per
+//   Image: js/index.mjs + bm_render.{core,standard,}.wasm. Profile switching: js/index.mjs keeps ONE wasm instance per
 //          module instance, and js/addons.mjs imports the same module by URL, so changing profile reloads the page
 //          with ?profile=<name>.
-//   PDF:   js/pdf.mjs + bm_engine.pdf.wasm (its own module instance), imported only when PDF mode is first used.
+//   PDF:   js/pdf.mjs + bm_render.pdf.wasm (its own module instance), imported only when PDF mode is first used.
 //          The preview is the browser's PDF viewer (blob URL in an iframe) or, where there is none (phones) or on
 //          request, pages drawn by pdf.js, which is vendored next to the app and also imported only then.
 // ?mode=image|pdf picks the mode (the switch in the header changes it in place and updates the URL).
@@ -342,7 +342,7 @@ function applyModeUI() {
   $("downloadBtn").textContent = tr(pdf ? "downloadPdf" : "download");
   $("stDimsLbl").textContent = tr(pdf ? "pages" : "dims");
   $("stage").classList.toggle("is-pdf", pdf);
-  document.title = pdf ? "bm-engine PDF playground" : "bm-engine playground";
+  document.title = pdf ? "bm-render PDF playground" : "bm-render playground";
   updateVisibility();
 }
 
@@ -577,7 +577,7 @@ function scheduleRender(delay = 350) {
 // ---------------------------------------------------------------------------------------------- output actions
 function download() {
   if (!last) return;
-  const name = `bm-engine.${EXT[last.fmt]}`;
+  const name = `bm-render.${EXT[last.fmt]}`;
   const finish = (blob) => {
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
     a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();

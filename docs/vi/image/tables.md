@@ -2,7 +2,7 @@
 
 [English](../../en/image/tables.md) · [Tiếng Việt](tables.md)
 
-bm-engine dàn trang bảng bằng thuật toán layout bảng theo CSS và hỗ trợ float
+bm-render dàn trang bảng bằng thuật toán layout bảng theo CSS và hỗ trợ float
 của CSS với chữ chảy vòng quanh. Cả hai là tính năng tùy chọn của profile **standard** và **full**
 (`features.tables`, `features.floats`); trên `core`, bảng được dàn như các block thường và `float` bị bỏ
 qua. Trang này trình bày bảng HTML và cây node tương đương, cách tính chiều rộng cột, span, viền, caption
@@ -23,12 +23,12 @@ của `docs/examples/tables.mjs` trong repository và hình là do chính nó re
 
 ## Chuẩn bị
 
-Bảng cần `standard` hoặc `full`, nên các ví dụ import `bm-engine/standard`:
+Bảng cần `standard` hoặc `full`, nên các ví dụ import `bm-render/standard`:
 
 <!-- @example tables#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // tables and floats need standard or full
+import { Renderer } from "bm-render/standard"; // tables and floats need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

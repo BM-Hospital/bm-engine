@@ -60,7 +60,7 @@ pub const TextRun = struct {
     /// the text node / paragraph owner, and the run's own style (a `<span>`'s inside a paragraph)
     node: *const Node,
     style: *const CS,
-    /// bm-engine font registry face (`Renderer.fonts.font(face)`: the sfnt to subset) and size
+    /// bm-render font registry face (`Renderer.fonts.font(face)`: the sfnt to subset) and size
     face: font.FaceId,
     size: f32,
     /// the run's glyphs: one face and size, in visual order (both bidi directions possible). `gid` is the glyph id in `face`;

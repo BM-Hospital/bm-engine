@@ -1,9 +1,9 @@
 // The interchange part of scripts/pdf-compare.mjs: link annotations, destinations, the outline, the
 // Info dictionary, the XMP packet, the file /ID, embedded files and the catalog entries, each as
-// canonical text, compared between bm-engine's file and takumi-pdf's golden.
+// canonical text, compared between bm-render's file and takumi-pdf's golden.
 //
 // Normalised away (classes reported, not compared):
-//   * the producer (bm-engine writes "bm-engine", the goldens "takumi-pdf fixture"): Info /Producer
+//   * the producer (bm-render writes "bm-render", the goldens "takumi-pdf fixture"): Info /Producer
 //     and XMP pdf:Producer;
 //   * the instance id (a hash of the file bytes so far: differs whenever any byte differs) and a
 //     document id equal to it; a document id derived from the metadata (title + authors) is compared;

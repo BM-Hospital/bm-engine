@@ -7,7 +7,7 @@ const count = (b, re) => (latin1(b).match(re) || []).length;
 
 // #region subset
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const inter = readFileSync("assets/fonts/Inter-Regular.ttf"); // about 400 KB
@@ -42,7 +42,7 @@ try {
 } catch (e) {
   message = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
+// bm-render: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
 // or register a font that draws them.
 // #endregion
 assert.match(message, /No font the text can use draws क \(U\+0915\)/);
@@ -76,7 +76,7 @@ try {
 } catch (e) {
   archival = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
+// bm-render: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
 // #endregion
 assert.match(archival, /PDF\/A-2b forbids the placeholder glyph/);
 console.log("pdf-fonts: ok", small.length, inter.length, weights.length);

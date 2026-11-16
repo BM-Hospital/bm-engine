@@ -4,7 +4,7 @@
 
 Workers have no file system and do not allow compiling WebAssembly from bytes at runtime; instead,
 wrangler compiles every imported `.wasm` file ahead of time and hands your code a `WebAssembly.Module`.
-bm-engine's `init()` / `initSync()` accept exactly that, so a Worker imports the binary, initialises
+bm-render's `init()` / `initSync()` accept exactly that, so a Worker imports the binary, initialises
 once per isolate, bundles its fonts as data, and returns a `Response`.
 
 ::: info Verification status
@@ -21,8 +21,8 @@ start on the test machine (the `workerd.exe` binary failed to load), and nothing
 
 ```js
 // src/worker.js
-import { initSync, Renderer } from "bm-engine/core";
-import wasm from "bm-engine/core.wasm";             // a WebAssembly.Module (wrangler compiles .wasm imports)
+import { initSync, Renderer } from "bm-render/core";
+import wasm from "bm-render/core.wasm";             // a WebAssembly.Module (wrangler compiles .wasm imports)
 import interRegular from "./Inter-Regular.ttf";     // an ArrayBuffer (the "Data" rule in wrangler.toml)
 import interBold from "./Inter-Bold.ttf";
 
@@ -68,7 +68,7 @@ export default {
 
 ```toml
 # wrangler.toml
-name = "bm-engine-og"
+name = "bm-render-og"
 main = "src/worker.js"
 compatibility_date = "2025-06-01"
 
@@ -78,13 +78,13 @@ globs = ["**/*.ttf"]
 fallthrough = true
 ```
 
-- wrangler resolves `bm-engine/core` with the `workerd` condition to the browser-style entry (no
-  `node:fs`), and `bm-engine/core.wasm` to the raw binary. No `nodejs_compat` flag is needed.
+- wrangler resolves `bm-render/core` with the `workerd` condition to the browser-style entry (no
+  `node:fs`), and `bm-render/core.wasm` to the raw binary. No `nodejs_compat` flag is needed.
 - `.wasm` imports are handled by wrangler's default module rules; only the font rule is added.
-- Use the same profile for the JS entry and the binary (`bm-engine/core` + `bm-engine/core.wasm`,
-  `bm-engine/standard` + `/standard.wasm`, `bm-engine/full` + `/full.wasm`). With the generic
-  `bm-engine` entry, pass `bm-engine/wasm` (= full).
-- WOFF on `core`: `import woff from "bm-engine/woff.wasm"; import { loadWoff } from "bm-engine/woff"; await loadWoff(woff);`
+- Use the same profile for the JS entry and the binary (`bm-render/core` + `bm-render/core.wasm`,
+  `bm-render/standard` + `/standard.wasm`, `bm-render/full` + `/full.wasm`). With the generic
+  `bm-render` entry, pass `bm-render/wasm` (= full).
+- WOFF on `core`: `import woff from "bm-render/woff.wasm"; import { loadWoff } from "bm-render/woff"; await loadWoff(woff);`
   (verified with a `WebAssembly.Module` under `--conditions=workerd`).
 - `caches.default` stores the response in the data centre's cache; responses must be cacheable
   (`cache-control`). For global caching, put the Worker behind a route with Cache Rules.
@@ -92,13 +92,13 @@ fallthrough = true
 ## Size limits
 
 Workers limit the compressed size of the uploaded script (all modules together). The limits depend on
-your plan and change over time — check Cloudflare's current documentation. What bm-engine contributes:
+your plan and change over time — check Cloudflare's current documentation. What bm-render contributes:
 
 | Module | raw | gzip -9 |
 |:--|--:|--:|
-| `bm_engine.core.wasm` | 489.6 KiB | 229.5 KiB |
-| `bm_engine.standard.wasm` | 936.5 KiB | 465.1 KiB |
-| `bm_engine.wasm` (full) | 1 143.6 KiB | 560.0 KiB |
+| `bm_render.core.wasm` | 489.6 KiB | 229.5 KiB |
+| `bm_render.standard.wasm` | 936.5 KiB | 465.1 KiB |
+| `bm_render.wasm` (full) | 1 143.6 KiB | 560.0 KiB |
 | JS wrapper (bundled) | ~23 KiB | — |
 
 The dry-run of the Worker above reported **Total Upload: 1290.11 KiB / gzip: 618.63 KiB**, most of it the
@@ -119,5 +119,5 @@ render, and check your plan's CPU-time limit.
   module, which does not exist as a URL in a Worker. Pass the imported module.
 - Instantiating from bytes (`initSync(bytes)` / `init(arrayBuffer)`): Workers forbid runtime
   compilation; import the `.wasm` instead.
-- Reading files with `node:fs`; and anything that fetches remote images implicitly — bm-engine never
+- Reading files with `node:fs`; and anything that fetches remote images implicitly — bm-render never
   fetches; `fetch()` them yourself and pass `images` (see the [remote images recipe](../recipes.md#embed-remote-images)).

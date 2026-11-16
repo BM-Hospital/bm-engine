@@ -2,17 +2,17 @@
 
 [English](vite-browser.md) · [Tiếng Việt](../../../vi/image/frameworks/vite-browser.md)
 
-bm-engine runs entirely in the browser: the binary has no imports, so any engine with WebAssembly SIMD
+bm-render runs entirely in the browser: the binary has no imports, so any engine with WebAssembly SIMD
 renders the same bytes as Node. This page covers bundlers (Vite first), loading without a bundler or
 from a CDN, rendering in a Web Worker so the page never stutters, and displaying the result.
 
 ::: info Verification status
 - **Vite**: the repository's package test (`npm run test:pack`, `scripts/pack-test.mjs`) builds two pages
-  with **Vite 8.3.8** — `bm-engine/core` + `await init()`, and `bm-engine` + `init(wasmUrl)` from a `?url`
+  with **Vite 8.3.8** — `bm-render/core` + `await init()`, and `bm-render` + `init(wasmUrl)` from a `?url`
   import, plus the WOFF add-on — and loads them in **headless Edge 157**: PNG rendered, no console errors.
 - **Web Worker, no bundler**: `docs/examples/frameworks/check-browser.mjs` serves
   `docs/examples/frameworks/browser/` and runs it in headless Edge 157: a module worker runs
-  `await init()` from `bm-engine/standard`, renders at `devicePixelRatio` 2, transfers the PNG, and the page
+  `await init()` from `bm-render/standard`, renders at `devicePixelRatio` 2, transfers the PNG, and the page
   displays it through a blob URL and `createImageBitmap` (1200 × 630, no console errors).
 - `init(fetch(url))` with `application/wasm` used `WebAssembly.instantiateStreaming` (checked under
   `node --conditions=browser`).
@@ -25,25 +25,25 @@ from a CDN, rendering in a Web Worker so the page never stutters, and displaying
 Import a profile entry and call `init()` without an argument:
 
 ```js
-import { init, Renderer } from "bm-engine/standard";
+import { init, Renderer } from "bm-render/standard";
 
-await init(); // Vite emits bm_engine.standard.wasm as an asset and rewrites the URL
+await init(); // Vite emits bm_render.standard.wasm as an asset and rewrites the URL
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: await (await fetch("/Inter-Regular.ttf")).arrayBuffer() });
 ```
 
-The profile entries locate their binary with `new URL("./bm_engine.standard.wasm", import.meta.url)`,
+The profile entries locate their binary with `new URL("./bm_render.standard.wasm", import.meta.url)`,
 a pattern Vite (and webpack 5, Parcel) turn into an emitted asset. If you prefer to control the URL,
 import it with `?url` and pass it:
 
 ```js
-import { init, Renderer } from "bm-engine";
-import wasmUrl from "bm-engine/standard.wasm?url";
+import { init, Renderer } from "bm-render";
+import wasmUrl from "bm-render/standard.wasm?url";
 
 await init(wasmUrl); // any profile's binary works with the generic entry
 ```
 
-- Do **not** add `vite-plugin-wasm` or enable WebAssembly ESM integration for these files: bm-engine
+- Do **not** add `vite-plugin-wasm` or enable WebAssembly ESM integration for these files: bm-render
   instantiates the module itself and needs a URL, bytes or an uninstantiated `WebAssembly.Module`.
 - Serve `.wasm` as `application/wasm` in production for streaming compilation (Vite's dev server and
   most hosts do). With another content type `init` falls back to `arrayBuffer()`, which also works.
@@ -62,7 +62,7 @@ thread. Move the engine into a module worker and transfer the bytes back:
 
 ```js
 // render-worker.js
-import { init, Renderer } from "bm-engine/standard";
+import { init, Renderer } from "bm-render/standard";
 
 const ready = (async () => {
   await init();
@@ -100,8 +100,8 @@ export const render = (node, options) => new Promise((resolve, reject) => {
 });
 ```
 
-The verified copy imports `/node_modules/bm-engine/js/standard.mjs` by path (no bundler); with Vite,
-import `bm-engine/standard` as above. Node trees are plain objects, so they cross `postMessage`
+The verified copy imports `/node_modules/bm-render/js/standard.mjs` by path (no bundler); with Vite,
+import `bm-render/standard` as above. Node trees are plain objects, so they cross `postMessage`
 unchanged; image bytes in `images` can be transferred too. Each worker has its own wasm instance and
 its own fonts.
 
@@ -134,7 +134,7 @@ Serve the package's `js/` folder and import a profile entry; `init()` fetches th
 
 ```html
 <script type="module">
-  import { init, Renderer } from "/node_modules/bm-engine/js/standard.mjs";
+  import { init, Renderer } from "/node_modules/bm-render/js/standard.mjs";
   await init();
   const renderer = new Renderer();
 </script>
@@ -144,8 +144,8 @@ From a CDN that serves npm packages (jsDelivr, unpkg), the same works with a ver
 exact version you tested:
 
 ```js
-import { init, Renderer } from "https://cdn.jsdelivr.net/npm/bm-engine@<version>/js/standard.mjs";
-await init(); // fetches .../js/bm_engine.standard.wasm from the same CDN
+import { init, Renderer } from "https://cdn.jsdelivr.net/npm/bm-render@<version>/js/standard.mjs";
+await init(); // fetches .../js/bm_render.standard.wasm from the same CDN
 ```
 
 The CDN form is untested until the package is published. Check that the CDN sends

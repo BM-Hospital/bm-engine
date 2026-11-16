@@ -1,4 +1,4 @@
-// Paint probes: what bm-engine/pdf and takumi-pdf write into a page for CSS paint features (backgrounds,
+// Paint probes: what bm-render/pdf and takumi-pdf write into a page for CSS paint features (backgrounds,
 // gradients, borders, shadows, filters, compositing, clips, masks, transforms).
 //
 // The comparison is structural and strict: each page's content stream is tokenised and every resource it names
@@ -230,7 +230,7 @@ export function summary(toks) {
 
 // ------------------------------------------------------------------------------------------------ draw lists
 // The second level of comparison. Two content streams can differ in form only: takumi closes and reopens a clip
-// around every paint chunk where bm-engine keeps it open, or folds a translation into another `cm`. `flatten`
+// around every paint chunk where bm-render keeps it open, or folds a translation into another `cm`. `flatten`
 // interprets a canonical page (graphics state stack, CTM, clip stack, colours, ExtGState, text matrix) and returns
 // the list of things actually drawn, each with its geometry in device space, its paint, its effective clips and its
 // transparency parameters. Equal draw lists mean the same marks in the same order under the same clips.
@@ -418,8 +418,8 @@ export async function cmp(t, label, source, options = {}, extra = undefined, opt
   const tag = label ? label + ": " : "";
   if (!ref) { t.ok(!bm.error, tag + "bm renders" + (bm.error ? ": " + bm.error : "")); t.same("reference", 0, 0); return r; }
   if (bm.error || ref.error) {
-    // bm-engine's JS wrapper prefixes every message with "bm-engine: " (all entries, not PDF specific): compared without it
-    const be = bm.error ? errText(bm.error).replace(/^bm-engine: /, "") : null;
+    // bm-render's JS wrapper prefixes every message with "bm-render: " (all entries, not PDF specific): compared without it
+    const be = bm.error ? errText(bm.error).replace(/^bm-render: /, "") : null;
     const re = ref.error ? errText(ref.error).replace(/^Error: /, "") : null;
     t.same(tag + "error", be, re);
     t.note(tag + "takumi: " + (re ? "ERROR " + re : "renders") + " | bm: " + (be ? "ERROR " + be : "renders"));

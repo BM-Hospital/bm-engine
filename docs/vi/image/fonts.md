@@ -2,7 +2,7 @@
 
 [English](../../en/image/fonts.md) · [Tiếng Việt](fonts.md)
 
-bm-engine chỉ vẽ chữ bằng những font bạn đăng ký: package **không** kèm sẵn font nào và không bao giờ đọc
+bm-render chỉ vẽ chữ bằng những font bạn đăng ký: package **không** kèm sẵn font nào và không bao giờ đọc
 font của hệ thống. Trang này nói về cách nạp font (TTF, OTF/CFF, TTC, WOFF/WOFF2, font biến thiên và font
 màu), cách một `font-family` được ghép với một face, cơ chế fallback khi thiếu glyph, chữ đậm và nghiêng
 giả lập trông thế nào, mỗi [profile](../profiles-and-size.md) hỗ trợ những gì, và font tốn bao nhiêu bộ
@@ -18,7 +18,7 @@ Tạo một `Renderer` một lần rồi đăng ký font lên nó. `registerFont
 <!-- @example fonts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 const families = renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -73,12 +73,12 @@ family là `Geist` (face `index: 0`) và `Geist Mono` (face `index: 1`).
 | Glyph màu: COLR v0/v1 | outline thường, không màu | outline thường, không màu | có |
 | Glyph màu: bitmap CBDT / sbix | không vẽ | có | có |
 
-Bytes không phải font sẽ ném lỗi `bm-engine: invalid font data`. Kiểm tra binary đang nạp hỗ trợ gì qua
+Bytes không phải font sẽ ném lỗi `bm-render: invalid font data`. Kiểm tra binary đang nạp hỗ trợ gì qua
 `features.woff`, `features.cff`, `features.variableFonts` và `features.colorFonts`.
 
 ## Face được chọn như thế nào
 
-Trong một family, bm-engine áp dụng thuật toán ghép font của CSS: xét `font-stretch` trước, rồi
+Trong một family, bm-render áp dụng thuật toán ghép font của CSS: xét `font-stretch` trước, rồi
 `font-style`, rồi `font-weight`. Với độ đậm, điều đó có nghĩa: độ đậm yêu cầu nằm trong khoảng 400–500 sẽ
 thử các độ đậm tới 500 trước, rồi đến các độ nhạt hơn, rồi mới tới các độ đậm hơn; dưới 400 thì ưu tiên
 độ nhạt hơn, trên 500 thì ưu tiên độ đậm hơn. Khi đã đăng ký Inter Regular (400), SemiBold (600), Bold
@@ -111,7 +111,7 @@ chọn và độ đậm được **giả lập** thêm lên trên.
 
 ### Đậm và nghiêng giả lập
 
-Khi face được chọn nhạt hơn độ đậm yêu cầu, bm-engine làm dày outline; khi không có face nghiêng, nó làm
+Khi face được chọn nhạt hơn độ đậm yêu cầu, bm-render làm dày outline; khi không có face nghiêng, nó làm
 xiên face thường (oblique). Ở đây family "Solo" chỉ có Roboto Regular:
 
 <!-- @example fonts#synthesis -->
@@ -149,7 +149,7 @@ Xem [Typography → Chữ hoa nhỏ](./typography.md#small-caps).
 ## Fallback
 
 Mỗi ký tự được tìm trước tiên trong danh sách `font-family` của phần tử. Nếu không family nào trong đó có
-glyph cho ký tự, bm-engine thử **mọi family đã đăng ký, theo thứ tự đăng ký**. Vì vậy chỉ cần đăng ký một
+glyph cho ký tự, bm-render thử **mọi family đã đăng ký, theo thứ tự đăng ký**. Vì vậy chỉ cần đăng ký một
 font phủ được chữ viết hay bộ ký hiệu đó là đủ: bạn không phải thêm nó vào mọi `fontFamily`.
 
 Roboto không có glyph cho nhiều ký hiệu. Khi chỉ đăng ký Roboto, chúng hiện thành ô vuông; sau khi đăng ký
@@ -309,7 +309,7 @@ Trên `core`, font vẫn đăng ký được mà không lỗi nhưng mọi dòng
 <!-- @example fonts#variable-core -->
 ```js
 // The same tree on core: the font registers, but only its default instance is drawn.
-const { Renderer: CoreRenderer } = await import("bm-engine/core");
+const { Renderer: CoreRenderer } = await import("bm-render/core");
 const coreRenderer = new CoreRenderer();
 coreRenderer.registerFont({ name: "Archivo", data: archivo });
 const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200 });
@@ -320,7 +320,7 @@ const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200
 ## WOFF và WOFF2
 
 `standard` và `full` tự giải mã WOFF và WOFF2. `core` không có bộ giải mã, nhưng add-on WOFF riêng 84 KiB
-(`bm-engine/woff`) chuyển WOFF / WOFF2 sang TTF / OTF trước khi đăng ký, cho mọi điểm vào trong tiến trình:
+(`bm-render/woff`) chuyển WOFF / WOFF2 sang TTF / OTF trước khi đăng ký, cho mọi điểm vào trong tiến trình:
 
 <!-- @example fonts#woff -->
 ```js
@@ -328,15 +328,15 @@ const variableCore = coreRenderer.renderSync(variable, { width: 560, height: 200
 renderer.registerFont(readFileSync("./fonts/Geist.woff2"));
 
 // ... and on core after loading the 84 KiB WOFF add-on once per process.
-const { Renderer: CoreRenderer } = await import("bm-engine/core");
-const { loadWoff } = await import("bm-engine/woff");
+const { Renderer: CoreRenderer } = await import("bm-render/core");
+const { loadWoff } = await import("bm-render/woff");
 await loadWoff();
 const geist = new CoreRenderer().registerFont(readFileSync("./fonts/Geist.woff2"));
 // geist: [{ name: "Geist", faces: [{ weight: 400, ... }], ... }]
 ```
 
 Không có add-on, `core` ném lỗi
-`bm-engine: this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF
+`bm-render: this build has no WOFF/WOFF2 font support (use the standard / full build, or load the WOFF
 add-on: ...)`. Add-on không bổ sung hỗ trợ CFF: một WOFF2 có outline CFF vẫn cần `standard` hoặc `full`.
 Chi tiết ở [Profile và kích thước](../profiles-and-size.md#add-on-woff).
 
@@ -385,7 +385,7 @@ kiểm tra điều này với một HTTP server cục bộ:
 const families = await renderer.registerFont("https://example.com/fonts/Inter-Regular.ttf");
 ```
 
-bm-engine không tải các rule `@font-face` trong stylesheet: descriptor của chúng được đọc nhưng file thì
+bm-render không tải các rule `@font-face` trong stylesheet: descriptor của chúng được đọc nhưng file thì
 không được tải. Hãy tự đăng ký file.
 
 Với Google Fonts, hãy tải file về một lần (TTF trong gói tải về của family, hoặc các URL WOFF2 trong CSS

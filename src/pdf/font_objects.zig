@@ -3,7 +3,7 @@
 //! `CIDFont::serialize` / `Type3Font::serialize` / `SerializeContext::serialize_fonts`.
 //!
 //!  * `FontRegistry` maps a font instance (font bytes + face index + normalised variation
-//!    coordinates, i.e. one bm-engine face / variable instance) to one `FontContainer`, in
+//!    coordinates, i.e. one bm-render face / variable instance) to one `FontContainer`, in
 //!    first-use order (krilla's `font_map` is an `IndexMap`), for the whole document.
 //!  * A `FontContainer` holds the CID font of the instance (font_embed.zig `CidFont`) and the
 //!    Type3 fonts its colour / bitmap / SVG glyphs go to (at most 256 glyphs each, keyed by glyph
@@ -407,7 +407,7 @@ pub const FontRegistry = struct {
     }
 
     /// The container of an instance, created on first use (krilla `register_font_container`).
-    /// `font` is the instance the text was shaped with (bm-engine `fonts.font(face)`) and
+    /// `font` is the instance the text was shaped with (bm-render `fonts.font(face)`) and
     /// `face_index` its face in a collection (`fonts.face(face).index`).
     /// `variant` tells instances apart that share their coordinates (krilla keys a font by the
     /// variation values it was asked for, see `text.zig opszVariant`); 0 = none.

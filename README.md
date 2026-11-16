@@ -1,4 +1,4 @@
-# bm-engine
+# bm-render
 
 [English](README.md) · [Tiếng Việt](README.vi.md)
 
@@ -7,14 +7,14 @@ A Zig library that turns node trees or HTML + CSS into PNG, JPEG, WebP, SVG, ani
 ## Install
 
 ```sh
-npm install bm-engine
+npm install bm-render
 ```
 
 ## Create an image
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("./fonts/Inter-Regular.ttf"));
@@ -26,7 +26,7 @@ const png = await renderer.render({
     alignItems: "center", justifyContent: "center",
     backgroundColor: "#18181b", color: "white", fontSize: 64,
   },
-  children: [{ type: "text", text: "Hello from bm-engine" }],
+  children: [{ type: "text", text: "Hello from bm-render" }],
 }, { width: 1200, height: 630 });
 
 writeFileSync("card.png", png);
@@ -46,6 +46,6 @@ Provide the font file at the example path before running it. Reuse the renderer 
 
 ## License and attribution
 
-bm-engine is licensed under the [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
+bm-render is licensed under the [MIT License](LICENSE). Copyright (c) 2026 hunghg255.
 Third-party code and data it builds on are credited in [NOTICE](NOTICE) and
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

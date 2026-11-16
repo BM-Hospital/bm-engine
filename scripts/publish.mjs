@@ -1,4 +1,4 @@
-// Release checks and the ordered publish of the nine npm packages (bm-engine + 8 bm-engine-<platform>).
+// Release checks and the ordered publish of the nine npm packages (bm-render + 8 bm-render-<platform>).
 //
 //   npm run release -- 0.1.1       the whole release in one command:
 //                                  1. sets the version in the 9 package.json files + package-lock.json
@@ -7,7 +7,7 @@
 //                                  3. commits "Release 0.1.1"
 //                                  4. builds the native addon for the 8 targets and the npm/<platform>/ folders
 //                                  5. runs every check (release:check below)
-//                                  6. publishes the 8 platform packages FIRST and bm-engine LAST (bm-engine's
+//                                  6. publishes the 8 platform packages FIRST and bm-render LAST (bm-render's
 //                                     optionalDependencies must exist when users install it)
 //                                  7. tags v0.1.1 and pushes the commit and the tag
 //                                  Without a version (or with the current one) steps 1-3 are skipped. Packages
@@ -36,7 +36,7 @@ if (wanted && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(wanted)) {
 }
 const readPkg = () => JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 let pkg = readPkg();
-const platforms = Object.keys(pkg.optionalDependencies).map((n) => n.slice("bm-engine-".length));
+const platforms = Object.keys(pkg.optionalDependencies).map((n) => n.slice("bm-render-".length));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const dry = !!args["dry-run"];
 
@@ -97,7 +97,7 @@ if (bumped) {
     run("git", ["commit", "-m", `Release ${pkg.version}`]);
   }
 }
-console.log(`release: bm-engine ${pkg.version} as npm user ${who.stdout.trim()}${dry ? " (dry run)" : ""}`);
+console.log(`release: bm-render ${pkg.version} as npm user ${who.stdout.trim()}${dry ? " (dry run)" : ""}`);
 
 const publishOnly = !!args["publish-only"];
 if (!publishOnly) {
@@ -105,26 +105,26 @@ if (!publishOnly) {
   npmRun("build:npm");    // native/dist -> npm/<platform>/ (checked against native/dist/manifest.json)
 }
 for (const p of platforms) {
-  if (!existsSync(path.join(root, "npm", p, `bm-engine.${p}.node`))) { console.error(`release: npm/${p}/bm-engine.${p}.node is missing`); process.exit(1); }
+  if (!existsSync(path.join(root, "npm", p, `bm-render.${p}.node`))) { console.error(`release: npm/${p}/bm-render.${p}.node is missing`); process.exit(1); }
 }
 if (publishOnly) npmRun("verify");
 else if (!args["skip-checks"]) checks();
 
 const extra = [...(args.otp ? [`--otp=${args.otp}`] : []), ...(dry ? ["--dry-run"] : []), ...(args.tag ? [`--tag=${args.tag}`] : [])];
 for (const p of platforms) {
-  const name = `bm-engine-${p}`;
+  const name = `bm-render-${p}`;
   if (!dry && published(name)) { console.log(`\nrelease: ${name}@${pkg.version} is already published, skipped`); continue; }
   run(npm, ["publish", `./npm/${p}`, "--access", "public", ...extra]);
 }
-if (!dry && published("bm-engine")) console.log(`\nrelease: bm-engine@${pkg.version} is already published, skipped`);
+if (!dry && published("bm-render")) console.log(`\nrelease: bm-render@${pkg.version} is already published, skipped`);
 else run(npm, ["publish", "--access", "public", ...extra], { env: { ...process.env, BM_RELEASE_CHECKED: pkg.version } });
 
 if (dry) {
   if (bumped) run("git", ["checkout", "--", ...BUMPED]);
-  console.log(`\nrelease: dry run of bm-engine ${pkg.version} passed${bumped ? "; the version bump and the rebuilt wasm were reverted" : ""}.`);
+  console.log(`\nrelease: dry run of bm-render ${pkg.version} passed${bumped ? "; the version bump and the rebuilt wasm were reverted" : ""}.`);
   process.exit(0);
 }
 const tag = `v${pkg.version}`;
 if (spawnSync("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`], { cwd: root }).status !== 0) run("git", ["tag", tag]);
 run("git", ["push", "origin", "HEAD", tag]);
-console.log(`\nrelease: published bm-engine ${pkg.version} and its ${platforms.length} platform packages; pushed the commit and ${tag}.`);
+console.log(`\nrelease: published bm-render ${pkg.version} and its ${platforms.length} platform packages; pushed the commit and ${tag}.`);

@@ -2,7 +2,7 @@
 
 [English](../../en/pdf/css-support.md) · [Tiếng Việt](css-support.md)
 
-PDF được dàn trang bằng cùng engine với ảnh, nên phần CSS mà bm-engine hỗ trợ cho ảnh
+PDF được dàn trang bằng cùng engine với ảnh, nên phần CSS mà bm-render hỗ trợ cho ảnh
 ([Hỗ trợ CSS và tính năng](../image/css-support.md)) cũng áp dụng cho đầu ra PDF, cộng thêm và trừ đi những gì
 nêu trên trang này: các thuộc tính paged-media chỉ đầu ra PDF đọc, cái gì được vẽ và vẽ ra sao, và các tính
 năng ảnh hoạt động khác đi trong PDF. Các đoạn mã là các phần của `docs/examples/pdf-css-support.mjs`, file này
@@ -15,7 +15,7 @@ chạy chúng trên cả backend wasm lẫn native.
 ## Paged media
 
 Những mục này chỉ áp dụng cho đầu ra PDF. Khi render ảnh (`render`, `renderSvg`, `measure`), chúng được chấp
-nhận và bỏ qua trên mọi build, kể cả `bm-engine/pdf` và addon native:
+nhận và bỏ qua trên mọi build, kể cả `bm-render/pdf` và addon native:
 
 | Tính năng | Trạng thái | Trang |
 |:--|:--|:--|
@@ -32,7 +32,7 @@ nhận và bỏ qua trên mọi build, kể cả `bm-engine/pdf` và addon nativ
 
 <!-- @example pdf-css-support#ignored-in-images -->
 ```js
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const html = `<div style="font-family: Inter">
   <p>Page one</p><p style="break-before: page">Page two</p>

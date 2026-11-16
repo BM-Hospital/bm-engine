@@ -27,7 +27,7 @@ Các ví dụ dùng trang nhỏ 400 x 300 px với lề 24 px để chỉ vài d
 <!-- @example pdf-pagination#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -265,7 +265,7 @@ try {
 } catch (e) {
   rangeError = e.message;
 }
-// bm-engine: The page ranges select none of the document's 1 pages
+// bm-render: The page ranges select none of the document's 1 pages
 ```
 
 ## Giới hạn và những gì còn gần đúng

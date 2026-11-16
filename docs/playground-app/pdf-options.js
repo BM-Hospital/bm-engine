@@ -155,19 +155,19 @@ function lit(v, ind = "") {
 }
 const tpl = (s) => "`" + s.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${") + "`";
 
-/** A runnable Node.js ES module that reproduces the current render with `PdfRenderer` from "bm-engine/pdf".
+/** A runnable Node.js ES module that reproduces the current render with `PdfRenderer` from "bm-render/pdf".
  *  fonts: [{ file, name?, weight?, style?, builtin }] (built-in = the playground's default fonts, which live in
- *  the bm-engine repository under assets/fonts/; uploaded files are read from the working directory). */
+ *  the bm-render repository under assets/fonts/; uploaded files are read from the working directory). */
 export function pdfSnippet({ kind, text, css, p, images = [], fonts = [] }) {
   const o = buildPdfOptions(p);
   const src = kind === "html" ? tpl(text) : lit(JSON.parse(text));
   const out = [
-    "// bm-engine PDF playground export: node render-pdf.mjs  (npm install bm-engine; Node.js 20+)",
+    "// bm-render PDF playground export: node render-pdf.mjs  (npm install bm-render; Node.js 20+)",
     "import { readFileSync, writeFileSync } from \"node:fs\";",
-    "import { PdfRenderer } from \"bm-engine/pdf\";",
+    "import { PdfRenderer } from \"bm-render/pdf\";",
     "",
     "const pdf = new PdfRenderer();",
-    "// bm-engine bundles no font. The playground's default fonts are in the bm-engine repository (assets/fonts/);",
+    "// bm-render bundles no font. The playground's default fonts are in the bm-render repository (assets/fonts/);",
     "// point these paths at your own copies.",
   ];
   for (const f of fonts) {
@@ -185,11 +185,11 @@ export function pdfSnippet({ kind, text, css, p, images = [], fonts = [] }) {
     lines.push("  ],");
   }
   const optText = lines.length ? "{\n" + lines.join("\n") + "\n}" : "{}";
-  out.push(`const bytes = await pdf.render(source, ${optText});`, "writeFileSync(\"bm-engine.pdf\", bytes);", "console.log(`bm-engine.pdf: ${bytes.length} bytes`);", "");
+  out.push(`const bytes = await pdf.render(source, ${optText});`, "writeFileSync(\"bm-render.pdf\", bytes);", "console.log(`bm-render.pdf: ${bytes.length} bytes`);", "");
   return out.join("\n");
 }
 
-/** Pages of a PDF file without a parser: counts the page objects (`/Type /Page`, not `/Pages`). bm-engine writes
+/** Pages of a PDF file without a parser: counts the page objects (`/Type /Page`, not `/Pages`). bm-render writes
  *  them uncompressed; when a writer hides them in object streams this returns 0 and the caller says "unknown". */
 export function countPages(bytes) {
   const s = new TextDecoder("latin1").decode(bytes);

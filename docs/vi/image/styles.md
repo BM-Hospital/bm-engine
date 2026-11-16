@@ -2,7 +2,7 @@
 
 [English](../../en/image/styles.md) · [Tiếng Việt](styles.md)
 
-bm-engine style phần tử bằng CSS thật: cùng thuộc tính, giá trị, cascade và thuật toán layout như trình
+bm-render style phần tử bằng CSS thật: cùng thuộc tính, giá trị, cascade và thuật toán layout như trình
 duyệt. Trang này trình bày ba cách gắn style — object `style`
 inline, stylesheet qua option `css`, và class Tailwind trong `tw` — cách chúng kết hợp với nhau, một ví
 dụ hoàn chỉnh cho từng chế độ layout (flex, grid, luồng block / inline, định vị absolute, float), rồi
@@ -27,7 +27,7 @@ Các ví dụ dùng chung phần khởi tạo này:
 <!-- @example styles#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // stylesheets and Tailwind need the standard or full profile
+import { Renderer } from "bm-render"; // stylesheets and Tailwind need the standard or full profile
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -75,7 +75,7 @@ renderer.renderSync({ type: "container", style: { "background-color": "red", col
 
 // an invalid value for a known property throws
 expectThrow(() => renderer.renderSync({ type: "container", style: { width: "10 px" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property width"
+// "bm-render: invalid value for style property width"
 ```
 
 ::: warning Key kebab-case bị bỏ qua
@@ -460,7 +460,7 @@ Thêm về float và giới hạn của nó: [Bảng và float](./tables.md).
 
 ## Đơn vị {#units}
 
-| Đơn vị | Ý nghĩa trong bm-engine |
+| Đơn vị | Ý nghĩa trong bm-render |
 |:--|:--|
 | số, `px` | CSS px (× `devicePixelRatio` trên canvas) |
 | `%` | của khối chứa; trên root là của canvas |
@@ -470,7 +470,7 @@ Thêm về float và giới hạn của nó: [Bảng và float](./tables.md).
 | `ch`, `ex`, `lh`, `rlh`, `cq*` | hỗ trợ như CSS |
 | `calc()`, `min()`, `max()`, `clamp()` và các hàm toán khác | dùng được ở mọi chỗ nhận độ dài hoặc số |
 
-Xem [bm-engine hoạt động thế nào](./concepts.md#numbers-units-and-the-viewport) để có ví dụ đã đo.
+Xem [bm-render hoạt động thế nào](./concepts.md#numbers-units-and-the-viewport) để có ví dụ đã đo.
 
 ## Màu sắc {#colours}
 
@@ -501,10 +501,10 @@ Trên `core` các hàm màu hiện đại không được parse, nên style inli
 
 <!-- @example styles#core-colors -->
 ```js
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync({ type: "container", style: { width: 10, height: 10, backgroundColor: "oklch(62% 0.2 30)" } }, { width: 10, height: 10 }));
-// "bm-engine: invalid value for style property backgroundColor"
+// "bm-render: invalid value for style property backgroundColor"
 ```
 
 Trong stylesheet, cùng khai báo đó chỉ đơn giản bị bỏ. Cú pháp màu tương đối
@@ -515,4 +515,4 @@ Trong stylesheet, cùng khai báo đó chỉ đơn giản bị bỏ. Cú pháp m
 - [Hỗ trợ CSS](./css-support.md) — mọi thuộc tính, giá trị và trạng thái
 - [HTML và Tailwind](./html-and-tailwind.md) — source HTML và trình biên dịch Tailwind
 - [Typography](./typography.md), [Hiệu ứng](./effects.md), [Ảnh](./images.md)
-- [bm-engine hoạt động thế nào](./concepts.md) — các mặc định như `display: inline` và `border-box`
+- [bm-render hoạt động thế nào](./concepts.md) — các mặc định như `display: inline` và `border-box`

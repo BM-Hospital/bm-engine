@@ -1,6 +1,6 @@
-// WOFF add-on test: a build without WOFF support (default: js/bm_engine.core.wasm) + js/addons.mjs
+// WOFF add-on test: a build without WOFF support (default: js/bm_render.core.wasm) + js/addons.mjs
 // loadWoff() must register WOFF / WOFF2 fonts exactly like the built-in path of the full build
-// (js/bm_engine.wasm): same registerFont result, same converted sfnt bytes, byte-identical renders.
+// (js/bm_render.wasm): same registerFont result, same converted sfnt bytes, byte-identical renders.
 // Also checks the clear error without the add-on and that corrupt data fails cleanly.
 //   node probe/addons/woff.mjs [small.wasm] [full.wasm]
 import { readFileSync } from "node:fs";
@@ -10,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..", "..");
 const js = path.join(root, "js");
-const smallWasm = process.argv[2] || path.join(js, "bm_engine.core.wasm");
-const fullWasm = process.argv[3] || path.join(js, "bm_engine.wasm");
+const smallWasm = process.argv[2] || path.join(js, "bm_render.core.wasm");
+const fullWasm = process.argv[3] || path.join(js, "bm_render.wasm");
 const td = path.join(root, "src", "woff", "testdata");
 
 // two independent module instances of the wrapper: the plain one (shared with js/addons.mjs) runs

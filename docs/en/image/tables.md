@@ -2,7 +2,7 @@
 
 [English](tables.md) · [Tiếng Việt](../../vi/image/tables.md)
 
-bm-engine lays out tables with a CSS table layout algorithm and supports
+bm-render lays out tables with a CSS table layout algorithm and supports
 CSS floats with text flowing around them. Both are optional features of the **standard** and **full**
 profiles (`features.tables`, `features.floats`); on `core` a table lays out as plain blocks and `float`
 is ignored. This page shows HTML tables and the equivalent node trees, column sizing, spans, borders,
@@ -23,12 +23,12 @@ sections of `docs/examples/tables.mjs` in the repository and were rendered by it
 
 ## Setup
 
-Tables need `standard` or `full`, so the examples import `bm-engine/standard`:
+Tables need `standard` or `full`, so the examples import `bm-render/standard`:
 
 <!-- @example tables#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // tables and floats need standard or full
+import { Renderer } from "bm-render/standard"; // tables and floats need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

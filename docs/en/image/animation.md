@@ -2,7 +2,7 @@
 
 [English](animation.md) · [Tiếng Việt](../../vi/image/animation.md)
 
-bm-engine renders CSS animations by **sampling** the
+bm-render renders CSS animations by **sampling** the
 `@keyframes` timeline at a point in time you choose. One call gives you one frame at `timeMs`; another
 samples a list of scenes at a fixed frame rate and encodes them as an animated WebP, APNG or GIF. This
 page shows both, how to define keyframes (stylesheet text, rule objects, HTML `<style>`), the timing
@@ -27,7 +27,7 @@ stylesheet rule or HTML.
 <!-- @example animation#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine"; // Node: the full profile
+import { Renderer, features } from "bm-render"; // Node: the full profile
 
 console.log(features.animation); // true: CSS animations need the full profile
 const renderer = new Renderer();
@@ -124,11 +124,11 @@ const frame = renderer.renderSync(scene, { width: 240, height: 80, css, timeMs: 
 ![The scene at 500 ms](/img/guide/animation-frame-500.png)
 
 Rendering several times gives you a strip of frames. Raw RGBA output can be used directly as an image
-source, so bm-engine can assemble the strip itself:
+source, so bm-render can assemble the strip itself:
 
 <!-- @example animation#strip -->
 ```js
-// Five raw frames, laid side by side by bm-engine itself (raw RGBA works as an image source).
+// Five raw frames, laid side by side by bm-render itself (raw RGBA works as an image source).
 const times = [0, 250, 500, 750, 1000];
 const frames = times.map((timeMs) => renderer.renderSync(scene, { width: 240, height: 80, css, timeMs, format: "raw" }));
 const strip = renderer.renderSync(
@@ -377,7 +377,7 @@ const spinnerGif = renderer.renderAnimationSync({ scenes: [{ node: spinner, dura
 
 For MP4 / WebM, render raw frames at the schedule's timestamps and pass them to a video encoder such as
 ffmpeg (`ffmpeg -f rawvideo -pix_fmt rgba -s 240x80 -r 30 -i - out.mp4`, writing the frames to its
-stdin). bm-engine itself has no video encoder.
+stdin). bm-render itself has no video encoder.
 
 <!-- @example animation#video -->
 ```js
@@ -400,8 +400,8 @@ for (const options of [
 ]) {
   try { renderer.renderAnimationSync(options); } catch (err) { console.log(err.message); }
 }
-// bm-engine: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
-// bm-engine: Expected at least one animation scene
+// bm-render: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
+// bm-render: Expected at least one animation scene
 ```
 
 Other messages: `renderAnimation needs \`width\` and \`height\``, `missing field \`fps\``,
@@ -426,7 +426,7 @@ moves; on `core` the `animation` property is ignored; `renderAnimation()` throws
 
 <!-- @example animation#standard -->
 ```js
-import * as standard from "bm-engine/standard";
+import * as standard from "bm-render/standard";
 
 const std = new standard.Renderer();
 const still = std.measureSync(

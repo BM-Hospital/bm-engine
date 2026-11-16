@@ -2,7 +2,7 @@
 
 [English](css-support.md) · [Tiếng Việt](../../vi/pdf/css-support.md)
 
-A PDF is laid out by the same engine as an image, so the CSS that bm-engine supports for images
+A PDF is laid out by the same engine as an image, so the CSS that bm-render supports for images
 ([CSS and feature support](../image/css-support.md)) applies to PDF output too, with the additions and
 exceptions on this page: the paged-media properties that only PDF output reads, what is drawn and how, and
 the image features that behave differently in a PDF. The snippets are sections of
@@ -15,7 +15,7 @@ the image features that behave differently in a PDF. The snippets are sections o
 ## Paged media
 
 These apply only to PDF output. Image renders (`render`, `renderSvg`, `measure`) accept and ignore them on
-every build, including `bm-engine/pdf` and the native addon:
+every build, including `bm-render/pdf` and the native addon:
 
 | Feature | Status | Page |
 |:--|:--|:--|
@@ -32,7 +32,7 @@ every build, including `bm-engine/pdf` and the native addon:
 
 <!-- @example pdf-css-support#ignored-in-images -->
 ```js
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const html = `<div style="font-family: Inter">
   <p>Page one</p><p style="break-before: page">Page two</p>

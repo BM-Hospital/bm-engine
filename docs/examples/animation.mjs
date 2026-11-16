@@ -4,7 +4,7 @@ const save = saver("animation");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine"; // Node: the full profile
+import { Renderer, features } from "bm-render"; // Node: the full profile
 
 console.log(features.animation); // true: CSS animations need the full profile
 const renderer = new Renderer();
@@ -31,7 +31,7 @@ const frame = renderer.renderSync(scene, { width: 240, height: 80, css, timeMs: 
 save("frame-500", frame);
 
 // #region strip
-// Five raw frames, laid side by side by bm-engine itself (raw RGBA works as an image source).
+// Five raw frames, laid side by side by bm-render itself (raw RGBA works as an image source).
 const times = [0, 250, 500, 750, 1000];
 const frames = times.map((timeMs) => renderer.renderSync(scene, { width: 240, height: 80, css, timeMs, format: "raw" }));
 const strip = renderer.renderSync(
@@ -225,8 +225,8 @@ for (const options of [
 ]) {
   try { renderer.renderAnimationSync(options); } catch (err) { console.log(err.message); }
 }
-// bm-engine: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
-// bm-engine: Expected at least one animation scene
+// bm-render: Frame rate 60 fps exceeds the maximum 50 fps for this animation format
+// bm-render: Expected at least one animation scene
 // #endregion
 
 // #region custom-props
@@ -241,7 +241,7 @@ console.log(notAnimated.children[0].transform[4]); // 0
 console.log("custom prop x", notAnimated.children[0].transform[4]);
 
 // #region standard
-import * as standard from "bm-engine/standard";
+import * as standard from "bm-render/standard";
 
 const std = new standard.Renderer();
 const still = std.measureSync(

@@ -31,7 +31,7 @@ pub const srgb_v4 = @embedFile("srgb-v4.icc");
 
 pub const Ua = enum { ua1, ua2 };
 
-/// The krilla validation errors bm-engine can raise.
+/// The krilla validation errors bm-render can raise.
 pub const Err = enum {
     contains_post_script,
     contains_notdef,

@@ -1,22 +1,22 @@
 {
-  "name": "bm-engine-win32-x64-msvc",
+  "name": "bm-render-win32-x64-msvc",
   "version": "0.1.0",
-  "description": "bm-engine native Node-API addon for Windows x64. Installed automatically by bm-engine as an optional dependency; do not depend on it directly.",
+  "description": "bm-render native Node-API addon for Windows x64. Installed automatically by bm-render as an optional dependency; do not depend on it directly.",
   "keywords": [
-    "bm-engine",
+    "bm-render",
     "napi",
     "native-addon"
   ],
   "license": "MIT",
   "author": "hunghg255",
-  "homepage": "https://github.com/BM-Hospital/bm-engine#readme",
+  "homepage": "https://github.com/BM-Hospital/bm-render#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BM-Hospital/bm-engine.git",
+    "url": "git+https://github.com/BM-Hospital/bm-render.git",
     "directory": "npm/win32-x64-msvc"
   },
   "bugs": {
-    "url": "https://github.com/BM-Hospital/bm-engine/issues"
+    "url": "https://github.com/BM-Hospital/bm-render/issues"
   },
   "os": [
     "win32"
@@ -24,9 +24,9 @@
   "cpu": [
     "x64"
   ],
-  "main": "bm-engine.win32-x64-msvc.node",
+  "main": "bm-render.win32-x64-msvc.node",
   "files": [
-    "bm-engine.win32-x64-msvc.node",
+    "bm-render.win32-x64-msvc.node",
     "LICENSE",
     "NOTICE",
     "THIRD-PARTY-NOTICES.md"

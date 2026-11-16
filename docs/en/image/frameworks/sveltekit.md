@@ -3,8 +3,8 @@
 [English](sveltekit.md) · [Tiếng Việt](../../../vi/image/frameworks/sveltekit.md)
 
 A SvelteKit endpoint (`+server.js`) is a function from a request event to a `Response`, which is exactly
-what bm-engine needs. This page shows a dynamic endpoint, a prerendered one, and how to feed a Svelte
-component's HTML to bm-engine.
+what bm-render needs. This page shows a dynamic endpoint, a prerendered one, and how to feed a Svelte
+component's HTML to bm-render.
 
 ::: info Verification status
 Verified: the `GET` handler below was called on Node 26.13 with the event shape SvelteKit passes
@@ -26,7 +26,7 @@ import { imageResponse } from "$lib/server/image-response.js";
 export async function GET({ url }) {
   return imageResponse(
     getRenderer(),
-    card({ title: url.searchParams.get("title") ?? "bm-engine + SvelteKit", description: "A +server.js endpoint" }),
+    card({ title: url.searchParams.get("title") ?? "bm-render + SvelteKit", description: "A +server.js endpoint" }),
     { width: 1200, height: 630, headers: { "cache-control": "public, max-age=3600" } },
   );
 }
@@ -68,7 +68,7 @@ adapter afterwards (only the static PNGs ship).
 ## Rendering a Svelte component
 
 You can render a component with `svelte/server` and passes `head + body` as HTML. The
-same works with bm-engine's HTML input, which needs the `standard` or `full` profile (HTML parsing, plus
+same works with bm-render's HTML input, which needs the `standard` or `full` profile (HTML parsing, plus
 the `css` feature for the injected `<style>` block). Fonts still come from the renderer: register them
 once instead of passing a font URL with every response:
 
@@ -86,14 +86,14 @@ export async function GET({ url }) {
 ```
 
 This variant was not run (Svelte not installed). Check the HTML and CSS features you rely on in
-[HTML and Tailwind](../html-and-tailwind.md); remember that bm-engine renders, it does not run
+[HTML and Tailwind](../html-and-tailwind.md); remember that bm-render renders, it does not run
 component scripts.
 
 ## Adapters (expected configuration)
 
 | Adapter | Notes |
 |:--|:--|
-| `adapter-node` | works like any Node server; keep `bm-engine` a runtime dependency (SvelteKit leaves `dependencies` external by default). |
-| `adapter-vercel` (Node runtime), `adapter-netlify` | same as Node; make sure the `.wasm` files under `node_modules/bm-engine/js/` are included in the function bundle. |
+| `adapter-node` | works like any Node server; keep `bm-render` a runtime dependency (SvelteKit leaves `dependencies` external by default). |
+| `adapter-vercel` (Node runtime), `adapter-netlify` | same as Node; make sure the `.wasm` files under `node_modules/bm-render/js/` are included in the function bundle. |
 | `adapter-cloudflare` | no `node:fs`: follow the [Cloudflare Workers](./cloudflare-workers.md) pattern (`initSync` with an imported module, fonts as data) — or prerender the images. |
 | `adapter-static` | prerender everything (above). |

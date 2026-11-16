@@ -8,10 +8,10 @@ Choose a profile to download only the features you need. Sizes below are after `
 
 | Build | Raw | gzip -9 | brotli (q11)  |
 |:--|--:|--:|--: |
-| `core` — `bm_engine.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
-| `standard` — `bm_engine.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
-| `full` — `bm_engine.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 906.7 KiB | 938.1 KiB | 767.1 KiB  |
+| `core` — `bm_render.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
+| `standard` — `bm_render.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
+| `full` — `bm_render.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
+| `pdf` — `bm_render.pdf.wasm` (`full` + PDF output) | 1 906.7 KiB | 938.1 KiB | 767.1 KiB  |
 | WOFF add-on — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB  |
 
 The JavaScript wrapper is a few KiB of dependency-free ESM and the same for every profile. The binaries
@@ -19,8 +19,8 @@ import nothing from the host.
 
 ### Native addon (Node.js)
 
-On Node.js, `bm-engine` uses a native addon when one is installed for the platform (an optional dependency,
-one per platform; npm downloads only the matching one). The addon has the `full` feature set plus PDF output (used by `bm-engine/pdf`); the
+On Node.js, `bm-render` uses a native addon when one is installed for the platform (an optional dependency,
+one per platform; npm downloads only the matching one). The addon has the `full` feature set plus PDF output (used by `bm-render/pdf`); the
 profiles above apply to the wasm build only. Each addon is larger than the `full` wasm because it is compiled
 for speed (ReleaseFast) rather than size, and the wasm build stays in the main package as the fallback.
 Which backend to use and how they compare: [Native vs WebAssembly](./native-vs-wasm.md).
@@ -28,14 +28,14 @@ Which backend to use and how they compare: [Native vs WebAssembly](./native-vs-w
 <!-- native-bench:sizes -->
 | File | Target | KiB | gzip -9 KiB | brotli KiB | Status |
 |:--|--:|--:|--:|--:|--:|
-| `bm-engine.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | executed (this benchmark) |
-| `bm-engine.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compiled, structurally verified, never executed |
-| `bm-engine.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compiled, structurally verified, never executed |
-| `bm-engine.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compiled, structurally verified, never executed |
-| `bm-engine.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
-| `bm-engine.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
-| `bm-engine.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compiled, structurally verified, never executed |
-| `bm-engine.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compiled, structurally verified, never executed |
+| `bm-render.win32-x64-msvc.node` | `x86_64-windows-gnu` | 3 327 | 1 765 | 1 389 | executed (this benchmark) |
+| `bm-render.win32-arm64-msvc.node` | `aarch64-windows-gnu` | 2 627 | 1 577 | 1 179 | cross-compiled, structurally verified, never executed |
+| `bm-render.linux-x64-gnu.node` | `x86_64-linux-gnu.2.17` | 3 185 | 1 720 | 1 361 | cross-compiled, structurally verified, never executed |
+| `bm-render.linux-x64-musl.node` | `x86_64-linux-musl` | 3 185 | 1 720 | 1 362 | cross-compiled, structurally verified, never executed |
+| `bm-render.linux-arm64-gnu.node` | `aarch64-linux-gnu.2.17` | 2 634 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
+| `bm-render.linux-arm64-musl.node` | `aarch64-linux-musl` | 2 633 | 1 579 | 1 180 | cross-compiled, structurally verified, never executed |
+| `bm-render.darwin-x64.node` | `x86_64-macos.10.15` | 3 175 | 1 719 | 1 360 | cross-compiled, structurally verified, never executed |
+| `bm-render.darwin-arm64.node` | `aarch64-macos.11.0` | 2 652 | 1 536 | 1 128 | cross-compiled, structurally verified, never executed |
 | bm wasm `core` | wasm32 | 490 | 229 | 195 |  |
 | bm wasm `standard` | wasm32 | 937 | 465 | 399 |  |
 | bm wasm `full` | wasm32 | 1 144 | 560 | 471 |  |
@@ -74,9 +74,9 @@ Native addons from `native/dist/manifest.json` (built 2026-11-13 with Zig 0.17.1
 
 ### The `pdf` profile
 
-`bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
-CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
-Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.6 MB to `full`. It is not part of the table below because `pdf` is
+`bm_render.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
+CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-render/pdf` on
+Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-render` never exposes PDF. It adds about 0.6 MB to `full`. It is not part of the table below because `pdf` is
 not a feature of `core`, `standard` or `full`.
 
 ## Marginal cost per feature
@@ -159,14 +159,14 @@ Flags: `css`, `tw`, `html`, `svg`, `woff`, `variable_fonts`, `cff`, `effects`, `
 `tables`, `floats`, `webp_gif_decode`, `text_wrap_balance`, `color_fonts`, `complex_text`,
 `animation`, `extra_codecs`, `render_svg`, `pdf`. Other build options: `-Dwasm-optimize=small|fast|safe|debug`
 (default `small`), `-Dstrip=false`, `-Dstack-kib=<n>` (default 1024). The output lands in
-`zig-out/bin/bm_engine.wasm`; load it with `init(bytes)` / `initSync(bytes)`, or in Node with
-`BM_WASM=path/to/bm_engine.wasm` and the `bm-engine` entry. `features` reports exactly the flags the
+`zig-out/bin/bm_render.wasm`; load it with `init(bytes)` / `initSync(bytes)`, or in Node with
+`BM_WASM=path/to/bm_render.wasm` and the `bm-render` entry. `features` reports exactly the flags the
 binary was built with.
 
 ## The WOFF add-on
 
 `bm_woff.wasm` (84.4 KiB, 65.5 KiB brotli) is the engine's own WOFF / WOFF2 decoder (including brotli)
-as a separate module. `loadWoff()` from `bm-engine/woff` installs it, after which `registerFont`
+as a separate module. `loadWoff()` from `bm-render/woff` installs it, after which `registerFont`
 converts WOFF / WOFF2 to TTF / OTF before handing it to any entry. The converted font is byte-identical
 to what the built-in decoder produces. It is useful on `core` when your fonts come as WOFF2 (for
 example from Google Fonts); on `standard` / `full` it is not needed. See

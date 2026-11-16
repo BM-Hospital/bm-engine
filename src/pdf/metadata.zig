@@ -319,7 +319,7 @@ pub const XmpHook = struct {
 /// tagging / PDF/A wave through its hook) before `finish`.
 pub const Parts = struct {
     metadata: ?Metadata = null,
-    producer: []const u8 = "bm-engine",
+    producer: []const u8 = "bm-render",
     /// krilla writes no Info dictionary when a validator prohibits one (PDF/A-4).
     info_dict: bool = true,
     /// PDF/A's file-provenance `xmpMM:History` (saved + converted events at the creation date).
@@ -526,9 +526,9 @@ test "info dictionary entries" {
     defer arena.deinit();
     const m = Metadata.of(.{ .title = "", .authors = &.{ "A", "B" }, .keywords = &.{"k"}, .creation_date = .{ .year = 2026, .month = 1, .day = 2, .hour = 3 } }, "");
     try testing.expect(m.title == null and m.language == null);
-    const i = try info(&m, "bm-engine", .v1_7, arena.allocator());
+    const i = try info(&m, "bm-render", .v1_7, arena.allocator());
     try testing.expectEqualStrings("A, B", i.author.?);
     try testing.expectEqual(@as(?i8, 0), i.date.?.utc_offset_hour);
-    const info2 = try info(&m, "bm-engine", .v2_0, arena.allocator());
+    const info2 = try info(&m, "bm-render", .v2_0, arena.allocator());
     try testing.expect(info2.producer == null and info2.date != null);
 }

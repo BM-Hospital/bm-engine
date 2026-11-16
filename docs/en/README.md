@@ -1,6 +1,6 @@
-# bm-engine documentation
+# bm-render documentation
 
-bm-engine is a Zig library that turns node trees or HTML + CSS into images and PDF documents. It uses a native addon on Node.js when available and WebAssembly in browsers and other runtimes.
+bm-render is a Zig library that turns node trees or HTML + CSS into images and PDF documents. It uses a native addon on Node.js when available and WebAssembly in browsers and other runtimes.
 
 ## Where to start
 

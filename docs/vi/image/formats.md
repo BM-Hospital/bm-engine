@@ -3,7 +3,7 @@
 [English](../../en/image/formats.md) · [Tiếng Việt](formats.md)
 
 `render()` dựng layout một lần rồi chuyển điểm ảnh cho bộ mã hoá; tuỳ chọn `format` quyết định dùng bộ
-nào. Trang này đi qua mọi đầu ra mà bm-engine 0.1.0 tạo được — PNG, JPEG, WebP, RGBA thô, ICO, data URL,
+nào. Trang này đi qua mọi đầu ra mà bm-render 0.1.0 tạo được — PNG, JPEG, WebP, RGBA thô, ICO, data URL,
 tài liệu SVG và (ở trang riêng) ảnh động — mỗi định dạng xử lý độ trong suốt và `quality` ra sao,
 `devicePixelRatio` và kích thước canvas tác động lẫn nhau thế nào, profile nào có bộ mã hoá nào, và
 benchmark nói gì về tốc độ và dung lượng file. Tài liệu PDF có các trang riêng, bắt đầu từ [Đầu ra PDF](../pdf/index.md). Mọi đoạn mã dưới đây đều nằm trong
@@ -21,7 +21,7 @@ benchmark nói gì về tốc độ và dung lượng file. Tài liệu PDF có 
 | `renderSvg()` | có | — | `full` | một chuỗi tài liệu SVG |
 | `renderAnimation()` | có | — | `full` | WebP động (mặc định), APNG hoặc GIF; xem [Animation](./animation.md) |
 
-Mọi giá trị `format` khác đều ném lỗi `bm-engine: unsupported format: <x>` (ví dụ `"gif"` cho ảnh tĩnh).
+Mọi giá trị `format` khác đều ném lỗi `bm-render: unsupported format: <x>` (ví dụ `"gif"` cho ảnh tĩnh).
 
 Mọi ví dụ trên trang này dùng chung phần khởi tạo và tấm card dưới đây. Để ý các góc bo tròn trên canvas
 trong suốt: chúng cho thấy mỗi định dạng làm gì với kênh alpha.
@@ -29,7 +29,7 @@ trong suốt: chúng cho thấy mỗi định dạng làm gì với kênh alpha.
 <!-- @example formats#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine"; // Node: the full profile
+import { Renderer } from "bm-render"; // Node: the full profile
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -44,7 +44,7 @@ const card = {
     backgroundImage: "linear-gradient(135deg, #f97316, #db2777 55%, #7c3aed)",
   },
   children: [
-    { type: "text", text: "bm-engine", style: { fontSize: 40, fontWeight: 700, color: "white" } },
+    { type: "text", text: "bm-render", style: { fontSize: 40, fontWeight: 700, color: "white" } },
     { type: "text", text: "PNG · JPEG · WebP · SVG", style: { fontSize: 20, color: "rgba(255,255,255,0.85)" } },
   ],
 };
@@ -181,7 +181,7 @@ console.log(pixel(200, 100)); // an opaque pixel of the gradient
 Điểm ảnh đục được in ra là `[222, 46, 110, 255]`. Raw cũng là đường nhanh nhất vì bỏ qua bộ mã hoá
 (0.64 ms so với 1.33 ms trung bình nhân trong benchmark).
 
-Buffer raw có thể đưa ngược vào bm-engine làm nguồn ảnh, rất tiện để ghép thumbnail hay dải khung hình mà
+Buffer raw có thể đưa ngược vào bm-render làm nguồn ảnh, rất tiện để ghép thumbnail hay dải khung hình mà
 không cần thêm thư viện xử lý ảnh:
 
 <!-- @example formats#raw-roundtrip -->
@@ -211,13 +211,13 @@ console.log(url.slice(0, 23)); // "data:image/webp;base64,"
 // in a browser: img.src = url
 ```
 
-`format: "raw"` ném lỗi `bm-engine: renderAsDataUrl needs an encoded format`. Data URL lớn hơn khoảng một
+`format: "raw"` ném lỗi `bm-render: renderAsDataUrl needs an encoded format`. Data URL lớn hơn khoảng một
 phần ba so với số byte nó mã hoá; với phản hồi HTTP, hãy gửi thẳng byte kèm `content-type` đúng.
 
 ## ICO (favicon)
 
 `format: "ico"` ghi một file ICO chứa một ảnh PNG. Cần profile `full` và canvas mỗi cạnh từ 1 đến 256 điểm
-ảnh; lớn hơn sẽ ném lỗi `bm-engine: ICO images are 1 to 256 pixels on a side, not 300`.
+ảnh; lớn hơn sẽ ném lỗi `bm-render: ICO images are 1 to 256 pixels on a side, not 300`.
 
 <!-- @example formats#ico -->
 ```js
@@ -334,13 +334,13 @@ try {
 | ICO | | | ✓ |
 | `renderSvg()` | | | ✓ |
 | `renderAnimation()` (WebP / APNG / GIF) | | | ✓ |
-| PDF (`renderPdf()`, `bm-engine/pdf`) | | | không có trong `full`: xem [Đầu ra PDF](../pdf/index.md) |
+| PDF (`renderPdf()`, `bm-render/pdf`) | | | không có trong `full`: xem [Đầu ra PDF](../pdf/index.md) |
 
 Trên profile nhỏ hơn, các đầu ra chỉ có ở `full` ném lỗi rõ ràng:
 
 <!-- @example formats#core -->
 ```js
-import * as core from "bm-engine/core";
+import * as core from "bm-render/core";
 
 const small = new core.Renderer();
 small.renderSync({ type: "container", style: { width: 16, height: 16, backgroundColor: "red" } },
@@ -348,7 +348,7 @@ small.renderSync({ type: "container", style: { width: 16, height: 16, background
 try {
   small.renderSync({ type: "container" }, { width: 16, height: 16, format: "ico" });
 } catch (err) {
-  console.log(err.message); // "bm-engine: this build has no ICO output support (use the full build)"
+  console.log(err.message); // "bm-render: this build has no ICO output support (use the full build)"
 }
 ```
 

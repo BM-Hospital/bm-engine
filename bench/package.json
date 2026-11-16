@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Benchmark + output-equivalence harness: takumi vs bm-engine",
+  "description": "Benchmark + output-equivalence harness: takumi vs bm-render",
   "scripts": {
     "bench": "node run.mjs",
     "bench:quick": "node run.mjs --quick",

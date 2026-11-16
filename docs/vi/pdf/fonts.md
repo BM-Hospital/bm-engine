@@ -19,7 +19,7 @@ trong repository và đã được chính file đó chạy.
 
 ## Cắt subset
 
-bm-engine không kèm font và trình xem PDF nào cũng không có font của bạn, nên mọi font mà trang dùng đều được
+bm-render không kèm font và trình xem PDF nào cũng không có font của bạn, nên mọi font mà trang dùng đều được
 nhúng. Nó được nhúng dưới dạng subset: chỉ các glyph mà tài liệu thực sự vẽ, được đánh số lại và ghi thành font
 CID-keyed. Bộ cắt subset là bản port của crate Rust `subsetter` và đọc font TrueType
 (`glyf`), TrueType collection và font CFF (`.otf`); WOFF và WOFF2 được giải mã trước. Bảng `cmap` và các bảng layout
@@ -28,7 +28,7 @@ bị bỏ khỏi đầu ra, vì chữ đã được shaping xong.
 <!-- @example pdf-fonts#subset -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 const inter = readFileSync("assets/fonts/Inter-Regular.ttf"); // about 400 KB
@@ -132,7 +132,7 @@ try {
 } catch (e) {
   message = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
+// bm-render: No font the text can use draws क (U+0915). Check each font's unicodeRange and the font-family stack,
 // or register a font that draws them.
 ```
 
@@ -154,7 +154,7 @@ try {
 } catch (e) {
   archival = e.message;
 }
-// bm-engine: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
+// bm-render: No font the text can use draws क (U+0915), and PDF/A-2b forbids the placeholder glyph. Register a font that draws them, or set uncoveredText to "blank".
 ```
 
 ## PDF/A và giấy phép font

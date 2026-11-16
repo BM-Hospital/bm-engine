@@ -24,7 +24,7 @@ bộ đếm, ghi đè theo trang, cách lề bám theo band, và bộ đếm tro
 <!-- @example pdf-headers-footers#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { PdfRenderer, PageNumber, TotalPages } from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, TotalPages } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

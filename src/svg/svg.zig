@@ -1,4 +1,4 @@
-//! bm-engine SVG rasteriser (standalone; depends only on raster, codec and json.parseNumber).
+//! bm-render SVG rasteriser (standalone; depends only on raster, codec and json.parseNumber).
 //!
 //! Usage:
 //! ```

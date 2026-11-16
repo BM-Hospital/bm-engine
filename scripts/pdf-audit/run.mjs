@@ -3,9 +3,9 @@
 //   node scripts/pdf-audit/run.mjs [--json] [--quiet] [filter ...]
 //
 //   TAKUMI_PDF_REF=<dir with node_modules/takumi-pdf>   compare with the published takumi-pdf (see lib.mjs)
-//   BM_ENGINE_BACKEND=wasm | native                     the bm-engine backend (both must give the same result)
+//   BM_RENDER_BACKEND=wasm | native                     the bm-render backend (both must give the same result)
 //
-// Needs js/bm_engine.pdf.wasm (`node scripts/build.mjs --profile=pdf`). Writes bench/out/pdf-audit/results.json
+// Needs js/bm_render.pdf.wasm (`node scripts/build.mjs --profile=pdf`). Writes bench/out/pdf-audit/results.json
 // (the evidence column of docs/PDF_AUDIT.md). Exit code 1 when a probe fails.
 import { readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -20,7 +20,7 @@ const quiet = argv.includes("--quiet");
 
 for (const f of readdirSync(here).filter((n) => n.endsWith(".probe.mjs")).sort()) await import(pathToFileURL(path.join(here, f)).href);
 
-console.log(`bm-engine/pdf backend: ${bmMod.backend}; reference: ${refMod ? "takumi-pdf " + refVersion : "not installed (set TAKUMI_PDF_REF): comparisons are unverified"}`);
+console.log(`bm-render/pdf backend: ${bmMod.backend}; reference: ${refMod ? "takumi-pdf " + refVersion : "not installed (set TAKUMI_PDF_REF): comparisons are unverified"}`);
 const rows = await runProbes(filter);
 if (rows.length === 0) throw new Error(`No PDF audit probes matched: ${filter.join(", ") || "(all)"}`);
 let fail = 0; let pass = 0; let unverified = 0;

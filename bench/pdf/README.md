@@ -1,6 +1,6 @@
 # bench/pdf — external validation, visual equivalence and benchmark of the PDF output
 
-Tooling that checks `bm-engine/pdf` from the outside and measures it against
+Tooling that checks `bm-render/pdf` from the outside and measures it against
 [takumi-pdf](https://www.npmjs.com/package/takumi-pdf), the library it ports. Everything runs headless from the
 command line on whatever build is in the checkout it runs in (the repository root is resolved from the scripts'
 location) and exits non-zero on failure, so each script can serve as a gate.
@@ -19,7 +19,7 @@ The reference lives in tracked `tests/upstream/takumi`; the fetch command verifi
 missing inputs, unknown fixture names, render errors or upstream goldens without a translated input.
 Use `--strict` to also fail on differences in page content or interchange data; small numeric differences
 are accepted. For example, `node scripts/pdf-compare.mjs --strict paged-rotated-text` checks the rotated
-text regression. Set `BM_ENGINE_BACKEND=wasm` to test the PDF wasm build explicitly; rebuild the native
+text regression. Set `BM_RENDER_BACKEND=wasm` to test the PDF wasm build explicitly; rebuild the native
 addon before selecting `native`. The validation and visual corpus loads all 136 inputs as well.
 
 ```sh
@@ -31,8 +31,8 @@ node bench/pdf/report.mjs      # re-render PDF.md and the doc tables from result
 ```
 
 bm-native needs the native addon of the checkout (`node scripts/build-native.mjs --target=win32-x64-msvc`, i.e.
-`native/dist/<platform>/`, or `BM_ENGINE_NATIVE_PATH`); without it every script runs with bm-wasm and takumi-pdf
-only and says so. The wasm build is `js/bm_engine.pdf.wasm` (`npm run build:pdf`).
+`native/dist/<platform>/`, or `BM_RENDER_NATIVE_PATH`); without it every script runs with bm-wasm and takumi-pdf
+only and says so. The wasm build is `js/bm_render.pdf.wasm` (`npm run build:pdf`).
 
 ## Layout
 
@@ -92,7 +92,7 @@ records the machine's CPU busy % before and during every stage. `--quick` shorte
   `mupdf` npm wasm package instead (same engine version line, same warnings).
 - **PAC** (PDF Accessibility Checker) is GUI-only: not usable headless. veraPDF's PDF/UA profiles are the machine
   check; the Matterhorn checks that need human judgement are not covered by any tool here.
-- **PDF/A-1** is not offered by bm-engine or takumi-pdf (PDF/A-2/3/4 only), so the 1b profile is not run.
+- **PDF/A-1** is not offered by bm-render or takumi-pdf (PDF/A-2/3/4 only), so the 1b profile is not run.
 - veraPDF runs with `--maxfailuresdisplayed 5`: the report lists every failed rule, with up to 5 failing contexts.
 - pdf.js and MuPDF print warnings through `console`; the scripts capture them per document. A warning a library
   prints asynchronously after the document is closed could be missed.

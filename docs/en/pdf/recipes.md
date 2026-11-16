@@ -2,7 +2,7 @@
 
 [English](recipes.md) · [Tiếng Việt](../../vi/pdf/recipes.md)
 
-Three complete documents built with `bm-engine/pdf`: a one-page invoice with a numbered footer, a
+Three complete documents built with `bm-render/pdf`: a one-page invoice with a numbered footer, a
 multi-page report whose table header repeats on every page, and a ticket printed on a single page of
 its own size. Each recipe is a section of `docs/examples/pdf-recipes.mjs` in the repository and was
 executed by it; the script also checks the result (page count, page size, and the text of every page
@@ -10,7 +10,7 @@ as `pdftotext` extracts it). The generated files are linked below each recipe so
 PDF.
 
 The images on this page are **previews**: screenshots of the generated PDF in Microsoft Edge's built-in
-PDF viewer (headless Edge 157, `bench/browser/pdf-previews.mjs`), not output of bm-engine's image
+PDF viewer (headless Edge 157, `bench/browser/pdf-previews.mjs`), not output of bm-render's image
 renderer. The PDF itself is vector text and graphics.
 
 - [Setup](#setup)
@@ -21,14 +21,14 @@ renderer. The PDF itself is vector text and graphics.
 
 ## Setup
 
-Create one `PdfRenderer` and register the fonts once; every recipe below reuses it. bm-engine ships no
+Create one `PdfRenderer` and register the fonts once; every recipe below reuses it. bm-render ships no
 font, and a document whose text needs a character no registered font has fails to render (see
 [Fonts in PDF](fonts.md)).
 
 <!-- @example pdf-recipes#setup -->
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { PdfRenderer, PageNumber, TotalPages } from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, TotalPages } from "bm-render/pdf";
 
 const pdf = new PdfRenderer(); // create once, reuse for every document
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

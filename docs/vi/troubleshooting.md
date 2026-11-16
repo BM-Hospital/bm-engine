@@ -2,9 +2,9 @@
 
 [English](../en/troubleshooting.md) · [Tiếng Việt](troubleshooting.md)
 
-Những triệu chứng bạn dễ gặp với bm-engine 0.1.0, nguyên nhân và cách khắc phục. Phần lớn xuất phát từ
+Những triệu chứng bạn dễ gặp với bm-render 0.1.0, nguyên nhân và cách khắc phục. Phần lớn xuất phát từ
 hai mặc định của thư viện (`display` mặc định là `inline`; đầu vào không bao giờ được tải
-về) và một quyết định riêng của bm-engine (không kèm font).
+về) và một quyết định riêng của bm-render (không kèm font).
 
 - [Chữ không hiện, hoặc hiện thành ô vuông](#chữ-không-hiện-hoặc-hiện-thành-ô-vuông)
 - [Khối chứa bị co về chiều cao 0](#khối-chứa-bị-co-về-chiều-cao-0)
@@ -23,7 +23,7 @@ về) và một quyết định riêng của bm-engine (không kèm font).
 ## Chữ không hiện, hoặc hiện thành ô vuông
 
 - **Hoàn toàn không vẽ gì**: chưa có font nào được đăng ký trên `Renderer` này (hoặc đã gọi
-  `clearFonts()`). bm-engine không kèm font và không bao giờ đọc font hệ thống. Hãy đăng ký một font:
+  `clearFonts()`). bm-render không kèm font và không bao giờ đọc font hệ thống. Hãy đăng ký một font:
   `renderer.registerFont(readFileSync("Inter-Regular.ttf"))`. Font được giữ riêng theo từng renderer.
 - **Một số ký tự thành ô vuông (tofu)**: không font nào đã đăng ký chứa các ký tự đó; chúng được vẽ bằng
   glyph `.notdef`. Hãy đăng ký font phủ hệ chữ đó (ví dụ Noto Sans JP cho tiếng Nhật). Font dự phòng vốn
@@ -55,17 +55,17 @@ không cần gì thêm.
 
 Profile đang nạp không có tính năng đó. Các thông báo và profile nhỏ nhất có tính năng:
 
-| Thông báo (tiền tố `bm-engine: `) | Cần |
+| Thông báo (tiền tố `bm-render: `) | Cần |
 |:--|:--|
 | `this build has no HTML input support` | `standard` |
 | `this build has no stylesheet (\`css\` option) support` | `standard` |
 | `Tailwind (\`tw\`) is not supported by this build` | `standard` |
-| `this build has no WOFF/WOFF2 font support` | `standard`, hoặc `loadWoff()` từ `bm-engine/woff` |
+| `this build has no WOFF/WOFF2 font support` | `standard`, hoặc `loadWoff()` từ `bm-render/woff` |
 | `unsupported font format` (một file `.otf`) | `standard` (CFF) |
 | `invalid value for style property backgroundColor` với `oklch()` / `lab()` / `color-mix()` trên core | `standard` |
 | `this build has no ICO output support`, `... renderSvg support`, `... animation support` | `full` (thông báo ghi "use the full build") |
 
-Kiểm tra `features` khi khởi động, import profile lớn hơn (`bm-engine/standard`, `bm-engine/full`), hoặc
+Kiểm tra `features` khi khởi động, import profile lớn hơn (`bm-render/standard`, `bm-render/full`), hoặc
 xem [Profile và kích thước](profiles-and-size.md).
 
 ## Ảnh không hiện
@@ -82,45 +82,45 @@ xem [Profile và kích thước](profiles-and-size.md).
 
 ## Không tìm thấy file .wasm
 
-- **Trình duyệt / bundler**: import một entry theo profile (`bm-engine/full`, `/standard`, `/core`) rồi
-  gọi `await init()`. Các entry này tham chiếu binary bằng `new URL("./bm_engine....wasm",
+- **Trình duyệt / bundler**: import một entry theo profile (`bm-render/full`, `/standard`, `/core`) rồi
+  gọi `await init()`. Các entry này tham chiếu binary bằng `new URL("./bm_render....wasm",
   import.meta.url)`, được Vite, webpack 5, Rollup (kèm plugin asset) và Parcel xuất thành asset. Nếu
   bundler của bạn không làm vậy, hãy import URL của binary một cách tường minh (`import wasmUrl from
-  "bm-engine/full.wasm?url"` trong Vite) hoặc chép file vào thư mục public rồi gọi
-  `init("/bm_engine.wasm")`.
-- **Entry chung `bm-engine` bên ngoài Node** không có vị trí mặc định: `init()` không đối số sẽ ném lỗi
-  `bm-engine: init() needs the wasm binary ...`. Hãy truyền byte, URL / `Response` hoặc
+  "bm-render/full.wasm?url"` trong Vite) hoặc chép file vào thư mục public rồi gọi
+  `init("/bm_render.wasm")`.
+- **Entry chung `bm-render` bên ngoài Node** không có vị trí mặc định: `init()` không đối số sẽ ném lỗi
+  `bm-render: init() needs the wasm binary ...`. Hãy truyền byte, URL / `Response` hoặc
   `WebAssembly.Module`, hoặc chuyển sang entry theo profile.
 - **Cloudflare Workers** không cho biên dịch WebAssembly từ byte lúc chạy: hãy import module
-  (`import wasm from "bm-engine/full.wasm"`) rồi truyền vào `init` / `initSync`.
+  (`import wasm from "bm-render/full.wasm"`) rồi truyền vào `init` / `initSync`.
 - **Sai content type**: nếu server không gửi `application/wasm`, `init` chuyển sang đường không
   streaming. Cách đó vẫn chạy, nhưng một trang HTML 404 sẽ không biên dịch được — hãy kiểm tra URL.
-- **Node trong môi trường tùy biến**: `BM_WASM=/path/to/bm_engine.wasm` thay binary của entry
-  `bm-engine`.
+- **Node trong môi trường tùy biến**: `BM_WASM=/path/to/bm_render.wasm` thay binary của entry
+  `bm-render`.
 
 ## Addon native (Node.js)
 
-Trên Node.js, `bm-engine` chạy addon native từ optional platform package `bm-engine-<platform>` khi nó
+Trên Node.js, `bm-render` chạy addon native từ optional platform package `bm-render-<platform>` khi nó
 được cài và nạp được, nếu không thì chạy WebAssembly (xem
 [Cài đặt](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)). Cơ chế fallback được thiết kế
 để chạy lặng lẽ, nên bước đầu tiên luôn là hỏi xem backend nào đang chạy:
 
 ```sh
-node --input-type=module -e 'import("bm-engine").then((m) => console.log(m.backend))'
-BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not used
+node --input-type=module -e 'import("bm-render").then((m) => console.log(m.backend))'
+BM_RENDER_BACKEND=native node app.mjs   # throws and says why the addon was not used
 ```
 
 - **Không có binary cho nền tảng này, hoặc nó không được cài** (hệ điều hành / CPU không có platform
   package, ví dụ FreeBSD, Linux trên ARM 32-bit hay ppc64; `--omit=optional`; một `node_modules` chép từ
   hệ điều hành khác; một lockfile làm mất optional package): bạn nhận WebAssembly, với output giống hệt.
-  Lỗi khi ép native ghi `bm-engine-<platform>: not installed`. Hãy cài lại trên máy đích, xem
+  Lỗi khi ép native ghi `bm-render-<platform>: not installed`. Hãy cài lại trên máy đích, xem
   [Package manager, Docker, serverless](getting-started.md#package-manager-docker-serverless).
 - **Tới nay chỉ `win32-x64-msvc` đã được chạy thật.** Bảy platform package còn lại đã được build và kiểm
-  tra cấu trúc nhưng chưa từng chạy; nếu một cái không nạp được trên máy bạn, `bm-engine` dùng
+  tra cấu trúc nhưng chưa từng chạy; nếu một cái không nạp được trên máy bạn, `bm-render` dùng
   WebAssembly. Hãy báo lại kèm thông báo lỗi khi ép native.
-- **`BM_ENGINE_BACKEND`**: `wasm` không bao giờ thử addon; `native` khiến lệnh import ném lỗi khi addon không
-  dùng được; giá trị khác ném lỗi `BM_ENGINE_BACKEND must be "wasm" or "native"`. `BM_WASM` và `BM_PROFILE`
-  cũng chọn WebAssembly. `bm-engine/native` là native hoặc lỗi khi import; `bm-engine/full`, `/standard`,
+- **`BM_RENDER_BACKEND`**: `wasm` không bao giờ thử addon; `native` khiến lệnh import ném lỗi khi addon không
+  dùng được; giá trị khác ném lỗi `BM_RENDER_BACKEND must be "wasm" or "native"`. `BM_WASM` và `BM_PROFILE`
+  cũng chọn WebAssembly. `bm-render/native` là native hoặc lỗi khi import; `bm-render/full`, `/standard`,
   `/core` luôn là WebAssembly.
 - **CPU x64 đời cũ.** Các addon x64 cần x86-64-v2 (SSE4.2, POPCNT: Intel từ 2008, AMD từ 2011). Trên CPU cũ
   hơn, addon từ chối đăng ký và bạn nhận WebAssembly.
@@ -130,14 +130,14 @@ BM_ENGINE_BACKEND=native node app.mjs   # throws and says why the addon was not 
   lệnh trên nó được xếp hàng theo thứ tự). Để có thông lượng song song trên backend native, hãy tạo vài
   renderer với cùng bộ font, tối đa khoảng bằng kích thước pool của libuv (`UV_THREADPOOL_SIZE`, mặc định
   4), rồi chia việc. Trên WebAssembly mọi thứ vẫn chạy trên luồng gọi.
-- **Server đã bundle không tìm thấy file wasm**: `bm-engine: cannot find bm_engine.wasm (...)`. Bundler đã
+- **Server đã bundle không tìm thấy file wasm**: `bm-render: cannot find bm_render.wasm (...)`. Bundler đã
   chuyển điểm vào Node ra khỏi package của nó và lúc chạy không có `node_modules`. Hãy để package ở dạng
-  external (Next.js `serverExternalPackages: ["bm-engine"]`, esbuild `--external:bm-engine`), hoặc đặt
-  `BM_WASM=/path/to/bm_engine.wasm`. Xem [Next.js](image/frameworks/nextjs.md) về deploy.
+  external (Next.js `serverExternalPackages: ["bm-render"]`, esbuild `--external:bm-render`), hoặc đặt
+  `BM_WASM=/path/to/bm_render.wasm`. Xem [Next.js](image/frameworks/nextjs.md) về deploy.
 
 ## Bộ nhớ tăng mãi
 
-Bộ nhớ WebAssembly chỉ tăng chứ không bao giờ co lại. bm-engine tái sử dụng bộ nhớ giữa các lần render
+Bộ nhớ WebAssembly chỉ tăng chứ không bao giờ co lại. bm-render tái sử dụng bộ nhớ giữa các lần render
 (một arena cho mỗi lần render, các cache có ngân sách cố định: ảnh đã giải mã bị xoá khi vượt 96 MiB,
 glyph khi vượt 8 MiB), nên một tải ổn định sẽ dừng ở một mức — khoảng 6 MiB với thẻ 1200 × 630 và một
 font. Những gì làm nó tăng:
@@ -198,13 +198,13 @@ hàm màu hiện đại trên `core`. Khai báo trong stylesheet không ném l�
 
 ## Các lỗi khác
 
-| Thông báo (tiền tố `bm-engine: `) | Nguyên nhân |
+| Thông báo (tiền tố `bm-render: `) | Nguyên nhân |
 |:--|:--|
 | `call init()/initSync() before creating a Renderer` | ngoài Node, entry chưa được khởi tạo |
-| `BM_ENGINE_BACKEND=native, but the native addon is not available (...)` | ép native nhưng không có addon dùng được; lý do nằm trong ngoặc ([Addon native](#addon-native-nodejs)) |
-| `bm-engine/native: the native addon is not available (...)` | import `bm-engine/native` khi chưa cài platform package |
-| `BM_ENGINE_BACKEND must be "wasm" or "native", not "..."` | gõ sai biến môi trường |
-| `cannot find bm_engine.wasm (...)` | bundler đã chuyển điểm vào Node ra khỏi `node_modules` ([Addon native](#addon-native-nodejs)) |
+| `BM_RENDER_BACKEND=native, but the native addon is not available (...)` | ép native nhưng không có addon dùng được; lý do nằm trong ngoặc ([Addon native](#addon-native-nodejs)) |
+| `bm-render/native: the native addon is not available (...)` | import `bm-render/native` khi chưa cài platform package |
+| `BM_RENDER_BACKEND must be "wasm" or "native", not "..."` | gõ sai biến môi trường |
+| `cannot find bm_render.wasm (...)` | bundler đã chuyển điểm vào Node ra khỏi `node_modules` ([Addon native](#addon-native-nodejs)) |
 | `renderer has been freed` | dùng renderer sau khi đã `free()` |
 | `invalid viewport: width/height must be > 0` | `width` hoặc `height` bằng 0 |
 | `invalid viewport: content has zero size and no width/height was given` | không có kích thước canvas và không có gì để đo |

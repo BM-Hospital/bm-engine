@@ -2,7 +2,7 @@
 
 [English](../../../en/image/frameworks/index.md) · [Tiếng Việt](index.md)
 
-bm-engine là một thư viện thuần: đưa vào một node tree (hoặc HTML), nhận lại các byte của ảnh. Nó không
+bm-render là một thư viện thuần: đưa vào một node tree (hoặc HTML), nhận lại các byte của ảnh. Nó không
 có plugin cho framework nào, không có class `ImageResponse` và không có JSX runtime, nên mọi tích hợp đều
 chỉ là ba dòng "keo" giống nhau — tạo renderer, đăng ký font, bọc các byte vào một `Response`. Trang này
 giải thích những phần mà mọi tích hợp dùng chung: import entry nào của package, mẫu "tạo một lần", một
@@ -10,7 +10,7 @@ helper `imageResponse()` khoảng 30 dòng để bạn dán vào dự án, heade
 node tree mà không cần JSX. Các trang riêng cho từng framework sau đó chỉ trình bày những điểm khác biệt.
 
 ::: info Trạng thái kiểm chứng
-Mọi đoạn mã trên trang này đều đã được chạy trên Node 26.13 với tarball npm đã đóng gói của bm-engine 0.1.0
+Mọi đoạn mã trên trang này đều đã được chạy trên Node 26.13 với tarball npm đã đóng gói của bm-render 0.1.0
 (`npm pack`, cài vào một dự án nháp): `imageResponse()` được gọi với một `Request` thật, body của
 `Response` trả về được giải mã thành một PNG 1200 × 630; `h()` được kiểm tra cho ra kết quả giống từng
 byte với node viết tay, kể cả khi dùng làm JSX factory của esbuild; các cách tự nạp wasm được chạy dưới
@@ -37,24 +37,24 @@ phụ thuộc vào các export condition của runtime:
 
 | Import | Node.js, Bun, Deno (điều kiện `node`) | Trình duyệt, bundler cho trình duyệt, workerd, Vercel Edge |
 |:--|:--|:--|
-| `bm-engine` | binary full, đọc từ đĩa và khởi tạo khi import | chỉ có wrapper: bạn tự gọi `init(wasm)` |
-| `bm-engine/core` · `/standard` · `/full` | profile tương ứng, khởi tạo khi import | `await init()` tải binary nằm cạnh module (hoặc truyền vào) |
-| `bm-engine/wasm` (= `full.wasm`), `bm-engine/core.wasm`, `/standard.wasm`, `/full.wasm`, `/woff.wasm` | file binary thô | file binary thô (URL asset với `?url` trong Vite, `WebAssembly.Module` dưới wrangler) |
+| `bm-render` | binary full, đọc từ đĩa và khởi tạo khi import | chỉ có wrapper: bạn tự gọi `init(wasm)` |
+| `bm-render/core` · `/standard` · `/full` | profile tương ứng, khởi tạo khi import | `await init()` tải binary nằm cạnh module (hoặc truyền vào) |
+| `bm-render/wasm` (= `full.wasm`), `bm-render/core.wasm`, `/standard.wasm`, `/full.wasm`, `/woff.wasm` | file binary thô | file binary thô (URL asset với `?url` trong Vite, `WebAssembly.Module` dưới wrangler) |
 
 Quy tắc kinh nghiệm:
 
 - **Server trên Node.js (Express, Hono trên Node, Next.js Node runtime, Nuxt / SvelteKit / Astro với
-  adapter Node):** `import { Renderer } from "bm-engine/standard"` (hoặc `/core`, `/full`). Không cần
+  adapter Node):** `import { Renderer } from "bm-render/standard"` (hoặc `/core`, `/full`). Không cần
   khởi tạo gì; binary được đọc bằng `node:fs` khi module được nạp.
-- **Bundle cho trình duyệt:** `import { init, Renderer } from "bm-engine/standard"` rồi `await init()`.
+- **Bundle cho trình duyệt:** `import { init, Renderer } from "bm-render/standard"` rồi `await init()`.
   Vite, webpack 5 và Parcel xuất file `.wasm` thành asset (xem [Vite và trình duyệt](./vite-browser.md)).
 - **Workers / edge runtime:** import binary dưới dạng module rồi truyền vào:
-  `import wasm from "bm-engine/core.wasm"; initSync(wasm)` (xem [Cloudflare Workers](./cloudflare-workers.md)).
+  `import wasm from "bm-render/core.wasm"; initSync(wasm)` (xem [Cloudflare Workers](./cloudflare-workers.md)).
 - **Mọi trường hợp khác:** tự nạp các byte rồi gọi `init()` / `initSync()` (bên dưới).
 
 Chọn profile nhỏ nhất có đủ những gì template của bạn dùng; `core` là đủ cho node tree với style inline
 và font TTF. Xem [Profile và kích thước](../../profiles-and-size.md). Mỗi entry là **một wasm instance
-riêng**: import cả `bm-engine` lẫn `bm-engine/full` trên Node sẽ nạp binary full hai lần, nên mỗi ứng
+riêng**: import cả `bm-render` lẫn `bm-render/full` trên Node sẽ nạp binary full hai lần, nên mỗi ứng
 dụng hãy chọn một entry.
 
 ### Tự nạp wasm
@@ -65,10 +65,10 @@ hoặc một `WebAssembly.Module`. Một `Response` được phục vụ với `
 `WebAssembly.instantiateStreaming`; mọi content type khác đi qua `arrayBuffer()`.
 
 ```js
-import { init, initSync, Renderer } from "bm-engine";
+import { init, initSync, Renderer } from "bm-render";
 
 // 1. fetch it (browsers, Deno, workers that allow runtime compilation)
-await init(fetch("/assets/bm_engine.wasm"));
+await init(fetch("/assets/bm_render.wasm"));
 
 // 2. bytes you already have (any runtime that allows WebAssembly compilation from bytes)
 initSync(bytes);
@@ -76,14 +76,14 @@ initSync(bytes);
 // 3. a precompiled module (Cloudflare Workers, Vercel Edge `?module` imports)
 initSync(wasmModule);
 
-await init({ module_or_path: "/assets/bm_engine.wasm" });
+await init({ module_or_path: "/assets/bm_render.wasm" });
 ```
 
 Tất cả các cách này đều đã chạy dưới `node --conditions=browser`, điều kiện phân giải ra đúng những
 file mà bundler dùng. `init()` là idempotent theo từng entry: lần gọi thành công đầu tiên thắng, các lần
 gọi sau trả về cùng instance và bỏ qua tham số. Trước khi khởi tạo, `new Renderer()` ném lỗi
-`bm-engine: call init()/initSync() before creating a Renderer`, còn `init()` không tham số trên entry
-chung sẽ reject với `bm-engine: init() needs the wasm binary: ...`.
+`bm-render: call init()/initSync() before creating a Renderer`, còn `init()` không tham số trên entry
+chung sẽ reject với `bm-render: init() needs the wasm binary: ...`.
 
 ## Mẫu chung
 
@@ -92,14 +92,14 @@ Mọi tích hợp trong các trang này đều có cùng một dạng:
 1. **Tạo một `Renderer` cho mỗi process (Node) hoặc mỗi isolate (Workers), theo kiểu lazy.** Đăng ký
    font sẽ parse font và chép vào bộ nhớ wasm; làm việc đó cho từng request vừa tốn thời gian vừa làm
    bộ nhớ phình ra.
-2. **Đăng ký font một lần.** bm-engine không kèm font nào: không có font đã đăng ký thì chữ không được vẽ.
+2. **Đăng ký font một lần.** bm-render không kèm font nào: không có font đã đăng ký thì chữ không được vẽ.
 3. **Với mỗi request:** đọc tham số, dựng node tree, render, trả về một `Response` chứa các byte và
    `content-type`.
 
 ```js
 // og.js — shared by every route
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard";
+import { Renderer } from "bm-render/standard";
 
 let renderer; // one per process / isolate
 
@@ -141,7 +141,7 @@ vẫn diễn ra trên luồng gọi nó. Với server nặng CPU, hãy render tr
 
 ## Helper `imageResponse()`
 
-bm-engine không có class `ImageResponse` (đã kiểm tra: không có gì tên `ImageResponse` trong `js/`).
+bm-render không có class `ImageResponse` (đã kiểm tra: không có gì tên `ImageResponse` trong `js/`).
 Helper dưới đây cho bạn phần hữu ích của nó. Nó chạy ở mọi nơi có `Response` và `Headers`: Node 18+,
 Deno, Bun, Workers, trình duyệt và mọi framework trong các trang này.
 
@@ -181,7 +181,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   return imageResponse(getRenderer(), card({
     title: url.searchParams.get("title") ?? "Hello",
-    description: url.searchParams.get("description") ?? "Rendered with bm-engine",
+    description: url.searchParams.get("description") ?? "Rendered with bm-render",
   }), {
     width: 1200,
     height: 630,
@@ -219,7 +219,7 @@ xã hội chỉ tải ảnh OG vài lần, nên lợi ích lớn nằm ở cache
 
 ## Các cách nạp font
 
-bm-engine không bao giờ đọc font hệ thống và không có font tích hợp sẵn. Chọn cách phù hợp với runtime:
+bm-render không bao giờ đọc font hệ thống và không có font tích hợp sẵn. Chọn cách phù hợp với runtime:
 
 | Cách | Ở đâu | Làm thế nào |
 |:--|:--|:--|
@@ -240,7 +240,7 @@ bm-engine không bao giờ đọc font hệ thống và không có font tích h�
 
 ## Node tree không cần JSX
 
-bm-engine nhận ba loại nguồn: một node object, `{ json: string }`, hoặc một chuỗi HTML (HTML cần
+bm-render nhận ba loại nguồn: một node object, `{ json: string }`, hoặc một chuỗi HTML (HTML cần
 `standard` / `full`; xem [HTML và Tailwind](../html-and-tailwind.md)). Một node chỉ là dữ liệu thuần:
 
 ```js

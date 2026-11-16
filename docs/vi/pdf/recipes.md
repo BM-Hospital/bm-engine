@@ -2,7 +2,7 @@
 
 [English](../../en/pdf/recipes.md) · [Tiếng Việt](recipes.md)
 
-Ba tài liệu hoàn chỉnh dựng bằng `bm-engine/pdf`: một hoá đơn một trang có footer đánh số trang, một báo
+Ba tài liệu hoàn chỉnh dựng bằng `bm-render/pdf`: một hoá đơn một trang có footer đánh số trang, một báo
 cáo nhiều trang có phần đầu bảng lặp lại ở mọi trang, và một tấm vé in trên đúng một trang có kích thước
 của chính nó. Mỗi công thức là một đoạn của `docs/examples/pdf-recipes.mjs` trong repository và đã được
 chính file đó chạy; script còn kiểm tra kết quả (số trang, khổ trang và chữ của từng trang do `pdftotext`
@@ -10,7 +10,7 @@ trích ra). Bên dưới mỗi công thức có liên kết tới tệp đã t�
 
 Các hình trên trang này là **ảnh xem trước**: ảnh chụp PDF đã tạo trong trình xem PDF có sẵn của
 Microsoft Edge (Edge 157 headless, `bench/browser/pdf-previews.mjs`), không phải đầu ra của bộ render ảnh
-của bm-engine. Bản thân PDF là chữ và đồ hoạ vector.
+của bm-render. Bản thân PDF là chữ và đồ hoạ vector.
 
 - [Chuẩn bị](#chuẩn-bị)
 - [Hoá đơn](#hoá-đơn)
@@ -20,14 +20,14 @@ của bm-engine. Bản thân PDF là chữ và đồ hoạ vector.
 
 ## Chuẩn bị
 
-Tạo một `PdfRenderer` và đăng ký font một lần; mọi công thức bên dưới dùng lại nó. bm-engine không kèm
+Tạo một `PdfRenderer` và đăng ký font một lần; mọi công thức bên dưới dùng lại nó. bm-render không kèm
 font nào, và tài liệu có chữ cần một ký tự mà không font đã đăng ký nào có sẽ render thất bại (xem
 [Font trong PDF](fonts.md)).
 
 <!-- @example pdf-recipes#setup -->
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { PdfRenderer, PageNumber, TotalPages } from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, TotalPages } from "bm-render/pdf";
 
 const pdf = new PdfRenderer(); // create once, reuse for every document
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

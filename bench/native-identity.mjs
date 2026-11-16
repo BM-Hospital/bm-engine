@@ -3,14 +3,14 @@
 //   node native-identity.mjs [--filter=<regex>] [--wasm=<file>] [--native=<file.node>] [--no-async] [--no-pdf] [--quiet]
 //
 // Both backends run in this process through the same public API (js/engine.mjs): the full-profile wasm
-// (js/bm_engine.wasm, or --wasm) and the addon (js/native.mjs lookup, or --native). For every fixture:
+// (js/bm_render.wasm, or --wasm) and the addon (js/native.mjs lookup, or --native). For every fixture:
 //   raw RGBA, PNG, JPEG (q85), WebP          renderSync, compared byte for byte
 //   measure                                  JSON text
 //   renderSvg                                the SVG text
 //   native render() (thread pool)            raw, against the native sync result
 // plus animations (WebP / APNG / GIF), ICO, HTML sources, image attachments and WOFF2 registration.
-// PDF (unless --no-pdf): the pdf-profile wasm (js/bm_engine.pdf.wasm) against the addon's PDF output
-// (js/native.mjs `nativePdfBinding`, what `bm-engine/pdf` uses on Node):
+// PDF (unless --no-pdf): the pdf-profile wasm (js/bm_render.pdf.wasm) against the addon's PDF output
+// (js/native.mjs `nativePdfBinding`, what `bm-render/pdf` uses on Node):
 //   every 5th fixture as a one-page PDF (viewport), every 10th paged with header / footer bands and tagged,
 //   measurePdf, native renderPdf() (thread pool) against the native sync result;
 //   tagged / PDF/A / PDF/UA / attachments / links / outline / metadata / page-range variants and errors;
@@ -32,10 +32,10 @@ import { renderOpts } from "./lib/pipeline.mjs";
 const BENCH = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(BENCH, "..");
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? true] : [a, true]; }));
-if (args.native) process.env.BM_ENGINE_NATIVE_PATH = path.resolve(String(args.native));
+if (args.native) process.env.BM_RENDER_NATIVE_PATH = path.resolve(String(args.native));
 
 const { createBinding } = await import(pathToFileURL(path.join(ROOT, "js", "engine.mjs")).href);
-const wasmFile = args.wasm ? path.resolve(String(args.wasm)) : path.join(ROOT, "js", "bm_engine.wasm");
+const wasmFile = args.wasm ? path.resolve(String(args.wasm)) : path.join(ROOT, "js", "bm_render.wasm");
 const wasm = createBinding();
 wasm.initSync(readFileSync(wasmFile));
 const native = await import(pathToFileURL(path.join(ROOT, "js", "node-native.mjs")).href);
@@ -178,7 +178,7 @@ if (!args["no-pdf"]) {
   const npdf = nativePdfBinding();
   if (!npdf) throw new Error("the native addon has no PDF output: " + nativeError());
   const wpdf = createBinding();
-  wpdf.initSync(readFileSync(path.join(ROOT, "js", "bm_engine.pdf.wasm")));
+  wpdf.initSync(readFileSync(path.join(ROOT, "js", "bm_render.pdf.wasm")));
   if (!wpdf.features.pdf || !npdf.features.pdf || native.features.pdf) throw new Error("pdf feature mix-up");
   for (const [k, v] of Object.entries(wpdf.features)) if (npdf.features[k] !== v) throw new Error(`pdf binding feature ${k}: wasm ${v}, native ${npdf.features[k]}`);
   pools.wpdf = new Map();
@@ -212,7 +212,7 @@ if (!args["no-pdf"]) {
     compare(k.id, "image on the pdf wasm vs full wasm", img, attempt(() => pdfRenderer("wpdf", k.fonts).renderSync(k.node, renderOpts(k, "raw"))));
     compare(k.id, "image on the native pdf binding vs full wasm", img, attempt(() => pdfRenderer("npdf", k.fonts).renderSync(k.node, renderOpts(k, "raw"))));
     if (i % (2 * step) === 0) {
-      const paged = pdfOpts(k, () => ({ size: "a5", landscape: i % (4 * step) === 0, margin: { top: 40, bottom: 40, left: 24, right: 24 }, header: band(k.id), footer: band("bm-engine"),
+      const paged = pdfOpts(k, () => ({ size: "a5", landscape: i % (4 * step) === 0, margin: { top: 40, bottom: 40, left: 24, right: 24 }, header: band(k.id), footer: band("bm-render"),
         tagged: true, metadata: { title: k.id, authors: ["bench"], creationDate: "2026-01-02T03:04:05Z" } }));
       bothPdf(k.id, "pdf paged tagged", k.fonts, (r) => r.renderPdfSync(k.node, paged));
     }
@@ -298,7 +298,7 @@ if (!args["no-pdf"]) {
       const outFile = path.join(BENCH, "out", "pdf-identity-child.json");
       rmSync(outFile, { force: true });
       const r = spawnSync(process.execPath, ["--import", hook, path.join(ROOT, script), ...rest], { cwd: ROOT, encoding: "utf8", maxBuffer: 1 << 28,
-        env: { ...process.env, BM_ENGINE_BACKEND: "native", BM_PDF_IDENTITY_OUT: outFile } });
+        env: { ...process.env, BM_RENDER_BACKEND: "native", BM_PDF_IDENTITY_OUT: outFile } });
       const id = script.split(path.sep).join("/");
       let res = null;
       try { res = JSON.parse(readFileSync(outFile, "utf8")); } catch {}

@@ -1,6 +1,6 @@
 # Hỗ trợ CSS và tính năng
 
-Trang này liệt kê tính năng của bm-engine và profile tối thiểu cần dùng. **Hỗ trợ** nghĩa là có thể sử dụng; **một phần** có giới hạn được ghi kèm; **không** nghĩa là chưa hỗ trợ. Đối với PDF, xem [CSS trong PDF](../pdf/css-support.md).
+Trang này liệt kê tính năng của bm-render và profile tối thiểu cần dùng. **Hỗ trợ** nghĩa là có thể sử dụng; **một phần** có giới hạn được ghi kèm; **không** nghĩa là chưa hỗ trợ. Đối với PDF, xem [CSS trong PDF](../pdf/css-support.md).
 
 - [Quy ước](#quy-ước)
 - [Layout](#layout)

@@ -1,6 +1,6 @@
 // Shadow-stack frame size of every wasm function whose name matches argv[3] (regex), read from the
 // prologue `__stack_pointer - N`. Needs an unstripped build (`zig build -Dstrip=false -p <dir>`).
-// Usage (from bench/): node probe/anim/frames.mjs <path/to/bm_engine.wasm> [regex]
+// Usage (from bench/): node probe/anim/frames.mjs <path/to/bm_render.wasm> [regex]
 import { readFileSync } from "node:fs";
 import binaryen from "binaryen";
 

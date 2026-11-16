@@ -26,14 +26,14 @@ node scripts/build.mjs --verify    # check js/*.wasm against the manifest (run b
 node scripts/build.mjs --test      # zig build test (also: npm test)
 ```
 
-Đầu ra: `js/bm_engine.core.wasm`, `js/bm_engine.standard.wasm`, `js/bm_engine.wasm` (full),
-`js/bm_engine.pdf.wasm` (full + đầu ra PDF), `js/bm_woff.wasm`, `zig-out/bin/bm_engine.wasm` (full, đã tối ưu), `js/build-manifest.json` (profile,
+Đầu ra: `js/bm_render.core.wasm`, `js/bm_render.standard.wasm`, `js/bm_render.wasm` (full),
+`js/bm_render.pdf.wasm` (full + đầu ra PDF), `js/bm_woff.wasm`, `zig-out/bin/bm_render.wasm` (full, đã tối ưu), `js/build-manifest.json` (profile,
 kích thước, sha256 và bit tính năng của từng file) và một bảng kích thước ghi vào `bench/out/sizes.json`.
 
 Lệnh Zig trực tiếp:
 
 ```sh
-zig build                                   # full profile, optimize=small -> zig-out/bin/bm_engine.wasm (+ bm_woff.wasm)
+zig build                                   # full profile, optimize=small -> zig-out/bin/bm_render.wasm (+ bm_woff.wasm)
 zig build -Dprofile=standard -Dcss=false    # any profile + single-feature flags
 zig build -Dwasm-optimize=safe -Dstrip=false  # safety-checked build (for fuzzing / debugging)
 zig build addons                            # only the add-on modules
@@ -44,8 +44,8 @@ Tùy chọn: `-Dprofile=core|standard|full|pdf`, mỗi tính năng một cờ `-
 [Profile và kích thước](profiles-and-size.md#build-tùy-biến)), `-Dwasm-optimize=small|fast|safe|debug`,
 `-Dstrip=false`, `-Dstack-kib=<n>` (shadow stack, mặc định 1024).
 
-Trong một bản checkout mã nguồn, `import "bm-engine"` trỏ về repository (hoặc import thẳng `js/node.mjs`)
-sẽ ưu tiên file `zig-out/bin/bm_engine.wasm` vừa build hơn file `js/bm_engine.wasm` đóng gói sẵn.
+Trong một bản checkout mã nguồn, `import "bm-render"` trỏ về repository (hoặc import thẳng `js/node.mjs`)
+sẽ ưu tiên file `zig-out/bin/bm_render.wasm` vừa build hơn file `js/bm_render.wasm` đóng gói sẵn.
 `BM_WASM=<path>` nạp một binary bất kỳ.
 
 ## Kiểm thử
@@ -65,7 +65,7 @@ wasm thay vì âm thầm làm hỏng bộ nhớ):
 ```sh
 zig build -Dwasm-optimize=safe -Dstrip=false -p /tmp/bmsafe
 cd bench
-BM_WASM=/tmp/bmsafe/bin/bm_engine.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
+BM_WASM=/tmp/bmsafe/bin/bm_render.wasm node probe/fuzz.mjs 1 3000   # seed, iterations
 ```
 
 ## Kiểm tra kết quả

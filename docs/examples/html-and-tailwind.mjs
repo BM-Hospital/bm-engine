@@ -5,7 +5,7 @@ const save = saver("html-and-tailwind");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/standard"; // HTML and Tailwind need standard or full
+import { Renderer } from "bm-render/standard"; // HTML and Tailwind need standard or full
 
 const renderer = new Renderer();
 renderer.registerFont(readFileSync("assets/fonts/Inter-Regular.ttf"));
@@ -231,12 +231,12 @@ assert.equal(px("bg-[var(--brand)]", [":root { --brand: red }"]), "transparent")
 assert.equal(px("hover:bg-red-500"), "transparent");
 
 // #region core-errors
-import { Renderer as CoreRenderer } from "bm-engine/core";
+import { Renderer as CoreRenderer } from "bm-render/core";
 const core = new CoreRenderer();
 expectThrow(() => core.renderSync("<div></div>", { width: 10, height: 10 }));
-// "bm-engine: this build has no HTML input support (use the standard / full build)"
+// "bm-render: this build has no HTML input support (use the standard / full build)"
 expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10, height: 10 }));
-// "bm-engine: Tailwind (`tw`) is not supported by this build"
+// "bm-render: Tailwind (`tw`) is not supported by this build"
 // #endregion
 console.log(expectThrow(() => core.renderSync("<div></div>", { width: 10, height: 10 })));
 console.log(expectThrow(() => core.renderSync({ type: "container", tw: "flex" }, { width: 10, height: 10 })));

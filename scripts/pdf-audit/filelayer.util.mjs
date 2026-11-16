@@ -3,7 +3,7 @@
 import { Name, Ref, fmt, pdfText, errNorm, isSerdeMessage } from "./lib.mjs";
 
 /**
- * The error message, or "ok". bm-engine prefixes every message with "bm-engine: " (js/engine.mjs); the prefix is removed here so
+ * The error message, or "ok". bm-render prefixes every message with "bm-render: " (js/engine.mjs); the prefix is removed here so
  * that the rest of the text is compared (the prefix itself is checked once, by file.error-prefix).
  */
 export const outcome = (r) => (r ? (r.error ? "ERR: " + errNorm(r.error) : "ok") : null);

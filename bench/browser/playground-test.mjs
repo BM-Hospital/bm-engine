@@ -220,7 +220,7 @@ async function suite(ctxFactory, base, profile, { dist = false } = {}) {
       await page.click("#downloadBtn");
       await page.waitForFunction(() => window.__dl, { timeout: 5000 }).catch(() => {});
       const d = await page.evaluate(() => window.__dl);
-      const ok = !!d && d.name === (fmt === "png" ? "bm-engine.png" : "bm-engine.svg") && (fmt === "png" ? d.head[1] === 80 && d.head[2] === 78 && d.head[3] === 71 : /<svg/.test(d.text));
+      const ok = !!d && d.name === (fmt === "png" ? "bm-render.png" : "bm-render.svg") && (fmt === "png" ? d.head[1] === 80 && d.head[2] === 78 && d.head[3] === 71 : /<svg/.test(d.text));
       R.extra["download " + fmt] = ok ? "pass" : "FAIL"; check(ok, `${tag}: download ${fmt} (${JSON.stringify(d)})`);
     }
     await setFormat(page, "png"); await sleep(60); await doRender(page);
@@ -275,7 +275,7 @@ async function suite(ctxFactory, base, profile, { dist = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------- PDF mode
-const PDF_LAZY = /\/(pdf\.mjs|pdf-api\.mjs|pdf-templates\.js|bm_engine\.pdf\.wasm)(\?|$)|pdfjs-/;
+const PDF_LAZY = /\/(pdf\.mjs|pdf-api\.mjs|pdf-templates\.js|bm_render\.pdf\.wasm)(\?|$)|pdfjs-/;
 const PDFJS = /pdfjs-[\d.]+\/pdf(\.worker)?\.min\.mjs/;
 const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 const countPages = (buf) => (Buffer.from(buf).toString("latin1").match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
@@ -316,15 +316,15 @@ async function viewerShows(page, frame) {
   const st = await shotStats(page, fh);
   return { url: cf?.url() || "", child: cf ? cf.childFrames().length : -1, ...st };
 }
-/** Runs the "Copy code" module in Node.js against this checkout (node_modules/bm-engine and assets/ are junctions). */
+/** Runs the "Copy code" module in Node.js against this checkout (node_modules/bm-render and assets/ are junctions). */
 function runSnippet(code) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "bm-pg-snippet-"));
-  const links = [path.join(dir, "node_modules", "bm-engine"), path.join(dir, "assets")];
+  const links = [path.join(dir, "node_modules", "bm-render"), path.join(dir, "assets")];
   mkdirSync(path.join(dir, "node_modules"));
   symlinkSync(ROOT, links[0], "junction"); symlinkSync(path.join(ROOT, "assets"), links[1], "junction");
   writeFileSync(path.join(dir, "render-pdf.mjs"), code);
-  const r = spawnSync(process.execPath, ["render-pdf.mjs"], { cwd: dir, encoding: "utf8", env: { ...process.env, BM_ENGINE_BACKEND: "wasm" } });
-  const out = existsSync(path.join(dir, "bm-engine.pdf")) ? readFileSync(path.join(dir, "bm-engine.pdf")) : null;
+  const r = spawnSync(process.execPath, ["render-pdf.mjs"], { cwd: dir, encoding: "utf8", env: { ...process.env, BM_RENDER_BACKEND: "wasm" } });
+  const out = existsSync(path.join(dir, "bm-render.pdf")) ? readFileSync(path.join(dir, "bm-render.pdf")) : null;
   for (const l of links) unlinkSync(l); // the junctions first: never recurse into the checkout
   rmSync(dir, { recursive: true, force: true });
   return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim(), head: out ? out.subarray(0, 5).toString("latin1") : "", pages: out ? countPages(out) : 0, bytes: out?.length || 0 };
@@ -382,10 +382,10 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     let s = await pdfSnap(page);
     const after = await page.evaluate(() => ({ kind: window.pg.state.kind, src: document.getElementById("src").value, css: document.getElementById("css").value, url: location.search, accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
     const kept = after.kind === before.kind && after.src === before.src && after.css === before.css;
-    const okSwitch = kept && s.mode === "pdf" && s.status === "ok" && s.head.startsWith("%PDF-") && /mode=pdf/.test(after.url) && /bm_engine\.pdf\.wasm - 1\.\d+ MiB/.test(s.bin) && after.accent.toLowerCase() === "#be123c";
+    const okSwitch = kept && s.mode === "pdf" && s.status === "ok" && s.head.startsWith("%PDF-") && /mode=pdf/.test(after.url) && /bm_render\.pdf\.wasm - 1\.\d+ MiB/.test(s.bin) && after.accent.toLowerCase() === "#be123c";
     R.extra["Image -> PDF keeps the editor, loads the pdf wasm, ?mode=pdf"] = okSwitch ? `pass (${s.bin}; OG card JSON -> ${s.pages}-page PDF)` : "FAIL";
     check(okSwitch, `${tag}: switch to PDF: ${JSON.stringify({ kept, s, after })}`);
-    check(reqs.some((u) => /bm_engine\.pdf\.wasm/.test(u)) && !reqs.some((u) => PDFJS.test(u)), `${tag}: after the switch: pdf wasm requested and pdf.js not (viewer preview)`);
+    check(reqs.some((u) => /bm_render\.pdf\.wasm/.test(u)) && !reqs.some((u) => PDFJS.test(u)), `${tag}: after the switch: pdf wasm requested and pdf.js not (viewer preview)`);
 
     // ---- every PDF template: %PDF- bytes, page count, the viewer shows it
     const tpls = await page.evaluate(() => window.pg.pdfTemplates.map((t) => ({ id: t.id, pages: t.pages })));
@@ -431,7 +431,7 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     await interceptDownload(page.mainFrame());
     await page.click("#downloadBtn");
     await page.waitForFunction(() => window.__dl, { timeout: 5000 }).catch(() => {});
-    { const d = await page.evaluate(() => window.__dl); const ok = d && d.name === "bm-engine.pdf" && d.head === "%PDF-" && d.size > 1000;
+    { const d = await page.evaluate(() => window.__dl); const ok = d && d.name === "bm-render.pdf" && d.head === "%PDF-" && d.size > 1000;
       R.extra["download .pdf"] = ok ? `pass (${d.size} B)` : "FAIL"; check(ok, `${tag}: download ${JSON.stringify(d)}`); }
     const newTarget = browser.waitForTarget((t) => t.url().startsWith("blob:"), { timeout: 10000 }).catch(() => null);
     await page.click("#openBtn");
@@ -442,7 +442,7 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     await page.click("#codeBtn"); await sleep(200);
     { const code = await page.evaluate(() => window.__lastCode || "");
       const want = await page.evaluate(() => +document.body.dataset.outPages);
-      const r = code.includes('from "bm-engine/pdf"') && code.includes("new PdfRenderer()") ? runSnippet(code) : { status: -1, stderr: "no snippet" };
+      const r = code.includes('from "bm-render/pdf"') && code.includes("new PdfRenderer()") ? runSnippet(code) : { status: -1, stderr: "no snippet" };
       const ok = r.status === 0 && r.head === "%PDF-" && r.pages === want;
       R.extra["Copy code -> runs in Node.js"] = ok ? `pass (accessible template, PDF/UA-1 + image: ${r.pages} page, ${r.bytes} B; ${code.split("\n").length} lines)` : "FAIL";
       check(ok, `${tag}: copy code run: ${JSON.stringify(r)}`); }
@@ -451,19 +451,19 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     await setPdf(page, { title: "" }); await doRender(page);
     s = await pdfSnap(page);
     { const hint = await page.$eval("#errorHint", (e) => (e.hidden ? "" : e.textContent));
-      const ok = s.status === "error" && s.error === "bm-engine: Writing the PDF failed: validation failed with 1 error" && /metadata.title/.test(hint);
+      const ok = s.status === "error" && s.error === "bm-render: Writing the PDF failed: validation failed with 1 error" && /metadata.title/.test(hint);
       R.extra["PDF/UA validation error (no title) + hint"] = ok ? `pass (${s.error})` : "FAIL"; check(ok, `${tag}: ua1 without title ${JSON.stringify({ s, hint })}`); }
     await selectPdfTemplate(page, "invoice");
     await setPdf(page, { bg: "paper" });
     await doRender(page);
     s = await pdfSnap(page);
-    { const ok = s.status === "error" && s.error === "bm-engine: backgroundColor is not a color: paper";
+    { const ok = s.status === "error" && s.error === "bm-render: backgroundColor is not a color: paper";
       R.extra["engine error shown verbatim (backgroundColor)"] = ok ? `pass (${s.error})` : "FAIL"; check(ok, `${tag}: bg error ${JSON.stringify(s)}`); }
     await setPdf(page, { bg: "" });
     await setSource(page, "html", "<p style=\"font-family: Inter\">Tokyo 東京</p>");
     await doRender(page);
     s = await pdfSnap(page);
-    { const ok = s.status === "error" && /^bm-engine: No font the text can use draws 東/.test(s.error);
+    { const ok = s.status === "error" && /^bm-render: No font the text can use draws 東/.test(s.error);
       R.extra["missing font error (uncoveredText: error)"] = ok ? `pass (${s.error.slice(0, 60)}...)` : "FAIL"; check(ok, `${tag}: missing font ${JSON.stringify(s)}`); }
     await setPdf(page, { uncovered: "blank" }); await doRender(page);
     s = await pdfSnap(page); check(s.status === "ok" && s.head.startsWith("%PDF-"), `${tag}: uncoveredText blank ${JSON.stringify(s)}`);
@@ -653,7 +653,7 @@ try {
   const base = `${server.url}/docs/playground-app/`;
   say(`dev server: ${server.url}`);
   // static server sanity: wasm MIME + traversal
-  { const r = await fetch(server.url + "/js/bm_engine.wasm"); check(r.headers.get("content-type") === "application/wasm", "wasm content-type " + r.headers.get("content-type"));
+  { const r = await fetch(server.url + "/js/bm_render.wasm"); check(r.headers.get("content-type") === "application/wasm", "wasm content-type " + r.headers.get("content-type"));
     const t = await fetch(server.url + "/docs/playground-app/..%2f..%2f..%2fpackage.json").catch(() => null); check(!t || t.status >= 400, "directory traversal not blocked"); }
 
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), base, profile);
@@ -666,10 +666,10 @@ try {
   if (!check(b.status === 0, "build.mjs failed: " + b.stderr)) throw new Error("build failed");
   distServer = await startServer({ root: path.join(PG, "dist") });
   say(`dist server: ${distServer.url}`);
-  { const r = await fetch(distServer.url + "/vendor/bm_engine.core.wasm"); check(r.headers.get("content-type") === "application/wasm", "dist wasm type"); }
+  { const r = await fetch(distServer.url + "/vendor/bm_render.core.wasm"); check(r.headers.get("content-type") === "application/wasm", "dist wasm type"); }
   for (const profile of ["core", "standard", "full"]) await suite(() => browser.createBrowserContext(), distServer.url + "/", profile, { dist: true });
-  { const r = await fetch(distServer.url + "/vendor/bm_engine.pdf.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "dist pdf wasm " + r.status);
-    const cfg = await (await fetch(distServer.url + "/config.js")).text(); check(/versions: \{"bm_engine\.core\.wasm":"[0-9a-f]{12}"/.test(cfg) && /pdfjsBase: "\.\/vendor\/pdfjs-[\d.]+\/"/.test(cfg), "dist config.js: versions / pdfjsBase"); }
+  { const r = await fetch(distServer.url + "/vendor/bm_render.pdf.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "dist pdf wasm " + r.status);
+    const cfg = await (await fetch(distServer.url + "/config.js")).text(); check(/versions: \{"bm_render\.core\.wasm":"[0-9a-f]{12}"/.test(cfg) && /pdfjsBase: "\.\/vendor\/pdfjs-[\d.]+\/"/.test(cfg), "dist config.js: versions / pdfjsBase"); }
   await pdfSuite(distServer.url + "/", "pdf (dist)", { full: false });
 
   // ---- docs site (VitePress build) embedding the playground
@@ -684,7 +684,7 @@ try {
   }
   siteServer = await startServer({ root: SITE, cleanUrls: true });
   say(`docs site server: ${siteServer.url}`);
-  { const r = await fetch(siteServer.url + "/playground-app/vendor/bm_engine.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "site wasm " + r.status); }
+  { const r = await fetch(siteServer.url + "/playground-app/vendor/bm_render.wasm"); check(r.ok && r.headers.get("content-type") === "application/wasm", "site wasm " + r.status); }
   for (const lang of ["en", "vi"]) await siteSuite(siteServer.url, lang);
   for (const lang of ["en", "vi"]) await sitePdfSuite(siteServer.url, lang);
 } catch (e) {

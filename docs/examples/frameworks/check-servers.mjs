@@ -34,7 +34,7 @@ let renders = 0;
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname !== "/og.png") return res.writeHead(404).end();
-  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-engine" };
+  const params = { title: url.searchParams.get("title") ?? "Hello", description: url.searchParams.get("description") ?? "Rendered with bm-render" };
   const etag = await etagFor(params);
   const headers = { etag, "cache-control": "public, max-age=3600, stale-while-revalidate=86400" };
   if (req.headers["if-none-match"] === etag) return res.writeHead(304, headers).end();

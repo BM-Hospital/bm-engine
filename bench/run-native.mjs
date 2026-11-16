@@ -159,7 +159,7 @@ S.cold = async () => {
   for (let i = 0; i < coldRuns; i++) {
     for (let j = 0; j < names.length; j++) {
       const n = names[(i + j) % names.length];
-      const env = n === "bm-wasm" ? { BM_ENGINE_BACKEND: "wasm" } : { BM_ENGINE_BACKEND: "" };
+      const env = n === "bm-wasm" ? { BM_RENDER_BACKEND: "wasm" } : { BM_RENDER_BACKEND: "" };
       const r = await child(["native/cold-child.mjs", n, cardFile, font], { env });
       const o = lastJson(r);
       if (o.error) { samples[n].push({ error: o.error }); continue; }
@@ -193,7 +193,7 @@ S.memory = async () => {
   const ls = loadSampler();
   let cpu = 0;
   for (const n of ENGINES) {
-    const env = n === "bm-wasm" ? { BM_ENGINE_BACKEND: "wasm" } : {};
+    const env = n === "bm-wasm" ? { BM_RENDER_BACKEND: "wasm" } : {};
     const s = lastJson(await child(["native/memory.mjs", n, "suite", `--passes=${memPasses}`, ...(filter ? [`--filter=${filter}`] : [])], { env, nodeArgs: ["--expose-gc"] }));
     const l = lastJson(await child(["native/memory.mjs", n, "large", "--size=4000"], { env, nodeArgs: ["--expose-gc"] }));
     cpu += (s.cpuMs ?? 0) + (l.cpuMs ?? 0);
@@ -231,7 +231,7 @@ S.throughput = async () => {
   const ls = loadSampler();
   let cpu = 0;
   for (const c of configs) {
-    const o = lastJson(await child(["native/throughput.mjs", c.engine, c.mode, `--k=${c.k ?? 1}`, `--n=${Ns}`, `--ms=${tpMs}`], { env: { UV_THREADPOOL_SIZE: String(c.uv), ...(c.engine === "bm-wasm" ? { BM_ENGINE_BACKEND: "wasm" } : {}) } }));
+    const o = lastJson(await child(["native/throughput.mjs", c.engine, c.mode, `--k=${c.k ?? 1}`, `--n=${Ns}`, `--ms=${tpMs}`], { env: { UV_THREADPOOL_SIZE: String(c.uv), ...(c.engine === "bm-wasm" ? { BM_RENDER_BACKEND: "wasm" } : {}) } }));
     for (const x of o.results ?? []) cpu += x.cpuMs;
     out.runs.push({ ...c, ...o });
     log(`  ${c.engine} ${c.mode}${c.k ? " k=" + c.k : ""} uv=${c.uv}: ${(o.results ?? []).map((x) => `${x.n}:${x.ips}`).join(" ") || o.error}`);
@@ -262,7 +262,7 @@ S.sizes = async () => {
   const js = path.join(ROOT, "js");
   res.sizes = {
     manifestDate: man.date, zig: man.zig, native,
-    wasm: { core: f(path.join(js, "bm_engine.core.wasm")), standard: f(path.join(js, "bm_engine.standard.wasm")), full: f(path.join(js, "bm_engine.wasm")), woffAddon: f(path.join(js, "bm_woff.wasm")) },
+    wasm: { core: f(path.join(js, "bm_render.core.wasm")), standard: f(path.join(js, "bm_render.standard.wasm")), full: f(path.join(js, "bm_render.wasm")), woffAddon: f(path.join(js, "bm_woff.wasm")) },
     takumi: { "native win32-x64-msvc (.node)": f(PATHS.takumiNative), "wasm (takumi_wasm_bg.wasm)": f(PATHS.takumiWasm) },
   };
   writeFileSync(cacheFile, JSON.stringify(cache));

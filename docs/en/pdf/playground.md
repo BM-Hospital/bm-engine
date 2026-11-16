@@ -9,7 +9,7 @@ pageClass: playground-page
 
 [English](playground.md) · [Tiếng Việt](../../vi/pdf/playground.md)
 
-The PDF playground runs the real `bm-engine/pdf` WebAssembly build (`bm_engine.pdf.wasm`) in your
+The PDF playground runs the real `bm-render/pdf` WebAssembly build (`bm_render.pdf.wasm`) in your
 browser: write node JSON, HTML or Tailwind, set the page, header, footer, metadata and standards
 options, and look at the PDF it writes. Nothing is uploaded; fonts and images you add stay in the page.
 
@@ -48,7 +48,7 @@ Text in a script those fonts do not cover needs an uploaded font (or `uncoveredT
 npm run playground          # http://127.0.0.1:8080/docs/playground-app/?mode=pdf
 ```
 
-The PDF engine (`js/pdf.mjs` and `bm_engine.pdf.wasm`, about 1.5 MiB) is loaded only when PDF mode is
+The PDF engine (`js/pdf.mjs` and `bm_render.pdf.wasm`, about 1.5 MiB) is loaded only when PDF mode is
 used, so the image playground does not download it. The app also accepts `?mode=image|pdf`, `?lang=en|vi`
 and `?theme=light|dark`; the source is in
 [docs/playground-app/](../../playground-app/README.md).

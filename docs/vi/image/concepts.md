@@ -1,4 +1,4 @@
-# bm-engine hoạt động thế nào
+# bm-render hoạt động thế nào
 
 [English](../../en/image/concepts.md) · [Tiếng Việt](concepts.md)
 
@@ -33,7 +33,7 @@ lần tùy ý:
 <!-- @example concepts#setup -->
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine";
+import { Renderer, features } from "bm-render";
 
 const renderer = new Renderer(); // create once, reuse for every render
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -46,13 +46,13 @@ const png = renderer.renderSync(
   {
     type: "container",
     style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#4f46e5" },
-    children: [{ type: "text", text: "Hello, bm-engine", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
+    children: [{ type: "text", text: "Hello, bm-render", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
   },
   { width: 600, height: 200 },
 );
 ```
 
-![Banner tím với dòng chữ Hello, bm-engine](/img/guide/concepts-first.png)
+![Banner tím với dòng chữ Hello, bm-render](/img/guide/concepts-first.png)
 
 `renderSync` trả về một `Uint8Array` chứa file PNG. Mỗi phương thức đều có bản async (`render`,
 `measure`, ...) chỉ khác ở chỗ nhận được các option bất đồng bộ như dữ liệu ảnh lazy; bản thân việc
@@ -113,8 +113,8 @@ const nodePng = renderer.renderSync(card, { width: 600, height: 160 });
 ![Một ảnh bốn màu nhòe cạnh tiêu đề và phụ đề](/img/guide/concepts-node-format.png)
 
 Ảnh 2 × 2 được kéo giãn thành 96 × 96 với nội suy mượt; `objectFit` mặc định là `fill`. Key lạ trên
-node bị bỏ qua; node thiếu `type` sẽ ném ``bm-engine: node is missing `type` `` và node text thiếu
-`text` sẽ ném ``bm-engine: text node is missing `text` ``.
+node bị bỏ qua; node thiếu `type` sẽ ném ``bm-render: node is missing `type` `` và node text thiếu
+`text` sẽ ném ``bm-render: text node is missing `text` ``.
 
 ## Ba cách mô tả cùng một ảnh {#three-ways-to-describe-the-same-image}
 
@@ -164,7 +164,7 @@ Với JSX, chuyển nội dung thành cây node bằng [hàm dựng node](framew
 
 ## Những mặc định gây bất ngờ {#defaults-that-surprise-people}
 
-bm-engine dùng các quy ước layout của CSS. Vài mặc định của CSS trông lạ nếu bạn đến từ
+bm-render dùng các quy ước layout của CSS. Vài mặc định của CSS trông lạ nếu bạn đến từ
 satori hoặc từ trình duyệt có CSS reset.
 
 ### `display` là `inline` {#display-is-inline}
@@ -285,7 +285,7 @@ const auto = renderer.renderSync({ type: "container", style: { width: 240, heigh
 
 // Empty content and no size is an error
 expectThrow(() => renderer.renderSync({ type: "container" }));
-// "bm-engine: invalid viewport: content has zero size and no width/height was given"
+// "bm-render: invalid viewport: content has zero size and no width/height was given"
 ```
 
 ### Device pixel ratio {#device-pixel-ratio}
@@ -314,14 +314,14 @@ bằng CSS px (px đầu ra ÷ `devicePixelRatio`).
 
 ### Không có font dựng sẵn {#fonts-none-built-in}
 
-bm-engine không kèm font nào và không bao giờ đọc font hệ thống. Chữ không có font đăng ký dùng được sẽ
+bm-render không kèm font nào và không bao giờ đọc font hệ thống. Chữ không có font đăng ký dùng được sẽ
 **không được vẽ**, và không báo lỗi. Hãy đăng ký mọi font bạn dùng trên từng renderer — xem
 [Font](./fonts.md).
 
 ### Style inline chặt chẽ, stylesheet dễ dãi {#strict-inline-styles-forgiving-stylesheets}
 
 Giá trị không hợp lệ trong `style` inline (`width: "10 px"`) sẽ ném
-`bm-engine: invalid value for style property width`. Cùng lỗi đó trong stylesheet hay class Tailwind
+`bm-render: invalid value for style property width`. Cùng lỗi đó trong stylesheet hay class Tailwind
 chỉ bị bỏ qua lặng lẽ, giống trình duyệt. Thuộc tính lạ và key kebab-case trong `style` cũng bị bỏ qua
 lặng lẽ. Xem [Style](./styles.md#inline-styles).
 
@@ -331,7 +331,7 @@ Ba đối tượng có vòng đời khác nhau:
 
 | Đối tượng | Số lượng | Giữ gì |
 |:--|:--|:--|
-| **Instance wasm** | một cho mỗi điểm vào (`bm-engine`, `bm-engine/core`, `/standard`, `/full`), tạo bởi `init` (tự động trên Node) | linear memory dùng chung cho mọi renderer của điểm vào đó |
+| **Instance wasm** | một cho mỗi điểm vào (`bm-render`, `bm-render/core`, `/standard`, `/full`), tạo bởi `init` (tự động trên Node) | linear memory dùng chung cho mọi renderer của điểm vào đó |
 | Một **`Renderer`** | bao nhiêu tùy cần; thường một cho mỗi bộ font | font đã đăng ký, cache ảnh đã giải mã (xóa khi vượt 96 MiB), cache glyph (xóa khi vượt 8 MiB), canvas |
 | Một **lần render** | một cho mỗi lời gọi | một arena tạm, được lần render sau dùng lại |
 
@@ -348,7 +348,7 @@ r.memoryBytes(); // size of the wasm memory shared by every renderer of this ent
 
 r.free();        // releases its fonts and caches; r can no longer be used
 expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 }));
-// "bm-engine: renderer has been freed"
+// "bm-render: renderer has been freed"
 
 {
   using scoped = new Renderer(); // free() is called at the end of the block
@@ -366,7 +366,7 @@ expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 })
 - **Đơn luồng.** Một lần render chặn luồng gọi nó. Muốn song song, hãy chạy một instance cho mỗi worker
   thread; renderer không thể chia sẻ giữa các luồng.
 - `free()` (hoặc `using`) giải phóng font và cache của renderer; sau đó mọi lời gọi trên nó đều ném
-  `bm-engine: renderer has been freed`.
+  `bm-render: renderer has been freed`.
 
 ## Profile trong một đoạn {#profiles-in-one-paragraph}
 
@@ -374,7 +374,7 @@ Engine được biên dịch thành ba binary cho ảnh (và binary thứ tư, `
 JPEG; 489.6 KiB), `standard` (thêm stylesheet, Tailwind, HTML, ảnh SVG, WOFF2, font variable và CFF,
 hiệu ứng như clip-path và blend mode, màu hiện đại, bảng, float; 936.5 KiB) và `full` (thêm bidi và chữ
 phức, emoji màu, animation CSS và `renderAnimation`, `renderSvg`, codec bổ sung; 1 143.6 KiB). Trên
-Node.js, `bm-engine` nạp `full`; `bm-engine/core` và `bm-engine/standard` nạp các bản nhỏ hơn.
+Node.js, `bm-render` nạp `full`; `bm-render/core` và `bm-render/standard` nạp các bản nhỏ hơn.
 `features` cho biết binary đang nạp làm được gì:
 
 <!-- @example concepts#features -->

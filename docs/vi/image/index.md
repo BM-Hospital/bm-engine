@@ -3,10 +3,10 @@
 [English](../../en/image/index.md) · [Tiếng Việt](index.md)
 
 Trang này đưa bạn từ một package đã cài tới một ảnh đã render trên Node.js và trong trình duyệt, rồi đi
-qua hai thứ mà dự án ảnh nào cũng phải tự cung cấp: font (bm-engine **không** kèm sẵn font) và ảnh. Hãy
+qua hai thứ mà dự án ảnh nào cũng phải tự cung cấp: font (bm-render **không** kèm sẵn font) và ảnh. Hãy
 cài package và chọn điểm vào trước: [Bắt đầu](../getting-started.md) nói về addon native và WebAssembly,
 bundler, edge runtime và các profile build. Mọi đoạn mã Node.js trên trang này đều đã được chạy thật với
-bm-engine 0.1.0 thông qua cơ chế phân giải package.
+bm-render 0.1.0 thông qua cơ chế phân giải package.
 
 - [Node.js](#nodejs)
 - [Trình duyệt không dùng bundler](#trình-duyệt-không-dùng-bundler)
@@ -17,12 +17,12 @@ bm-engine 0.1.0 thông qua cơ chế phân giải package.
 
 ## Node.js
 
-Trên Node.js, mọi điểm vào đều sẵn sàng ngay khi import (`bm-engine` với addon native hoặc, nếu không có, giống
+Trên Node.js, mọi điểm vào đều sẵn sàng ngay khi import (`bm-render` với addon native hoặc, nếu không có, giống
 các điểm vào theo profile: đọc binary wasm từ đĩa và khởi tạo đồng bộ), nên bạn có thể tạo `Renderer` luôn:
 
 ```js
 import { readFileSync, writeFileSync } from "node:fs";
-import { Renderer } from "bm-engine";
+import { Renderer } from "bm-render";
 
 const renderer = new Renderer();
 renderer.registerFont({ name: "Inter", data: readFileSync("Inter-Regular.ttf") });
@@ -34,7 +34,7 @@ const png = renderer.renderSync(
       display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center",
       backgroundImage: "linear-gradient(135deg, #f97316, #7c3aed)",
     },
-    children: [{ type: "text", text: "Hello from bm-engine", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
+    children: [{ type: "text", text: "Hello from bm-render", style: { fontFamily: "Inter", fontSize: 64, color: "white" } }],
   },
   { width: 1200, height: 630 },
 );
@@ -54,10 +54,10 @@ Cần lưu ý:
   theo hàng/cột, phải đặt rõ `display: "flex"` / `"block"` / `"grid"`.
   Xem [Xử lý sự cố](../troubleshooting.md#khối-chứa-bị-co-về-chiều-cao-0).
 
-Điểm vào Node của `bm-engine` đọc ba biến môi trường: `BM_ENGINE_BACKEND=wasm|native` (xem
+Điểm vào Node của `bm-render` đọc ba biến môi trường: `BM_RENDER_BACKEND=wasm|native` (xem
 [Cài đặt](../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)), `BM_PROFILE=core|standard|full` chọn một trong các
 binary wasm đóng gói sẵn và `BM_WASM=/path/to/file.wasm` nạp một bản build tùy biến (cả hai đều kéo theo wasm). Trong mã ứng dụng, nên
-dùng các subpath tường minh (`bm-engine/core`, ...).
+dùng các subpath tường minh (`bm-render/core`, ...).
 
 ## Trình duyệt không dùng bundler
 
@@ -67,9 +67,9 @@ binary nằm cạnh module điểm vào:
 ```html
 <img id="out" />
 <script type="module">
-  import { init, Renderer } from "/node_modules/bm-engine/js/full.mjs"; // hoặc core.mjs / standard.mjs
+  import { init, Renderer } from "/node_modules/bm-render/js/full.mjs"; // hoặc core.mjs / standard.mjs
 
-  await init(); // tải ./bm_engine.wasm tương đối với full.mjs
+  await init(); // tải ./bm_render.wasm tương đối với full.mjs
   const renderer = new Renderer();
   const font = await (await fetch("/fonts/Inter-Regular.ttf")).arrayBuffer();
   renderer.registerFont({ name: "Inter", data: font });
@@ -84,7 +84,7 @@ binary nằm cạnh module điểm vào:
 ```
 
 Với điểm vào chung (`js/index.mjs`), bạn truyền binary một cách tường minh:
-`await init(fetch("/node_modules/bm-engine/js/bm_engine.wasm"))`. `init` nhận chuỗi URL, `URL`,
+`await init(fetch("/node_modules/bm-render/js/bm_render.wasm"))`. `init` nhận chuỗi URL, `URL`,
 `Request`, `Response`, `Promise<Response>`, bytes hoặc một `WebAssembly.Module` đã biên dịch.
 
 - Phục vụ file `.wasm` với content type `application/wasm` để được biên dịch theo luồng (streaming); với
@@ -96,12 +96,12 @@ Với điểm vào chung (`js/index.mjs`), bạn truyền binary một cách tư
   và binary, kiểm tra đầu ra raw trùng từng byte với Node (12/12 ca ở lần chạy gần nhất, xem
   [Benchmark](../benchmark.md)).
   Bài test package còn nạp các trang build bằng Vite trong Edge 157 headless (render ra PNG, không có lỗi
-  console). Nạp thẳng từ CDN (`https://cdn.jsdelivr.net/npm/bm-engine@0.1.0/js/core.mjs`, rồi
+  console). Nạp thẳng từ CDN (`https://cdn.jsdelivr.net/npm/bm-render@0.1.0/js/core.mjs`, rồi
   `await init()`) hẳn sẽ chạy theo cùng cách khi package được phát hành; trước đó thì chưa kiểm thử.
 
 ## Font
 
-bm-engine không bao giờ đọc font hệ thống và **không kèm font nào**. Hãy đăng ký mọi font bạn dùng, theo
+bm-render không bao giờ đọc font hệ thống và **không kèm font nào**. Hãy đăng ký mọi font bạn dùng, theo
 từng `Renderer`:
 
 ```js
@@ -143,20 +143,20 @@ hãy gọi `text.normalize("NFC")` với dữ liệu người dùng nhập. Xem 
 
 ### WOFF trên core
 
-Binary `core` không có bộ giải mã WOFF/WOFF2. Một add-on riêng 84 KiB (`bm-engine/woff`) chuyển
+Binary `core` không có bộ giải mã WOFF/WOFF2. Một add-on riêng 84 KiB (`bm-render/woff`) chuyển
 WOFF/WOFF2 sang TTF/OTF trước khi đăng ký; kết quả trùng từng byte với bộ giải mã tích hợp:
 
 ```js
 import { readFileSync } from "node:fs";
-import { Renderer } from "bm-engine/core";
-import { loadWoff } from "bm-engine/woff";
+import { Renderer } from "bm-render/core";
+import { loadWoff } from "bm-render/woff";
 
 await loadWoff(); // Node: reads bm_woff.wasm from the package; bundlers: emitted as an asset
 const renderer = new Renderer();
 renderer.registerFont({ name: "Geist", data: readFileSync("Geist.woff2") }); // accepted now
 ```
 
-Trên Workers hãy truyền module: `import woff from "bm-engine/woff.wasm"; await loadWoff(woff)`. Việc chuyển
+Trên Workers hãy truyền module: `import woff from "bm-render/woff.wasm"; await loadWoff(woff)`. Việc chuyển
 đổi không thêm khả năng đọc CFF: một WOFF2 chứa outline CFF vẫn cần `standard` hoặc `full`.
 
 ## Ảnh

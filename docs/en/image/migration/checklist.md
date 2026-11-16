@@ -1,6 +1,6 @@
 # Integration checklist
 
-Follow these steps when adding bm-engine to an application or adapting an existing image template.
+Follow these steps when adding bm-render to an application or adapting an existing image template.
 
 1. **Choose the input.** Use plain node objects or HTML with `standard` / `full`. For JSX, see the [node factory](../frameworks/index.md#node-trees-without-jsx).
 2. **Register fonts.** Load font bytes once per renderer. Text does not appear without a registered font.

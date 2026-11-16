@@ -1,4 +1,4 @@
-//! Image codecs for bm-engine: format sniffing, header-only dimensions, decoders
+//! Image codecs for bm-render: format sniffing, header-only dimensions, decoders
 //! (PNG/APNG, JPEG, WebP lossless + lossy, GIF), animated frame access (GIF / WebP / APNG)
 //! and encoders (PNG, JPEG, WebP lossless, animated APNG / GIF / WebP, ICO).
 //!

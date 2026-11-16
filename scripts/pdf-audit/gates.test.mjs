@@ -14,7 +14,7 @@ test('word geometry rejects empty extraction and retains genuinely empty pages',
 
 const runner = fileURLToPath(new URL('./run.mjs', import.meta.url));
 function run(args) {
-  const env = { ...process.env, BM_ENGINE_BACKEND: 'wasm' };
+  const env = { ...process.env, BM_RENDER_BACKEND: 'wasm' };
   delete env.TAKUMI_PDF_REF;
   delete env.TAKUMI_PDF_REF_ENTRY;
   return spawnSync(process.execPath, [runner, ...args], { env, encoding: 'utf8', windowsHide: true, timeout: 120_000 });

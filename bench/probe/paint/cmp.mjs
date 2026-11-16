@@ -17,7 +17,7 @@ const showAll = args.includes("--all");
 const extra = args.find((a) => a.startsWith("--extra="))?.slice(8);
 let cases = ALL_CASES;
 if (extra) cases = cases.concat((await import(pathToFileURL(path.resolve(extra)).href)).default);
-bm.initSync(readFileSync(process.env.BM_WASM || new URL("../../../zig-out/bin/bm_engine.wasm", import.meta.url)));
+bm.initSync(readFileSync(process.env.BM_WASM || new URL("../../../zig-out/bin/bm_render.wasm", import.meta.url)));
 const pools = new Map();
 async function engines(fonts) {
   const key = fonts ? fonts.join(",") : "*";

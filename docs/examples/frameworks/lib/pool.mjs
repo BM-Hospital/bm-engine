@@ -1,4 +1,4 @@
-// A minimal worker_threads pool for bm-engine (recipes.md "worker_threads pool"). Each worker owns its own
+// A minimal worker_threads pool for bm-render (recipes.md "worker_threads pool"). Each worker owns its own
 // wasm instance and fonts (lib/render-worker.mjs); the PNG bytes are transferred back without copying.
 import { Worker } from "node:worker_threads";
 import { availableParallelism } from "node:os";

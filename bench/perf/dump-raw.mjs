@@ -12,7 +12,7 @@ const [dir, ids] = process.argv.slice(2);
 mkdirSync(dir, { recursive: true });
 const { createBinding } = await import(pathToFileURL(path.join(ROOT_DIR, "js", "engine.mjs")).href);
 const b = createBinding();
-b.initSync(readFileSync(path.join(ROOT_DIR, "js", "bm_engine.wasm")));
+b.initSync(readFileSync(path.join(ROOT_DIR, "js", "bm_render.wasm")));
 for (const id of ids.split(",")) {
   const k = ALL_CASES.find((c) => c.id === id);
   const r = new b.Renderer();

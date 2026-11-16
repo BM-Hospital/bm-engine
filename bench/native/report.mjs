@@ -143,7 +143,7 @@ B.env = (res, lang) => {
   const rows = [
     [L(lang, "Machine", "Máy"), `${m.cpu}, ${m.cpus} ${L(lang, "logical CPUs", "CPU logic")}, ${num(m.totalMemGiB, lang)} GiB, ${m.platform}`],
     ["Node.js", `${m.node} (V8 ${m.v8}, N-API ${m.napi}, libuv ${m.uv})`],
-    ["bm-engine", `${e["bm-native"].version}, git \`${(m.git.commit || "").slice(0, 10)}\` (${m.git.branch}${m.git.dirtyFiles ? `, ${m.git.dirtyFiles} ${L(lang, "modified tracked files", "file đang sửa")}` : ""})`],
+    ["bm-render", `${e["bm-native"].version}, git \`${(m.git.commit || "").slice(0, 10)}\` (${m.git.branch}${m.git.dirtyFiles ? `, ${m.git.dirtyFiles} ${L(lang, "modified tracked files", "file đang sửa")}` : ""})`],
     ["bm-native", `\`${e["bm-native"].file}\`, ${KiB(e["bm-native"].bytes, lang)} KiB, Zig ${e["bm-native"].zig}, ${e["bm-native"].optimize === "fast" ? "ReleaseFast" : e["bm-native"].optimize}, sha256 \`${(e["bm-native"].sha256 || "").slice(0, 12)}\``],
     ["bm-wasm", `\`${e["bm-wasm"].file}\` (${L(lang, "full profile", "profile full")}), ${KiB(e["bm-wasm"].bytes, lang)} KiB, sha256 \`${(e["bm-wasm"].sha256 || "").slice(0, 12)}\``],
     ["takumi-native", `\`${e["takumi-native"].package}\` ${e["takumi-native"].version} + \`${e["takumi-native"].binaryPackage}\` ${e["takumi-native"].binaryVersion}, ${KiB(e["takumi-native"].bytes, lang)} KiB`],
@@ -367,7 +367,7 @@ B.throughput = (res, lang) => {
 B.sizes = (res, lang) => {
   const s = res.sizes;
   if (!s) return "";
-  const rows = Object.entries(s.native).map(([n, f]) => [`\`bm-engine.${n}.node\``, `\`${f.zigTarget}\``, KiB(f.raw, lang), KiB(f.gzip9, lang), KiB(f.brotli, lang), f.executedHere ? L(lang, "executed (this benchmark)", "đã chạy (benchmark này)") : L(lang, "cross-compiled, structurally verified, never executed", "cross-compile, kiểm tra cấu trúc, chưa từng chạy")]);
+  const rows = Object.entries(s.native).map(([n, f]) => [`\`bm-render.${n}.node\``, `\`${f.zigTarget}\``, KiB(f.raw, lang), KiB(f.gzip9, lang), KiB(f.brotli, lang), f.executedHere ? L(lang, "executed (this benchmark)", "đã chạy (benchmark này)") : L(lang, "cross-compiled, structurally verified, never executed", "cross-compile, kiểm tra cấu trúc, chưa từng chạy")]);
   const w = s.wasm;
   const wrows = [["core", w.core], ["standard", w.standard], ["full", w.full], [L(lang, "WOFF add-on", "add-on WOFF"), w.woffAddon]].filter(([, v]) => v).map(([n, v]) => [`bm wasm \`${n}\``, "wasm32", KiB(v.raw, lang), KiB(v.gzip9, lang), KiB(v.brotli, lang), ""]);
   const trows = Object.entries(s.takumi).filter(([, v]) => v).map(([n, v]) => [`takumi 2.20 ${n}`, "", KiB(v.raw, lang), KiB(v.gzip9, lang), KiB(v.brotli, lang), ""]);

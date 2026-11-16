@@ -42,7 +42,7 @@ const ctx = { pending: [], waitUntil(p) { this.pending.push(p); } };
 const entry = process.env.CF_BUNDLE ? pathToFileURL(path.resolve(process.env.CF_BUNDLE)).href : new URL("./cloudflare/src/worker.js", import.meta.url).href;
 
 await check(`Worker fetch handler (${process.env.CF_BUNDLE ? "wrangler bundle" : "source, --conditions=workerd"})`, async () => {
-  if (!process.env.CF_BUNDLE) assert.match(import.meta.resolve("bm-engine/core"), /\/js\/core\.mjs$/, "run with --conditions=workerd");
+  if (!process.env.CF_BUNDLE) assert.match(import.meta.resolve("bm-render/core"), /\/js\/core\.mjs$/, "run with --conditions=workerd");
   const worker = (await import(entry)).default;
   const res = await worker.fetch(new Request("http://localhost/og.png?title=Hi"), {}, ctx);
   assert.equal(res.status, 200);

@@ -1,4 +1,4 @@
-# bench — bm-engine vs takumi: benchmark + output-equivalence harness
+# bench — bm-render vs takumi: benchmark + output-equivalence harness
 
 Node 26, ESM, Windows. Compares on identical inputs:
 
@@ -6,7 +6,7 @@ Node 26, ESM, Windows. Compares on identical inputs:
 | --- | --- | --- |
 | `takumi-wasm` | `@takumi-rs/wasm` (reference for equivalence) | `node_modules/@takumi-rs/wasm` |
 | `takumi-native` | `@takumi-rs/core` N-API (noise-floor baseline, perf reference) | `node_modules/@takumi-rs/core` |
-| `bm` | bm-engine Zig->WASM (`../js/node.mjs` + `../zig-out/bin/bm_engine.wasm`) | marked **unavailable** when either file is missing; per-case throws become `error: <msg>` |
+| `bm` | bm-render Zig->WASM (`../js/node.mjs` + `../zig-out/bin/bm_render.wasm`) | marked **unavailable** when either file is missing; per-case throws become `error: <msg>` |
 
 Everything is read-only with respect to the repo outside `bench/`.
 
@@ -110,4 +110,4 @@ npm run browser                       # every case except "known-gaps"
 node browser/run.mjs --filter=text --iters=30 --no-takumi --browser="C:\path\to\chrome.exe"
 ```
 
-What it does: serves the repo root on `127.0.0.1` (`browser/server.mjs`), loads `browser/page.html` (+ `page.mjs`, which streams `js/bm_engine.wasm`, registers the 9 fixture fonts and exposes `bmRender`/`bmBench`), sends each fixture over as JSON + base64 images, and checks (a) raw output is byte-identical to the Node render of the same wasm, (b) png/webp/jpeg decode in the browser (`createImageBitmap`) and match the raw render (opaque pixels +-1, jpeg mean abs diff < 3), (c) in-page timings vs Node, (d) `examples/browser.html` shows an image, and that no console errors/exceptions occur. It also tries `@takumi-rs/wasm` in the same browser through an import map for a browser-side comparison. Output: `out/browser-results.json`, `out/BROWSER.md`; exit code is non-zero on any failed assertion.
+What it does: serves the repo root on `127.0.0.1` (`browser/server.mjs`), loads `browser/page.html` (+ `page.mjs`, which streams `js/bm_render.wasm`, registers the 9 fixture fonts and exposes `bmRender`/`bmBench`), sends each fixture over as JSON + base64 images, and checks (a) raw output is byte-identical to the Node render of the same wasm, (b) png/webp/jpeg decode in the browser (`createImageBitmap`) and match the raw render (opaque pixels +-1, jpeg mean abs diff < 3), (c) in-page timings vs Node, (d) `examples/browser.html` shows an image, and that no console errors/exceptions occur. It also tries `@takumi-rs/wasm` in the same browser through an import map for a browser-side comparison. Output: `out/browser-results.json`, `out/BROWSER.md`; exit code is non-zero on any failed assertion.

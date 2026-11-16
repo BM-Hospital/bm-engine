@@ -172,7 +172,7 @@ node scripts/pdf-coverage.mjs --check
 node scripts/build-takumi-pdf-oracle.mjs --all-tests
 node scripts/build-takumi-pdf-wasm.mjs
 node scripts/build.mjs --profile=pdf
-$env:BM_ENGINE_BACKEND = 'wasm'
+$env:BM_RENDER_BACKEND = 'wasm'
 $env:TAKUMI_PDF_REF_ENTRY = (Resolve-Path bench/out/pdf-oracle/node.mjs).Path
 node scripts/pdf-compare.mjs --strict --golden-dir=bench/out/pdf-oracle/fixtures-generated
 node scripts/pdf-audit/run.mjs --strict
@@ -223,7 +223,7 @@ Fresh `node bench/pdf/validate.mjs --gate=bm-only --jobs=4`: all 161 documents r
 
 Full `node bench/pdf/bench.mjs` ran all stages on 159 common documents, three interleaved speed passes. Warm geomean: bm-native async 1.77 ms vs Takumi 5.68 ms (0.31x time; faster on 159/159); bm-wasm async 2.77 ms (0.51x; faster on 155/159). Scaling 1/10/100/500 pages: bm-native 4/27/314/2067 ms, bm-wasm 15.6/74.6/545/3525 ms, Takumi 45.4/230/2250/12348 ms. The generated benchmark report records CPU load and per-stage spread; see `bench/out/pdf/PDF.md` and the benchmark tables in the docs.
 
-The source strict audit still has 63/1,568 probes (115 assertions) that differ from Takumi. This is a behavior comparison, not a count of bm-engine defects. Case review confirms several differences are better CSS behavior in bm-engine: text-shaped `background-clip`, elliptical `clip-path`, independent cell fragmentation, intact replaced images, forced breaks in flex content, and list markers on the first fragment. Eight corpus documents differ semantically from Takumi; their PDF rasters were inspected and the observed differences preserve content or honor forced breaks where Takumi drops or misplaces it. Remaining source-probe differences still need a final case-level classification before treating the audit as fully closed.
+The source strict audit still has 63/1,568 probes (115 assertions) that differ from Takumi. This is a behavior comparison, not a count of bm-render defects. Case review confirms several differences are better CSS behavior in bm-render: text-shaped `background-clip`, elliptical `clip-path`, independent cell fragmentation, intact replaced images, forced breaks in flex content, and list markers on the first fragment. Eight corpus documents differ semantically from Takumi; their PDF rasters were inspected and the observed differences preserve content or honor forced breaks where Takumi drops or misplaces it. Remaining source-probe differences still need a final case-level classification before treating the audit as fully closed.
 
 ## 2026-11-15 repeated table-header border fix
 

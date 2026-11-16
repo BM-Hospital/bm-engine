@@ -23,19 +23,19 @@ import init, {
   type Features,
   type Prepared,
   type WasmExports,
-} from "bm-engine";
-import * as core from "bm-engine/core";
-import { init as initStandard, profile as standardProfile } from "bm-engine/standard";
-import fullInit, { Renderer as FullRenderer, wasmUrl } from "bm-engine/full";
-import { loadWoff, decodeWoff } from "bm-engine/woff";
-import * as pdf from "bm-engine/pdf";
-import { PdfRenderer, PageNumber, type PdfRenderOptions, type MeasuredSize } from "bm-engine/pdf";
-import pdfWasm from "bm-engine/pdf.wasm";
-import coreWasm from "bm-engine/core.wasm";
-import woffWasm from "bm-engine/woff.wasm";
-import coreWasmModule from "bm-engine/core.wasm?module"; // Next.js Edge / webpack `?module` form
-import * as native from "bm-engine/native";
-import nativeInit, { Renderer as NativeRenderer, backend as nativeBackend } from "bm-engine/native";
+} from "bm-render";
+import * as core from "bm-render/core";
+import { init as initStandard, profile as standardProfile } from "bm-render/standard";
+import fullInit, { Renderer as FullRenderer, wasmUrl } from "bm-render/full";
+import { loadWoff, decodeWoff } from "bm-render/woff";
+import * as pdf from "bm-render/pdf";
+import { PdfRenderer, PageNumber, type PdfRenderOptions, type MeasuredSize } from "bm-render/pdf";
+import pdfWasm from "bm-render/pdf.wasm";
+import coreWasm from "bm-render/core.wasm";
+import woffWasm from "bm-render/woff.wasm";
+import coreWasmModule from "bm-render/core.wasm?module"; // Next.js Edge / webpack `?module` form
+import * as native from "bm-render/native";
+import nativeInit, { Renderer as NativeRenderer, backend as nativeBackend } from "bm-render/native";
 
 declare const bytes: Uint8Array;
 
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const ex: WasmExports = await init(bytes);
   void ex;
   initSync(bytes);
-  await init(fetch("/bm_engine.wasm"));
+  await init(fetch("/bm_render.wasm"));
   await init({ module_or_path: new URL("https://example.com/x.wasm") });
   await init(coreWasm);
   // @ts-expect-error the neutral entry needs the wasm argument
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   const fr = new FullRenderer();
   fr.renderSync(node);
 
-  // PDF output (bm-engine/pdf)
+  // PDF output (bm-render/pdf)
   await pdf.init(pdfWasm);
   const pp: "pdf" = pdf.profile;
   const pr = new PdfRenderer();

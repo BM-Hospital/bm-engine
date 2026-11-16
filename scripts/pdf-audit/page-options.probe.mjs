@@ -1,7 +1,7 @@
 // Audit probes: page size, landscape and margins (page.size.*, page.landscape.*, page.margin.*).
 //
 // Method, shared with the other page-*, pagination-*, bands and counters probe files (helpers in
-// paged-helpers.mjs): each probe renders the same input with bm-engine/pdf and with the
+// paged-helpers.mjs): each probe renders the same input with bm-render/pdf and with the
 // published takumi-pdf and compares page count, page boxes and the text of each page (numbered lines L01, L02 ...
 // show where the pages were cut); `geom` also compares the position of every word (pdftotext -bbox).
 //
@@ -19,7 +19,7 @@ const G = { geom: true };
 
 // ------------------------------------------------------------------------------------------------ page options
 
-probe("page.error-prefix", "error messages: bm-engine prefixes 'bm-engine: '", async (t) => {
+probe("page.error-prefix", "error messages: bm-render prefixes 'bm-render: '", async (t) => {
   const r = await t.both(D3, { size: "tabloid" });
   t.same("message without the prefix", stripPrefix(r.bm.error), r.ref && r.ref.error);
 });

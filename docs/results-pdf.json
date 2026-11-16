@@ -27,19 +27,19 @@
   },
   "engines": {
    "bm-native": {
-    "package": "bm-engine",
+    "package": "bm-render",
     "version": "0.1.0",
-    "file": "native/dist/win32-x64-msvc/bm-engine.win32-x64-msvc.node",
+    "file": "native/dist/win32-x64-msvc/bm-render.win32-x64-msvc.node",
     "bytes": 3764224,
     "sha256": "771d6f7f6c9bc728f9efd164149ea8c71de2806813b7f217e09e84b77829d886",
     "zig": "0.17.0",
     "built": "2026-11-16T00:51:06.956Z"
    },
    "bm-wasm": {
-    "package": "bm-engine",
+    "package": "bm-render",
     "version": "0.1.0",
     "profile": "pdf",
-    "file": "js/bm_engine.pdf.wasm",
+    "file": "js/bm_render.pdf.wasm",
     "bytes": 1952483,
     "sha256": "8e1eaaa710df941dfda27f0664eda2f0742f59559282068dec650c13c4330fc1"
    },
@@ -2999,7 +2999,7 @@
  },
  "cold": {
   "runs": 30,
-  "what": "spawn node -> import bm-engine/pdf (js/node-pdf.mjs; BM_ENGINE_BACKEND picks the backend) or takumi-pdf -> registerFont(Inter Regular) -> one-page A4 invoice -> exit; wall = parent clock spawn to exit",
+  "what": "spawn node -> import bm-render/pdf (js/node-pdf.mjs; BM_RENDER_BACKEND picks the backend) or takumi-pdf -> registerFont(Inter Regular) -> one-page A4 invoice -> exit; wall = parent clock spawn to exit",
   "load": {
    "seconds": 18.7,
    "meanBusyPct": 58.5,

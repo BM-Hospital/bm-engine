@@ -1,15 +1,15 @@
-// bm-engine — dependency-free ESM wrapper around bm_engine.wasm (the environment-neutral entry,
-// `import ... from "bm-engine"` everywhere except Node.js). Works in browsers, Node.js, Bun, Deno and edge
+// bm-render — dependency-free ESM wrapper around bm_render.wasm (the environment-neutral entry,
+// `import ... from "bm-render"` everywhere except Node.js). Works in browsers, Node.js, Bun, Deno and edge
 // runtimes. The wasm module has NO imports. You pass the wasm binary to init() yourself:
 //
-//   import { init, Renderer } from "bm-engine";
+//   import { init, Renderer } from "bm-render";
 //   await init(wasm);  // bytes | URL | Request | Response | Promise<Response> | WebAssembly.Module
 //   const r = new Renderer();
 //   r.registerFont(fontBytes);
 //   const png = r.renderSync(node, { width: 1200, height: 630 });
 //
-// (bm-engine/core, bm-engine/standard, bm-engine/full find their wasm file themselves: `await init()`;
-// on Node.js `bm-engine` and every profile entry are initialised on import.)
+// (bm-render/core, bm-render/standard, bm-render/full find their wasm file themselves: `await init()`;
+// on Node.js `bm-render` and every profile entry are initialised on import.)
 //
 // The node format and render options follow takumi (`@takumi-rs/wasm` 2.20), so the same input renders on
 // both: a source is a node object, `{ json: string }`, or a string of HTML; `css`, `tw`, `className` etc. are
@@ -17,7 +17,7 @@
 //
 // takumi `Renderer` API parity (async methods resolve immediately; every one has a *Sync twin here):
 //
-//   takumi                         bm-engine
+//   takumi                         bm-render
 //   ----------------------------   ---------------------------------------------------------------------------
 //   new Renderer(options)          works; `cacheMaxBytes` / `fontCacheMaxBytes` accepted and ignored (fixed
 //                                  budgets: 96 MiB decoded images, 8 MiB glyph masks)
@@ -34,7 +34,7 @@
 //   renderAsDataUrl                works (raw rejected)
 //   renderSvg                      works (builds with `render_svg`: the full profile); renderSvgSync twin
 //   measure                        works
-//   (takumi-pdf)                   renderPdf / measurePdf (+ Sync twins): builds with `pdf`, i.e. bm-engine/pdf (js/pdf.mjs)
+//   (takumi-pdf)                   renderPdf / measurePdf (+ Sync twins): builds with `pdf`, i.e. bm-render/pdf (js/pdf.mjs)
 //   prepare(source, options)       returns a prepared handle; `render`/`renderAsDataUrl`/`measure` accept it and
 //                                  merge its options. NOTE: unlike takumi it fetches nothing (no `needs` pass):
 //                                  remote images / @font-face files must be passed as `images` / fonts
@@ -44,14 +44,14 @@
 //   free / [Symbol.dispose]        works
 //   setGlyphCacheMaxBytes(bytes)   module function accepted and ignored (fixed 8 MiB glyph budget)
 //
-// Build profiles (scripts/build.mjs): bm_engine.core.wasm (JSON nodes + inline styles, flex/grid/block,
-// static TTF, PNG/JPEG in), bm_engine.standard.wasm (+ css, tw, html, svg images, woff2, variable fonts,
-// cff, effects, modern colours, tables, floats, webp/gif in, text-wrap balance) and bm_engine.wasm = full
+// Build profiles (scripts/build.mjs): bm_render.core.wasm (JSON nodes + inline styles, flex/grid/block,
+// static TTF, PNG/JPEG in), bm_render.standard.wasm (+ css, tw, html, svg images, woff2, variable fonts,
+// cff, effects, modern colours, tables, floats, webp/gif in, text-wrap balance) and bm_render.wasm = full
 // (+ complex text, colour emoji, animation, extra codecs, renderSvg). `features` (filled by init) tells
 // which optional features the loaded binary has; using a missing one throws a clear error.
 //
 // One module instance per entry: this entry (and js/node.mjs, which initialises it on Node) share one;
-// bm-engine/core, /standard and /full each have their own, so several profiles can coexist in a process.
+// bm-render/core, /standard and /full each have their own, so several profiles can coexist in a process.
 // Within one entry the first successful init wins; later init() calls return the same instance.
 import { createBinding } from "./engine.mjs";
 

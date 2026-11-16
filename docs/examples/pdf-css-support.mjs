@@ -20,7 +20,7 @@ function pdftotext(bytes) {
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { PdfRenderer } from "bm-engine/pdf";
+import { PdfRenderer } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -28,7 +28,7 @@ const page = { size: { width: 400, height: 300 }, margin: 24 };
 // #endregion
 
 // #region ignored-in-images
-import { Renderer } from "bm-engine/pdf";
+import { Renderer } from "bm-render/pdf";
 
 const html = `<div style="font-family: Inter">
   <p>Page one</p><p style="break-before: page">Page two</p>

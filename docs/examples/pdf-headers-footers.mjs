@@ -19,7 +19,7 @@ const says = (bytes, n, s) => { const t = pageText(bytes, n); if (t !== null) as
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { PdfRenderer, PageNumber, TotalPages } from "bm-engine/pdf";
+import { PdfRenderer, PageNumber, TotalPages } from "bm-render/pdf";
 
 const pdf = new PdfRenderer();
 pdf.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });

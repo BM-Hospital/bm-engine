@@ -2,12 +2,12 @@
 
 [English](../../../en/image/frameworks/hono-express.md) · [Tiếng Việt](hono-express.md)
 
-Server Node.js thuần là cách trực tiếp nhất để phục vụ ảnh với bm-engine: import một Node entry (nó tự
+Server Node.js thuần là cách trực tiếp nhất để phục vụ ảnh với bm-render: import một Node entry (nó tự
 khởi tạo), tạo renderer một lần, rồi ghi các byte vào response. Trang này trình bày cùng một endpoint
 `/og.png` trong Hono, Express và module `node:http` trần.
 
 ::: info Trạng thái kiểm chứng
-Đã kiểm chứng trên Node 26.13 với bm-engine cài từ tarball đã đóng gói: mỗi server bên dưới được khởi động
+Đã kiểm chứng trên Node 26.13 với bm-render cài từ tarball đã đóng gói: mỗi server bên dưới được khởi động
 trên một cổng localhost ngẫu nhiên rồi được fetch; mọi response đều là PNG 1200 × 630 với các header như
 mong đợi. Phiên bản: **Hono 4.13.18 với @hono/node-server 2.1.7**, **Express 5.3.0**, `node:http`
 (`docs/examples/frameworks/check-servers.mjs`). Express 4.22.3 chỉ được kiểm tra về cách `res.send` xử lý một `Uint8Array` trần (xem bên dưới).
@@ -98,7 +98,7 @@ createServer(async (req, res) => {
 
   const params = {
     title: url.searchParams.get("title") ?? "Hello",
-    description: url.searchParams.get("description") ?? "Rendered with bm-engine",
+    description: url.searchParams.get("description") ?? "Rendered with bm-render",
   };
   const etag = await etagFor(params);
   const headers = { etag, "cache-control": "public, max-age=3600, stale-while-revalidate=86400" };

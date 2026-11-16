@@ -5,7 +5,7 @@ const save = saver("concepts");
 
 // #region setup
 import { readFileSync } from "node:fs";
-import { Renderer, features } from "bm-engine";
+import { Renderer, features } from "bm-render";
 
 const renderer = new Renderer(); // create once, reuse for every render
 renderer.registerFont({ name: "Inter", data: readFileSync("assets/fonts/Inter-Regular.ttf") });
@@ -17,7 +17,7 @@ const png = renderer.renderSync(
   {
     type: "container",
     style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#4f46e5" },
-    children: [{ type: "text", text: "Hello, bm-engine", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
+    children: [{ type: "text", text: "Hello, bm-render", style: { fontFamily: "Inter", fontSize: 40, fontWeight: 700, color: "white" } }],
   },
   { width: 600, height: 200 },
 );
@@ -160,7 +160,7 @@ const auto = renderer.renderSync({ type: "container", style: { width: 240, heigh
 
 // Empty content and no size is an error
 expectThrow(() => renderer.renderSync({ type: "container" }));
-// "bm-engine: invalid viewport: content has zero size and no width/height was given"
+// "bm-render: invalid viewport: content has zero size and no width/height was given"
 // #endregion
 assert.equal((auto[18] << 8) | auto[19], 240);
 assert.match(expectThrow(() => renderer.renderSync({ type: "container" })), /content has zero size/);
@@ -190,7 +190,7 @@ r.memoryBytes(); // size of the wasm memory shared by every renderer of this ent
 
 r.free();        // releases its fonts and caches; r can no longer be used
 expectThrow(() => r.renderSync({ type: "container" }, { width: 10, height: 10 }));
-// "bm-engine: renderer has been freed"
+// "bm-render: renderer has been freed"
 
 {
   using scoped = new Renderer(); // free() is called at the end of the block

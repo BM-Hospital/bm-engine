@@ -19,7 +19,7 @@ let backend = engine, out = { length: 0 }, t1 = t0, t2 = t0;
 if (engine !== "none") {
   let r;
   if (engine === "bm-native" || engine === "bm-wasm") {
-    // what `import "bm-engine"` resolves to on Node (js/node.mjs); the wasm run sets BM_ENGINE_BACKEND=wasm
+    // what `import "bm-render"` resolves to on Node (js/node.mjs); the wasm run sets BM_RENDER_BACKEND=wasm
     const m = await import(pathToFileURL(path.join(ROOT, "js", "node.mjs")).href);
     backend = "bm-" + m.backend;
     r = new m.Renderer();

@@ -1,19 +1,19 @@
-// bm-engine internal (Node.js / Bun / Deno only): finds and loads the native Node-API addon and wraps it as an
-// engine backend for js/engine.mjs. Imported by js/node.mjs (`bm-engine` on Node: native when available, else
-// wasm), js/node-pdf.mjs (`bm-engine/pdf` on Node, likewise, with the addon's PDF output) and js/node-native.mjs
-// (`bm-engine/native`: native or an error). The wasm-only entries never import
+// bm-render internal (Node.js / Bun / Deno only): finds and loads the native Node-API addon and wraps it as an
+// engine backend for js/engine.mjs. Imported by js/node.mjs (`bm-render` on Node: native when available, else
+// wasm), js/node-pdf.mjs (`bm-render/pdf` on Node, likewise, with the addon's PDF output) and js/node-native.mjs
+// (`bm-render/native`: native or an error). The wasm-only entries never import
 // this file, so bundles for browsers / edge runtimes contain no `require` of a `.node` file.
 //
 // Where the addon is looked for (first that loads wins; nothing here ever throws):
-//   1. $BM_ENGINE_NATIVE_PATH: a `.node` file. When set, it is the ONLY candidate.
-//   2. a source checkout's build output: ../native/dist/<name>/bm-engine.<name>.node (scripts/build-native.mjs)
-//   3. the per-platform npm package `bm-engine-<name>` (an optional dependency whose main is the `.node` file)
+//   1. $BM_RENDER_NATIVE_PATH: a `.node` file. When set, it is the ONLY candidate.
+//   2. a source checkout's build output: ../native/dist/<name>/bm-render.<name>.node (scripts/build-native.mjs)
+//   3. the per-platform npm package `bm-render-<name>` (an optional dependency whose main is the `.node` file)
 // with <name> = win32-x64-msvc | win32-arm64-msvc | linux-x64-gnu | linux-x64-musl | linux-arm64-gnu |
 // linux-arm64-musl | darwin-x64 | darwin-arm64. On Linux the C library is detected (glibc / musl); the other
 // variant is tried when the detected one does not load.
 //
 // Bundlers and output tracing: 1 and 2 are opened with process.dlopen (not a module request, so bundlers and
-// file tracers ignore them: they are never part of an installed package). 3 is `require("bm-engine-<name>")`
+// file tracers ignore them: they are never part of an installed package). 3 is `require("bm-render-<name>")`
 // with a literal package name per platform on `createRequire(import.meta.url)`, the form @vercel/nft follows
 // (Next.js with webpack + serverExternalPackages, Vercel functions of other frameworks), so the installed platform
 // package is traced into deployments. The webpackIgnore / turbopackIgnore comments stop bundlers from trying to
@@ -75,7 +75,7 @@ export function nativeNames() {
 }
 
 /**
- * require() of the platform package `bm-engine-<name>`. Written the way file tracers (@vercel/nft) recognise: `createRequire(import.meta.url)` assigned to a `require`
+ * require() of the platform package `bm-render-<name>`. Written the way file tracers (@vercel/nft) recognise: `createRequire(import.meta.url)` assigned to a `require`
  * in the same scope as one literal request per package. Do not "simplify" into a template string or pass
  * `require` around: the platform package would silently disappear from traced deployments. Throws when
  * import.meta.url is unusable (a CommonJS bundle); the caller then uses requirePlatformPackageFrom().
@@ -83,21 +83,21 @@ export function nativeNames() {
 function requirePlatformPackage(name) {
   const require = createRequire(import.meta.url);
   switch (name) {
-    case "win32-x64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-win32-x64-msvc");
-    case "win32-arm64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-win32-arm64-msvc");
-    case "linux-x64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-x64-gnu");
-    case "linux-x64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-x64-musl");
-    case "linux-arm64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-arm64-gnu");
-    case "linux-arm64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-linux-arm64-musl");
-    case "darwin-x64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-darwin-x64");
-    case "darwin-arm64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-engine-darwin-arm64");
+    case "win32-x64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-win32-x64-msvc");
+    case "win32-arm64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-win32-arm64-msvc");
+    case "linux-x64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-x64-gnu");
+    case "linux-x64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-x64-musl");
+    case "linux-arm64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-arm64-gnu");
+    case "linux-arm64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-arm64-musl");
+    case "darwin-x64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-darwin-x64");
+    case "darwin-arm64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-darwin-arm64");
   }
   throw new Error(`no package for ${name}`);
 }
 
 /** The same from moduleBase() (a bundle's __filename, or the working directory). Not traced; a fallback. */
 function requirePlatformPackageFrom(base, name) {
-  return createRequire(base)(`bm-engine-${name}`);
+  return createRequire(base)(`bm-render-${name}`);
 }
 
 /** Loads a `.node` file by path (process.dlopen: what require() does for `.node`, without a module request). */
@@ -118,7 +118,7 @@ export function loadNative() {
     const names = nativeNames();
     if (names.length === 0) errors.push(`no native build for ${proc.platform}-${proc.arch}`);
     const candidates = []; // [label, load()]
-    const forced = proc.env.BM_ENGINE_NATIVE_PATH;
+    const forced = proc.env.BM_RENDER_NATIVE_PATH;
     if (forced) {
       const file = resolve(forced); // (relative to the working directory)
       candidates.push([file, () => dlopen(file)]);
@@ -126,7 +126,7 @@ export function loadNative() {
       let here = null;
       try { here = fileURLToPath(moduleBase()); } catch {}
       for (const name of here ? names : []) {
-        const dev = resolve(here, "..", "..", "native", "dist", name, `bm-engine.${name}.node`);
+        const dev = resolve(here, "..", "..", "native", "dist", name, `bm-render.${name}.node`);
         if (existsSync(dev)) candidates.push([dev, () => dlopen(dev)]);
       }
       let metaUrl = false;
@@ -134,7 +134,7 @@ export function loadNative() {
         metaUrl = String(import.meta.url).startsWith("file:");
       } catch {}
       for (const name of names) {
-        candidates.push([`bm-engine-${name}`, () => (metaUrl ? requirePlatformPackage(name) : requirePlatformPackageFrom(moduleBase(), name))]);
+        candidates.push([`bm-render-${name}`, () => (metaUrl ? requirePlatformPackage(name) : requirePlatformPackageFrom(moduleBase(), name))]);
       }
     }
     for (const [id, load] of candidates) {
@@ -173,14 +173,14 @@ export function nativeHasPdf(addon) {
 
 /**
  * The addon as a js/engine.mjs backend (see the interface there). `pdf`: expose its PDF output. One addon serves
- * two entries: `bm-engine` / `bm-engine/native` (pdf = false: the feature set of the full wasm build, so
- * `features.pdf` is false and renderPdf rejects exactly as it does on wasm) and `bm-engine/pdf` (pdf = true).
+ * two entries: `bm-render` / `bm-render/native` (pdf = false: the feature set of the full wasm build, so
+ * `features.pdf` is false and renderPdf rejects exactly as it does on wasm) and `bm-render/pdf` (pdf = true).
  */
 export function nativeBackend(addon, pdf = false) {
   const ops = addon.ops;
   const id = (op) => {
     const i = ops[op];
-    if (i === undefined || (!pdf && PDF_OPS.has(op))) throw new Error(`bm-engine: ${op} is not supported by this native build`);
+    if (i === undefined || (!pdf && PDF_OPS.has(op))) throw new Error(`bm-render: ${op} is not supported by this native build`);
     return i;
   };
   // V8 (Node.js, Deno, Electron) hands out zero-filled ArrayBuffers: raw frames are then painted straight into
@@ -220,8 +220,8 @@ export function nativeBinding() {
   const addon = loadNative();
   if (!addon) return (binding = null);
   binding = createBinding(undefined, nativeBackend(addon));
-  // WOFF / WOFF2 is compiled in: wasm entries without it (bm-engine/core) decode through the addon as well,
-  // and bm-engine/woff's loadWoff() has nothing to load.
+  // WOFF / WOFF2 is compiled in: wasm entries without it (bm-render/core) decode through the addon as well,
+  // and bm-render/woff's loadWoff() has nothing to load.
   if (addon.ops.woffDecode !== undefined) {
     builtInWoffDecoder((bytes) => {
       const src = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer ?? bytes, bytes.byteOffset ?? 0, bytes.byteLength);
@@ -234,8 +234,8 @@ export function nativeBinding() {
 let pdfBinding; // undefined = not tried yet
 
 /**
- * The same API on the same addon with its PDF output exposed (`bm-engine/pdf` on Node: js/node-pdf.mjs), or null
- * when no addon is available or it was built without the `pdf` feature (the caller then uses bm_engine.pdf.wasm).
+ * The same API on the same addon with its PDF output exposed (`bm-render/pdf` on Node: js/node-pdf.mjs), or null
+ * when no addon is available or it was built without the `pdf` feature (the caller then uses bm_render.pdf.wasm).
  */
 export function nativePdfBinding() {
   if (pdfBinding !== undefined) return pdfBinding;

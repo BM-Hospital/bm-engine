@@ -13,7 +13,7 @@ let cases = ALL_CASES;
 if (extra) cases = cases.concat((await import(pathToFileURL(path.resolve(extra)).href)).default);
 const k = cases.find((c) => c.id === args[0]);
 const thr = +(args[1] || 1), max = +(args[2] || 12);
-bm.initSync(readFileSync(process.env.BM_WASM || new URL("../../../zig-out/bin/bm_engine.wasm", import.meta.url)));
+bm.initSync(readFileSync(process.env.BM_WASM || new URL("../../../zig-out/bin/bm_render.wasm", import.meta.url)));
 const r = new bm.Renderer();
 for (const f of fontsFor(k.fonts)) r.registerFont({ name: f.name, data: readFileSync(f.path), weight: f.weight, style: f.style });
 const t = await tk.create({ fonts: fontsFor(k.fonts) });
