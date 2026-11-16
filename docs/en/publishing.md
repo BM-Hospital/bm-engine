@@ -87,7 +87,7 @@ for d in npm/*/; do npm pack --dry-run "$d"; done
 `test:pack` runs the install scenarios with the real tarballs: the matching platform package selected by
 npm, the wasm fallback without it (`--omit=optional`, missing, corrupted or foreign binaries),
 `BM_RENDER_BACKEND`, `bm-render/native`, worker threads, bundlers. Locally only the host's binary can be
-executed; the others are executed by the CI test matrix ([the CI route](#the-ci-route)). **Do not publish a platform that has never
+executed; the others are executed by the CI test matrix ([the CI route](#the-ci-route-manual-release-from-github-actions)). **Do not publish a platform that has never
 passed `native-identity.mjs` and `native-tests.mjs` on its own OS and CPU** unless you accept that its users
 may silently get wasm (the fallback) or, worse, a binary that loads but misbehaves.
 
@@ -166,22 +166,35 @@ at the stable release; users opt in with `npm i bm-render@next`. The exact-versi
 make the tag of the platform packages irrelevant for resolution, but keep them consistent. To promote a
 version later: `npm dist-tag add bm-render@0.3.0 latest` (and the same for the eight platform packages).
 
-## The CI route
+## The CI route: manual release from GitHub Actions
 
-`.github/workflows/release.yml` automates steps 2 to 5 on a `v*`
-tag push: one Linux job builds the wasm and cross-compiles the eight addons with a pinned, checksum-verified
-Zig 0.17.1; a test matrix **executes** every addon on its own platform (Ubuntu x64 and arm64, Alpine x64 and
-arm64 in Docker, macOS x64 and arm64, Windows x64 and arm64) on Node 18, the current LTS and the newest
-release (`native-identity.mjs`, `native-tests.mjs`, and the install scenarios once per platform); only when
-all of that is green does the publish job release the eight platform packages and then `bm-render`, with
-`--provenance`, `--tag next` for prereleases, and skipping versions that are already on the registry (so a
-failed run can simply be re-run). Requirements: the `NPM_TOKEN` repository secret (or npm trusted
-publishing configured per package, after the first manual publish), the placeholders filled in, the action
-SHAs and runner labels checked. `.github/workflows/ci.yml` builds and
-tests on every push and pull request.
+`.github/workflows/release.yml` releases without any npm login or OTP on your machine. Run it from
+**Actions → release → Run workflow**:
 
-::: warning Never executed
-Both workflows are templates: their YAML was parsed and checked, and the action SHAs were resolved from
-the release tags on 2026-11-12, but neither has ever run on GitHub. Expect to fix details on the first run
-(do it with a prerelease tag).
+| Input | Meaning |
+|:--|:--|
+| `version` | e.g. `0.1.1` or `0.2.0-beta.0`; empty = the version already in `package.json` |
+| `dist_tag` | `auto` (`next` for prereleases, `latest` otherwise), `latest` or `next` |
+| `dry_run` | build + test + `npm publish --dry-run`: nothing is committed, tagged or published |
+| `skip_tests` | skip the per-platform tests, only to retry a publish whose tests already passed |
+
+What it does: one Linux job bumps the version (when `version` differs), builds the wasm and cross-compiles
+the eight addons with a pinned, checksum-verified Zig 0.17.1, and runs the Zig tests; eight test jobs
+**execute** each addon on its own platform (Ubuntu x64 / arm64, Alpine x64 / arm64 in Docker, macOS x64 /
+arm64, Windows x64 / arm64: `native-identity.mjs`, `native-tests.mjs`, the install scenarios); only when all
+of that is green does the publish job commit `Release <version>`, push the `v<version>` tag, and publish
+the eight `@hunghg255/bm-render-<platform>` packages and then `bm-render`, with provenance, skipping
+versions already on the registry (so a failed run can simply be run again).
+
+**One-time setup: npm trusted publishing.** On npmjs.com, for each of the nine packages (`bm-render` and the
+eight `@hunghg255/bm-render-*`, once they exist on the registry): **Settings → Trusted Publisher → GitHub
+Actions**, user/organization `BM-Hospital`, repository `bm-render`, workflow `release.yml`, environment
+`npm`. npm then accepts publishes from this workflow through OIDC, with no token. (Alternative: a
+repository secret `NPM_TOKEN` holding a granular token allowed to publish those packages; the workflow uses
+it when it is set.) If `main` is a protected branch, allow GitHub Actions to push the release commit, or
+bump the version locally and leave `version` empty.
+
+::: warning First run
+The action SHAs were resolved from their release tags on 2026-11-12, but the workflow has not run on
+GitHub yet. Do the first run with `dry_run`, or with a prerelease version.
 :::

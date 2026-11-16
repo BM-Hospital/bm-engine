@@ -1,0 +1,273 @@
+# Manual release of bm-render and its 8 native platform packages (@hunghg255/bm-render-<platform>).
+# Run it from the Actions tab: "release" -> "Run workflow" -> fill in the version.
+#
+#   build    one Linux runner: optional version bump (scripts/npm-platform-packages.mjs --set-version), the wasm
+#            (npm run build), the 8 native addons cross-compiled with Zig and structurally verified
+#            (npm run build:native), the platform packages (npm run build:npm), version sync + manifest check
+#   test     every native addon EXECUTED on its own platform (glibc / musl / macOS / Windows, x64 / arm64):
+#            byte identity with wasm (bench/native-identity.mjs), the native suite (bench/native-tests.mjs) and the
+#            npm install scenarios (scripts/pack-test.mjs). Skipped with "skip_tests" (to retry a failed publish).
+#   publish  commits "Release <version>" + tag v<version> when the version was bumped, then publishes the 8 platform
+#            packages FIRST and bm-render LAST, skipping versions already on the registry (a failed run can simply
+#            be run again). With "dry_run": `npm publish --dry-run`, nothing is committed or pushed.
+#
+# npm authentication, no login / OTP: npm trusted publishing (OIDC). On npmjs.com, for EACH of the 9 packages:
+# Settings -> Trusted Publisher -> GitHub Actions, organization/user "BM-Hospital", repository "bm-render",
+# workflow "release.yml", environment "npm". (Alternative: a repository secret NPM_TOKEN with an npm granular
+# token allowed to publish bm-render and @hunghg255/*; it is used only when set.)
+#
+# Actions are pinned to commit SHAs (resolved from their release tags on 2026-11-12; the tag is in the comment).
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.1.1 or 0.2.0-beta.0 (empty = the version in package.json)"
+        required: false
+        type: string
+      dist_tag:
+        description: "npm dist-tag (auto = next for prereleases, latest otherwise)"
+        required: true
+        default: auto
+        type: choice
+        options: [auto, latest, next]
+      dry_run:
+        description: "Dry run: build + test + npm publish --dry-run, no commit / tag / publish"
+        required: true
+        default: false
+        type: boolean
+      skip_tests:
+        description: "Skip the per-platform tests (only to retry a publish whose tests already passed)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  ZIG_VERSION: "0.17.1"
+  # sha256 of zig-x86_64-linux-0.17.1.tar.xz from https://ziglang.org/download/index.json
+  ZIG_SHA256: "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a"
+
+jobs:
+  build:
+    name: build (wasm + 8 native targets)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      bumped: ${{ steps.version.outputs.bumped }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+      - name: Install Zig ${{ env.ZIG_VERSION }} (checksum-verified)
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zig.tar.xz" "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          echo "${ZIG_SHA256}  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/zig"
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
+          echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
+      - run: zig version
+      - name: Install root dev dependencies (binaryen for wasm-opt)
+        # the platform packages of this version are not on the registry yet: leave them out of the install
+        run: |
+          npm pkg delete optionalDependencies
+          npm ci --ignore-scripts --no-audit --no-fund
+          git checkout -- package.json
+      - name: Version
+        id: version
+        env:
+          WANTED: ${{ inputs.version }}
+        run: |
+          current=$(node -p 'require("./package.json").version')
+          if [ -n "$WANTED" ] && [ "$WANTED" != "$current" ]; then
+            node scripts/npm-platform-packages.mjs --set-version "$WANTED"
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Build the wasm binaries (+ js/build-manifest.json)
+        run: npm run build
+      - name: Cross-compile and verify the 8 native addons
+        run: npm run build:native
+      - name: Generate the platform packages (npm/<name>/)
+        run: npm run build:npm
+      - name: Version sync + wasm manifest
+        run: npm run verify
+      - name: Zig unit tests
+        run: npm test
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-dist
+          path: native/dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          # the wasm, the manifest and every file the version bump touches
+          path: |
+            js/*.wasm
+            js/build-manifest.json
+            package.json
+            package-lock.json
+            npm/
+          if-no-files-found: error
+
+  test:
+    name: test ${{ matrix.target }}
+    needs: build
+    if: ${{ !inputs.skip_tests }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64-gnu, runner: ubuntu-24.04 }
+          - { target: linux-arm64-gnu, runner: ubuntu-24.04-arm }
+          - { target: linux-x64-musl, runner: ubuntu-24.04, alpine: true }
+          - { target: linux-arm64-musl, runner: ubuntu-24.04-arm, alpine: true }
+          - { target: darwin-x64, runner: macos-15-intel }
+          - { target: darwin-arm64, runner: macos-15 }
+          - { target: win32-x64-msvc, runner: windows-2025 }
+          - { target: win32-arm64-msvc, runner: windows-11-arm }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-dist
+          path: native/dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: .
+      - name: The artifact for this platform exists
+        run: ls -l "native/dist/${{ matrix.target }}/bm-render.${{ matrix.target }}.node"
+
+      # ---- glibc Linux, macOS, Windows: directly on the runner
+      - if: ${{ !matrix.alpine }}
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+      - if: ${{ !matrix.alpine }}
+        name: Install the bench dependencies
+        working-directory: bench
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - if: ${{ !matrix.alpine }}
+        name: The addon loads (backend = native)
+        run: node --input-type=module -e 'const m = await import("./js/node.mjs"); console.log(process.version, process.platform, process.arch, m.backend); if (m.backend !== "native") process.exit(1)'
+      - if: ${{ !matrix.alpine }}
+        name: Byte identity with the wasm build (bench/native-identity.mjs)
+        run: node bench/native-identity.mjs --quiet
+      - if: ${{ !matrix.alpine }}
+        name: Native test suite (bench/native-tests.mjs)
+        run: node bench/native-tests.mjs
+      - if: ${{ !matrix.alpine }}
+        name: npm install scenarios (scripts/pack-test.mjs; this platform's package is the one npm must pick)
+        run: node scripts/pack-test.mjs --skip-vite --skip-browser
+
+      # ---- musl Linux: in an Alpine container started by hand (JavaScript actions cannot run inside
+      # Alpine containers on arm64 runners, so no `container:` job; docker is preinstalled on ubuntu runners)
+      - if: ${{ matrix.alpine }}
+        name: Alpine (musl) node:lts-alpine
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w node:lts-alpine sh -euxc '
+            node -p "process.version + \" \" + process.arch"
+            test -f /etc/alpine-release
+            (cd bench && npm ci --ignore-scripts --no-audit --no-fund)
+            node --input-type=module -e "const m = await import(\"./js/node.mjs\"); console.log(m.backend); if (m.backend !== \"native\") process.exit(1)"
+            node bench/native-identity.mjs --quiet
+            node bench/native-tests.mjs
+            node scripts/pack-test.mjs --skip-vite --skip-browser
+          '
+
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-${{ matrix.target }}
+          path: bench/out/native-*.json
+          if-no-files-found: ignore
+
+  publish:
+    name: publish ${{ needs.build.outputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }}
+    needs: [build, test]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm
+    permissions:
+      contents: write # the "Release <version>" commit and the v<version> tag
+      id-token: write # npm trusted publishing (OIDC) and provenance
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+          registry-url: "https://registry.npmjs.org"
+      - name: npm >= 11.5.1 (trusted publishing)
+        run: npm install -g npm@11 && npm --version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: .
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-dist
+          path: native/dist
+      - name: dist-tag
+        id: tag
+        env:
+          WANTED: ${{ inputs.dist_tag }}
+        run: |
+          if [ "$WANTED" != auto ]; then t="$WANTED"; else case "$VERSION" in *-*) t=next ;; *) t=latest ;; esac; fi
+          echo "tag=$t" >> "$GITHUB_OUTPUT"; echo "dist-tag: $t"
+      - name: Verify (version sync, wasm manifest)
+        run: npm run verify
+      - name: Commit "Release ${{ env.VERSION }}" and tag v${{ env.VERSION }}
+        if: ${{ !inputs.dry_run }}
+        env:
+          BUMPED: ${{ needs.build.outputs.bumped }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ "$BUMPED" = true ]; then
+            git add package.json package-lock.json npm js/*.wasm js/build-manifest.json
+            git commit -m "Release $VERSION"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "tag v$VERSION already exists"
+          else
+            git tag "v$VERSION" && git push origin "v$VERSION"
+          fi
+      - name: Publish the 8 platform packages (first, so that bm-render's optionalDependencies resolve)
+        run: |
+          for name in win32-x64-msvc win32-arm64-msvc linux-x64-gnu linux-x64-musl linux-arm64-gnu linux-arm64-musl darwin-x64 darwin-arm64; do
+            pkg="@hunghg255/bm-render-$name"
+            test -f "npm/$name/bm-render.$name.node"
+            if [ -z "$DRY" ] && npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "$pkg@$VERSION is already published, skipped"; continue
+            fi
+            npm publish "./npm/$name" --access public --provenance --tag "${{ steps.tag.outputs.tag }}" $DRY
+          done
+      - name: Publish bm-render
+        run: |
+          if [ -z "$DRY" ] && npm view "bm-render@$VERSION" version >/dev/null 2>&1; then echo "bm-render@$VERSION is already published"; exit 0; fi
+          # prepublishOnly (the local release checks) is replaced by the build and test jobs above
+          npm publish --access public --provenance --tag "${{ steps.tag.outputs.tag }}" --ignore-scripts $DRY

@@ -86,7 +86,7 @@ for d in npm/*/; do npm pack --dry-run "$d"; done
 `test:pack` chạy các kịch bản cài đặt với tarball thật: npm chọn đúng platform package, fallback sang wasm
 khi không có nó (`--omit=optional`, thiếu, binary hỏng hoặc của hệ điều hành khác), `BM_RENDER_BACKEND`,
 `bm-render/native`, worker thread, bundler. Trên máy cục bộ chỉ binary của máy đó chạy được; các binary
-còn lại được chạy bởi ma trận test của CI ([con đường CI](#con-đường-ci)). **Đừng phát hành một nền tảng
+còn lại được chạy bởi ma trận test của CI ([con đường CI](#con-đường-ci-release-thủ-công-từ-github-actions)). **Đừng phát hành một nền tảng
 chưa từng qua `native-identity.mjs` và `native-tests.mjs` trên đúng hệ điều hành và CPU của nó**, trừ khi
 bạn chấp nhận rằng người dùng nền tảng đó có thể lặng lẽ nhận wasm (fallback), hoặc tệ hơn, một binary nạp
 được nhưng chạy sai.
@@ -166,21 +166,34 @@ Luôn truyền `--tag next` (hoặc `beta`) cho một prerelease, trên cả ch�
 của các platform package không ảnh hưởng tới việc resolve, nhưng hãy giữ chúng nhất quán. Để nâng một
 version lên sau này: `npm dist-tag add bm-render@0.3.0 latest` (và tương tự cho tám platform package).
 
-## Con đường CI
+## Con đường CI: release thủ công từ GitHub Actions
 
-`.github/workflows/release.yml` tự động hóa các bước 2 tới 5 khi push một tag `v*`: một job Linux build
-wasm và cross-compile tám addon bằng Zig 0.17.1 được ghim version và kiểm tra checksum; một ma trận test
-**chạy thật** từng addon trên đúng nền tảng của nó (Ubuntu x64 và arm64, Alpine x64 và arm64 trong Docker,
-macOS x64 và arm64, Windows x64 và arm64) với Node 18, bản LTS hiện tại và bản mới nhất
-(`native-identity.mjs`, `native-tests.mjs`, và các kịch bản cài đặt một lần cho mỗi nền tảng); chỉ khi tất
-cả đều xanh, job publish mới phát hành tám platform package rồi tới `bm-render`, với `--provenance`,
-`--tag next` cho prerelease, và bỏ qua các version đã có trên registry (nên một lần chạy lỗi có thể chạy
-lại). Yêu cầu: secret `NPM_TOKEN` của repository (hoặc npm trusted publishing được cấu hình cho từng
-package, sau lần publish thủ công đầu tiên), các placeholder đã được điền, SHA của action và nhãn runner
-đã được kiểm tra. `.github/workflows/ci.yml` build và test trên mỗi lần push và pull request.
+`.github/workflows/release.yml` release mà không cần đăng nhập npm hay OTP trên máy bạn. Chạy từ
+**Actions → release → Run workflow**:
 
-::: warning Chưa từng chạy
-Cả hai workflow đều là template: YAML của chúng đã được parse và kiểm tra, SHA của các action đã được
-resolve từ release tag vào ngày 2026-11-12, nhưng chưa workflow nào từng chạy trên GitHub. Hãy chuẩn bị sửa
-vài chi tiết ở lần chạy đầu (làm việc đó với một tag prerelease).
+| Tham số | Ý nghĩa |
+|:--|:--|
+| `version` | ví dụ `0.1.1` hoặc `0.2.0-beta.0`; để trống = version đang có trong `package.json` |
+| `dist_tag` | `auto` (`next` cho bản prerelease, `latest` cho bản thường), `latest` hoặc `next` |
+| `dry_run` | build + test + `npm publish --dry-run`: không commit, không gắn tag, không publish |
+| `skip_tests` | bỏ qua test trên từng nền tảng, chỉ dùng để chạy lại bước publish khi test đã qua |
+
+Workflow làm gì: một job Linux đổi version (khi `version` khác), build wasm và cross-compile 8 addon bằng Zig
+0.17.1 (đã kiểm checksum), chạy test Zig; 8 job test **chạy thật** từng addon trên đúng nền tảng của nó
+(Ubuntu x64 / arm64, Alpine x64 / arm64 trong Docker, macOS x64 / arm64, Windows x64 / arm64:
+`native-identity.mjs`, `native-tests.mjs`, các kịch bản cài đặt); chỉ khi tất cả đều xanh, job publish mới
+commit `Release <version>`, push tag `v<version>`, rồi publish 8 gói `@hunghg255/bm-render-<platform>` và
+sau cùng là `bm-render`, kèm provenance, bỏ qua các version đã có trên registry (nên một lần chạy lỗi chỉ cần
+chạy lại).
+
+**Thiết lập một lần: npm trusted publishing.** Trên npmjs.com, với từng gói trong 9 gói (`bm-render` và 8
+gói `@hunghg255/bm-render-*`, khi chúng đã có trên registry): **Settings → Trusted Publisher → GitHub
+Actions**, user/organization `BM-Hospital`, repository `bm-render`, workflow `release.yml`, environment
+`npm`. Từ đó npm nhận publish từ workflow này qua OIDC, không cần token. (Cách khác: repository secret
+`NPM_TOKEN` chứa một granular token được phép publish các gói đó; workflow dùng nó khi có.) Nếu `main` là
+nhánh được bảo vệ, cho phép GitHub Actions push commit release, hoặc đổi version ở máy rồi để trống `version`.
+
+::: warning Lần chạy đầu
+SHA của các action được lấy từ tag release ngày 2026-11-12, nhưng workflow chưa từng chạy trên GitHub. Lần
+đầu hãy chạy với `dry_run`, hoặc với một version prerelease.
 :::
