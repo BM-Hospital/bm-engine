@@ -324,7 +324,24 @@ function loadTemplateInto(t) {
   for (const im of t.images ? t.images() : []) if (!state.images.some((x) => x.src === im.src)) state.images.push({ ...im });
   // the editor is shared: the other mode's template no longer describes it
   if (state.mode === "pdf") { state.pdfTemplate = t.id; state.template = ""; state.pdf = { ...P.defaultPdf(), ...t.pdf }; }
-  else { state.template = t.id; state.pdfTemplate = ""; state.width = t.width; state.height = t.height; state.timeMs = t.timeMs || 0; state.format = t.format || "png"; }
+  else {
+    // the PDF options of a PDF example describe a document the editor no longer holds
+    if (state.pdfTemplate) state.pdf = P.defaultPdf();
+    state.template = t.id; state.pdfTemplate = ""; state.width = t.width; state.height = t.height; state.timeMs = t.timeMs || 0; state.format = t.format || "png";
+  }
+}
+/**
+ * The template select names an example only while the editor still shows it. A tab switch, or content carried over
+ * from the other mode (Image <-> PDF keeps the editor), turns it into "-". With `resetPdf`, the PDF options that came
+ * with that example (page size, viewport, title, ...) are dropped too: they described a document no longer shown.
+ */
+function reconcileTemplate(resetPdf) {
+  const pdf = state.mode === "pdf";
+  const id = pdf ? state.pdfTemplate : state.template;
+  if (!id) return;
+  const t = modeTemplates().find((x) => x.id === id);
+  if (t && t.kind === state.kind && state[t.kind] === t.source) return;
+  if (pdf) { state.pdfTemplate = ""; if (resetPdf) state.pdf = P.defaultPdf(); } else state.template = "";
 }
 function applyTemplate(id) {
   const t = modeTemplates().find((x) => x.id === id); if (!t) return;
@@ -657,6 +674,7 @@ async function switchMode(m) {
   last = null;
   try { await ensureEngine(m); } catch (err) { setError("Failed to start the engine: " + errText(err)); return; }
   if (state.mode !== m) return;
+  reconcileTemplate(true); persist();
   showEngineInfo(); fillTemplateSelect(); toUI(); showHint(); renderFontList();
   scheduleRender(0);
 }
@@ -681,6 +699,7 @@ function wire() {
     if (!ready) return;
     fromUI(); state.kind = b.dataset.kind;
     if (!String(state[state.kind] ?? "").trim()) { const t = modeTemplates().find((x) => x.kind === state.kind); if (t) { applyTemplate(t.id); return; } }
+    reconcileTemplate(false); fillTemplateSelect(); showHint();
     toUI(); persist(); scheduleRender(0);
   });
   const clearTemplate = () => { state.pdfTemplate = state.template = ""; $("template").value = ""; };
@@ -781,6 +800,7 @@ async function main() {
   try { carry = Date.now() - Number(localStorage.getItem("bm-playground-carry") || 0) < 60000; localStorage.removeItem("bm-playground-carry"); } catch { /* ignore */ }
   if (state.mode === "pdf" && !state.pdfSeen && !fromHash && !carry) loadTemplateInto(pdfTemplates[0]);
   if (state.mode === "pdf") state.pdfSeen = true;
+  reconcileTemplate(true);
   showEngineInfo(); fillTemplateSelect(); toUI(); ready = true; renderFontList(); renderImageList(); showHint();
   document.body.dataset.ready = "1";
   document.body.dataset.profile = profile;
