@@ -881,6 +881,24 @@ test "multiple runs (oracle)" {
     }
 }
 
+test "line-height: Blink ComputedLineHeightAsFixed rounding (takumi font_style.rs)" {
+    var fx = try Fixture.init();
+    defer fx.deinit();
+    // 9.5pt: the font size rounds to 811/64 px, times 1.3 truncates to 1054/64 (not 1053/64 from
+    // truncating 12.667 * 1.3); a length rounds to the nearest 1/64 px (4.6mm = 1112.69/64 -> 1113/64)
+    const st: font.TextStyle = .{ .families = inter_fam, .size = 38.0 / 3.0 };
+    var a = try fx.lay("a", st, .{ .line_height = .{ .multiple = 1.3 } });
+    defer a.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 1054.0 / 64.0), a.lines[0].height);
+    var b = try fx.lay("a", st, .{ .line_height = .{ .px = 4.6 * 96.0 / 25.4 } });
+    defer b.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 1113.0 / 64.0), b.lines[0].height);
+    // 12px: no rounding either way
+    var c = try fx.lay("a", .{ .families = inter_fam, .size = 12 }, .{ .line_height = .{ .multiple = 1.3 } });
+    defer c.deinit(t.allocator);
+    try t.expectEqual(@as(f32, 998.0 / 64.0), c.lines[0].height);
+}
+
 test "measure: cached paragraph, monotonic, min/max content" {
     var fx = try Fixture.init();
     defer fx.deinit();
@@ -891,7 +909,9 @@ test "measure: cached paragraph, monotonic, min/max content" {
     try t.expect(min > 0 and min < max);
     try t.expectEqual(max, p.measure(null).width);
     try t.expectEqual(@as(u32, 1), p.measure(max).line_count); // fits exactly at its own ceiled width
-    try t.expect(p.measure(max - 1.0 / 64.0).line_count == 2);
+    // one layout unit short still fits (Blink `AvailableWidthToFit` adds an epsilon), two do not
+    try t.expectEqual(@as(u32, 1), p.measure(max - 1.0 / 64.0).line_count);
+    try t.expect(p.measure(max - 2.0 / 64.0).line_count == 2);
     var prev = p.measure(1);
     var w: f32 = 1;
     while (w < max + 40) : (w += 3.7) {
@@ -981,6 +1001,29 @@ test "overflow-wrap of a run, soft hyphen after spaces, fallback widths of Unico
     const first = sh.glyphs[sh.lines[0].glyph_start..sh.lines[0].glyph_end];
     try t.expectEqual(hy, first[first.len - 1].gid);
 
+    // a soft hyphen after spaces, the line too narrow for "aaaa" with its hyphen (Blink: the break
+    // before the space run, then a line holding only the hyphen; oracle: Chromium, takumi)
+    {
+        var wa = try fx.lay("aaaa", st, .{});
+        defer wa.deinit(t.allocator);
+        var l = try fx.lay("aaaa \u{ad}bbbb", st, .{ .max_width = wa.lines[0].width + 1 });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(usize, 3), l.lines.len);
+        try t.expectEqual(hy, l.glyphs[l.lines[1].glyph_end - 1].gid);
+        // a hyphen that does not fit shrinks the width for the earlier breakpoints too: "xx" breaks
+        // off at the zero width space, as "xx\u{200b}aaaa" fits only without the hyphen
+        // (as wide as "xxaaaa " with its space, which the hyphen then overflows)
+        var wx = try fx.lay("xxaaaa b", st, .{});
+        defer wx.deinit(t.allocator);
+        var wb = try fx.lay("b", st, .{});
+        defer wb.deinit(t.allocator);
+        var z = try fx.lay("xx\u{200b}aaaa \u{ad}bbbb", st, .{ .max_width = wx.lines[0].width - wb.lines[0].width + 1 });
+        defer z.deinit(t.allocator);
+        var xx = try fx.lay("xx", st, .{});
+        defer xx.deinit(t.allocator);
+        try t.expectApproxEqAbs(xx.lines[0].width, z.lines[0].width, 0.01);
+    }
+
     // U+3000 without a glyph: the space glyph, one em wide (HarfBuzz `_hb_ot_shape_fallback_spaces`)
     if (f0.glyphIndex(0x3000) == 0) {
         const ab = try font.shape(t.allocator, &fx.fc, "ab", .{ .families = inter_fam, .size = 100 });
@@ -993,6 +1036,42 @@ test "overflow-wrap of a run, soft hyphen after spaces, fallback widths of Unico
         for (ideo) |g| wi += g.x_advance;
         try t.expectApproxEqAbs(@as(f32, 100), wi - wa, 0.01);
     }
+
+    // U+3000 at the line end hangs, also with overflow-wrap: anywhere (oracle: Chromium, takumi):
+    // "aaaa\u{3000}bb" in a line wide enough for "aaaa" only breaks after U+3000, not before it.
+    // U+2003 does not hang (Blink `IsOtherSpaceSeparator` is U+3000 only).
+    var wa4 = try fx.lay("aaaa", st, .{});
+    defer wa4.deinit(t.allocator);
+    const narrow = wa4.lines[0].width + 4;
+    for ([_]font.OverflowWrap{ .normal, .anywhere }) |ow| {
+        for ([_]font.WhiteSpace{ .normal, .pre_wrap }) |ws| {
+            var l = try fx.lay("aaaa\u{3000}bb", st, .{ .max_width = narrow, .overflow_wrap = ow, .white_space = ws });
+            defer l.deinit(t.allocator);
+            try t.expectEqual(@as(usize, 2), l.lines.len);
+            try t.expectEqual(f0.glyphIndex('b'), l.glyphs[l.lines[1].glyph_start].gid);
+            // (pre-wrap: the line width includes its hanging spaces, see `Paragraph.fin`)
+            if (ws == .normal) try t.expect(l.lines[0].width <= narrow);
+        }
+    }
+    // a glyph fits where the line could end after it without its pair kerning with the next glyph:
+    // "MATR" as wide as "MA" (unkerned) less a little breaks after "M" (oracle: Chromium, takumi)
+    {
+        var ma = try fx.lay("MA", st, .{});
+        defer ma.deinit(t.allocator);
+        var mat = try fx.lay("MAT", st, .{});
+        defer mat.deinit(t.allocator);
+        var tt = try fx.lay("T", st, .{});
+        defer tt.deinit(t.allocator);
+        // (the font kerns A-T: the case is meaningful)
+        try t.expect(mat.lines[0].width < ma.lines[0].width + tt.lines[0].width - 0.1);
+        var l = try fx.lay("MATR", st, .{ .max_width = ma.lines[0].width - 2.0 / 64.0, .overflow_wrap = .anywhere });
+        defer l.deinit(t.allocator);
+        try t.expectEqual(@as(u32, 1), l.lines[0].glyph_end - l.lines[0].glyph_start);
+    }
+    var em = try fx.lay("aaaa\u{2003}bb", st, .{ .max_width = narrow, .overflow_wrap = .anywhere });
+    defer em.deinit(t.allocator);
+    try t.expect(em.lines.len >= 2);
+    try t.expect(em.glyphs[em.lines[1].glyph_start].gid != f0.glyphIndex('b'));
 }
 
 test "text-overflow: custom marker string, block-ellipsis, rtl truncation side" {

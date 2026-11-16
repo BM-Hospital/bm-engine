@@ -867,10 +867,15 @@ fn Engine(comptime T: type) type {
                 for (items, 0..) |*it, i| it.first = i == 0;
             } else if (k != .block) {
                 // a band = the items whose block extents overlap (a flex line, a grid row)
+                // (an item starting where the band starts belongs to it even when what came before is
+                // empty: an empty flex item at the start of a row is no content of its own before the
+                // row's other items, which would make the row breakable after it)
                 var band_end: f32 = ninf;
+                var band_top: f32 = ninf;
                 for (items) |*it| {
                     const l = &lays[it.node];
-                    it.first = l.y >= band_end - eps;
+                    it.first = l.y >= band_end - eps and !(l.y <= band_top + eps);
+                    if (it.first) band_top = l.y;
                     band_end = if (it.first) l.y + l.h else @max(band_end, l.y + l.h);
                 }
             }
@@ -1243,8 +1248,15 @@ fn Engine(comptime T: type) type {
                 }
             }
             // (a table whose footer was placed fits the page, not the rows' window short of the footer)
-            if (bottom <= (if (k == .table) pg_in.end else pg.end) + eps) {
-                var r: R = .{ .end = bottom, .first = first_bb orelse .auto, .last = prev_after };
+            // (a table with a repeated header lays its last table box out again with
+            // `should_prevent_break_before_block_end_decorations`: once its rows fit, its block-end
+            // border, padding and spacing overflow the page instead of breaking before them; takumi
+            // table/layout.rs `relayout_as_last_table_box`, Blink's FinishFragmentation)
+            // (the box then reaches its container's page only as far as its content)
+            const fit_end = (if (k == .table) pg_in.end else pg.end) + eps;
+            const end_decorations_hang = k == .table and info.hdr_block > 0 and bottom > fit_end and flow_end <= fit_end and bottom <= flow_end + info.spacing + inset_b + eps;
+            if (end_decorations_hang or bottom <= fit_end) {
+                var r: R = .{ .end = if (end_decorations_hang) flow_end else bottom, .first = first_bb orelse .auto, .last = prev_after };
                 if (early.has and !known_fit) {
                     sl.kind = early.kind;
                     sl.arg = early.item;
@@ -1738,7 +1750,10 @@ fn Engine(comptime T: type) type {
                 sq = &e.seqs.items[sq_i];
                 new_bottom = @max(new_bottom, e.itemTop(sq, k, top) + e.lay(c).h);
             }
-            const g = @max(new_bottom - old_bottom, 0);
+            // (the band shrinks too: an item whose block-start margin a break truncated ends higher, and
+            // when no other item reaches the old end the band ends with it; takumi / Blink flex rows
+            // with `align-items: flex-start`)
+            const g = if (new_bottom > ninf and old_bottom > ninf) new_bottom - old_bottom else 0;
             if (g > 0) {
                 // the items that reached the end of the row keep reaching it (table cells, stretched items)
                 k = i;

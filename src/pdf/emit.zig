@@ -378,7 +378,7 @@ pub const Emitter = struct {
     fn narrowClip(e: *Emitter, cs: *const CS, g: *const Geom) void {
         if (!e.plain() or !e.window.paged()) return;
         if (cs.overflow_x == .clip and cs.overflow_y == .visible) return;
-        const pr = g.padRect();
+        const pr = g.overflowRect();
         e.clip_y = .{ @max(e.clip_y[0], pr.y), @min(e.clip_y[1], pr.y + pr.h) };
     }
 
@@ -1554,7 +1554,7 @@ pub const Emitter = struct {
 
     /// The overflow clip of a box as `e.path`; false = nothing inside is visible.
     noinline fn overflowPath(e: *Emitter, cs: *const CS, g: *const Geom) Error!bool {
-        const pr = g.padRect();
+        const pr = g.overflowRect();
         const xclip = cs.overflow_x != .visible;
         const yclip = cs.overflow_y != .visible;
         const unb: f32 = 1_000_000;
