@@ -246,5 +246,9 @@
     "@hunghg255/bm-render-linux-arm64-musl": "0.1.0",
     "@hunghg255/bm-render-darwin-x64": "0.1.0",
     "@hunghg255/bm-render-darwin-arm64": "0.1.0"
+  },
+  "overrides": {
+    "vite": "^7.3.8",
+    "@vitejs/plugin-vue": "^6.0.11"
   }
 }
