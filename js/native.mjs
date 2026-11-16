@@ -7,13 +7,13 @@
 // Where the addon is looked for (first that loads wins; nothing here ever throws):
 //   1. $BM_RENDER_NATIVE_PATH: a `.node` file. When set, it is the ONLY candidate.
 //   2. a source checkout's build output: ../native/dist/<name>/bm-render.<name>.node (scripts/build-native.mjs)
-//   3. the per-platform npm package `bm-render-<name>` (an optional dependency whose main is the `.node` file)
+//   3. the per-platform npm package `@hunghg255/bm-render-<name>` (an optional dependency whose main is the `.node` file)
 // with <name> = win32-x64-msvc | win32-arm64-msvc | linux-x64-gnu | linux-x64-musl | linux-arm64-gnu |
 // linux-arm64-musl | darwin-x64 | darwin-arm64. On Linux the C library is detected (glibc / musl); the other
 // variant is tried when the detected one does not load.
 //
 // Bundlers and output tracing: 1 and 2 are opened with process.dlopen (not a module request, so bundlers and
-// file tracers ignore them: they are never part of an installed package). 3 is `require("bm-render-<name>")`
+// file tracers ignore them: they are never part of an installed package). 3 is `require("@hunghg255/bm-render-<name>")`
 // with a literal package name per platform on `createRequire(import.meta.url)`, the form @vercel/nft follows
 // (Next.js with webpack + serverExternalPackages, Vercel functions of other frameworks), so the installed platform
 // package is traced into deployments. The webpackIgnore / turbopackIgnore comments stop bundlers from trying to
@@ -75,7 +75,7 @@ export function nativeNames() {
 }
 
 /**
- * require() of the platform package `bm-render-<name>`. Written the way file tracers (@vercel/nft) recognise: `createRequire(import.meta.url)` assigned to a `require`
+ * require() of the platform package `@hunghg255/bm-render-<name>`. Written the way file tracers (@vercel/nft) recognise: `createRequire(import.meta.url)` assigned to a `require`
  * in the same scope as one literal request per package. Do not "simplify" into a template string or pass
  * `require` around: the platform package would silently disappear from traced deployments. Throws when
  * import.meta.url is unusable (a CommonJS bundle); the caller then uses requirePlatformPackageFrom().
@@ -83,21 +83,21 @@ export function nativeNames() {
 function requirePlatformPackage(name) {
   const require = createRequire(import.meta.url);
   switch (name) {
-    case "win32-x64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-win32-x64-msvc");
-    case "win32-arm64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-win32-arm64-msvc");
-    case "linux-x64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-x64-gnu");
-    case "linux-x64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-x64-musl");
-    case "linux-arm64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-arm64-gnu");
-    case "linux-arm64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-linux-arm64-musl");
-    case "darwin-x64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-darwin-x64");
-    case "darwin-arm64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "bm-render-darwin-arm64");
+    case "win32-x64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-win32-x64-msvc");
+    case "win32-arm64-msvc": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-win32-arm64-msvc");
+    case "linux-x64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-linux-x64-gnu");
+    case "linux-x64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-linux-x64-musl");
+    case "linux-arm64-gnu": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-linux-arm64-gnu");
+    case "linux-arm64-musl": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-linux-arm64-musl");
+    case "darwin-x64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-darwin-x64");
+    case "darwin-arm64": return require(/* webpackIgnore: true */ /* turbopackIgnore: true */ "@hunghg255/bm-render-darwin-arm64");
   }
   throw new Error(`no package for ${name}`);
 }
 
 /** The same from moduleBase() (a bundle's __filename, or the working directory). Not traced; a fallback. */
 function requirePlatformPackageFrom(base, name) {
-  return createRequire(base)(`bm-render-${name}`);
+  return createRequire(base)(`@hunghg255/bm-render-${name}`);
 }
 
 /** Loads a `.node` file by path (process.dlopen: what require() does for `.node`, without a module request). */
@@ -134,7 +134,7 @@ export function loadNative() {
         metaUrl = String(import.meta.url).startsWith("file:");
       } catch {}
       for (const name of names) {
-        candidates.push([`bm-render-${name}`, () => (metaUrl ? requirePlatformPackage(name) : requirePlatformPackageFrom(moduleBase(), name))]);
+        candidates.push([`@hunghg255/bm-render-${name}`, () => (metaUrl ? requirePlatformPackage(name) : requirePlatformPackageFrom(moduleBase(), name))]);
       }
     }
     for (const [id, load] of candidates) {

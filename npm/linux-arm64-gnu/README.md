@@ -1,4 +1,4 @@
-# bm-render-linux-arm64-gnu
+# @hunghg255/bm-render-linux-arm64-gnu
 
 The native Node-API addon of [bm-render](https://www.npmjs.com/package/bm-render) for **Linux arm64, glibc 2.17+**
 (`os: linux`, `cpu: arm64`, `libc: glibc`).

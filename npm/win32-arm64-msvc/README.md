@@ -1,4 +1,4 @@
-# bm-render-win32-arm64-msvc
+# @hunghg255/bm-render-win32-arm64-msvc
 
 The native Node-API addon of [bm-render](https://www.npmjs.com/package/bm-render) for **Windows arm64**
 (`os: win32`, `cpu: arm64`).

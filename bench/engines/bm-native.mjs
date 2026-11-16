@@ -1,5 +1,5 @@
 // Adapter: bm-render's native Node-API addon (js/node-native.mjs -> native/dist/<platform>/..., or the installed
-// bm-render-<platform> package, or $BM_RENDER_NATIVE_PATH). Not registered in engines/index.mjs by default:
+// @hunghg255/bm-render-<platform> package, or $BM_RENDER_NATIVE_PATH). Not registered in engines/index.mjs by default:
 // add `"bm-native": bmNative` there to put it next to the wasm build in a benchmark run.
 // The harness runs fine when the addon is missing: the engine is then "unavailable".
 import { readFileSync } from "node:fs";
@@ -13,7 +13,7 @@ const addon = loader.loadNative();
 export default {
   name: "bm-native",
   available: !!addon,
-  nativePath: addon ? `bm-render-${loader.nativeNames()[0]}` : loader.nativeError(),
+  nativePath: addon ? `@hunghg255/bm-render-${loader.nativeNames()[0]}` : loader.nativeError(),
   entry,
   rawAlpha: "straight",
   async create({ fonts = [] } = {}) {

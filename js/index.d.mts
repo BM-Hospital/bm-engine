@@ -315,7 +315,7 @@ export type Features = {
 export declare const features: Readonly<Features>;
 /**
  * Which engine build serves this entry: "wasm", or "native" when `bm-render` on Node.js (Bun, Deno) found the
- * Node-API addon for the platform (optional package `bm-render-<platform>-<arch>`). Both have the same API and
+ * Node-API addon for the platform (optional package `@hunghg255/bm-render-<platform>-<arch>`). Both have the same API and
  * produce the same bytes; natively the async methods run on the thread pool and init() / initSync() are no-ops.
  * Force one with the environment variable BM_RENDER_BACKEND=wasm|native, or by importing `bm-render/full`
  * (always wasm) / `bm-render/native` (native or an import error).

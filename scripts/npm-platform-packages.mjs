@@ -1,4 +1,4 @@
-// The per-platform npm packages of the native addon (napi-rs style): bm-render-<name>, one per target, each
+// The per-platform npm packages of the native addon (napi-rs style): @hunghg255/bm-render-<name>, one per target, each
 // holding only bm-render.<name>.node (its `main`) and restricted with os / cpu / libc so that package managers
 // install the matching one of the main package's optionalDependencies and skip the others.
 //
@@ -59,7 +59,7 @@ const LICENSE_FILES = ["LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md"];
 
 const readJson = (f) => JSON.parse(readFileSync(f, "utf8"));
 const writeJson = (f, v) => writeFileSync(f, JSON.stringify(v, null, 2) + "\n");
-const pkgName = (name) => `bm-render-${name}`;
+const pkgName = (name) => `@hunghg255/bm-render-${name}`;
 
 /** package.json of one platform package for the given root package.json. */
 export function platformManifest(rootPkg, name) {
@@ -140,7 +140,7 @@ export function checkSync(rootPkg = readJson(path.join(root, "package.json"))) {
     if (have.version !== v) problems.push(`npm/${name}/package.json version ${have.version} != root version ${v}`);
     if (JSON.stringify(have) !== JSON.stringify(platformManifest(rootPkg, name))) problems.push(`npm/${name}/package.json differs from what scripts/npm-platform-packages.mjs generates (run npm run build:npm, or npm run version:set)`);
   }
-  for (const dep of Object.keys(opt)) if (!dep.startsWith("bm-render-") || !PLATFORMS[dep.slice(10)]) problems.push(`unexpected optionalDependency ${dep}`);
+  for (const dep of Object.keys(opt)) if (!dep.startsWith("@hunghg255/bm-render-") || !PLATFORMS[dep.slice("@hunghg255/bm-render-".length)]) problems.push(`unexpected optionalDependency ${dep}`);
   return problems;
 }
 

@@ -100,7 +100,7 @@ xem [Profile và kích thước](profiles-and-size.md).
 
 ## Addon native (Node.js)
 
-Trên Node.js, `bm-render` chạy addon native từ optional platform package `bm-render-<platform>` khi nó
+Trên Node.js, `bm-render` chạy addon native từ optional platform package `@hunghg255/bm-render-<platform>` khi nó
 được cài và nạp được, nếu không thì chạy WebAssembly (xem
 [Cài đặt](getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)). Cơ chế fallback được thiết kế
 để chạy lặng lẽ, nên bước đầu tiên luôn là hỏi xem backend nào đang chạy:
@@ -113,7 +113,7 @@ BM_RENDER_BACKEND=native node app.mjs   # throws and says why the addon was not 
 - **Không có binary cho nền tảng này, hoặc nó không được cài** (hệ điều hành / CPU không có platform
   package, ví dụ FreeBSD, Linux trên ARM 32-bit hay ppc64; `--omit=optional`; một `node_modules` chép từ
   hệ điều hành khác; một lockfile làm mất optional package): bạn nhận WebAssembly, với output giống hệt.
-  Lỗi khi ép native ghi `bm-render-<platform>: not installed`. Hãy cài lại trên máy đích, xem
+  Lỗi khi ép native ghi `@hunghg255/bm-render-<platform>: not installed`. Hãy cài lại trên máy đích, xem
   [Package manager, Docker, serverless](getting-started.md#package-manager-docker-serverless).
 - **Tới nay chỉ `win32-x64-msvc` đã được chạy thật.** Bảy platform package còn lại đã được build và kiểm
   tra cấu trúc nhưng chưa từng chạy; nếu một cái không nạp được trên máy bạn, `bm-render` dùng

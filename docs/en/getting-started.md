@@ -30,8 +30,8 @@ The package has no dependencies and no install scripts. It contains four prebuil
 binaries (`core`, `standard`, `full` and `pdf`, which adds PDF output), the optional WOFF add-on, a dependency-free ESM wrapper and
 TypeScript declarations. The package is ES modules only (see [CommonJS](#commonjs)).
 
-It also lists eight **optional dependencies**, one per platform: `bm-render-win32-x64-msvc`,
-`bm-render-linux-x64-gnu`, ... (table below). Each holds only the native Node-API build of the same engine
+It also lists eight **optional dependencies**, one per platform: `@hunghg255/bm-render-win32-x64-msvc`,
+`@hunghg255/bm-render-linux-x64-gnu`, ... (table below). Each holds only the native Node-API build of the same engine
 (about 1 MB compressed) and declares `os`, `cpu` and, on Linux, `libc`, so your package manager installs
 the one that matches the machine and skips the others. Nothing is compiled or downloaded at install time or
 at run time; there is no postinstall script.
@@ -55,19 +55,19 @@ console.log(backend); // "native" or "wasm"
 | native, or fail loudly | `BM_RENDER_BACKEND=native` (the import throws and says why), or import `bm-render/native` |
 
 Why the addon was not used is in the error of `BM_RENDER_BACKEND=native node app.mjs`, for example
-`bm-render: BM_RENDER_BACKEND=native, but the native addon is not available (bm-render-linux-x64-gnu: not
+`bm-render: BM_RENDER_BACKEND=native, but the native addon is not available (@hunghg255/bm-render-linux-x64-gnu: not
 installed)`.
 
 | Platform package | `os` / `cpu` / `libc` | Status |
 |:--|:--|:--|
-| `bm-render-win32-x64-msvc` | win32 / x64 | **executed**: byte identity with wasm on 250 fixtures, thread / memory / fuzz tests, install tests |
-| `bm-render-win32-arm64-msvc` | win32 / arm64 | built and structurally verified, **never executed** |
-| `bm-render-linux-x64-gnu` | linux / x64 / glibc 2.17+ | built and structurally verified, **never executed** |
-| `bm-render-linux-x64-musl` | linux / x64 / musl (Alpine) | built and structurally verified, **never executed** |
-| `bm-render-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | built and structurally verified, **never executed** |
-| `bm-render-linux-arm64-musl` | linux / arm64 / musl | built and structurally verified, **never executed** |
-| `bm-render-darwin-x64` | darwin / x64 (macOS 10.15+) | built and structurally verified, **never executed** |
-| `bm-render-darwin-arm64` | darwin / arm64 (macOS 11+) | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-win32-x64-msvc` | win32 / x64 | **executed**: byte identity with wasm on 250 fixtures, thread / memory / fuzz tests, install tests |
+| `@hunghg255/bm-render-win32-arm64-msvc` | win32 / arm64 | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-linux-x64-gnu` | linux / x64 / glibc 2.17+ | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-linux-x64-musl` | linux / x64 / musl (Alpine) | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-linux-arm64-musl` | linux / arm64 / musl | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-darwin-x64` | darwin / x64 (macOS 10.15+) | built and structurally verified, **never executed** |
+| `@hunghg255/bm-render-darwin-arm64` | darwin / arm64 (macOS 11+) | built and structurally verified, **never executed** |
 
 "Structurally verified" means the build script checked each binary without running it (format, CPU,
 exported and imported symbols, glibc symbol versions, no math-library imports). Until a platform is
@@ -82,7 +82,7 @@ need an x86-64-v2 CPU (SSE4.2, 2009 onwards); older CPUs get WebAssembly. Node.j
 - **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) installs no platform
   package: you get WebAssembly (tested with npm).
 - **Lockfiles created on another OS.** With npm 11 the lockfile written on Windows lists all eight packages
-  with their `os` / `cpu` / `libc`, and `npm ci` for Linux x64 installs `bm-render-linux-x64-gnu` (tested).
+  with their `os` / `cpu` / `libc`, and `npm ci` for Linux x64 installs `@hunghg255/bm-render-linux-x64-gnu` (tested).
   Some older npm versions dropped the other platforms' optional packages from the lockfile when
   `node_modules` already existed (npm/cli#4828), the classic native-package pitfall. Here it is not fatal:
   the missing addon means WebAssembly, not an error. To repair, delete `node_modules` and the lockfile and
@@ -103,7 +103,7 @@ need an x86-64-v2 CPU (SSE4.2, 2009 onwards); older CPUs get WebAssembly. Node.j
   pnpm and Yarn use `supportedArchitectures` in their configuration instead.
 - **Serverless (AWS Lambda, Vercel Functions, Netlify Functions, ...).** The binary is chosen when
   dependencies are installed, on the build machine: a platform that builds on Linux x64 (Vercel, Netlify,
-  most CI) gets `bm-render-linux-x64-gnu`; a zip of `node_modules` made on a Mac or on Windows carries the
+  most CI) gets `@hunghg255/bm-render-linux-x64-gnu`; a zip of `node_modules` made on a Mac or on Windows carries the
   wrong one (WebAssembly at run time). Bundling deployers must also ship the platform package; see
   [Next.js](./image/frameworks/nextjs.md#native-addon-in-deployments) for `outputFileTracingIncludes`. Log
   `backend` once at startup to know what runs. None of these deployments was tested.

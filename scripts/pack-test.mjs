@@ -24,7 +24,7 @@
 // Native addon (skipped when native/dist/<host> is not built; --skip-native skips them):
 //   pack-platform          the 8 platform packages generated (scripts/npm-platform-packages.mjs --out) and packed:
 //                          exact file lists, versions = root version = optionalDependencies; the main tarball has no .node
-//   install-native         main tarball + npm overrides mapping every bm-render-<name> to its tarball (= published):
+//   install-native         main tarball + npm overrides mapping every @hunghg255/bm-render-<name> to its tarball (= published):
 //                          npm installs only the host's package (os / cpu / libc)
 //   native-default         backend "native"; PNG, async render, SVG, measure byte-identical to bm-render/full (wasm)
 //   native-env             BM_RENDER_BACKEND=wasm / =native
@@ -72,7 +72,7 @@ function run(cmd, argv, opts = {}) {
 }
 const tail = (s, n = 25) => s.trim().split("\n").slice(-n).join("\n");
 /** Strings that only the Node.js side (js/native.mjs, js/wasm-file.mjs) contains: never in a browser bundle. */
-const NATIVE_MARKERS = ["bm-render-win32-x64-msvc", "bm-render-linux-x64-gnu", "process.dlopen", "createRequire", "node:module", "BM_RENDER_NATIVE_PATH", "readPackageWasm"];
+const NATIVE_MARKERS = ["@hunghg255/bm-render-win32-x64-msvc", "@hunghg255/bm-render-linux-x64-gnu", "process.dlopen", "createRequire", "node:module", "BM_RENDER_NATIVE_PATH", "readPackageWasm"];
 const kb = (n) => (n / 1024).toFixed(1) + " KiB";
 
 // ------------------------------------------------------------------ manifest + pack
@@ -466,7 +466,7 @@ if (installed && !args["skip-esbuild"]) {
 
 // ------------------------------------------------------------------ native: platform packages and install scenarios
 // The platform packages are generated from native/dist (scripts/npm-platform-packages.mjs --out, so the repository's
-// npm/ is not touched) and packed. "Published" is simulated with npm `overrides` mapping every bm-render-<name>
+// npm/ is not touched) and packed. "Published" is simulated with npm `overrides` mapping every @hunghg255/bm-render-<name>
 // to its local tarball: npm then reads os / cpu / libc from the tarballs and installs only the matching one,
 // exactly as from the registry. Only the host's binary can be executed.
 const PROBE = String.raw`
@@ -548,12 +548,13 @@ const probe = (cwd, argv = [], env = {}, script = "probe.mjs") => {
   return { status: r.status, json, stderr, err };
 };
 const show = (p) => (p.json ? JSON.stringify(p.json) : `exit ${p.status}: ${p.err}`);
-const installedPlatforms = (a) => (existsSync(path.join(a, "node_modules")) ? readdirSync(path.join(a, "node_modules")).filter((n) => n.startsWith("bm-render-")) : []);
+// platform packages are scoped: node_modules/@hunghg255/bm-render-<platform>
+const installedPlatforms = (a) => { const s = path.join(a, "node_modules", "@hunghg255"); return existsSync(s) ? readdirSync(s).filter((n) => n.startsWith("bm-render-")).map((n) => "@hunghg255/" + n) : []; };
 const newApp = (name, extra = {}) => {
   const a = path.join(dir, name);
   rmSync(a, { recursive: true, force: true });
   mkdirSync(a, { recursive: true });
-  writeFileSync(path.join(a, "package.json"), JSON.stringify({ name: "bm-render-" + name, private: true, type: "module", ...extra }, null, 2));
+  writeFileSync(path.join(a, "package.json"), JSON.stringify({ name: "bm-render-test-" + name, private: true, type: "module", ...extra }, null, 2));
   writeFileSync(path.join(a, "probe.mjs"), PROBE);
   return a;
 };
@@ -593,13 +594,13 @@ else {
 }
 
 if (platformTgz[host]) {
-  const overrides = Object.fromEntries(Object.entries(platformTgz).map(([n, f]) => [`bm-render-${n}`, "file:" + f.replace(/\\/g, "/")]));
+  const overrides = Object.fromEntries(Object.entries(platformTgz).map(([n, f]) => [`@hunghg255/bm-render-${n}`, "file:" + f.replace(/\\/g, "/")]));
   // ---- (a) main + platform packages "published": npm picks the host's
   const appN = newApp("app-native", { overrides });
   const inst = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: appN });
   const got = installedPlatforms(appN);
-  const instOk = inst.ok && got.length === 1 && got[0] === `bm-render-${host}`;
-  record("install-native", instOk, instOk ? `npm installed only bm-render-${host} of ${Object.keys(platformTgz).length} optional platform packages` : `installed: ${got.join(", ") || "none"}; ${tail(inst.out, 5)}`);
+  const instOk = inst.ok && got.length === 1 && got[0] === `@hunghg255/bm-render-${host}`;
+  record("install-native", instOk, instOk ? `npm installed only @hunghg255/bm-render-${host} of ${Object.keys(platformTgz).length} optional platform packages` : `installed: ${got.join(", ") || "none"}; ${tail(inst.out, 5)}`);
   let ref = null;
   if (instOk) {
     const p = probe(appN, ["bm-render", "full"]);
@@ -634,7 +635,7 @@ if (platformTgz[host]) {
     record("native-pdf", pdfOk, pdfOk ? `bm-render/pdf backend native; ${a.bytes} B PDF, sync / async / PdfRenderer / measure byte-identical to BM_RENDER_BACKEND=wasm (bm_render.pdf.wasm) ${a.pdf}; bm-render in the same process: native, features.pdf off, renderPdf rejected as on wasm` : `native: ${show(pp)}; wasm: ${show(ppw)}; forced native: ${show(ppn)}`);
     {
       // the addon unusable -> bm_render.pdf.wasm, silently; no platform package at all (the main-only install) -> the same
-      const target = path.join(appN, "node_modules", `bm-render-${host}`, `bm-render.${host}.node`);
+      const target = path.join(appN, "node_modules", `@hunghg255/bm-render-${host}`, `bm-render.${host}.node`);
       const good = readFileSync(target);
       let pc, pf;
       try {
@@ -648,7 +649,7 @@ if (platformTgz[host]) {
       const okCorrupt = pc.status === 0 && pc.json?.backend === "wasm" && pc.json.pdf === a?.pdf && !pc.stderr &&
         pf.status !== 0 && /BM_RENDER_BACKEND=native, but the native addon is not available/.test(pf.stderr);
       const okMissing = pm.status === 0 && pm.json?.backend === "wasm" && pm.json.pdf === a?.pdf && pm.json.async === a?.pdf && !pm.stderr &&
-        pmf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available for bm-render/pdf \\(bm-render-${host}: not installed`).test(pmf.stderr);
+        pmf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available for bm-render/pdf \\(@hunghg255/bm-render-${host}: not installed`).test(pmf.stderr);
       record("fallback-pdf", okCorrupt && okMissing, `truncated .node: ${okCorrupt ? "wasm, same bytes as native, silent; forced native fails with the reason" : "FAILED " + show(pc) + " / forced: " + pf.err}; ` +
         `no platform package: ${okMissing ? "wasm, same bytes as native, silent; forced native: " + pmf.err.slice(0, 160) : "FAILED " + show(pm) + " / forced: " + pmf.err}`);
     }
@@ -659,7 +660,7 @@ if (platformTgz[host]) {
     record("native-worker", pwk.json?.main === "native" && pwk.json.workers.every((b) => b === "native") && pwk.json.same === true, show(pwk));
 
     // ---- (e) corrupted / incompatible .node in the installed platform package -> wasm, silently
-    const target = path.join(appN, "node_modules", `bm-render-${host}`, `bm-render.${host}.node`);
+    const target = path.join(appN, "node_modules", `@hunghg255/bm-render-${host}`, `bm-render.${host}.node`);
     const good = readFileSync(target);
     const [hostOs, hostArch] = [PLATFORMS[host].os, PLATFORMS[host].cpu];
     const pickFile = (pred) => { const n = Object.keys(platformTgz).find((x) => x !== host && pred(PLATFORMS[x])); return n ? [n, readFileSync(path.join(dir, "npm", n, `bm-render.${n}.node`))] : null; };
@@ -680,7 +681,7 @@ if (platformTgz[host]) {
         const pc = probe(appN);
         const pf = probe(appN, [], { BM_RENDER_BACKEND: "native" });
         const ok = pc.status === 0 && pc.json?.backend === "wasm" && pc.json.png === j?.png && !pc.stderr &&
-          pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(bm-render-${host}: `).test(pf.stderr);
+          pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(@hunghg255/bm-render-${host}: `).test(pf.stderr);
         if (!ok) corruptOk = false;
         rows.push(`${label}: ${ok ? "wasm, same bytes, silent" : "FAILED " + show(pc) + " / forced: " + pf.err}`);
       }
@@ -734,8 +735,8 @@ if (platformTgz[host]) {
     const pf = probe(app, [], { BM_RENDER_BACKEND: "native" });
     const ps = probe(app, ["bm-render/native"]);
     const ok = installedPlatforms(app).length === 0 && pm.status === 0 && pm.json?.backend === "wasm" && (!ref || pm.json.png === ref.png) && !pm.stderr &&
-      pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(bm-render-${host}: not installed`).test(pf.stderr) &&
-      ps.status !== 0 && new RegExp(`bm-render/native: the native addon is not available .*Install the optional package bm-render-${host}`).test(ps.stderr);
+      pf.status !== 0 && new RegExp(`BM_RENDER_BACKEND=native, but the native addon is not available \\(@hunghg255/bm-render-${host}: not installed`).test(pf.stderr) &&
+      ps.status !== 0 && new RegExp(`bm-render/native: the native addon is not available .*Install the optional package @hunghg255/bm-render-${host}`).test(ps.stderr);
     record("fallback-missing", ok, `no platform package: ${show(pm)}${ref && pm.json?.png === ref.png ? " (same bytes as native)" : ""}; forced native: ${pf.err}; bm-render/native: ${ps.err.slice(0, 200)}`);
   }
 
@@ -752,8 +753,8 @@ if (platformTgz[host]) {
     const appF = newApp("app-foreign");
     const fi = run("npm", ["i", "--ignore-scripts", "--no-audit", "--no-fund", "--force", tarball, platformTgz[foreign]], { cwd: appF });
     const pff = fi.ok ? probe(appF) : null;
-    record("fallback-foreign-pkg", fi.ok && installedPlatforms(appF).includes(`bm-render-${foreign}`) && pff?.json?.backend === "wasm" && !pff.stderr,
-      fi.ok ? `npm i --force bm-render-${foreign}: installed ${installedPlatforms(appF).join(", ")}; ${show(pff)}` : tail(fi.out, 5));
+    record("fallback-foreign-pkg", fi.ok && installedPlatforms(appF).includes(`@hunghg255/bm-render-${foreign}`) && pff?.json?.backend === "wasm" && !pff.stderr,
+      fi.ok ? `npm i --force @hunghg255/bm-render-${foreign}: installed ${installedPlatforms(appF).join(", ")}; ${show(pff)}` : tail(fi.out, 5));
   }
 }
 

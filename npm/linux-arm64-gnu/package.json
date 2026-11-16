@@ -1,5 +1,5 @@
 {
-  "name": "bm-render-linux-arm64-gnu",
+  "name": "@hunghg255/bm-render-linux-arm64-gnu",
   "version": "0.1.0",
   "description": "bm-render native Node-API addon for Linux arm64, glibc 2.17+. Installed automatically by bm-render as an optional dependency; do not depend on it directly.",
   "keywords": [

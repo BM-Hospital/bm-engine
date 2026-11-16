@@ -6,7 +6,7 @@ import { nativeBinding, nativeError, nativeNames } from "./native.mjs";
 const binding = nativeBinding();
 if (!binding) {
   throw new Error(`bm-render/native: the native addon is not available (${nativeError()}). Install the optional package ` +
-    `${nativeNames().map((n) => "bm-render-" + n).join(" or ") || "for your platform (none is published for it)"}, or import "bm-render" ` +
+    `${nativeNames().map((n) => "@hunghg255/bm-render-" + n).join(" or ") || "for your platform (none is published for it)"}, or import "bm-render" ` +
     `(falls back to WebAssembly) / "bm-render/full" (always WebAssembly).`);
 }
 

@@ -100,7 +100,7 @@ Check `features` at startup, import a larger profile (`bm-render/standard`, `bm-
 ## Native addon (Node.js)
 
 On Node.js, `bm-render` runs the native addon from the optional platform package
-`bm-render-<platform>` when it is installed and loads, and WebAssembly otherwise (see
+`@hunghg255/bm-render-<platform>` when it is installed and loads, and WebAssembly otherwise (see
 [Install](getting-started.md#native-on-nodejs-webassembly-everywhere-else)). The fallback is silent by
 design, so the first step is always to ask which backend runs:
 
@@ -112,7 +112,7 @@ BM_RENDER_BACKEND=native node app.mjs   # throws and says why the addon was not 
 - **No binary for this platform, or it was not installed** (an OS / CPU without a platform package, e.g.
   FreeBSD, Linux on 32-bit ARM or ppc64; `--omit=optional`; a `node_modules` copied from another OS; a
   lockfile that lost the optional packages): you get WebAssembly, with the same output. The forced error
-  says `bm-render-<platform>: not installed`. Reinstall on the target machine, see
+  says `@hunghg255/bm-render-<platform>: not installed`. Reinstall on the target machine, see
   [Package managers, Docker, serverless](getting-started.md#package-managers-docker-serverless).
 - **Only `win32-x64-msvc` has been executed so far.** The seven other platform packages are built and
   structurally verified but have never run; if one fails to load on your machine, `bm-render` uses

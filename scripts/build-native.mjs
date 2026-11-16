@@ -7,7 +7,7 @@
 //   node scripts/build-native.mjs --verify-only          check the files already in native/dist
 //   (ZIG=<path to zig> overrides the compiler location)
 //
-// Targets (<name> is also the npm package suffix: bm-render-<name>):
+// Targets (<name> is also the npm package suffix: @hunghg255/bm-render-<name>):
 //   win32-x64-msvc, win32-arm64-msvc    PE DLL, no C runtime, imports kernel32 only; Node-API functions are
 //                                       looked up in the host process at load time (no import of node.exe)
 //   linux-x64-gnu, linux-arm64-gnu      ELF shared object against glibc >= 2.17

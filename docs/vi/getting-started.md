@@ -30,8 +30,8 @@ Package không có dependency và không có install script. Bên trong gồm b�
 (`core`, `standard`, `full` và `pdf`, thêm đầu ra PDF), add-on WOFF tùy chọn, một wrapper ESM không phụ thuộc gì và các khai báo
 TypeScript. Package chỉ phát hành dạng ES module (xem [CommonJS](#commonjs)).
 
-Package cũng khai báo tám **optional dependency**, mỗi nền tảng một cái: `bm-render-win32-x64-msvc`,
-`bm-render-linux-x64-gnu`, ... (bảng bên dưới). Mỗi package chỉ chứa bản build Node-API native của cùng
+Package cũng khai báo tám **optional dependency**, mỗi nền tảng một cái: `@hunghg255/bm-render-win32-x64-msvc`,
+`@hunghg255/bm-render-linux-x64-gnu`, ... (bảng bên dưới). Mỗi package chỉ chứa bản build Node-API native của cùng
 engine (khoảng 1 MB sau nén) và khai báo `os`, `cpu` và, trên Linux, `libc`, nên package manager chỉ cài
 đúng cái khớp với máy và bỏ qua những cái còn lại. Không có gì được biên dịch hay tải về lúc cài hoặc lúc
 chạy; không có postinstall script.
@@ -55,19 +55,19 @@ console.log(backend); // "native" or "wasm"
 | native, hoặc báo lỗi rõ ràng | `BM_RENDER_BACKEND=native` (lệnh import ném lỗi và nói lý do), hoặc import `bm-render/native` |
 
 Lý do addon không được dùng nằm trong thông báo lỗi của `BM_RENDER_BACKEND=native node app.mjs`, ví dụ
-`bm-render: BM_RENDER_BACKEND=native, but the native addon is not available (bm-render-linux-x64-gnu: not
+`bm-render: BM_RENDER_BACKEND=native, but the native addon is not available (@hunghg255/bm-render-linux-x64-gnu: not
 installed)`.
 
 | Platform package | `os` / `cpu` / `libc` | Trạng thái |
 |:--|:--|:--|
-| `bm-render-win32-x64-msvc` | win32 / x64 | **đã chạy**: giống hệt từng byte với wasm trên 250 fixture, test luồng / bộ nhớ / fuzz, test cài đặt |
-| `bm-render-win32-arm64-msvc` | win32 / arm64 | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-linux-x64-gnu` | linux / x64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-linux-x64-musl` | linux / x64 / musl (Alpine) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-linux-arm64-musl` | linux / arm64 / musl | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-darwin-x64` | darwin / x64 (macOS 10.15+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
-| `bm-render-darwin-arm64` | darwin / arm64 (macOS 11+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-win32-x64-msvc` | win32 / x64 | **đã chạy**: giống hệt từng byte với wasm trên 250 fixture, test luồng / bộ nhớ / fuzz, test cài đặt |
+| `@hunghg255/bm-render-win32-arm64-msvc` | win32 / arm64 | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-linux-x64-gnu` | linux / x64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-linux-x64-musl` | linux / x64 / musl (Alpine) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-linux-arm64-gnu` | linux / arm64 / glibc 2.17+ | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-linux-arm64-musl` | linux / arm64 / musl | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-darwin-x64` | darwin / x64 (macOS 10.15+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
+| `@hunghg255/bm-render-darwin-arm64` | darwin / arm64 (macOS 11+) | đã build và kiểm tra cấu trúc, **chưa từng chạy** |
 
 "Kiểm tra cấu trúc" nghĩa là script build đã kiểm tra từng binary mà không chạy nó (định dạng, CPU, các
 symbol export và import, phiên bản symbol của glibc, không import thư viện toán). Cho tới khi một nền tảng
@@ -83,7 +83,7 @@ trở lên.
 - **`npm install --omit=optional`** (`--no-optional`, Yarn `--ignore-optional`, ...) không cài platform
   package nào: bạn nhận WebAssembly (đã kiểm thử với npm).
 - **Lockfile tạo trên hệ điều hành khác.** Với npm 11, lockfile ghi trên Windows liệt kê đủ tám package
-  cùng `os` / `cpu` / `libc` của chúng, và `npm ci` cho Linux x64 cài `bm-render-linux-x64-gnu` (đã kiểm
+  cùng `os` / `cpu` / `libc` của chúng, và `npm ci` cho Linux x64 cài `@hunghg255/bm-render-linux-x64-gnu` (đã kiểm
   thử). Một số phiên bản npm cũ hơn làm rơi optional package của các nền tảng khác khỏi lockfile khi
   `node_modules` đã tồn tại (npm/cli#4828), cái bẫy kinh điển của package native. Ở đây nó không gây lỗi:
   thiếu addon nghĩa là WebAssembly, không phải lỗi. Để sửa, xóa `node_modules` và lockfile rồi cài lại, và
@@ -104,7 +104,7 @@ trở lên.
   pnpm và Yarn dùng `supportedArchitectures` trong cấu hình của chúng.
 - **Serverless (AWS Lambda, Vercel Functions, Netlify Functions, ...).** Binary được chọn lúc cài
   dependency, trên máy build: nền tảng build trên Linux x64 (Vercel, Netlify, đa số CI) nhận
-  `bm-render-linux-x64-gnu`; một file zip `node_modules` tạo trên Mac hoặc Windows mang theo binary sai
+  `@hunghg255/bm-render-linux-x64-gnu`; một file zip `node_modules` tạo trên Mac hoặc Windows mang theo binary sai
   (lúc chạy là WebAssembly). Các công cụ deploy có bundle cũng phải mang theo platform package; xem
   [Next.js](./image/frameworks/nextjs.md#addon-native-khi-triển-khai) về `outputFileTracingIncludes`. Hãy log
   `backend` một lần khi khởi động để biết thứ gì đang chạy. Chưa kiểm thử kiểu deploy nào trong số này.

@@ -2,7 +2,7 @@
 //
 // Backend (exported as `backend`: "native" | "wasm"):
 //   * the native Node-API addon when one is installed for this platform (js/native.mjs: the optional package
-//     bm-render-<platform>-<arch>[-<abi>], or $BM_RENDER_NATIVE_PATH): same API and the same output bytes as the
+//     @hunghg255/bm-render-<platform>-<arch>[-<abi>], or $BM_RENDER_NATIVE_PATH): same API and the same output bytes as the
 //     full wasm build, faster, and the async methods (render, renderSvg, measure, renderAnimation, ...) run on
 //     the libuv thread pool instead of blocking the event loop;
 //   * otherwise, automatically and silently, the wasm binary: loaded from disk, ./index.mjs's module instance

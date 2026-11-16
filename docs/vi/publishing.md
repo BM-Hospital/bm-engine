@@ -3,7 +3,7 @@
 [English](../en/publishing.md) · [Tiếng Việt](publishing.md)
 
 Một bản release của bm-render là **chín package npm cùng một version**: `bm-render` (JavaScript, typings và
-các binary wasm) và tám platform package `bm-render-<platform>`, mỗi cái chứa một bản build Node-API
+các binary wasm) và tám platform package `@hunghg255/bm-render-<platform>`, mỗi cái chứa một bản build Node-API
 native. `bm-render` liệt kê tám package này trong `optionalDependencies`, ghim đúng version của chính nó,
 nên tất cả phải có mặt trên registry, ở đúng version đó, trước khi người dùng cài. Trang này là quy trình;
 thiết kế nằm trong [docs/NATIVE.md](../NATIVE.md), hành vi phía người dùng nằm trong
@@ -12,7 +12,7 @@ thiết kế nằm trong [docs/NATIVE.md](../NATIVE.md), hành vi phía người
 | Package | Build từ | Nội dung |
 |:--|:--|:--|
 | `bm-render` | thư mục gốc của repository (`files` trong `package.json`) | `js/`, bốn file `.wasm`, README, license; **không có file `.node`** |
-| `bm-render-win32-x64-msvc`, `-win32-arm64-msvc`, `-linux-x64-gnu`, `-linux-x64-musl`, `-linux-arm64-gnu`, `-linux-arm64-musl`, `-darwin-x64`, `-darwin-arm64` | `npm/<platform>/`, sinh bởi `npm run build:npm` | `bm-render.<platform>.node` (là `main` của nó), `package.json` với `os` / `cpu` / `libc`, README, license |
+| `@hunghg255/bm-render-win32-x64-msvc`, `-win32-arm64-msvc`, `-linux-x64-gnu`, `-linux-x64-musl`, `-linux-arm64-gnu`, `-linux-arm64-musl`, `-darwin-x64`, `-darwin-arm64` | `npm/<platform>/`, sinh bởi `npm run build:npm` | `bm-render.<platform>.node` (là `main` của nó), `package.json` với `os` / `cpu` / `libc`, README, license |
 
 `npm/<platform>/package.json` và `README.md` được commit; các file `.node` và bản sao license trong `npm/`
 là output của bước build (bị git bỏ qua). Các `package.json` của platform package được sinh từ
@@ -111,7 +111,7 @@ npm publish ./npm/linux-arm64-gnu --access public
 npm publish ./npm/linux-arm64-musl --access public
 npm publish ./npm/darwin-x64 --access public
 npm publish ./npm/darwin-arm64 --access public
-npm view bm-render-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
+npm view @hunghg255/bm-render-darwin-arm64@0.2.0 version   # repeat for the others if in doubt
 npm publish --access public                     # bm-render itself (prepublishOnly runs npm run release:check)
 ```
 
@@ -145,7 +145,7 @@ node --input-type=module -e 'const m = await import("bm-render"); console.log(m.
   Lockfile được ghi trong khoảng thời gian đó có thể thiếu nó: những người dùng này cần cài lại.
 - **Một binary platform đã publish bị hỏng**: một version trên npm không bao giờ ghi đè được, và việc
   unpublish chỉ làm được trong vòng 72 giờ và khóa vĩnh viễn số version đó. Thay vào đó hãy deprecate:
-  `npm deprecate bm-render-<platform>@0.2.0 "broken, use 0.2.1"` (và cả `bm-render@0.2.0`), rồi release
+  `npm deprecate @hunghg255/bm-render-<platform>@0.2.0 "broken, use 0.2.1"` (và cả `bm-render@0.2.0`), rồi release
   0.2.1 cho **cả chín** package (các version luôn đi cùng nhau; `version:set` làm việc đó). Trong lúc chờ,
   người dùng có thể ép wasm bằng `BM_RENDER_BACKEND=wasm`.
 - **Lệch version** không thể xảy ra qua các script (`verify` kiểm tra), nhưng nếu một platform package của

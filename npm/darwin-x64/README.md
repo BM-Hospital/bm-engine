@@ -1,4 +1,4 @@
-# bm-render-darwin-x64
+# @hunghg255/bm-render-darwin-x64
 
 The native Node-API addon of [bm-render](https://www.npmjs.com/package/bm-render) for **macOS x64 (10.15+)**
 (`os: darwin`, `cpu: x64`).

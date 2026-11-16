@@ -18,7 +18,7 @@ has been executed (see [Getting started](../getting-started.md#native-on-nodejs-
 ## Native backend on Node.js
 
 On Node.js, Bun and Deno, `bm-render/pdf` runs on the native Node-API addon when it is installed (the same
-addon and the same optional `bm-render-<platform>` package that `bm-render` uses; there is no extra package),
+addon and the same optional `@hunghg255/bm-render-<platform>` package that `bm-render` uses; there is no extra package),
 and otherwise falls back, silently, to the wasm `pdf` profile. `backend`, exported from `bm-render/pdf`, is
 `"native"` or `"wasm"`, and `BM_RENDER_BACKEND=wasm|native` forces one. The PDF bytes are identical on both
 backends. Natively, the async methods (`PdfRenderer.render` and `measure`, `Renderer.renderPdf` and

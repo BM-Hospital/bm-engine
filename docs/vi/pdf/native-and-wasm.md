@@ -18,7 +18,7 @@ backend chạy trên Windows x64 (Node.js 26), nền tảng duy nhất có addon
 ## Backend native trên Node.js
 
 Trên Node.js, Bun và Deno, `bm-render/pdf` chạy trên addon Node-API native khi nó đã được cài (cùng addon và cùng
-gói tùy chọn `bm-render-<platform>` mà `bm-render` dùng; không có gói thêm), nếu không thì tự động và im lặng quay
+gói tùy chọn `@hunghg255/bm-render-<platform>` mà `bm-render` dùng; không có gói thêm), nếu không thì tự động và im lặng quay
 về profile wasm `pdf`. `backend` được export từ `bm-render/pdf` là `"native"` hoặc `"wasm"`, và
 `BM_RENDER_BACKEND=wasm|native` ép dùng một trong hai. Byte PDF giống hệt nhau trên cả hai backend. Ở bản native,
 các phương thức async (`PdfRenderer.render` và `measure`, `Renderer.renderPdf` và `measurePdf`) chạy trên thread

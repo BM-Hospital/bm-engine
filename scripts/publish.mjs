@@ -1,4 +1,4 @@
-// Release checks and the ordered publish of the nine npm packages (bm-render + 8 bm-render-<platform>).
+// Release checks and the ordered publish of the nine npm packages (bm-render + 8 @hunghg255/bm-render-<platform>).
 //
 //   npm run release -- 0.1.1       the whole release in one command:
 //                                  1. sets the version in the 9 package.json files + package-lock.json
@@ -36,7 +36,7 @@ if (wanted && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(wanted)) {
 }
 const readPkg = () => JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 let pkg = readPkg();
-const platforms = Object.keys(pkg.optionalDependencies).map((n) => n.slice("bm-render-".length));
+const platforms = Object.keys(pkg.optionalDependencies).map((n) => n.slice("@hunghg255/bm-render-".length));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const dry = !!args["dry-run"];
 
@@ -112,7 +112,7 @@ else if (!args["skip-checks"]) checks();
 
 const extra = [...(args.otp ? [`--otp=${args.otp}`] : []), ...(dry ? ["--dry-run"] : []), ...(args.tag ? [`--tag=${args.tag}`] : [])];
 for (const p of platforms) {
-  const name = `bm-render-${p}`;
+  const name = `@hunghg255/bm-render-${p}`;
   if (!dry && published(name)) { console.log(`\nrelease: ${name}@${pkg.version} is already published, skipped`); continue; }
   run(npm, ["publish", `./npm/${p}`, "--access", "public", ...extra]);
 }

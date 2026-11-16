@@ -39,7 +39,7 @@ Environment variables (read once, when `bm-render` / `bm-render/pdf` is imported
 | `BM_WASM`, `BM_PROFILE` | name a wasm binary of `bm-render`, as before; they also select the wasm backend unless `BM_RENDER_BACKEND=native` (`bm-render/pdf` then loads `bm_render.pdf.wasm`, whatever they name) |
 
 Where the addon is looked for (`js/native.mjs`, nothing in it throws): `$BM_RENDER_NATIVE_PATH`; else a
-checkout's `native/dist/<name>/bm-render.<name>.node`; else `require("bm-render-<name>")`, the per-platform
+checkout's `native/dist/<name>/bm-render.<name>.node`; else `require("@hunghg255/bm-render-<name>")`, the per-platform
 package whose `main` is the `.node` file (see [packaging](#packaging) for how this survives bundlers). `<name>` is one of
 
     win32-x64-msvc   win32-arm64-msvc   darwin-x64   darwin-arm64
@@ -364,7 +364,7 @@ npm layout (napi-rs style; maintainer procedure: [docs/en/publishing.md](en/publ
 | package | contents | selection |
 | --- | --- | --- |
 | `bm-render` | `js/`, the wasm files, typings; no `.node` | `optionalDependencies`: the 8 below, each at exactly the same version |
-| `bm-render-<name>` (8) | `bm-render.<name>.node` (= `main`), README, licenses | `os` / `cpu` / `libc` (`["glibc"]` / `["musl"]` on Linux), so a package manager installs only the matching one |
+| `@hunghg255/bm-render-<name>` (8) | `bm-render.<name>.node` (= `main`), README, licenses | `os` / `cpu` / `libc` (`["glibc"]` / `["musl"]` on Linux), so a package manager installs only the matching one |
 
 * `npm run build:npm` (`scripts/npm-platform-packages.mjs`) writes `npm/<name>/`: `package.json` and `README.md`
   (committed, generated from the root `package.json`), the `.node` (checked against `native/dist/manifest.json`)
@@ -376,7 +376,7 @@ npm layout (napi-rs style; maintainer procedure: [docs/en/publishing.md](en/publ
   (Node-API 6), and registration is by the `napi_register_module_v1` symbol. The main package requires
   Node 18 (`engines`), which is the effective floor; only Node 26 was executed.
 * Loading (`js/native.mjs`): `BM_RENDER_NATIVE_PATH` and the checkout path are opened with `process.dlopen` (no
-  module request for bundlers to see). The platform package is `require("bm-render-<name>")` with one literal
+  module request for bundlers to see). The platform package is `require("@hunghg255/bm-render-<name>")` with one literal
   name per platform on `createRequire(import.meta.url)` in the same function, the form `@vercel/nft` traces
   (Next.js + webpack with `serverExternalPackages`: the package lands in standalone output), each marked
   `/* webpackIgnore: true */ /* turbopackIgnore: true */` so that bundlers leave it to run time (Turbopack

@@ -8,7 +8,7 @@ and a plain `Response`; the image is a node tree (or HTML), not JSX — see
 [Node trees without JSX](./index.md#node-trees-without-jsx) for a small `h()` helper.
 
 ::: info Verification status
-Verified with **Next.js 16.4.6 on Windows x64, Node 26.13**, bm-render and its `bm-render-win32-x64-msvc`
+Verified with **Next.js 16.4.6 on Windows x64, Node 26.13**, bm-render and its `@hunghg255/bm-render-win32-x64-msvc`
 platform package installed from packed tarballs: `next build` with Turbopack (the default) and with
 `--webpack`, then `next start`, and for `output: "standalone"` the `.next/standalone` folder copied to a
 directory outside the project and started with `node server.js`, so that nothing could be resolved from
@@ -65,7 +65,7 @@ example `"./node_modules/.pnpm/bm-render-*/**"`); not tested.
 ### Native addon in deployments
 
 The platform package is chosen when dependencies are installed, on the machine that runs the install:
-Vercel builds on Linux x64 and gets `bm-render-linux-x64-gnu`, which is built and structurally verified
+Vercel builds on Linux x64 and gets `@hunghg255/bm-render-linux-x64-gnu`, which is built and structurally verified
 but has **never been executed** (only `win32-x64-msvc` has, see
 [Install](../../getting-started.md#native-on-nodejs-webassembly-everywhere-else)). If it does not load there,
 the route still works on wasm. A `node_modules` built on your Mac or Windows machine and uploaded to a

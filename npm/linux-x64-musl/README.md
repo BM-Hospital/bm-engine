@@ -1,4 +1,4 @@
-# bm-render-linux-x64-musl
+# @hunghg255/bm-render-linux-x64-musl
 
 The native Node-API addon of [bm-render](https://www.npmjs.com/package/bm-render) for **Linux x64, musl (Alpine)**
 (`os: linux`, `cpu: x64`, `libc: musl`).

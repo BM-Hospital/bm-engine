@@ -68,7 +68,7 @@ export default {
 
 ```toml
 # wrangler.toml
-name = "bm-render-og"
+name = "@hunghg255/bm-render-og"
 main = "src/worker.js"
 compatibility_date = "2025-06-01"
 

@@ -9,7 +9,7 @@ bạn quản lý và một `Response` thông thường; ảnh là một node tre
 
 ::: info Trạng thái kiểm chứng
 Đã kiểm chứng với **Next.js 16.4.6 trên Windows x64, Node 26.13**, bm-render và platform package
-`bm-render-win32-x64-msvc` được cài từ các tarball đã đóng gói: `next build` với Turbopack (mặc định) và
+`@hunghg255/bm-render-win32-x64-msvc` được cài từ các tarball đã đóng gói: `next build` với Turbopack (mặc định) và
 với `--webpack`, rồi `next start`; với `output: "standalone"`, thư mục `.next/standalone` được chép ra một
 thư mục nằm ngoài project và chạy bằng `node server.js`, để không thứ gì có thể được resolve từ
 `node_modules` của máy build. Các route: một route handler Node.js dùng `bm-render`, một dùng
@@ -66,7 +66,7 @@ Turbopack bỏ qua nó, vì vậy cần `outputFileTracingIncludes`. Với pnpm,
 ### Addon native khi triển khai
 
 Platform package được chọn lúc cài dependency, trên máy chạy lệnh cài: Vercel build trên Linux x64 và
-nhận `bm-render-linux-x64-gnu`, bản đã được build và kiểm tra cấu trúc nhưng **chưa từng được chạy** (chỉ
+nhận `@hunghg255/bm-render-linux-x64-gnu`, bản đã được build và kiểm tra cấu trúc nhưng **chưa từng được chạy** (chỉ
 `win32-x64-msvc` đã chạy, xem [Cài đặt](../../getting-started.md#native-trên-nodejs-webassembly-ở-mọi-nơi-khác)).
 Nếu nó không nạp được ở đó, route vẫn chạy bằng wasm. Một thư mục `node_modules` được build trên máy Mac
 hoặc Windows của bạn rồi tải lên máy chủ Linux sẽ mang theo binary sai (lúc chạy là wasm).
