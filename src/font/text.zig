@@ -555,8 +555,12 @@ fn computeMetric(font: *const Font, size: f32, lh: LineHeight) [4]f32 {
     const d = roundAway(fd);
     const line_height = switch (lh) {
         .normal => a + d + roundAway(@as(f32, @floatFromInt(lm.leading)) * s),
-        .px => |v| floor64(v),
-        .multiple => |m| floor64(m * size),
+        // Blink `ComputedLineHeightAsFixed` (takumi font_style.rs): a length rounds to the nearest
+        // layout unit; a number (kept as a percentage) multiplies the font size rounded to a layout
+        // unit and truncates. Truncating `m * size` directly is 1/64 px short per line at sizes such
+        // as 9.5pt (12.67px x 1.3), which adds up over long pages.
+        .px => |v| roundAway(v * 64.0) * (1.0 / 64.0),
+        .multiple => |m| floor64(roundAway(size * 64.0) * (1.0 / 64.0) * (m * 100.0) / 100.0),
     };
     const lead_a = @floor((line_height - (a + d)) * 0.5);
     const lead_d = line_height - (a + d) - lead_a;
@@ -1038,12 +1042,22 @@ pub const Paragraph = struct {
     }
 
     fn breakLine(self: *const Paragraph, start: u32, s_cum: f64, m: Mode, stop_at: u32) LineInfo {
+        return self.breakLineShrunk(start, s_cum, m, stop_at, 0);
+    }
+
+    /// `breakLine` with the available width less `shrink` for every fit except a soft hyphen's
+    /// own hyphen (Blink's ShapingLineBreaker retry: a hyphen that does not fit after the content
+    /// before it shrinks the width by the hyphen and looks for the break again).
+    fn breakLineShrunk(self: *const Paragraph, start: u32, s_cum: f64, m: Mode, stop_at: u32, shrink: f64) LineInfo {
         const gs = self.glyphs;
         const n: u32 = @intCast(gs.len);
         const forced = stop_at != no_stop and stop_at <= n;
         const end_i = if (forced) stop_at else n;
         const wrap = !forced and m.avail != null and self.wraps();
-        var limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) else 0) - m.indent;
+        // fit checks compare against the available width plus one layout unit (Blink
+        // `AvailableWidthToFit` = `AvailableWidth().AddEpsilon()`, takumi line_breaker.rs): content
+        // whose snapped width exceeds the width by less than 1/64 px still fits
+        var limit: f64 = ceil64d(s_cum) + @as(f64, if (m.avail) |a| floor64(@max(a, 0)) + 1.0 / 64.0 else 0) - m.indent;
         var i = start;
         var cum = s_cum;
         // box-decoration-break: clone: the end edges of the open cloned boxes (room reserved at
@@ -1058,10 +1072,16 @@ pub const Paragraph = struct {
             }
             limit -= clone_end;
         }
+        // (the hyphen of a soft hyphen fits the width before any retry shrank it)
+        const hyphen_limit = limit;
+        limit -= shrink;
         var cum_content = cum;
         var content_end = start;
         var brk: LineInfo = undefined;
         var has_brk = false;
+        // the last breakpoint whose content fits is a soft hyphen whose hyphen does not: the width
+        // to shrink by when the line has to break (0: none)
+        var shy_retry: f64 = 0;
         // collapsible spaces since the last content; width of the closing edges after such spaces
         // (Blink: trailable items, they may overhang the line end)
         var sp = false;
@@ -1089,28 +1109,26 @@ pub const Paragraph = struct {
             if (wrap and i > start and g.flags & ShapedGlyph.BREAK_BEFORE != 0) {
                 var e = cum_content;
                 var hyphen = false;
-                var end = content_end;
+                const end = content_end;
+                var hyphen_misses = false;
                 if (content_end == i) {
                     e -= gs[i - 1].kern;
                     if (g.flags & ShapedGlyph.SOFT_HYPHEN != 0) {
                         hyphen = true;
-                        e += self.metrics[gs[i - 1].metric].hyphen_adv;
-                    }
-                } else if (g.flags & ShapedGlyph.SOFT_HYPHEN != 0 and g.flags & ShapedGlyph.SPECIAL == 0 and gs[i - 1].flags & ShapedGlyph.SPECIAL == 0) {
-                    // a soft hyphen right after spaces ("a \u{ad}b"): Blink (and takumi) break after it, and
-                    // the hyphen it shows follows the spaces, which stay on the line as content; when that
-                    // does not fit, the break before it (after the hanging spaces, no hyphen) is taken
-                    const eh = cum + self.metrics[gs[i - 1].metric].hyphen_adv;
-                    if (eh - oh <= limit) {
-                        hyphen = true;
-                        end = i;
-                        e = eh;
+                        const ha = self.metrics[gs[i - 1].metric].hyphen_adv;
+                        // (the content fits, its hyphen does not: Blink shrinks the width by the
+                        // hyphen and breaks again, unless a later breakpoint fits)
+                        hyphen_misses = e - oh <= limit and e + ha - oh > hyphen_limit;
+                        if (hyphen_misses) shy_retry = ha;
+                        e += ha;
                     }
                 }
-                if (!has_brk or e - oh <= limit) {
+                const fits = if (hyphen) e - oh <= hyphen_limit and e - self.metrics[gs[i - 1].metric].hyphen_adv - oh <= limit else e - oh <= limit;
+                if (!has_brk or fits) {
                     has_brk = true;
                     brk = .{ .start = start, .end = end, .next = i, .width = @floatCast(e - s_cum + clone_end), .last = false, .hyphen = hyphen, .cum = cum };
                 }
+                if (fits) shy_retry = 0;
             }
             const nc = cum + self.advanceOf(g, @floatCast(cum - s_cum), m.flow);
             if (g.flags & (ShapedGlyph.SPACE | ShapedGlyph.SPECIAL) != 0) {
@@ -1130,7 +1148,10 @@ pub const Paragraph = struct {
                 if (g.gid == Special.atomic) {
                     sp = false;
                     oh = 0;
-                    if (wrap and has_brk and ceil64d(nc) > limit) return self.fin(brk, s_cum);
+                    if (wrap and has_brk and ceil64d(nc) > limit) {
+                        if (shy_retry > 0 and shrink + shy_retry < limit - s_cum) return self.breakLineShrunk(start, s_cum, m, stop_at, shrink + shy_retry);
+                        return self.fin(brk, s_cum);
+                    }
                     cum = nc;
                     cum_content = nc;
                     content_end = i + 1;
@@ -1145,14 +1166,22 @@ pub const Paragraph = struct {
                     oh += nc - cum;
                 } else {
                     oh = 0;
-                    if (wrap and has_brk and ceil64d(cc) > limit) return self.fin(brk, s_cum);
+                    if (wrap and has_brk and ceil64d(cc) > limit) {
+                        if (shy_retry > 0 and shrink + shy_retry < limit - s_cum) return self.breakLineShrunk(start, s_cum, m, stop_at, shrink + shy_retry);
+                        return self.fin(brk, s_cum);
+                    }
                 }
                 cum = nc;
                 cum_content = cc;
                 content_end = i + 1;
                 continue;
             }
-            if (wrap and ceil64d(nc) > limit) {
+            // (the glyph fits where the line could end after it: without the kerning with the glyph
+            // that follows, which a line ending there drops; Blink reshapes the line up to the break.
+            // "MATR" in a cell as wide as "MA" unkerned breaks after "M", not after the A that the
+            // A-T kerning made narrower)
+            if (wrap and ceil64d(nc - g.kern) > limit) {
+                if (shy_retry > 0 and shrink + shy_retry < limit - s_cum) return self.breakLineShrunk(start, s_cum, m, stop_at, shrink + shy_retry);
                 if (has_brk) return self.fin(brk, s_cum);
                 if (self.emergencyAt(m, g.metric) and i > start and g.flags & ShapedGlyph.NO_SPLIT == 0 and !self.metrics[g.metric].nowrap)
                     return self.fin(.{ .start = start, .end = content_end, .next = i, .width = @floatCast(cum_content - gs[i - 1].kern - s_cum + clone_end), .last = false, .cum = cum }, s_cum);
@@ -3686,6 +3715,17 @@ const Builder = struct {
                 continue;
             }
             const joiner = uni.isShapingControl(c.cp);
+            if (c.cp == 0xad and ci > 0 and (b.chars[ci - 1].cp == ' ' or b.chars[ci - 1].cp == '\t') and !b.nowrap) {
+                // A soft hyphen right after spaces keeps an invisible glyph of its own: Blink breaks
+                // before the space run there (the spaces hang) and after the soft hyphen (hyphenated,
+                // the spaces then being content), two places a dropped soft hyphen would merge. A line
+                // may then start with it and hold only its hyphen ("aaa" / "‐" / "bbb").
+                try b.flush(complex, style);
+                const pick = pickFace(b.fonts, faces, ' ');
+                const fl = b.takeBreak(ci);
+                try b.glyphs.append(b.alloc, .{ .face = pick.face, .gid = pick.gid, .cluster = c.cluster, .x_advance = 0, .metric = primary_metric, .flags = fl, .level = c.level, .item = b.item });
+                continue;
+            }
             if (uni.isZeroWidth(c.cp)) {
                 // (a joiner is shaped, but alone it gives no glyph either)
                 if (zw_only == null) zw_only = .{ .face = faces[0], .cluster = c.cluster, .metric = primary_metric, .level = c.level, .item = b.item };
@@ -4083,6 +4123,12 @@ const Builder = struct {
                     adv += style.word_spacing;
                     flags |= ShapedGlyph.WORD_SPACE;
                     if (c.cp == ' ' and hang) flags |= ShapedGlyph.SPACE;
+                } else if (c.cp == 0x3000 and hang) {
+                    // the ideographic space hangs at the line end like a preserved space, in every
+                    // white-space mode that wraps (Blink `IsOtherSpaceSeparator` in `HandleTrailingSpaces`,
+                    // takumi line_breaker.rs): "ab\u{3000}cd" too narrow for "ab\u{3000}" breaks after it,
+                    // not before it. Other Unicode spaces (U+2003, ...) do not hang in Blink.
+                    flags |= ShapedGlyph.SPACE;
                 }
                 flags |= b.takeBreak(ci);
             } else flags |= ShapedGlyph.NO_SPLIT;

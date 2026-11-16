@@ -228,9 +228,37 @@ pub const Geom = struct {
     radii: Radii,
     rounded: bool,
     snapped: bool = true,
+    /// the border box before pixel snapping (snapped geometry only)
+    raw: ?Rect = null,
 
     pub fn padRect(g: *const Geom) Rect {
         return insetRect(g.bx, g.bw[0], g.bw[1], g.bw[2], g.bw[3]);
+    }
+    /// The padding box an `overflow` clip clips to (takumi `OverflowClip::of`, Blink's
+    /// `PixelSnappedContouredInnerBorder`): with a border, the unsnapped border box inset by it and
+    /// then snapped, so a half-pixel border (a collapsed table cell's) rounds the edge instead of
+    /// moving it by half a pixel; without one, the snapped border box.
+    pub fn overflowRect(g: *const Geom) Rect {
+        const r = g.raw orelse return g.padRect();
+        if (g.bw[0] == 0 and g.bw[1] == 0 and g.bw[2] == 0 and g.bw[3] == 0) return g.padRect();
+        const q = struct {
+            fn u(v: f32) f32 {
+                return roundAway64(v * 64) / 64;
+            }
+            fn roundAway64(v: f32) f32 {
+                return if (v >= 0) @floor(v + 0.5) else -@floor(0.5 - v);
+            }
+            /// Blink `SnapSizeToPixelAllowingZero`
+            fn size(s: f32, at: f32) f32 {
+                const frac = at - @floor(at);
+                return roundHalfUp(frac + s) - roundHalfUp(frac);
+            }
+        };
+        const x = q.u(r.x) + q.u(g.bw[3]);
+        const y = q.u(r.y) + q.u(g.bw[0]);
+        const w = @max(0, q.u(r.w) - q.u(g.bw[1]) - q.u(g.bw[3]));
+        const h = @max(0, q.u(r.h) - q.u(g.bw[0]) - q.u(g.bw[2]));
+        return .{ .x = q.roundAway64(x), .y = q.roundAway64(y), .w = @max(0, q.size(w, x)), .h = @max(0, q.size(h, y)) };
     }
     pub fn padRadii(g: *const Geom) ?Radii {
         if (!g.rounded) return null;
@@ -1351,6 +1379,7 @@ pub const Painter = struct {
             .radii = undefined,
             .rounded = false,
             .snapped = ctx.plain(),
+            .raw = if (ctx.plain()) .{ .x = x, .y = y, .w = l.w, .h = l.h } else null,
         };
         g.radii = resolveRadii(cs, g.bx.w, g.bx.h);
         g.rounded = hasRadii(g.radii);
@@ -1446,7 +1475,7 @@ pub const Painter = struct {
         if (has_text or n.first_child != none) children: {
             var cctx = ctx.*;
             if (cs.overflow_x != .visible or cs.overflow_y != .visible) {
-                cctx.clip = try p.makeClip(ctx, g.padRect(), g.padRadii());
+                cctx.clip = try p.makeClip(ctx, g.overflowRect(), g.padRadii());
                 if (cctx.clip.?.bounds.isEmpty()) break :children;
             }
             if (has_text) try p.enqueue(&p.text_q, id, x, y, &cctx, depth, 0, true);

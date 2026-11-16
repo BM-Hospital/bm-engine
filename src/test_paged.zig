@@ -512,6 +512,65 @@ test "paged: a long table repeats its header group on every continuation page" {
     try T.expect(pm.data[at * 4 + 3] == 0);
 }
 
+test "paged: a flex row shrinks with an item whose truncated margin moved it up (align-items: flex-start)" {
+    if (!enabled) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(T.allocator);
+    defer arena.deinit();
+    // page area 280px: B (after a 23px margin) starts at 293 and moves to page 2, the 13px of its margin
+    // past the page end truncated. The row ends with B, so "end" follows B by its 20px line and the
+    // 10px block, whatever the spacer (oracle: Chromium, takumi); before, the row kept its unbroken
+    // height and "end" sat lower by the truncated part of the margin.
+    for ([_]u32{ 250, 254 }) |spacer| {
+        const src = try std.fmt.allocPrint(arena.allocator(), "<html><body style=\"margin: 0; font-size: 16px; line-height: 20px\"><div style=\"height: {d}px\"></div><div style=\"display: flex; align-items: flex-start\"><div style=\"width: 50%\"><div>A</div><div id=\"b\" style=\"margin-top: 23px\">B</div></div><div style=\"width: 50%\"><div>C</div></div></div><div style=\"height: 10px\"></div><div id=\"end\">E</div></body></html>", .{spacer});
+        const d = try open(.html, src, 300, 300, 10);
+        defer d.deinit();
+        try T.expectEqual(@as(u32, 1), try pageOfId(d, "b"));
+        const b = try nodeOfId(d, "b");
+        const end = try nodeOfId(d, "end");
+        try T.expectApproxEqAbs(@as(f32, 30), absTop(&d.f, end.lid) - absTop(&d.f, b.lid), 0.01);
+    }
+}
+
+test "paged: a flex row starting with an empty item moves whole, keeping its min-height" {
+    if (!enabled) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(T.allocator);
+    defer arena.deinit();
+    // page area 280px: the row starts at 265, its text line does not fit. The empty first item is no
+    // content of its own: the row moves to page 2 whole (not split after the empty item with part of
+    // its min-height spent on page 1), "end" follows it by the full 40px (oracle: Chromium, takumi)
+    const src = "<html><body style=\"margin: 0; font-size: 16px; line-height: 20px\"><div style=\"height: 265px\"></div><div style=\"display: flex; align-items: flex-start; min-height: 40px\"><div style=\"width: 20%\"></div><div style=\"width: 60%\"><div id=\"a\" style=\"white-space: nowrap; overflow: hidden\">A</div></div><div style=\"width: 20%\"></div></div><div id=\"end\">E</div></body></html>";
+    const d = try open(.html, src, 300, 300, 10);
+    defer d.deinit();
+    try T.expectEqual(@as(u32, 1), try pageOfId(d, "a"));
+    const a = try nodeOfId(d, "a");
+    const end = try nodeOfId(d, "end");
+    try T.expectApproxEqAbs(@as(f32, 40), absTop(&d.f, end.lid) - absTop(&d.f, a.lid), 0.01);
+}
+
+test "paged: a table with a repeated header lets its block-end border overflow the page (takumi / Blink)" {
+    if (!enabled) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(T.allocator);
+    defer arena.deinit();
+    // collapsed 4px borders: the table's rows end 2px (half the bottom edge) above its border box. The
+    // last table box of a table with a repeated header does not break before its block-end decorations
+    // (takumi `relayout_as_last_table_box`, Blink's FinishFragmentation): its row moves to page 2 only
+    // once the rows themselves no longer fit, 2px later than with a header that does not repeat
+    // (`table-row-group`), whose block-end border has to fit
+    var first_moved: [2]u32 = .{ 0, 0 };
+    for ([_][]const u8{ "", " style=\"display: table-row-group\"" }, 0..) |head, v| {
+        var spacer: u32 = 40;
+        while (spacer <= 70) : (spacer += 1) {
+            const src = try std.fmt.allocPrint(arena.allocator(), "<html><body style=\"margin: 0\"><div style=\"height: {d}px\"></div><table style=\"border-collapse: collapse; width: 100%\"><thead{s}><tr><th style=\"border: 4px solid #000; height: 20px; padding: 0\">h</th></tr></thead><tbody><tr style=\"break-inside: avoid\"><td id=\"row\" style=\"border: 4px solid #000; height: 200px; padding: 0\">a</td></tr></tbody></table></body></html>", .{ spacer, head });
+            const d = try open(.html, src, 300, 300, 10);
+            defer d.deinit();
+            if (try pageOfId(d, "row") == 1) break;
+        }
+        first_moved[v] = spacer;
+    }
+    try T.expect(first_moved[1] > 40 and first_moved[0] <= 70);
+    try T.expectEqual(first_moved[1] + 2, first_moved[0]);
+}
+
 test "paged: paged-table.pdf (thead / tfoot reordered, 3 pages)" {
     if (!enabled) return error.SkipZigTest;
     var arena = std.heap.ArenaAllocator.init(T.allocator);
