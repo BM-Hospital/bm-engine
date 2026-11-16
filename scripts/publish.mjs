@@ -13,7 +13,9 @@
 //                                  Without a version (or with the current one) steps 1-3 are skipped. Packages
 //                                  already on the registry at this version are skipped, so a release interrupted
 //                                  half-way (expired OTP, network) is finished by running the same command again.
-//                                  Options: --otp=<code>, --tag=<dist-tag>, --skip-checks.
+//                                  Options: --otp=<code>, --tag=<dist-tag>, --skip-checks, --publish-only (no
+//                                  build and no checks, only `npm run verify` and the publishes: to retry the
+//                                  publish step after the checks already passed on this commit).
 //   npm run release:dry -- 0.1.1   the same with `npm publish --dry-run`: no commit, tag or push, and the version
 //                                  bump + rebuilt wasm are reverted at the end
 //   npm run release:check          every check a release needs (also what `prepublishOnly` runs):
@@ -57,7 +59,9 @@ function published(name) {
 function checks() {
   npmRun("verify");      // version sync of the 9 package.json files + wasm binaries match the manifest
   npmRun("test");        // zig build test (with and without -Dpdf)
-  npmRun("test:pdf");    // PDF API / output suite on the default backend
+  // PDF API / output suite on the default backend, against the committed wasm (without --no-build it rebuilds
+  // the pdf wasm, which rewrites js/build-manifest.json and leaves the tree dirty)
+  run(process.execPath, ["scripts/pdf-test.mjs", "--no-build"]);
   npmRun("test:native"); // native addon suite (this machine's platform)
   npmRun("test:pack");   // npm pack + install scenarios: native, wasm fallback, bundlers (~5 min)
 }
@@ -95,12 +99,16 @@ if (bumped) {
 }
 console.log(`release: bm-engine ${pkg.version} as npm user ${who.stdout.trim()}${dry ? " (dry run)" : ""}`);
 
-npmRun("build:native"); // 8 targets -> native/dist/, structurally verified
-npmRun("build:npm");    // native/dist -> npm/<platform>/ (checked against native/dist/manifest.json)
+const publishOnly = !!args["publish-only"];
+if (!publishOnly) {
+  npmRun("build:native"); // 8 targets -> native/dist/, structurally verified
+  npmRun("build:npm");    // native/dist -> npm/<platform>/ (checked against native/dist/manifest.json)
+}
 for (const p of platforms) {
   if (!existsSync(path.join(root, "npm", p, `bm-engine.${p}.node`))) { console.error(`release: npm/${p}/bm-engine.${p}.node is missing`); process.exit(1); }
 }
-if (!args["skip-checks"]) checks();
+if (publishOnly) npmRun("verify");
+else if (!args["skip-checks"]) checks();
 
 const extra = [...(args.otp ? [`--otp=${args.otp}`] : []), ...(dry ? ["--dry-run"] : []), ...(args.tag ? [`--tag=${args.tag}`] : [])];
 for (const p of platforms) {

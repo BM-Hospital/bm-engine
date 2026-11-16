@@ -44,7 +44,7 @@ npm run release -- 0.1.1       # release thật
 pack test), publish 8 platform package trước và bm-engine sau cùng, rồi gắn tag `v<version>` và push commit
 cùng tag. Script từ chối chạy khi còn thay đổi chưa commit hoặc chưa `npm login`. Gói nào đã publish ở
 version đó thì bỏ qua, nên một lần release bị ngắt (OTP hết hạn, mạng) chỉ cần chạy lại đúng lệnh đó. Tuỳ
-chọn: `--otp=<mã>`, `--tag=<dist-tag>` (ví dụ `next`), `--skip-checks`. Không có `--otp` thì npm hỏi mã OTP
+chọn: `--otp=<mã>`, `--tag=<dist-tag>` (ví dụ `next`), `--skip-checks`, `--publish-only` (chỉ chạy lại bước publish khi các kiểm tra đã qua trên commit này). Không có `--otp` thì npm hỏi mã OTP
 (hoặc mở trình duyệt) ở mỗi lần publish. `prepublishOnly` chạy cùng các kiểm tra đó, nên `npm publish` trực
 tiếp cho bm-engine không bỏ qua được chúng. Các bước dưới đây là từng việc script làm.
 

@@ -45,7 +45,7 @@ tests, pack test), publishes the 8 platform packages first and bm-engine last, t
 pushes the commit and the tag. It refuses to start with uncommitted changes or without `npm login`. Packages
 already published at that version are skipped, so an interrupted release (expired OTP, network) is finished
 by running the same command again. Options: `--otp=<code>`, `--tag=<dist-tag>` (e.g. `next`),
-`--skip-checks`. Without `--otp`, npm asks for a one-time password (or opens the browser) at each publish.
+`--skip-checks`, `--publish-only` (retry only the publishes after the checks passed on this commit). Without `--otp`, npm asks for a one-time password (or opens the browser) at each publish.
 `prepublishOnly` runs the same checks, so a plain `npm publish` of bm-engine cannot skip them. The steps
 below are what the script does, one by one.
 
