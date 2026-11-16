@@ -2,7 +2,7 @@
 
 [English](profiles-and-size.md) · [Tiếng Việt](../vi/profiles-and-size.md)
 
-Choose a profile to download only the features you need. Sizes below are after `wasm-opt -Oz` (`pdf`: built for speed, see below); KiB = 1024 bytes.
+Choose a profile to download only the features you need. Sizes below are after `wasm-opt -Oz`; KiB = 1024 bytes.
 
 ## Sizes
 
@@ -11,7 +11,7 @@ Choose a profile to download only the features you need. Sizes below are after `
 | `core` — `bm_engine.core.wasm` | 626.2 KiB | 301.2 KiB | 254.1 KiB  |
 | `standard` — `bm_engine.standard.wasm` | 1 075.6 KiB | 537.2 KiB | 458.0 KiB  |
 | `full` — `bm_engine.wasm` | 1 272.7 KiB | 631.5 KiB | 529.1 KiB  |
-| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 3 187.8 KiB | 1 311.8 KiB | 1 015.7 KiB  |
+| `pdf` — `bm_engine.pdf.wasm` (`full` + PDF output) | 1 906.7 KiB | 938.1 KiB | 767.1 KiB  |
 | WOFF add-on — `bm_woff.wasm` | 84.4 KiB | 67.8 KiB | 65.5 KiB  |
 
 The JavaScript wrapper is a few KiB of dependency-free ESM and the same for every profile. The binaries
@@ -76,7 +76,7 @@ Native addons from `native/dist/manifest.json` (built 2026-11-13 with Zig 0.17.1
 
 `bm_engine.pdf.wasm` is `full` plus the `pdf` feature: the PDF writer, font subsetter, paged layout and the
 CSS paged-media properties ([PDF output](pdf/index.md)). It is the only wasm binary with PDF; the native addon contains the PDF writer too and serves `bm-engine/pdf` on
-Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It is built for speed rather than size (Zig `ReleaseFast` + `wasm-opt -O3`): PDF generation is usually a batch job, and this makes warm renders 20-27 % faster for about 1.3 MB more wasm. The larger code also costs about 30-45 MB more process memory (V8's compiled code) and a slower first render after loading (about 100 ms instead of 60 ms for a one-page invoice). It is not part of the table below because `pdf` is
+Node.js (the addon is the `full` feature set plus PDF output). `features.pdf` is `true` there and `false` in the others, and `bm-engine` never exposes PDF. It adds about 0.6 MB to `full`. It is not part of the table below because `pdf` is
 not a feature of `core`, `standard` or `full`.
 
 ## Marginal cost per feature

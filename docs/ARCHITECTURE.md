@@ -26,7 +26,7 @@ are shipped:
 | core | 489.6 KiB | node JSON + inline styles, var() / calc(), block / inline / flex / grid / absolute, static TTF / TTC + default OpenType shaper, every border style, outline, text decorations, PNG / JPEG in, PNG / JPEG / WebP / raw out |
 | standard | 936.5 KiB | core + stylesheets / selectors (`css`), Tailwind (`tw`), HTML, SVG images, WOFF / WOFF2, variable fonts, CFF, effects (clip-path, masks, blend modes, backdrop-filter), modern colours, tables, floats, WebP / GIF in, text-wrap balance |
 | full | 1 143.6 KiB | standard + complex text (bidi, Arabic, Hebrew, Indic, Thai), colour emoji, animations + renderAnimation, lossy WebP / animated codecs / ICO, renderSvg |
-| pdf | about 3.2 MB raw (built for speed: ReleaseFast + wasm-opt -O3) | full + `renderPdf` / `measurePdf` (the `pdf` flag): the PDF pipeline below, block fragmentation (`src/layout/fragment.zig`) and the paged-media CSS properties. `bm-engine/pdf`, `js/bm_engine.pdf.wasm` |
+| pdf | about 1.9 MB raw | full + `renderPdf` / `measurePdf` (the `pdf` flag): the PDF pipeline below, block fragmentation (`src/layout/fragment.zig`) and the paged-media CSS properties. `bm-engine/pdf`, `js/bm_engine.pdf.wasm` |
 
 `bm_features()` exports the flag bits; the JS wrapper exposes them as `features`. The WOFF decoder is
 also built as a separate add-on module (`src/addon_woff.zig` → `bm_woff.wasm`). User-facing details:

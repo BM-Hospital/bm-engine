@@ -36,7 +36,7 @@ tra status, `content-type: application/pdf`, `content-disposition`, `content-len
 | `content-type` | `image/png`, `image/webp`, ... | `application/pdf` |
 | `content-disposition` | thường không đặt | `inline` (hiện trong trình xem của trình duyệt) hoặc `attachment` (lưu thành tệp), kèm `filename` |
 | Cache | ảnh OG là hàm thuần của URL: cache mạnh tay | tài liệu thường riêng cho từng người dùng: `private, no-store` trừ khi là tài liệu công khai |
-| Tệp wasm cho Workers / trình duyệt | `bm_engine.wasm` và các profile nhỏ hơn | `bm_engine.pdf.wasm`: 3 187.8 KiB thô, 1 311.8 KiB gzip, 1 015.7 KiB brotli |
+| Tệp wasm cho Workers / trình duyệt | `bm_engine.wasm` và các profile nhỏ hơn | `bm_engine.pdf.wasm`: 1 906.7 KiB thô, 938.1 KiB gzip, 767.1 KiB brotli |
 
 `render()` trả về cả tệp dưới dạng một `Uint8Array` khi tài liệu đã xong; không có API streaming. Các ví dụ
 trên trang này nặng 15 KiB; các [công thức](recipes.md) từ 19 tới 40 KiB, phần lớn là font đã subset. Hãy
@@ -176,7 +176,7 @@ import { init, PdfRenderer } from "bm-engine/pdf";
 await init(wasm);
 ```
 
-Đoạn này chưa được chạy dưới wrangler. Kích thước nén của `bm_engine.pdf.wasm` (1 311.8 KiB gzip) được tính
+Đoạn này chưa được chạy dưới wrangler. Kích thước nén của `bm_engine.pdf.wasm` (938.1 KiB gzip) được tính
 vào giới hạn kích thước script của gói Workers bạn dùng; xem [Cloudflare
 Workers](../image/frameworks/cloudflare-workers.md) cho phần còn lại của thiết lập và [Bắt đầu nhanh với
 PDF](index.md) cho ví dụ trên trình duyệt mở kết quả bằng một URL `Blob`.

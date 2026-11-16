@@ -71,6 +71,7 @@ if (args.prepublish) {
 if (args.check) { checks(); console.log("\nrelease: all checks passed"); process.exit(0); }
 
 // ---- full release ----
+spawnSync("git", ["update-index", "-q", "--refresh"], { cwd: root }); // ignore files only touched, not changed
 const dirty = spawnSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" }).stdout.trim();
 if (dirty && !args["allow-dirty"]) {
   console.error("release: the working tree has uncommitted changes; commit them first (or pass --allow-dirty):\n" + dirty);

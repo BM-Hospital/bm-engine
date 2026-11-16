@@ -37,30 +37,31 @@ Image wasm verdicts: 81 identical, 169 equivalent, 0 close, 0 different and 0 er
 Engines use the same documents, fonts and images. Render timing is warm; file validation and visual comparison use separate tools. Timing and output equivalence are independent results.
 
 <!-- pdf-bench:summary -->
-- **Render time, bm-native vs takumi-pdf:** sync 0.32× [0.31× / 0.32× / 0.32×] (faster on 159/159, 0.15×–0.69×); async 0.39× [0.39× / 0.39× / 0.40×] (faster on 159/159, 0.16×–0.79×). Below 1× = bm takes less time; in brackets the same ratio per pass.
-- **bm-wasm vs takumi-pdf (both wasm):** 0.40× [0.40× / 0.40× / 0.40×] (faster on 159/159, 0.21×–0.81×). **bm-native vs bm-wasm (sync):** 0.80× [0.79× / 0.80× / 0.80×] (faster on 159/159, 0.59×–0.96×).
-- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 498 / 796 / 851 / 756; bm-wasm 152 / 217 / 550 / 447; takumi-pdf 54 / 105 / 133 / 118.
+- **Render time, bm-native vs takumi-pdf:** sync 0.30× [0.30× / 0.30× / 0.30×] (faster on 159/159, 0.13×–0.60×); async 0.32× [0.31× / 0.32× / 0.33×] (faster on 159/159, 0.13×–0.63×). Below 1× = bm takes less time; in brackets the same ratio per pass.
+- **bm-wasm vs takumi-pdf (both wasm):** 0.48× [0.49× / 0.47× / 0.48×] (faster on 159/159, 0.24×–0.89×). **bm-native vs bm-wasm (sync):** 0.63× [0.62× / 0.64× / 0.62×] (faster on 159/159, 0.43×–0.77×).
+- **Pages per second at 1 / 10 / 100 / 500 pages:** bm-native 370 / 535 / 625 / 575; bm-wasm 86 / 212 / 269 / 256; takumi-pdf 28 / 66 / 63 / 62.
 - **Identity:** bm-native == bm-wasm 161/161 documents.
 - **Validators:** bm-native 152/161 PDFs without any error or warning (takumi-pdf 152/161); veraPDF bm-native 45/45, takumi-pdf 45/45; same text, links, outline and tags as takumi-pdf: 153/161.
 - **Visual verdicts vs takumi-pdf (best over the rasterisers):** identical 117, equivalent 35, different 8, close 1 (161 documents, pdfium + mupdf).
+- **Noise:** absolute geomeans moved between passes by bm-native:sync 14.3 %, bm-wasm:sync 15.1 %, bm-wasm:async 16.2 %, takumi-pdf:async 13.9 % ⚠; read the ratios (measured interleaved).
 <!-- /pdf-bench:summary -->
 
 <!-- pdf-bench:speed -->
 | Variant | geomean ms | per pass | spread |
 |:--|--:|--:|--:|
-| bm-native:sync | 0.69 | 0.68 / 0.70 / 0.69 | 2.9 % |
-| bm-native:async | 0.86 | 0.86 / 0.86 / 0.86 | 0.2 % |
-| bm-wasm:sync | 0.87 | 0.87 / 0.88 / 0.86 | 2.4 % |
-| bm-wasm:async | 0.73 | 0.74 / 0.75 / 0.73 | 2.0 % |
-| takumi-pdf:async | 2.18 | 2.18 / 2.23 / 2.17 | 2.6 % |
+| bm-native:sync | 1.18 | 1.32 / 1.18 / 1.15 | 14.3 % ⚠ |
+| bm-native:async | 1.27 | 1.36 / 1.27 / 1.26 | 8.2 % |
+| bm-wasm:sync | 1.88 | 2.13 / 1.86 / 1.85 | 15.1 % ⚠ |
+| bm-wasm:async | 1.72 | 1.94 / 1.71 / 1.67 | 16.2 % ⚠ |
+| takumi-pdf:async | 3.93 | 4.38 / 3.97 / 3.83 | 13.9 % ⚠ |
 
 | Ratio (time) | geomean | per pass | faster | range | spread |
 |:--|--:|--:|--:|--:|--:|
-| bm-native:sync / takumi-pdf:async | 0.32× | 0.31× / 0.32× / 0.32× | 159/159 | 0.15×–0.69× | 1.6 % |
-| bm-native:async / takumi-pdf:async | 0.39× | 0.39× / 0.39× / 0.40× | 159/159 | 0.16×–0.79× | 2.3 % |
-| bm-wasm:sync / takumi-pdf:async | 0.40× | 0.40× / 0.40× / 0.40× | 159/159 | 0.21×–0.81× | 0.8 % |
-| bm-native:sync / bm-wasm:sync | 0.80× | 0.79× / 0.80× / 0.80× | 159/159 | 0.59×–0.96× | 1.9 % |
-| bm-native:async / bm-native:sync | 1.25× | 1.25× / 1.22× / 1.25× | 2/159 | 0.95×–2.43× | 2.7 % |
+| bm-native:sync / takumi-pdf:async | 0.30× | 0.30× / 0.30× / 0.30× | 159/159 | 0.13×–0.60× | 1.0 % |
+| bm-native:async / takumi-pdf:async | 0.32× | 0.31× / 0.32× / 0.33× | 159/159 | 0.13×–0.63× | 5.6 % |
+| bm-wasm:sync / takumi-pdf:async | 0.48× | 0.49× / 0.47× / 0.48× | 159/159 | 0.24×–0.89× | 3.5 % |
+| bm-native:sync / bm-wasm:sync | 0.63× | 0.62× / 0.64× / 0.62× | 159/159 | 0.43×–0.77× | 2.6 % |
+| bm-native:async / bm-native:sync | 1.08× | 1.03× / 1.08× / 1.09× | 44/159 | 0.82×–1.58× | 5.7 % |
 
 Warm render time per document (fonts registered beforehand, the output kept in memory), 159 documents, 3 pass(es); variants interleaved in rotating order every round.
 <!-- /pdf-bench:speed -->

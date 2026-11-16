@@ -56,8 +56,8 @@ from one run to the next, which makes PDFs easy to cache and to compare in tests
 
 ## The `pdf` profile and its size
 
-`bm_engine.pdf.wasm` is `full` plus the PDF writer: 3 187.8 KiB raw, 1 311.8 KiB with gzip -9 and
-1 015.7 KiB with brotli -11 (`bm_engine.wasm`, `full`: 1 272.7 / 631.5 / 529.1 KiB). It is built for speed (Zig `ReleaseFast` + `wasm-opt -O3`), which makes warm renders 20-27 % faster for about 1.3 MB more wasm and 30-45 MB more process memory. The PDF code is compiled only into this binary and into the native addon, and so are the paged
+`bm_engine.pdf.wasm` is `full` plus the PDF writer: 1 906.7 KiB raw, 938.1 KiB with gzip -9 and
+767.1 KiB with brotli -11, about 0.6 MB more than `bm_engine.wasm` (`full`: 1 272.7 / 631.5 / 529.1 KiB). The PDF code is compiled only into this binary and into the native addon, and so are the paged
 layout and the CSS paged-media properties it needs. (The native addon is the `full` feature set plus PDF
 output; `bm-engine` itself never exposes the PDF writer.) [Profiles and size](../profiles-and-size.md) has the
 exact numbers for every binary. Build it yourself with `npm run build:pdf`
