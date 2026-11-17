@@ -89,6 +89,10 @@ pub const Options = struct {
     start_top: ?f32 = null,
     /// Fill `Pages.starts`.
     record_starts: bool = false,
+    /// Where page 0 starts, and how far the root moves down first (a part of a document laid out on
+    /// its own, src/pdf/paged.zig: its pages and boxes where the whole document has them).
+    origin: f32 = 0,
+    root_shift: f32 = 0,
     /// How far down the boxes paint once transformed (called with `ctx` once the breaks are applied),
     /// null when no box is transformed or relatively offset: takumi (`PagedLayout::overflow_end`,
     /// `moves_boxes`) then measures the boxes of every page, else only those of the root's last page.
@@ -156,11 +160,16 @@ pub const Pages = struct {
         // (binary search: the last page whose top is at or above `y`, the first page for anything
         // above it; a linear walk made per-box lookups quadratic in the page count)
         if (p.pages.len < 2) return 0;
+        // A position a page's top places (a forced break moves a box there) sums offsets in a
+        // different order than the page tops do, so far down a long document it can land a few
+        // float steps above that top: it is on that page. Far below the LayoutUnit grid (1/64 px)
+        // that layout positions keep from a page's top, so no position on the page before moves.
+        const tol = @max(1.0 / 256.0, @abs(y) * (1.0 / 1048576.0));
         var lo: usize = 0;
         var hi: usize = p.pages.len - 1;
         while (lo < hi) {
             const mid = lo + (hi - lo + 1) / 2;
-            if (y >= p.pages[mid].top) lo = mid else hi = mid - 1;
+            if (y + tol >= p.pages[mid].top) lo = mid else hi = mid - 1;
         }
         return @intCast(lo);
     }
@@ -260,6 +269,9 @@ pub const PagedState = struct {
     /// The HTML source's own `<style>` texts are already in the frame's `css` option (a PDF pools the
     /// document's and its bands' `<style>` sheets into one stylesheet, src/pdf/pdf.zig `poolStyles`).
     skip_dom_styles: bool = false,
+    /// A frame laying out a part of the document (src/pdf/chunks.zig): of the children of source
+    /// element `parent`, only those with an index in [`lo`, `hi`) (source order) are built.
+    chunk: ?struct { parent: u32, lo: u32, hi: u32 } = null,
 };
 
 /// Paginates the subtree of `root` (laid out by `t.compute`, normally with a definite available width =
@@ -1913,7 +1925,8 @@ fn Engine(comptime T: type) type {
                     e.lay(root).y += e.shift;
                 }
             };
-            try e.tops.append(e.a, 0);
+            if (e.opts.root_shift != 0) e.lay(root).y += e.opts.root_shift;
+            try e.tops.append(e.a, e.opts.origin);
             try e.need(0);
             // (a fixed box keeps where it was laid out against the first page, whatever moves its
             // parent: takumi lays each out on its own against the page area, `FixedTemplate`)

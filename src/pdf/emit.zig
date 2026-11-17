@@ -83,7 +83,14 @@ pub const Window = struct {
     lines_bottom: f32 = std.math.inf(f32),
 
     pub fn excludes(win: Window, y0: f32, y1: f32) bool {
-        return y1 <= win.top or y0 >= win.bottom;
+        // (an edge a page's top or bottom places lands within a few float steps of it far down a
+        // long document: see `layout.fragment.Pages.pageAt`)
+        return y1 <= win.top + edgeTol(win.top) or y0 >= win.bottom - edgeTol(win.bottom);
+    }
+
+    fn edgeTol(y: f32) f32 {
+        if (!std.math.isFinite(y)) return 0;
+        return @max(1.0 / 256.0, @abs(y) * (1.0 / 1048576.0));
     }
 
     /// The window cuts the frame (a page of a paginated document).
@@ -3116,168 +3123,325 @@ const PageOut = struct { content: w.Encoded, res: w.Resources, q_over: bool };
 /// Object order as krilla's: what the pages' content refers to as it is drawn, then the fonts
 /// (`FontRegistry.flush`: after every page is drawn, before the page objects), then the pages.
 pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: []const Window, o: DocOptions) Error![]const u8 {
-    const default_opts: @import("options.zig").PdfOptions = .{};
-    const popts = o.opts orelse &default_opts;
-    // [tagging] validators and PDF version (krilla `ConfigurationBuilder`); tests (`o.opts`
-    // null) write untagged output
-    const cfg = conform.Config.of(popts) orelse {
-        f.r.setErr("The requested archival standard is not available", "");
-        return error.Invalid;
-    };
-    const tagged = o.opts != null and (popts.writesStructure() or cfg.requiresTagging());
-    var doc = w.Doc.init(a, .{ .compress = o.compress, .version = cfg.version });
-    var cx: sf.Ctx = .{ .a = a, .doc = &doc, .no_device_cs = cfg.archival(), .version = cfg.version };
-    var fonts = text.FontRegistry.init(a, o.uncovered);
-    fonts.uncovered.forbidden_by = cfg.forbidsPlaceholder();
+    const dw = try DocWriter.init(a, f, o);
+    defer dw.deinit();
+    _ = try dw.beginChunk(f);
+    try dw.drawPages(f, pages, windows, a, null);
+    {
+        // (the structure tree's working memory: what it keeps is copied to `a`)
+        var scratch = bump.Bump.init(f.r.gpa);
+        defer scratch.deinit();
+        scratch.release_freed = true;
+        _ = try dw.endChunk(scratch.allocator(), null);
+    }
+    return dw.finish();
+}
+
+/// A document written a group of pages at a time (`writeDocument`, or paged.zig drawing a long
+/// document a part at a time): `init`, `drawPages` for each group in output order, `finish`.
+/// What a group leaves is its pages' encoded content streams and resources, the links on them and
+/// the destinations of the anchors and headings it holds: nothing refers to its frames afterwards.
+pub const DocWriter = struct {
+    a: Allocator,
+    r: *render.Renderer,
+    o: DocOptions,
+    default_opts: @import("options.zig").PdfOptions = .{},
+    popts: *const @import("options.zig").PdfOptions = undefined,
+    cfg: conform.Config = undefined,
+    tagged: bool = false,
+    doc: w.Doc = undefined,
+    cx: sf.Ctx = undefined,
+    fonts: text.FontRegistry,
     // Memory: a page's drawing (the walk, its surfaces) works in `page_mem`, rewound after the
     // page; what the page leaves is its content stream, encoded into `a` at once, and its
     // resources (`PageOut`). The compressor's tables are rewound after every stream (`zmem`).
-    var page_mem = bump.Bump.init(f.r.gpa);
-    page_mem.release_freed = true;
-    defer page_mem.deinit();
-    var zmem = bump.Bump.init(f.r.gpa);
-    defer zmem.deinit();
-    doc.scratch = &zmem;
-    const outs = try a.alloc(PageOut, pages.len);
-    var links = try interactive.Collector.init(a, f, pages.len); // [interactive]
-    var td = try @import("tagdoc.zig").TagDoc.init(a, &cx, cfg, popts, tagged, f, &links, pages.len);
-    // (a paginated document: computed once, shared by the pages, as are the table parts and the tree
-    // order; per page they would cost the whole document every page)
-    // (pages laid out at different widths: each run of pages showing one frame is drawn from it
-    // with the windows of that run, paged.zig)
-    var ext: ?Extents = null;
-    var neg_any = true;
-    var tparts: []etable.Part = &.{};
-    var run0: usize = 0;
-    var run1: usize = 0;
-    var run_wins: []const Window = windows;
-    var run_off: usize = 0;
-    for (pages, windows, 0..) |page, win, i| {
-        const pf = page.frame orelse f;
-        if (i == run1) {
-            run0 = i;
-            run1 = i + 1;
-            while (run1 < pages.len and (pages[run1].frame orelse f) == pf) run1 += 1;
-            ext = if (run1 - run0 > 1) try Extents.compute(a, pf) else null;
-            // (one look over the frame: a page walk of the whole tree for negative z-index boxes
-            // would cost every page the whole document)
-            neg_any = for (pf.nodes.items) |*nn| {
-                if (nn.kind != .anon_text) if (nn.cs.z_index) |z| if (z < 0) break true;
-            } else false;
-            tparts = &.{};
-            // (the frame's own pages around the run take part as neighbouring passes)
-            const pw = pages[run0].prev_win;
-            const nw = pages[run1 - 1].next_win;
-            if (pw != null or nw != null) {
-                var list: std.ArrayList(Window) = .empty;
-                if (pw) |x| try list.append(a, x);
-                try list.appendSlice(a, windows[run0..run1]);
-                if (nw) |x| try list.append(a, x);
-                run_wins = list.items;
-                run_off = @intFromBool(pw != null);
-            } else {
-                run_wins = windows[run0..run1];
-                run_off = 0;
+    page_mem: bump.Bump,
+    zmem: bump.Bump,
+    page_mem_live: bool = true,
+    outs: std.ArrayList(PageOut) = .empty,
+    /// per output page: its size (CSS px)
+    sizes: std.ArrayList([2]f32) = .empty,
+    links: interactive.Collector = undefined,
+    td: @import("tagdoc.zig").TagDoc = undefined,
+    /// the first output page of the part of the document being drawn (`beginChunk`)
+    chunk_first: usize = 0,
+
+    /// `f`: the document's frame (tests and viewport pages: the only one).
+    pub fn init(a: Allocator, f: *Frame, o: DocOptions) Error!*DocWriter {
+        const dw = try a.create(DocWriter);
+        dw.* = .{ .a = a, .r = f.r, .o = o, .fonts = text.FontRegistry.init(a, o.uncovered), .page_mem = bump.Bump.init(f.r.gpa), .zmem = bump.Bump.init(f.r.gpa) };
+        dw.popts = o.opts orelse &dw.default_opts;
+        // [tagging] validators and PDF version (krilla `ConfigurationBuilder`); tests (`o.opts`
+        // null) write untagged output
+        dw.cfg = conform.Config.of(dw.popts) orelse {
+            dw.deinit();
+            f.r.setErr("The requested archival standard is not available", "");
+            return error.Invalid;
+        };
+        dw.tagged = o.opts != null and (dw.popts.writesStructure() or dw.cfg.requiresTagging());
+        dw.doc = w.Doc.init(a, .{ .compress = o.compress, .version = dw.cfg.version });
+        dw.cx = .{ .a = a, .doc = &dw.doc, .no_device_cs = dw.cfg.archival(), .version = dw.cfg.version };
+        dw.fonts.uncovered.forbidden_by = dw.cfg.forbidsPlaceholder();
+        dw.page_mem.release_freed = true;
+        dw.doc.scratch = &dw.zmem;
+        dw.links = interactive.Collector.init(a, f); // [interactive]
+        dw.td = @import("tagdoc.zig").TagDoc.init(a, &dw.cx, dw.cfg, dw.popts, dw.tagged, f, &dw.links);
+        return dw;
+    }
+
+    /// Frees the working memory (the result of `finish` lives in `a`).
+    pub fn deinit(dw: *DocWriter) void {
+        if (dw.page_mem_live) dw.page_mem.deinit();
+        dw.page_mem_live = false;
+        dw.zmem.deinit();
+    }
+
+    /// Starts a part of the document laid out on its own, in frame `f` (and the frames its pages
+    /// name): `drawPages` for its pages, then `endChunk`.
+    pub fn beginChunk(dw: *DocWriter, f: *Frame) Error!bool {
+        dw.links.f = f;
+        dw.links.chunk = dw.td.chunk;
+        dw.chunk_first = dw.outs.items.len;
+        return dw.td.beginChunk(f);
+    }
+
+    /// The pages of the part are drawn: its structure joins the tree and its links are registered;
+    /// nothing refers to its frames afterwards (`scratch`: temporary memory). `skip`: what its
+    /// frame lays out of the parts around it (chunks.zig). False: the parts cannot be drawn apart
+    /// (the caller draws the document whole).
+    pub fn endChunk(dw: *DocWriter, scratch: Allocator, skip: ?@import("tags.zig").Skip) Error!bool {
+        const ok = try dw.td.endChunk(dw.chunk_first, scratch, skip);
+        dw.links.endChunk();
+        return ok;
+    }
+
+    /// Draws the next output pages: `pages` (each with its window) show `f`, or `PageBox.frame`.
+    /// `ra`: memory for what only these pages use (the caller may release it after this call).
+    /// `bounds`: the span of the frame whose anchors and headings these pages collect (null: from
+    /// the first page's top, or above it when it is the first, to the last page's bottom, or
+    /// below it when it is the last).
+    pub fn drawPages(dw: *DocWriter, f: *Frame, pages: []const PageBox, windows: []const Window, ra: Allocator, bounds: ?[2]f32) Error!void {
+        const a = dw.a;
+        const cx = &dw.cx;
+        const links = &dw.links;
+        const td = &dw.td;
+        const popts = dw.popts;
+        const tagged = dw.tagged;
+        const first: u32 = @intCast(dw.outs.items.len);
+        try dw.outs.ensureUnusedCapacity(a, pages.len);
+        try dw.sizes.ensureUnusedCapacity(a, pages.len);
+        // (a paginated document: computed once, shared by the pages, as are the table parts and the tree
+        // order; per page they would cost the whole document every page)
+        // (pages laid out at different widths: each run of pages showing one frame is drawn from it
+        // with the windows of that run, paged.zig)
+        var ext: ?Extents = null;
+        var neg_any = true;
+        var tparts: []etable.Part = &.{};
+        var run0: usize = 0;
+        var run1: usize = 0;
+        var run_wins: []const Window = windows;
+        var run_off: usize = 0;
+        for (pages, windows, 0..) |page, win, i| {
+            const pf = page.frame orelse f;
+            if (i == run1) {
+                run0 = i;
+                run1 = i + 1;
+                while (run1 < pages.len and (pages[run1].frame orelse f) == pf) run1 += 1;
+                ext = if (run1 - run0 > 1) try Extents.compute(ra, pf) else null;
+                // (one look over the frame: a page walk of the whole tree for negative z-index boxes
+                // would cost every page the whole document)
+                neg_any = for (pf.nodes.items) |*nn| {
+                    if (nn.kind != .anon_text) if (nn.cs.z_index) |z| if (z < 0) break true;
+                } else false;
+                tparts = &.{};
+                // (the frame's own pages around the run take part as neighbouring passes)
+                const pw = pages[run0].prev_win;
+                const nw = pages[run1 - 1].next_win;
+                if (pw != null or nw != null) {
+                    var list: std.ArrayList(Window) = .empty;
+                    if (pw) |x| try list.append(ra, x);
+                    try list.appendSlice(ra, windows[run0..run1]);
+                    if (nw) |x| try list.append(ra, x);
+                    run_wins = list.items;
+                    run_off = @intFromBool(pw != null);
+                } else {
+                    run_wins = windows[run0..run1];
+                    run_off = 0;
+                }
+                // [interactive] anchors and headings of this frame: those in its run of pages (the
+                // first and last pages drawn also own what is above / below them, unless the frame
+                // has pages of its own there: a part of the document, paged.zig)
+                const lo = if (bounds) |b| b[0] else if (run0 == 0) -std.math.inf(f32) else win.top;
+                const hi = if (bounds) |b| b[1] else if (run1 == pages.len) std.math.inf(f32) else windows[run1 - 1].bottom;
+                links.beginRun(pf, lo, hi);
             }
-            // [interactive] anchors and headings of this frame: those in its run of pages
-            links.beginRun(pf, if (run0 == 0) -std.math.inf(f32) else win.top, if (run1 == pages.len) std.math.inf(f32) else windows[run1 - 1].bottom);
+            const out_i: u32 = first + @as(u32, @intCast(i));
+            dw.page_mem.reset();
+            cx.page = dw.page_mem.allocator();
+            defer cx.page = null;
+            dw.fonts.forgetPage();
+            links.page_a = cx.page;
+            defer {
+                // [interactive] the page's links leave its memory before it is rewound
+                links.endPage();
+                links.page_a = null;
+            }
+            var s = sf.Surface.initPage(cx, page.height * pt_per_px);
+            s.tagging = tagged;
+            var e = Emitter.init(pf, cx, &s, &dw.fonts);
+            e.neg_any = neg_any;
+            if (ext) |*x| {
+                e.ext = x;
+                e.pre = x.pre;
+            }
+            e.tparts = tparts;
+            defer tparts = e.tparts;
+            try links.beginPage(out_i, page, win); // [interactive]
+            e.links = links;
+            e.windows = run_wins;
+            e.extends = page.extends;
+            e.win_page = @intCast(i - run0 + run_off);
+            e.walk_all = i == run0;
+            if (tagged) {
+                e.tags = &td.collector;
+                e.tagged = true;
+                e.page_index = out_i;
+                e.doc_lang = popts.lang;
+            }
+            @import("../memtrace.zig").mark("emit: page start");
+            try paintPage(&e, page, win);
+            @import("../memtrace.zig").mark("emit: page painted");
+            if (e.fail_msg) |msg| {
+                dw.r.setErr(msg, e.fail_arg);
+                // a message longer than the renderer's buffer (an image's data: URI) is kept whole in
+                // the arena, which lives until the next call
+                if (msg.len + e.fail_arg.len > dw.r.err.len) {
+                    if (std.mem.concat(dw.r.arena.allocator(), u8, &.{ msg, e.fail_arg })) |m| dw.r.err = m else |_| {}
+                }
+                return error.Invalid;
+            }
+            const st = s.finish();
+            dw.outs.appendAssumeCapacity(.{ .content = dw.doc.encode(st.content, .content), .res = try st.res.dupe(a), .q_over = st.limits.q_over });
+            dw.sizes.appendAssumeCapacity(.{ page.width, page.height });
+            try td.addPage(s.mcid);
+            @import("../memtrace.zig").mark("emit: page done");
         }
-        page_mem.reset();
-        cx.page = page_mem.allocator();
+        @import("../memtrace.zig").mark("emit: pages drawn");
+        // [interactive] the anchors and headings become destinations: nothing needs the frames after this
+        links.resolve(f, pages, windows, first, popts.tagged == .ua2);
+    }
+
+    /// Collects the anchors and headings of frame `f` in the span `bounds` (as the first page of a
+    /// run does) without drawing a page: a part of the document whose pages `pageRanges` drops
+    /// (paged.zig). `page`: one of its pages (its size and content box).
+    pub fn collect(dw: *DocWriter, f: *Frame, page: PageBox, bounds: [2]f32) Error!void {
+        const cx = &dw.cx;
+        const links = &dw.links;
+        dw.page_mem.reset();
+        cx.page = dw.page_mem.allocator();
         defer cx.page = null;
-        fonts.forgetPage();
+        dw.fonts.forgetPage();
         links.page_a = cx.page;
+        links.collect_only = true;
         defer {
-            // [interactive] the page's links leave its memory before it is rewound
-            links.endPage();
+            links.collect_only = false;
+            links.groups = .empty;
+            links.group = 0;
             links.page_a = null;
         }
-        var s = sf.Surface.initPage(&cx, page.height * pt_per_px);
-        s.tagging = tagged;
-        var e = Emitter.init(pf, &cx, &s, &fonts);
-        e.neg_any = neg_any;
-        if (ext) |*x| {
-            e.ext = x;
-            e.pre = x.pre;
-        }
-        e.tparts = tparts;
-        defer tparts = e.tparts;
-        links.beginPage(i, page, win); // [interactive]
-        e.links = &links;
-        e.windows = run_wins;
-        e.extends = page.extends;
-        e.win_page = @intCast(i - run0 + run_off);
-        e.walk_all = i == run0;
-        if (tagged) {
-            e.tags = &td.collector;
-            e.tagged = true;
-            e.page_index = @intCast(i);
-            e.doc_lang = popts.lang;
-        }
-        try paintPage(&e, page, win);
+        links.beginRun(f, bounds[0], bounds[1]);
+        links.run_first = true;
+        links.run_begun = false;
+        var s = sf.Surface.initPage(cx, page.height * pt_per_px);
+        s.tagging = false;
+        var e = Emitter.init(f, cx, &s, &dw.fonts);
+        e.links = links;
+        // (a window far below the content: the walk visits every box, nothing is painted)
+        const far: Window = .{ .top = 1e30, .bottom = 1e30, .lines_top = 1e30, .lines_bottom = 1e30 };
+        const windows = [_]Window{far};
+        e.windows = &windows;
+        e.win_page = 0;
+        e.walk_all = true;
+        var bare = page;
+        bare.background = null;
+        bare.header = null;
+        bare.footer = null;
+        bare.repeats = &.{};
+        bare.fixed = &.{};
+        bare.prev_win = null;
+        bare.next_win = null;
+        try paintPage(&e, bare, far);
         if (e.fail_msg) |msg| {
-            f.r.setErr(msg, e.fail_arg);
-            // a message longer than the renderer's buffer (an image's data: URI) is kept whole in
-            // the arena, which lives until the next call
-            if (msg.len + e.fail_arg.len > f.r.err.len) {
-                if (std.mem.concat(f.r.arena.allocator(), u8, &.{ msg, e.fail_arg })) |m| f.r.err = m else |_| {}
-            }
+            dw.r.setErr(msg, e.fail_arg);
             return error.Invalid;
         }
-        const st = s.finish();
-        outs[i] = .{ .content = doc.encode(st.content, .content), .res = try st.res.dupe(a), .q_over = st.limits.q_over };
-        td.mcids[i] = s.mcid;
+        // (their pages are dropped: no destination; nothing refers to `f` afterwards)
+        links.resolve(f, &.{}, &.{}, @intCast(dw.outs.items.len), dw.popts.tagged == .ua2);
     }
-    // (the pages are drawn: their working memory goes before the document-level objects are made)
-    page_mem.deinit();
-    // takumi: `UncoveredCharacters` is reported once the document is drawn
-    if (fonts.uncoveredError() catch return error.OutOfMemory) |msg| {
-        f.r.setErr("", msg); // (as detail: a prefix is cut at 128 bytes)
-        return error.Invalid;
-    }
-    const issues = fonts.flush(&cx) catch |err| return switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        else => {
-            f.r.setErr("PDF font error: ", @errorName(err));
+
+    /// Writes the document-level objects and the pages, and returns the file (in `a`).
+    pub fn finish(dw: *DocWriter) Error![]const u8 {
+        const a = dw.a;
+        const cx = &dw.cx;
+        const td = &dw.td;
+        const doc = &dw.doc;
+        const popts = dw.popts;
+        const page_count = dw.outs.items.len;
+        // (the pages are drawn: their working memory goes before the document-level objects are made)
+        if (dw.page_mem_live) dw.page_mem.deinit();
+        dw.page_mem_live = false;
+        // takumi: `UncoveredCharacters` is reported once the document is drawn
+        if (dw.fonts.uncoveredError() catch return error.OutOfMemory) |msg| {
+            dw.r.setErr("", msg); // (as detail: a prefix is cut at 128 bytes)
             return error.Invalid;
-        },
-    };
-    td.fontIssues(issues);
-    // [interactive] outline, annotations, destinations, attachments; catalog / Info / XMP parts
-    const page_refs = try a.alloc(w.Ref, pages.len);
-    for (page_refs) |*pr| pr.* = doc.addPage();
-    td.page_refs = page_refs;
-    const fin = try interactive.finishDocument(&links, &doc, a, pages, windows, page_refs, popts, o.producer, o.hook orelse (if (o.opts != null) td.hook() else null));
-    // pages are serialised last, in page order (krilla `serialize_pages`)
-    for (pages, outs, page_refs, fin.annots, 0..) |page, *st, pref, annots, i| {
-        const cref = doc.alloc();
-        doc.contentStreamEncoded(cref, st.content);
-        if (st.q_over) cx.q_over = true;
-        const rref = st.res.write(&doc);
-        const pe = td.pageEntries(i);
-        _ = doc.beginPage(pref, .{ .resources = rref, .media_box = .{ 0, 0, page.width * pt_per_px, page.height * pt_per_px }, .contents = cref, .annots = annots, .struct_parents = pe.struct_parents, .tabs = pe.tabs });
-        doc.endDict();
-    }
-    var out: std.ArrayList(u8) = .empty;
-    const finished = metadata.finish(&doc, &out, &fin.parts);
-    // krilla `check_validator_limits` (after the file is assembled) and the q/Q nesting of the
-    // content streams
-    if (doc.tooManyObjects()) td.report.add(.too_many_indirect_objects, 0);
-    if (doc.limits.str_len > w.Limits.max_str_len) td.report.add(.too_long_string, 0);
-    if (doc.limits.name_len > w.Limits.max_name_len) td.report.add(.too_long_name, 0);
-    if (cx.q_over) td.report.add(.too_high_q_nesting, 0);
-    // [conformance] what the validators prohibit fails the render (krilla `KrillaError::Validation`)
-    if (td.report.failed) return error.OutOfMemory;
-    if (try td.report.message(a)) |msg| {
-        f.r.setErr("", msg);
-        return error.Invalid;
-    }
-    finished catch |err| return switch (err) {
-        error.OutOfMemory => error.OutOfMemory,
-        else => {
-            f.r.setErr("PDF writer error: ", @errorName(err));
+        }
+        const issues = dw.fonts.flush(cx) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => {
+                dw.r.setErr("PDF font error: ", @errorName(err));
+                return error.Invalid;
+            },
+        };
+        td.fontIssues(issues);
+        @import("../memtrace.zig").mark("emit: fonts flushed");
+        // [interactive] outline, annotations, destinations, attachments; catalog / Info / XMP parts
+        const page_refs = try a.alloc(w.Ref, page_count);
+        for (page_refs) |*pr| pr.* = doc.addPage();
+        td.page_refs = page_refs;
+        const fin = try interactive.finishDocument(&dw.links, doc, a, page_count, page_refs, popts, dw.o.producer, dw.o.hook orelse (if (dw.o.opts != null) td.hook() else null));
+        // pages are serialised last, in page order (krilla `serialize_pages`)
+        for (dw.sizes.items, dw.outs.items, page_refs, fin.annots, 0..) |size, *st, pref, annots, i| {
+            const cref = doc.alloc();
+            doc.contentStreamEncoded(cref, st.content);
+            if (st.q_over) cx.q_over = true;
+            const rref = st.res.write(doc);
+            const pe = td.pageEntries(i);
+            _ = doc.beginPage(pref, .{ .resources = rref, .media_box = .{ 0, 0, size[0] * pt_per_px, size[1] * pt_per_px }, .contents = cref, .annots = annots, .struct_parents = pe.struct_parents, .tabs = pe.tabs });
+            doc.endDict();
+        }
+        @import("../memtrace.zig").mark("emit: objects written");
+        var out: std.ArrayList(u8) = .empty;
+        const finished = metadata.finish(doc, &out, &fin.parts);
+        @import("../memtrace.zig").mark("emit: file assembled");
+        // krilla `check_validator_limits` (after the file is assembled) and the q/Q nesting of the
+        // content streams
+        if (doc.tooManyObjects()) td.report.add(.too_many_indirect_objects, 0);
+        if (doc.limits.str_len > w.Limits.max_str_len) td.report.add(.too_long_string, 0);
+        if (doc.limits.name_len > w.Limits.max_name_len) td.report.add(.too_long_name, 0);
+        if (cx.q_over) td.report.add(.too_high_q_nesting, 0);
+        // [conformance] what the validators prohibit fails the render (krilla `KrillaError::Validation`)
+        if (td.report.failed) return error.OutOfMemory;
+        if (try td.report.message(a)) |msg| {
+            dw.r.setErr("", msg);
             return error.Invalid;
-        },
-    };
-    return out.items;
-}
+        }
+        finished catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => {
+                dw.r.setErr("PDF writer error: ", @errorName(err));
+                return error.Invalid;
+            },
+        };
+        return out.items;
+    }
+};

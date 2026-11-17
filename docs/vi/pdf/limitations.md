@@ -16,7 +16,7 @@ Chỉ dùng `bm-render/pdf` để tạo PDF. Trên Node.js, entry này dùng nat
 - **Grid:** chưa có fragment riêng cho hàng grid; kiểm tra item `align-items: end` khi bị ngắt trước hàng.
 - **Float, transform và clip:** các tổ hợp lồng nhau, nhất là kèm liên kết qua trang, cần được kiểm tra riêng.
 - **Danh sách:** marker của mục bị chia qua trang nằm ở dòng đầu tiên của mục.
-- **Tài liệu dài:** toàn bộ layout cuối được giữ tới khi ghi xong PDF. Chưa có cơ chế xuất từng trang với giới hạn bộ nhớ layout đang giữ.
+- **Tài liệu dài:** tài liệu được chia bởi ngắt trang cưỡng bức (`break-before` / `break-after: page` giữa các khối của phần thân, ví dụ in hàng loạt mỗi hồ sơ một trang mới) được layout và vẽ từng phần, nên mỗi lúc chỉ giữ layout của một phần; file ra giống hệt khi layout cả tài liệu. Tài liệu không có ngắt như vậy, hoặc có hộp `fixed`, float, bộ đếm trang trong nội dung hay trang khác bề rộng, vẫn được layout cả một lần và giữ layout cuối tới khi ghi xong file. Trong cả hai trường hợp, tài liệu đã phân tích và style được giữ suốt lần render.
 - **Đầu vào lỗi:** kích thước quá lớn, font bị cắt cụt hoặc font thiếu `cmap` có thể bị từ chối. `margin: NaN` trở thành `null` khi mã hóa JSON và dùng lề mặc định.
 
 ## Tài nguyên và kiểm tra file

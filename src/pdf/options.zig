@@ -296,6 +296,12 @@ pub const PdfOptions = struct {
     /// (not an option) `css` already holds the `<style>` sheets of the HTML document and its HTML bands, so a
     /// frame does not add its own again (pdf.zig `poolStyles`).
     pooled_styles: bool = false,
+    /// (not a documented option: `chunks: false` lays a long document out whole, for comparisons;
+    /// `chunks: n` makes parts of at least n source elements, 1 for the smallest)
+    /// A long document cut at forced page breaks is laid out and drawn a part at a time (paged.zig
+    /// `writeChunked`), each part holding at least `chunk_elements` source elements.
+    chunks: bool = true,
+    chunk_elements: u32 = 2048,
 
     /// Whether the document carries a structure tree: asked for, or required by the standard.
     pub fn writesStructure(self: PdfOptions) bool {
@@ -380,6 +386,13 @@ pub fn fromValue(a: Allocator, v: json.Value, blobs: []const Blob, diag: *Diag) 
     if (field(v, "pageRanges")) |x| o.page_ranges = try parseRanges(a, x, diag);
     if (field(v, "css")) |x| o.css = x;
     if (field(v, "cssVariables")) |x| o.css_variables = try parseVars(a, x, diag);
+    if (field(v, "chunks")) |x| switch (x) {
+        .bool => |b| o.chunks = b,
+        .number => |n| if (n >= 1 and n < 1e9) {
+            o.chunk_elements = @intFromFloat(n);
+        },
+        else => {},
+    };
     if (field(v, "fontFamilies")) |x| o.font_families = try strList(a, x, "fontFamilies", diag);
     if (field(v, "failedFontFiles")) |x| o.failed_font_files = try strList(a, x, "failedFontFiles", diag);
     if (field(v, "lang")) |x| {

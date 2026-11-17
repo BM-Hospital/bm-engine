@@ -348,7 +348,7 @@ Chuyển việc đặt float và line wrapping vào vòng lặp layout theo tran
 
 ## 19 — Emit trang ổn định khi layout còn tiếp tục (P1)
 
-**Trạng thái:** pending — kiến trúc continuation/streaming chưa triển khai.
+**Trạng thái:** in progress — đã có emit từng phần với tài liệu cắt được tại forced page break (`paged.writeChunked`, `chunks.zig`, `emit.DocWriter`): trang của mỗi phần được vẽ trước khi phần sau được layout, và output tương đương bản layout cả tài liệu (26 case, `npm run test:pdf:chunks`). Chưa có: cắt tại ranh giới trang bất kỳ (tài liệu không có forced break vẫn layout cả một lần). Xem `streaming-chunks.md`.
 
 Port settled-page lifecycle của upstream; đây là streaming nội bộ, không tự thêm public streaming API.
 
@@ -366,7 +366,7 @@ Port settled-page lifecycle của upstream; đây là streaming nội bộ, khô
 
 ## 20 — Giữ counters và metadata đúng trong pipeline incremental (P1)
 
-**Trạng thái:** pending — kiến trúc continuation/streaming chưa triển khai.
+**Trạng thái:** in progress — trên đường từng phần: band có pageNumber/totalPages (pass đếm rồi pass vẽ, đo lại chiều cao band như `layOutRules`), link trước/sau (link tới phần sau thì gộp các phần), outline, tag UA-1/UA-2 (destination theo phần + node), pageRanges (phần bị bỏ hết trang vẫn thu anchor/heading) đều cho output giống bản whole. Counter trang trong nội dung và target-counter thì vẫn layout cả tài liệu.
 
 Port pass đếm/settle và dữ liệu document-level cần sống qua release trang.
 
@@ -384,7 +384,7 @@ Port pass đếm/settle và dữ liệu document-level cần sống qua release 
 
 ## 21 — Giới hạn live memory của tài liệu dài (P1)
 
-**Trạng thái:** pending — kiến trúc continuation/streaming chưa triển khai.
+**Trạng thái:** in progress — có instrumentation allocator (native `memoryPeak`, `memoryTrace`, `src/memtrace.zig`). Stress doc, native, tiến trình mới: peak 153 → 61 MiB ở 500 trang, 297 → 119 MiB ở 1000 trang. Live sau trang ~200 / sau trang ~50 = 1,05–1,06. Vẫn tuyến tính: DOM + style dùng chung (~55 KiB/trang), khoảng 20 KiB/trang tích lũy khi emit, và bước ráp file. Tiêu chí `memory_tests.rs` (700 section không có forced break) chưa đạt vì tài liệu đó layout cả một lần.
 
 Release layout/shaping/page allocations khi trang không còn được tham chiếu; tách memory đang sống với wasm capacity.
 
@@ -586,3 +586,15 @@ The full pinned Takumi strict audit now matches across native and WASM: 1,501/1,
 ## 2026-11-15 focused PDF rendering fixes
 
 CSS `filter:url(...)` references are now treated as identity operations when SVG filter rasterization is unavailable, while later filter functions in the list still run. Text `paint-order` now skips the irrelevant markers phase when deciding fill/stroke order, so `markers stroke` strokes before filling text. Regression tests cover URL-only/URL-plus-grayscale parsing and text paint-order resolution. Full PDF Zig passed 676/676 before the paint-order change; its focused style test passed 10/10 afterward. The `paint.filter` + `text.stroke` audit groups pass 45/45 on both native and WASM. The fresh pinned full audit matches across backends: 1,505/1,568 probes pass, 63 probes (115 assertions) fail, 0 unverified. Remaining failures are still a mixture of policy/diagnostic differences and possible PDF rendering, link, font and tagging defects; they are not all classified. Goal and final benchmark gate remain open.
+
+## 2026-11-17 phân loại audit strict
+
+Full strict audit (pinned `ff9a5d4`), HEAD `67c0f36`: **1.571 probe, 1.548 pass, 23 fail, 0 unverified**, giống hệt nhau trên wasm và native, và giống hệt danh sách ngày 15/11. Số 63 ở trên đã cũ.
+
+- **Khác biệt có chủ đích, bm theo CSS (19):** 4 `paint.gradient.linear-in-*` (takumi bỏ qua interpolation space); `paint.box-shadow.current-color` (takumi không vẽ shadow thiếu màu); 9 `paint.clip-path*` (takumi không parse `ellipse()`/keyword position/`inset() round a / b`/geometry box nên bỏ clip; `margin-box` bm thừa một clip trùng border box, hình giống nhau); 3 `paint.mask.*` (takumi không hỗ trợ `mask-mode`/`mask-clip`/`mask-origin`); `paint.stacking.sticky` (bm vẽ như positioned). Đều có dòng trong `docs/PDF_AUDIT.md`.
+- **Chính sách API (3):** `api.size.invalid` (bm từ chối trang quá lớn), `api.input.kinds` (`{ json }` là extension; takumi in `[object Object]`), `page.at-page.var.no-root-element` (bm áp `cssVariables` vào `@page` của full document).
+- **Ranh giới P có chủ đích (1):** `tagging.generated.mixed-image` (`PDF_AUDIT.md` dòng `content: url()`): takumi biến ảnh thành block nên mỗi phần có một P riêng; bm giữ inline nên chỉ có một P `[0, 1, 3, 2]`. Thứ tự leaf vẫn theo quy ước của takumi: region rỗng mở lại sau ảnh (`emit_tag.reopen`) đứng trước ảnh, giống case `::before` inline của takumi (`P[0, 2] / P[1]`), và `<img>` inline thường cho cấu trúc giống hệt nhau.
+- **Khác biệt shaping, không phải subset closure (1):** `fonts.subset.glyph-closure`: với ASCII, bm vẽ `@` (gid 32) bằng biến thể nâng cao trước `A` (contextual alternate của Inter) và một biến thể `J` khác (gid 42); takumi vẽ glyph mặc định. bm giữ cả glyph cmap gốc của `@` nên thừa 1 glyph (+40 byte). Text trích xuất giống nhau. Đoạn chỉ có `&nbsp;` vẫn nhúng font 6 KB + một P, còn takumi không vẽ gì; muốn khớp thì phải bỏ run chỉ có khoảng trắng, việc này sẽ đổi cấu trúc tag của các ô bảng chỉ chứa `&nbsp;`, nên cần quyết định trước.
+- **Đã kiểm tra, không phải lỗi:** với fragment source (không có phần tử `<html>`), mọi nguồn biến `:root` (`<style>`, `css`, `cssVariables`) đều không tới `@page`, ở cả bm lẫn takumi. bm nhất quán: `cssVariables` ≡ `css: [":root{…}"]`.
+- **Kết luận:** 0 lỗi thật của bm trong 23 probe fail.
+- **Tooling đã sửa:** `run.mjs` dùng `process.exit()` làm mất report trên pipe Windows, đổi sang `process.exitCode`; `pdftotext()` trong `lib.mjs` không xoá PDF tạm (~395.000 file trong `bench/out/pdf-audit`), giờ đã xoá sau mỗi lần gọi; thêm `PDF_AUDIT_TRACE=1` để in id probe trước khi chạy.

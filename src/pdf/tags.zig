@@ -39,6 +39,15 @@ const RecKind = enum { content, label, annotation };
 
 const Record = struct { node: u32, kind: RecKind, id: Ident, taken: bool = false };
 
+/// What the walk of a frame laying out a part of the document leaves out (src/pdf/chunks.zig
+/// `Part`): the children of render node `parent` (the flow) whose element is outside [lo, hi).
+pub const Skip = struct { parent: u32, lo: u32, hi: u32 };
+
+/// A record of a box of the part after (the first child of the next part, laid out with this one),
+/// for that part's frame: the render node it was recorded against, as the nearest node with an
+/// element at or above it (that element, its kind) and the child indices down from there.
+pub const Carry = struct { el: u32, node_kind: render.Kind, path: []const u32, kind: RecKind, id: Ident };
+
 /// The marked-content ids recorded during emission, by source node (takumi `TagCollector`).
 pub const Collector = struct {
     a: Allocator,
@@ -115,8 +124,9 @@ pub const Group = struct {
     row_span: u32 = 0,
     col_span: u32 = 0,
     id: ?[]const u8 = null,
-    /// the render node a destination names it by (with `id`)
+    /// the render node a destination names it by (with `id`), of part `chunk` of the document
     node: u32 = none,
+    chunk: u32 = 0,
     kids: std.ArrayList(Kid) = .empty,
 };
 
@@ -128,9 +138,15 @@ const Walk = struct {
     c: *Collector,
     a: Allocator,
     f: *const Frame,
-    headings: std.ArrayList(u8) = .empty,
+    /// the open heading levels (`headingLevel`), kept from one frame of the document to the next
+    /// (in `keep`)
+    headings: *std.ArrayList(u8),
+    keep: Allocator,
     /// render nodes a destination names (anchors with an `id`, headings)
     targets: *const std.AutoHashMapUnmanaged(u32, void),
+    /// the part of the document the frame lays out (`Group.chunk`)
+    chunk: u32 = 0,
+    skip: ?Skip = null,
 
     fn newGroup(wk: *Walk, role: Role) Error!*Group {
         const g = try wk.a.create(Group);
@@ -143,13 +159,14 @@ const Walk = struct {
         if (!wk.targets.contains(node)) return false;
         g.id = try tagId(wk.a, wk.f, node);
         g.node = node;
+        g.chunk = wk.chunk;
         return true;
     }
 
     /// Heading levels by nesting depth (takumi `heading_level`).
     fn headingLevel(wk: *Walk, source: u8) Error!u16 {
         while (wk.headings.items.len > 0 and wk.headings.items[wk.headings.items.len - 1] >= source) wk.headings.items.len -= 1;
-        try wk.headings.append(wk.a, source);
+        try wk.headings.append(wk.keep, source);
         return @intCast(@max(1, @min(wk.headings.items.len, 6)));
     }
 };
@@ -248,7 +265,13 @@ fn liveKids(wk: *Walk, id: u32) Error![]const u32 {
     var out: std.ArrayList(u32) = .empty;
     var c = firstLive(f, &f.nodes.items[id]);
     if (c != none and standsForParent(f, c)) c = firstLive(f, &f.nodes.items[c]);
-    while (c != none) : (c = nextLive(f, c)) try out.append(wk.a, c);
+    while (c != none) : (c = nextLive(f, c)) {
+        if (wk.skip) |sk| if (id == sk.parent) {
+            const el = f.nodes.items[c].el;
+            if (el != none and (el < sk.lo or el >= sk.hi)) continue;
+        };
+        try out.append(wk.a, c);
+    }
     return out.items;
 }
 
@@ -1019,34 +1042,124 @@ pub fn decorativeImage(f: *const Frame, id: u32) bool {
     return alt.len == 0;
 }
 
-/// The document's structure tree under a `Document` root (takumi `build_tree`).
-pub fn build(c: *Collector, lang: ?[]const u8, targets: *const std.AutoHashMapUnmanaged(u32, void)) Error!*Group {
-    std.sort.block(Record, c.records.items, {}, struct {
-        fn lt(_: void, x: Record, y: Record) bool {
-            return x.node < y.node;
-        }
-    }.lt);
-    var wk: Walk = .{ .c = c, .a = c.a, .f = c.f, .targets = targets };
-    const root = try wk.newGroup(.document);
-    root.title = lang; // the Document root carries the language (written as /Lang)
-    var top: std.ArrayList(Kid) = .empty;
-    var pending: std.ArrayList(Ident) = .empty;
-    try buildNode(&wk, c.f.root, &top, &pending, .{});
-    try flushParagraph(&wk, &pending, &top);
-    // Whatever the walk did not reach still needs a parent: a marked-content sequence or an
-    // annotation outside the structure tree is a null parent-tree entry (krilla refuses to write
-    // one). It reads last, as a paragraph / a link of its own.
-    for (c.records.items) |*r| {
-        if (r.taken) continue;
-        r.taken = true;
-        if (r.kind == .annotation) {
-            try flushParagraph(&wk, &pending, &top);
-            try pushLinkWrappers(&wk, &.{r.id}, &top);
-        } else try pending.append(c.a, r.id);
+/// The document's structure tree under a `Document` root (takumi `build_tree`), built a frame at
+/// a time: `begin`, `add` for each frame of the document in order (what the collector recorded
+/// for it), then `root`.
+pub const Builder = struct {
+    root: *Group,
+    headings: std.ArrayList(u8) = .empty,
+
+    pub fn begin(a: Allocator, lang: ?[]const u8) Error!Builder {
+        const root = try a.create(Group);
+        root.* = .{ .role = .document };
+        root.title = lang; // the Document root carries the language (written as /Lang)
+        return .{ .root = root };
     }
-    try flushParagraph(&wk, &pending, &top);
-    try root.kids.appendSlice(c.a, top.items);
-    return root;
+
+    /// Adds the structure of collector `c`'s frame (what it recorded, taken: the collector may
+    /// then be cleared for the next frame). `targets`: its render nodes a destination names.
+    /// Built in `c.a` (working memory); what the tree keeps is copied to `keep`. A frame laying
+    /// out a part of the document leaves out what `skip` names; what was recorded for the part
+    /// after goes to `carry` (in `keep`). False: the part cannot be told apart from its neighbours
+    /// (a record of the part before, or of the boxes around the parts).
+    pub fn add(b: *Builder, c: *Collector, targets: *const std.AutoHashMapUnmanaged(u32, void), chunk: u32, skip: ?Skip, carry: *std.ArrayList(Carry), keep: Allocator) Error!bool {
+        std.sort.block(Record, c.records.items, {}, struct {
+            fn lt(_: void, x: Record, y: Record) bool {
+                return x.node < y.node;
+            }
+        }.lt);
+        if (skip) |sk| {
+            // (the flow and the boxes around it are in every part: none may have a record)
+            var up = sk.parent;
+            while (up != none) : (up = c.f.nodes.items[up].parent) {
+                for (c.records.items) |r| if (r.node == up) return false;
+            }
+            // the records of the parts around this one: the part after's go to it
+            for (c.records.items) |*r| {
+                var child = r.node;
+                while (child != none and c.f.nodes.items[child].parent != sk.parent) child = c.f.nodes.items[child].parent;
+                if (child == none) continue;
+                const el = c.f.nodes.items[child].el;
+                if (el == none or (el >= sk.lo and el < sk.hi)) continue;
+                if (el < sk.lo) return false;
+                // the node, from the nearest one with an element
+                var path: std.ArrayList(u32) = .empty;
+                var cur = r.node;
+                while (c.f.nodes.items[cur].el == none) {
+                    const parent = c.f.nodes.items[cur].parent;
+                    if (parent == none) return false;
+                    var idx: u32 = 0;
+                    var sib = c.f.nodes.items[parent].first_child;
+                    while (sib != none and sib != cur) : (sib = c.f.nodes.items[sib].next) idx += 1;
+                    try path.insert(c.a, 0, idx);
+                    cur = parent;
+                }
+                const an = &c.f.nodes.items[cur];
+                try carry.append(keep, .{ .el = an.el, .node_kind = an.kind, .path = try keep.dupe(u32, path.items), .kind = r.kind, .id = r.id });
+                r.taken = true;
+            }
+        }
+        var wk: Walk = .{ .c = c, .a = c.a, .f = c.f, .targets = targets, .headings = &b.headings, .keep = keep, .chunk = chunk, .skip = skip };
+        var top: std.ArrayList(Kid) = .empty;
+        var pending: std.ArrayList(Ident) = .empty;
+        try buildNode(&wk, c.f.root, &top, &pending, .{});
+        try flushParagraph(&wk, &pending, &top);
+        // Whatever the walk did not reach still needs a parent: a marked-content sequence or an
+        // annotation outside the structure tree is a null parent-tree entry (krilla refuses to write
+        // one). It reads last, as a paragraph / a link of its own.
+        for (c.records.items) |*r| {
+            if (r.taken) continue;
+            r.taken = true;
+            if (r.kind == .annotation) {
+                try flushParagraph(&wk, &pending, &top);
+                try pushLinkWrappers(&wk, &.{r.id}, &top);
+            } else try pending.append(c.a, r.id);
+        }
+        try flushParagraph(&wk, &pending, &top);
+        try b.root.kids.ensureUnusedCapacity(keep, top.items.len);
+        for (top.items) |k| b.root.kids.appendAssumeCapacity(try cloneKid(keep, k));
+        return true;
+    }
+};
+
+/// `k` and what it holds, copied to `a` (each list at its length).
+fn cloneKid(a: Allocator, k: Kid) Error!Kid {
+    return switch (k) {
+        .leaf => k,
+        .group => |g| .{ .group = try cloneGroup(a, g) },
+    };
+}
+
+fn cloneGroup(a: Allocator, g: *const Group) Error!*Group {
+    const n = try a.create(Group);
+    n.* = g.*;
+    n.title = if (g.title) |t| try a.dupe(u8, t) else null;
+    n.alt = if (g.alt) |t| try a.dupe(u8, t) else null;
+    n.id = if (g.id) |t| try a.dupe(u8, t) else null;
+    n.kids = .empty;
+    try n.kids.ensureTotalCapacityPrecise(a, g.kids.items.len);
+    for (g.kids.items) |k| n.kids.appendAssumeCapacity(try cloneKid(a, k));
+    return n;
+}
+
+/// Records `carry` (from the part before: `Builder.add`) against the render nodes of collector
+/// `c`'s frame with the same element and kind, ahead of what the frame records. False: one has
+/// no such node.
+pub fn takeCarry(c: *Collector, carry: []const Carry) Error!bool {
+    for (carry) |cr| {
+        var node = for (c.f.nodes.items, 0..) |n, k| {
+            if (n.el == cr.el and n.kind == cr.node_kind) break @as(u32, @intCast(k));
+        } else return false;
+        for (cr.path) |idx| {
+            var sib = c.f.nodes.items[node].first_child;
+            var k: u32 = 0;
+            while (sib != none and k < idx) : (k += 1) sib = c.f.nodes.items[sib].next;
+            if (sib == none) return false;
+            node = sib;
+        }
+        try c.records.append(c.a, .{ .node = node, .kind = cr.kind, .id = cr.id });
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1073,7 +1186,7 @@ const Ser = struct {
     /// (page, mcid) -> parent element
     mcid_parent: std.AutoHashMapUnmanaged(u64, Ref) = .empty,
     ids: std.ArrayList(struct { name: []const u8, ref: Ref }) = .empty,
-    node_elems: *std.AutoHashMapUnmanaged(u32, Ref),
+    node_elems: *std.AutoHashMapUnmanaged(u64, Ref),
     problems: Problems = .{},
 };
 
@@ -1131,7 +1244,7 @@ fn serialize(s: *Ser, g: *const Group, parent: Ref) Error!Ref {
     if (g.id) |id| {
         b.pairStr("ID", id);
         try s.ids.append(s.a, .{ .name = id, .ref = me });
-        if (g.node != none) try s.node_elems.put(s.a, g.node, me);
+        if (g.node != none) try s.node_elems.put(s.a, nodeKey(g.chunk, g.node), me);
     }
     if (g.role == .h and (g.title == null or g.title.?.len == 0)) s.problems.missing_heading_title = true;
     if (g.role == .figure and (g.alt == null or g.alt.?.len == 0)) s.problems.missing_alt = true;
@@ -1198,7 +1311,12 @@ pub const Written = struct { root: Ref, problems: Problems };
 
 /// Writes the structure tree, its root, the parent tree and the ID tree. `parents`: the parent
 /// tree entries in registration order (`StructParents` / `StructParent` numbers).
-pub fn write(a: Allocator, d: *w.Doc, root: *const Group, page_refs: []const Ref, annots: []AnnotRef, parents: []const StructParent, node_elems: *std.AutoHashMapUnmanaged(u32, Ref)) Error!Written {
+/// The key of render node `node` of part `chunk` of the document (destinations of PDF/UA-2).
+pub fn nodeKey(chunk: u32, node: u32) u64 {
+    return (@as(u64, chunk) << 32) | node;
+}
+
+pub fn write(a: Allocator, d: *w.Doc, root: *const Group, page_refs: []const Ref, annots: []AnnotRef, parents: []const StructParent, node_elems: *std.AutoHashMapUnmanaged(u64, Ref)) Error!Written {
     const pdf2 = d.version.atLeast(.v2_0);
     const tree_root = d.alloc();
     var s: Ser = .{ .a = a, .d = d, .pdf2 = pdf2, .ssn = if (pdf2) d.alloc() else 0, .page_refs = page_refs, .annots = annots, .node_elems = node_elems };

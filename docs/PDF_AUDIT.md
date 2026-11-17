@@ -180,7 +180,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | `box-decoration-break` of inline boxes reaching the next page by their border | ported+differs | |
 | Tables: repeated `thead` / `tfoot`, row splitting, rowspan, cell re-alignment at a cut row | ported+equivalent | was differing |
 | Table captions across pages | ported+differs | takumi drops caption lines on page 1 (looks like a takumi bug) |
-| Collapsed table borders per fragment | ported+differs | repeated header/footer borders replay at their fragment `dy`, and rows cut by a page window paint their winning block-start/end edges; bm-render retains a row separator between rows at a page break where takumi omits it; repeated-header borders rasterize equivalently within 1 CSS px |
+| Collapsed table borders per fragment | ported+differs | repeated header/footer borders replay at their fragment `dy`, and rows cut by a page window paint their winning block-start/end edges; the block-start edge of a row a page break moved to the next page is painted on that page only, as Chromium does (takumi also paints its upper half at the end of the page before, a second rule under the last row when that row stops short of the page end: his-print Mps000338, `pagination.table.borders`); repeated-header borders rasterize equivalently within 1 CSS px |
 | Flex rows across pages (align-items, perfect breaks) | ported+equivalent | an item whose margin overflows the page: takumi keeps it on the page (its own test says the opposite) |
 | Grid rows across pages | ported+differs | basic rows, forced breaks, and aligned items resuming from an empty first fragment pass (`pagination.grid`, `pagination.continuation.grid-aligned-*`); arbitrary spanning-row / track continuation remains incomplete (`docs/PDF_FRAGMENT_DESIGN.md`) |
 | Floats across pages | ported+differs | whole floats deferred to a later page trigger full layout retries so following lines re-flow; tested nested / RTL / variable page-size cases and split-float extents pass (`pagination.float.*`). Split floats still lack a general page-local exclusion model, especially for arbitrary continuations across width runs (`docs/PDF_FRAGMENT_DESIGN.md`) |
@@ -228,7 +228,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | Feature | Status | Notes / evidence |
 |:--|:--|:--|
 | Font embedding as CID Type0 (TrueType / CFF / CFF2, variable instances), subsetting, ToUnicode, `/W` | ported+equivalent | font programs are not byte-identical (different subsetter) but draw the same glyphs; 71/136 goldens byte-identical fonts |
-| Glyph subset closure | ported+differs | an nbsp-only paragraph is drawn (takumi skips it); one extra glyph for all printable ASCII |
+| Glyph subset closure | ported+differs | an nbsp-only paragraph is drawn (takumi skips it); for all printable ASCII bm-render shapes `@` before a capital and `J` with Inter's contextual alternates where takumi keeps the default glyphs, and keeps the default `@` in the subset too: one extra glyph (`fonts.subset.glyph-closure`) |
 | TTC face selection with a family override; TTC `FontBBox` | ported+differs | takumi picks the last face and writes −220 as the descender bound |
 | WOFF1 fonts | extension | takumi-pdf rejects them |
 | WOFF2 | ported+equivalent | |

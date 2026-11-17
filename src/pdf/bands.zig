@@ -118,6 +118,22 @@ pub fn buildFrameCuts(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?js
     return f;
 }
 
+/// The document of `o` for the content laid out a part at a time (paged.zig `writeChunked`): its
+/// element model and styles only (`Frame.prepareDocument`), for page areas of size `area`.
+pub fn buildDocument(r: *rt.Renderer, a: Allocator, o: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, area: [2]f32, subst: *counters.Subst) Error!*Frame {
+    var ro: rt.Options = .{ .lang = o.lang, .font_families = o.font_families };
+    ro.width = @intFromFloat(@max(1, @min(o.geometry.page.width, 16384)));
+    ro.css = css;
+    const f = try a.create(Frame);
+    f.* = .{ .r = r, .a = a, .opts = ro, .tree = rt.LTree.init(a), .ctx = undefined };
+    f.tree.paged.pdf = true;
+    f.tree.paged.skip_dom_styles = o.pooled_styles;
+    f.setPaged(area[0], area[1]);
+    subst.install(f);
+    try f.prepareDocument(kind, source);
+    return f;
+}
+
 /// The laid-out height of a band frame: its root's margin box (takumi lays the band out inside a
 /// page-wide flow root and takes that root's height).
 pub fn frameHeight(f: *const Frame) f32 {

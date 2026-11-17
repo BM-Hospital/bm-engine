@@ -698,6 +698,14 @@ fn paintCollapsedImpl(
             for (starts[0..n_starts], 0..) |bs_k, k_start| {
                 const fx = x + tg.sec_x + @as(f32, @floatFromInt(is)) / 64;
                 const fy = y + repeat_dy + sec.y + @as(f32, @floatFromInt(bs_k)) / 64;
+                // (the block-start edge of a row a page break moved to the next page belongs to that
+                // page: its half above the row start lies on the page before, under the row ending
+                // there, where it drew a second rule; Chromium paints it on the row's page only.
+                // takumi-pdf paints it on both, docs/PDF_AUDIT.md)
+                if (n_starts == 2 and k_start == 1 and p.plain() and std.math.isFinite(p.window.bottom)) {
+                    const row_start_y = y + repeat_dy + sec.y + @as(f32, @floatFromInt(row_start)) / 64 - p.plain_dy;
+                    if (row_start_y >= p.window.bottom - 1.0 / 64.0) continue;
+                }
                 const x1 = roundPx(fx);
                 const y1 = roundPx(fy);
                 const x2 = @max(roundPx(fx + @as(f32, @floatFromInt(isz)) / 64), x1);

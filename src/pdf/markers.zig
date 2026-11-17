@@ -87,6 +87,16 @@ pub const State = struct {
     items: std.AutoHashMapUnmanaged(u32, void) = .empty,
 };
 
+/// The list markers of a frame laying out a part of `doc`'s document (`Frame.initChunk`): the
+/// document's, with render node bindings of its own.
+pub fn forChunk(doc: *const Frame, a: Allocator) Error!?*anyopaque {
+    const s = stateOf(doc) orelse return null;
+    const c = try a.create(State);
+    c.* = .{ .by_pseudo = s.by_pseudo, .items = s.items };
+    try c.infos.appendSlice(a, s.infos.items);
+    return @ptrCast(c);
+}
+
 fn stateOf(f: *const Frame) ?*State {
     const p = f.tree.paged.markers orelse return null;
     return @ptrCast(@alignCast(p));

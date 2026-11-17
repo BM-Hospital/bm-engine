@@ -1,8 +1,8 @@
 {
   "package": "bm-render",
   "version": "0.1.1",
-  "date": "2026-11-16T14:45:47.183Z",
-  "git": "v0.1.0-5-ga7c4ae5-dirty",
+  "date": "2026-11-17T06:29:51.073Z",
+  "git": "v0.1.1-2-g25d96ad-dirty",
   "zig": "0.17.0",
   "files": {
     "core": {
@@ -36,8 +36,8 @@
     },
     "pdf": {
       "file": "js/bm_render.pdf.wasm",
-      "bytes": 1955458,
-      "sha256": "86b1e5af54b2ea25db6c85507c63f2faf58f3cc4817905ef637778755bfaaebe",
+      "bytes": 1982604,
+      "sha256": "15b193cb929568480d383652ef32965d93d3f9f63cefad21a9bffb327be178da",
       "profile": "pdf",
       "features": "0x7ffff",
       "custom": false

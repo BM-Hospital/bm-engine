@@ -1581,6 +1581,15 @@ pub const Frame = struct {
     }
 
     pub fn prepare(f: *Frame, kind: SourceKind, source: []const u8) Error!void {
+        try f.prepareDocument(kind, source);
+        if (f.needs_only) return;
+        try f.prepareLayout();
+    }
+
+    /// The document part of `prepare`: the element model, the cascade, the generated content. What
+    /// it makes is only read afterwards, so frames laying out parts of the document can share it
+    /// (`initChunk`).
+    pub fn prepareDocument(f: *Frame, kind: SourceKind, source: []const u8) Error!void {
         const o = f.opts;
         f.ctx = .{
             .dpr = o.dpr,
@@ -1629,7 +1638,9 @@ pub const Frame = struct {
         if (comptime config.enable_tw) if (hasThemeVar(source)) {
             f.tw_theme = true;
         };
+        @import("memtrace.zig").mark("frame: parsed, css");
         try f.styleTree(f.dom.root, null, 0);
+        @import("memtrace.zig").mark("frame: styled");
         if (comptime config.enable_svg and config.enable_css) try @import("svg/html_cascade.zig").generate(f);
         try @import("text_control.zig").generate(f);
         // (PDF list markers: src/pdf/markers.zig, gated by `listMarkers`)
@@ -1637,7 +1648,11 @@ pub const Frame = struct {
         try @import("generated_content.zig").generate(f);
         // (PDF: named pages, the `page` property: src/pdf/page_names.zig)
         if (comptime config.enable_pdf) if (f.tree.paged.pdf) try @import("pdf/page_names.zig").collect(f);
-        if (f.needs_only) return;
+    }
+
+    /// The layout part of `prepare`: the render nodes and their layout.
+    pub fn prepareLayout(f: *Frame) Error!void {
+        const o = f.opts;
         f.cur_lang = o.lang;
         f.root = try f.buildElement(f.dom.root, none, 0);
         // (PDF: a paragraph continued on a page of another width, src/pdf/paged.zig)
@@ -1663,6 +1678,7 @@ pub const Frame = struct {
         // `LTree.ensureCapacity`)
         f.tree.ensureCapacity(f.tree.nodes.items.len + f.nodes.items.len + 1) catch return error.OutOfMemory;
         try f.lid_node.ensureTotalCapacityPrecise(f.a, f.tree.nodes.items.len + f.nodes.items.len + 1);
+        @import("memtrace.zig").mark("frame: render nodes");
         const lr = try f.buildLayout(f.root);
         f.lroot = lr;
         const out_of_flow = rcs.position == .absolute or rcs.position == .fixed;
@@ -1691,6 +1707,7 @@ pub const Frame = struct {
             else => return f.fail("node tree is nested too deeply", ""),
         };
         if (f.layout_oom) return error.OutOfMemory;
+        @import("memtrace.zig").mark("frame: laid out");
         if (comptime layout.fragment.enabled) if (f.tree.paged.page_h > 0) {
             // (any length of content, even none, makes pages: the canvas is one page area)
             f.canvas_w = o.width orelse 1;
@@ -1721,6 +1738,29 @@ pub const Frame = struct {
         if (cw > 16384 or ch > 16384 or cw * ch > 40.0e6) return f.fail("canvas too large", "");
         f.canvas_w = @intFromFloat(cw);
         f.canvas_h = @intFromFloat(ch);
+    }
+
+    /// A frame laying out a part of `doc`'s document (src/pdf/chunks.zig): it shares `doc`'s element
+    /// model, styles and generated content (`prepareDocument`), read only, and keeps its own render
+    /// nodes and layout in `a`; `prepareLayout` lays it out (the part: `tree.paged.chunk`).
+    pub fn initChunk(doc: *const Frame, a: Allocator) Error!Frame {
+        var f: Frame = .{ .r = doc.r, .a = a, .opts = doc.opts, .ctx = doc.ctx, .tree = LTree.init(a), .pre = doc.pre };
+        f.dom = doc.dom;
+        f.pseudos = doc.pseudos;
+        f.css_on = doc.css_on;
+        f.cssx = doc.cssx;
+        f.tw_theme = doc.tw_theme;
+        f.tw_root_cs = doc.tw_root_cs;
+        f.style_share = doc.style_share;
+        f.inline_decls = doc.inline_decls;
+        f.css_counters = doc.css_counters;
+        f.style_tmp = doc.style_tmp;
+        if (comptime layout.fragment.enabled) {
+            const d = doc.tree.paged;
+            f.tree.paged = .{ .page_w = d.page_w, .page_h = d.page_h, .pdf = d.pdf, .page_of = d.page_of, .page_names = d.page_names, .units = d.units, .skip_dom_styles = d.skip_dom_styles };
+            if (comptime config.enable_pdf) f.tree.paged.markers = try @import("pdf/markers.zig").forChunk(doc, a);
+        }
+        return f;
     }
 
     /// THE gate of list markers (`display: list-item`, src/pdf/markers.zig; PDF builds only): the
@@ -2259,6 +2299,12 @@ pub const Frame = struct {
                         if (it.cur != none) {
                             const c = it.cur;
                             const ce = it.f.dom.at(c);
+                            // (a frame laying out a part of the document: the other children of the
+                            // element the parts divide are not in it)
+                            if (comptime config.enable_pdf and layout.fragment.enabled) if (it.f.tree.paged.chunk) |ch| if (it.own == ch.parent and (c < ch.lo or c >= ch.hi)) {
+                                it.cur = ce.next;
+                                continue;
+                            };
                             if (ce.kind == .container and !ce.run and ce.cs.display == .contents) {
                                 it.own = c;
                                 it.stage = 0;
@@ -3517,6 +3563,9 @@ pub const Frame = struct {
         start: ?layout.fragment.Start = null,
         start_top: ?f32 = null,
         record_starts: bool = false,
+        /// `layout.fragment.Options.origin` / `root_shift`
+        origin: f32 = 0,
+        root_shift: f32 = 0,
     };
 
     /// Before `prepare`: lay the frame out for pages whose page area (content box) is
@@ -3588,6 +3637,8 @@ pub const Frame = struct {
                     .start = o.start,
                     .start_top = o.start_top,
                     .record_starts = o.record_starts,
+                    .origin = o.origin,
+                    .root_shift = o.root_shift,
                     .extent_fn = if (comptime config.enable_pdf) movedExtentCb else null,
                 }) catch |e| return switch (e) {
                     error.OutOfMemory => error.OutOfMemory,

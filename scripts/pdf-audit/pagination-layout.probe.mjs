@@ -122,9 +122,12 @@ probe("pagination.table.borders", "tables: collapsed / separate borders and spac
   t.ok(!fourPx.error, "4px collapsed-border table renders");
   if (!fourPx.error) {
     const firstPage = paintShapes(fourPx, 0);
-    t.ok(hasBlackRule(firstPage, 7.5, 100), "row separator remains visible at the page break");
+    // (the last row on page 1, R07, ends 13.5 pt above the page bottom; the content box ends at 7.5 pt)
+    const isRule = (shape, y) => { const [x0, y0, x1, y1] = shape.split(" ", 4).map(Number); return shape.endsWith("fill 0,0,0") && x1 - x0 >= 100 && Math.abs(y0 - y) <= 1.5; };
+    t.ok(firstPage.some((s) => isRule(s, 13.5)), "the row separator stays under the last row of the page");
+    // Chromium: the next row's block-start edge belongs to its own page, not to a strip under this one
+    t.ok(!firstPage.some((s) => isRule(s, 7.5)), "no second rule at the page end from the row moved to the next page");
   }
-  t.differs("bm paints the collapsed row separator at the page break; pinned Takumi omits it");
 
   const repeated = await t.both(
     table(`<thead><tr><th>HEAD</th><th>H2</th></tr></thead><tbody>${rows(1, 20)}</tbody>`, `table{border-collapse:collapse} td,th{border:2px solid #000}`),
