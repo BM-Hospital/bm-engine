@@ -128,6 +128,20 @@ probe("pagination.table.borders", "tables: collapsed / separate borders and spac
     // Chromium: the next row's block-start edge belongs to its own page, not to a strip under this one
     t.ok(!firstPage.some((s) => isRule(s, 7.5)), "no second rule at the page end from the row moved to the next page");
   }
+  // The same break between two row groups (R01-R07 | R08-R20): the group above paints the edge they share under R07,
+  // the group below at R08's start on the next page (Chromium; his-print Mps000338, a thead shown as a row group
+  // above its tbody, lost the rule at the top of the next page).
+  const twoGroups = await t.bm(table(`<tbody>${rows(1, 7)}</tbody><tbody>${rows(8, 20)}</tbody>`, `table{border-collapse:collapse} td{border:4px solid #000}`), P);
+  t.ok(!twoGroups.error, "4px collapsed-border table with two row groups renders");
+  if (!twoGroups.error) {
+    const isRule = (shape, y) => { const [x0, y0, x1, y1] = shape.split(" ", 4).map(Number); return shape.endsWith("fill 0,0,0") && x1 - x0 >= 100 && Math.abs(y0 - y) <= 1.5; };
+    const firstPage = paintShapes(twoGroups, 0);
+    const secondPage = paintShapes(twoGroups, 1);
+    t.ok(twoGroups.textPages[1]?.startsWith("R08"), "row groups: R08 starts the next page");
+    t.ok(firstPage.some((s) => isRule(s, 13.5)), "row groups: the shared edge stays under the last row of the page");
+    t.ok(!firstPage.some((s) => isRule(s, 7.5)), "row groups: no second rule at the page end");
+    t.ok(secondPage.some((s) => isRule(s, 141)), `row groups: R08 has its block-start edge at the top of the next page (${secondPage.filter((s) => s.endsWith("fill 0,0,0")).slice(0, 4).join(" | ")})`);
+  }
 
   const repeated = await t.both(
     table(`<thead><tr><th>HEAD</th><th>H2</th></tr></thead><tbody>${rows(1, 20)}</tbody>`, `table{border-collapse:collapse} td,th{border:2px solid #000}`),
