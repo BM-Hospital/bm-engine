@@ -606,6 +606,8 @@ fn paintCollapsedImpl(
     const per_row = b.epr;
     const pr: isize = @intCast(per_row);
     var prev_row: ?usize = null;
+    // (block end of the section above, in the table's coordinates)
+    var prev_sec_end: f32 = 0;
     for (tg.secs, 0..) |*sec, section_index| {
         if (only_section) |wanted| {
             if (section_index != wanted) continue;
@@ -627,8 +629,15 @@ fn paintCollapsedImpl(
             var bs: i32 = undefined;
             var isz: i32 = undefined;
             var bsz: i32 = undefined;
+            // (the block-start edge of a section whose first row a page break moved away from the
+            // section above: Chromium paints it at that row on its page, the section above keeps its
+            // block-end edge on the page before)
+            var moved_section_start = false;
             if (inline_axis) {
-                if (prev_row != null and prev_row.? == trow) continue;
+                if (prev_row != null and prev_row.? == trow) {
+                    if (frow != 0 or sec.y + tg.rows[sec.start].y <= prev_sec_end + 1) continue;
+                    moved_section_start = true;
+                }
                 if (tcol + 1 > tg.cols.len) continue;
                 const s = b.joint(b.at(index, -2), index, b.at(index, -(pr + 1)), b.at(index, -1), false);
                 const e = b.joint(index, b.at(index, 2), b.at(index, -(pr - 1)), b.at(index, 1), false);
@@ -702,7 +711,7 @@ fn paintCollapsedImpl(
                 // page: its half above the row start lies on the page before, under the row ending
                 // there, where it drew a second rule; Chromium paints it on the row's page only.
                 // takumi-pdf paints it on both, docs/PDF_AUDIT.md)
-                if (n_starts == 2 and k_start == 1 and p.plain() and std.math.isFinite(p.window.bottom)) {
+                if (((n_starts == 2 and k_start == 1) or moved_section_start) and p.plain() and std.math.isFinite(p.window.bottom)) {
                     const row_start_y = y + repeat_dy + sec.y + @as(f32, @floatFromInt(row_start)) / 64 - p.plain_dy;
                     if (row_start_y >= p.window.bottom - 1.0 / 64.0) continue;
                 }
@@ -720,6 +729,7 @@ fn paintCollapsedImpl(
             }
         }
         prev_row = @as(usize, sec.start) + sec.n_rows;
+        prev_sec_end = sec.y + sec.h;
     }
 
     // A row fragmented by a page boundary gets the collapsed block edge of that fragment on
