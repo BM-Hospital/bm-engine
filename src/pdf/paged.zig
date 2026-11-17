@@ -618,13 +618,18 @@ pub fn rootContext(f: *const Frame) page_rules.Context {
             }
         } else if (tag.len == 0) props = false;
     }
-    const cs = f.nodes.items[id].cs;
+    return contextOf(f.r, f.nodes.items[id].cs, f.nodes.items[f.root].cs, props);
+}
+
+/// The page rules' context of a root whose style is `cs` (the root element's: `root_cs`); `props`:
+/// its custom properties are read.
+fn contextOf(r: *rt.Renderer, cs: *const style.ComputedStyle, root_cs: *const style.ComputedStyle, props: bool) page_rules.Context {
     var ex: f32 = 0.5;
     var ch: f32 = 0.5;
     var font_ids: [64]@import("../font/collection.zig").FaceId = undefined;
-    const matched = f.r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &font_ids);
+    const matched = r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &font_ids);
     if (matched.len > 0) {
-        const face = f.r.fonts.font(matched[0]);
+        const face = r.fonts.font(matched[0]);
         const upem = @max(face.unitsPerEm(), 1);
         const xh = face.xHeight();
         if (xh > 0) ex = @as(f32, @floatFromInt(xh)) / @as(f32, @floatFromInt(upem));
@@ -636,7 +641,7 @@ pub fn rootContext(f: *const Frame) page_rules.Context {
             return c.customProperty(name);
         }
     };
-    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = f.nodes.items[f.root].cs.font_size, .ex = ex, .ch = ch, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
+    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = root_cs.font_size, .ex = ex, .ch = ch, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
 }
 
 /// Lays the paged document `o_in` (geometry `p_in`) out: `@page` rules, bands, margins, the content
@@ -821,7 +826,8 @@ const LaidPart = struct {
 /// The top of source element `el`'s box in frame `f` (laid out and paginated), null: no box.
 fn elementTop(f: *const Frame, el: u32) ?f32 {
     for (f.nodes.items) |n| {
-        if (n.el != el or n.kind != .container or n.lid == rt.none) continue;
+        // (the element's own box: a container, or a text / image element's node)
+        if (n.el != el or n.kind == .anon_text or n.kind == .anon_box or n.lid == rt.none) continue;
         var y = f.tree.layout(n.lid).y;
         var parent = f.tree.nodes.items[n.lid].parent;
         var guard: u32 = 0;
@@ -850,7 +856,6 @@ fn refuse(comptime T: type, comptime why: []const u8) ?T {
 fn docRootContext(doc: *const Frame) page_rules.Context {
     const d = &doc.dom;
     var el = d.root;
-    var props = true;
     const tag = d.at(el).tag;
     if (std.ascii.eqlIgnoreCase(tag, "html")) {
         var c = d.at(el).first;
@@ -861,26 +866,29 @@ fn docRootContext(doc: *const Frame) page_rules.Context {
                 break;
             }
         }
-    } else if (tag.len == 0) props = false;
-    const cs = d.at(el).cs;
-    var ex: f32 = 0.5;
-    var ch: f32 = 0.5;
-    var font_ids: [64]@import("../font/collection.zig").FaceId = undefined;
-    const matched = doc.r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &font_ids);
-    if (matched.len > 0) {
-        const face = doc.r.fonts.font(matched[0]);
-        const upem = @max(face.unitsPerEm(), 1);
-        const xh = face.xHeight();
-        if (xh > 0) ex = @as(f32, @floatFromInt(xh)) / @as(f32, @floatFromInt(upem));
-        ch = @as(f32, @floatFromInt(face.advanceWidth(face.glyphIndex('0')))) / @as(f32, @floatFromInt(upem));
     }
-    const Get = struct {
-        fn custom(ctx: *const anyopaque, name: []const u8) ?[]const u8 {
-            const c: *const style.ComputedStyle = @ptrCast(@alignCast(ctx));
-            return c.customProperty(name);
-        }
+    return contextOf(doc.r, d.at(el).cs, d.at(d.root).cs, tag.len > 0);
+}
+
+/// Whether some text may set a page break (`break-*` / `page-break-*`, any case).
+fn mentionsBreak(text: []const u8) bool {
+    if (text.len < 5) return false;
+    var i: usize = 0;
+    while (i + 5 <= text.len) : (i += 1) {
+        if (std.ascii.eqlIgnoreCase(text[i .. i + 5], "break")) return true;
+    }
+    return false;
+}
+
+fn cssMentionsBreak(css: ?json.Value) bool {
+    const c = css orelse return false;
+    return switch (c) {
+        .string => |s| mentionsBreak(s),
+        .array => |arr| for (arr) |e| {
+            if (e == .string and mentionsBreak(e.string)) break true;
+        } else false,
+        else => false,
     };
-    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = d.at(d.root).cs.font_size, .ex = ex, .ch = ch, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
 }
 
 /// How far below a page's top a box may be computed and still start that page (`layPart`).
@@ -926,6 +934,31 @@ fn layPart(a: Allocator, doc: *const Frame, plan: chunks.Plan, k: usize, geo: *c
     if (!(s < e)) return refuse(LaidPart, "part has no page");
     const flow = nodeOfElement(f, plan.parent);
     if (flow == rt.none) return refuse(LaidPart, "no flow box");
+    // What the part paints stays on its pages, but for its first child (laid out by the part
+    // before too) above them and its last child (by the part after) below them: an offset,
+    // transform, shadow or outline reaching further paints where only the whole document has it.
+    if (pt.prev != rt.none or pt.next != rt.none) {
+        const ex = try emit.Extents.compute(a, f);
+        const lo = if (pt.prev != rt.none) pages.pages[s].top - seam_eps else -std.math.inf(f32);
+        const hi = if (pt.next != rt.none) pages.pages[e].top + seam_eps else std.math.inf(f32);
+        var c = f.nodes.items[flow].first_child;
+        while (c != rt.none) : (c = f.nodes.items[c].next) {
+            const el = f.nodes.items[c].el;
+            if (el != rt.none and (el < pt.own_lo or el >= pt.own_hi)) continue;
+            if (el != pt.own_lo and ex.lo[c] < lo) return refuse(LaidPart, "a box paints onto the part before");
+            if (el != pt.last and ex.hi[c] > hi) return refuse(LaidPart, "a box paints onto the part after");
+        }
+        // (the neighbours' children this frame lays out paint here, on this part's pages only: the
+        // part before's last child past them, the part after's first child before them, would
+        // reach a part whose frame does not lay it out)
+        c = f.nodes.items[flow].first_child;
+        while (c != rt.none) : (c = f.nodes.items[c].next) {
+            const el = f.nodes.items[c].el;
+            if (el == rt.none) continue;
+            if (pt.prev != rt.none and el == pt.prev and ex.hi[c] > hi) return refuse(LaidPart, "the part before paints past this part");
+            if (pt.next != rt.none and el == pt.next and ex.lo[c] < lo) return refuse(LaidPart, "the part after paints before this part");
+        }
+    }
     // (the part starts on the page after the seam's: where the document has it)
     if (seam != null and base + s < 1) return refuse(LaidPart, "part before page 1");
     return .{ .f = f, .s = s, .e = e, .flow = flow };
@@ -964,6 +997,10 @@ fn countParts(r: *rt.Renderer, doc: *const Frame, plan: chunks.Plan, geo: *const
 pub fn writeChunked(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, p_in: opt.Page, background: ?style.Color, policy: emit.DocOptions) Error!?[]const u8 {
     if (comptime !layout.fragment.enabled) return null;
     if (!o_in.chunks) return null;
+    // (cheap first: a document too short for two parts, or without any page break property, is
+    // laid out whole without building it twice)
+    if (source.len < @as(usize, o_in.chunk_elements) * 2 * 7 and o_in.chunk_elements > 1) return null;
+    if (!mentionsBreak(source) and !cssMentionsBreak(css)) return null;
     var rules = try pageRules(a, o_in, kind, source, p_in, .{});
     var o = o_in;
     o.geometry = .{ .page = rules.rest };

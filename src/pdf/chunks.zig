@@ -52,12 +52,25 @@ pub const Part = struct {
     own_hi: u32,
     prev: u32 = none,
     next: u32 = none,
+    /// its last child (none: the last part, whose content ends the document)
+    last: u32 = none,
 };
 
+/// The child before `i` that generates a box (no blank text, no `display: none` element).
 fn prevElement(f: *const Frame, i: u32) u32 {
     var c = f.dom.at(i).prev;
-    while (c != none and blankText(f, c)) c = f.dom.at(c).prev;
+    while (c != none and (blankText(f, c) or hidden(f, c))) c = f.dom.at(c).prev;
     return c;
+}
+
+fn hidden(f: *const Frame, i: u32) bool {
+    return !bareText(f, i) and f.dom.at(i).cs.display == .none;
+}
+
+/// Text that is no element (an element holding only text, `<p>text</p>`, is `kind == .text` too).
+fn bareText(f: *const Frame, i: u32) bool {
+    const e = f.dom.at(i);
+    return e.run or (e.kind == .text and e.tag.len == 0);
 }
 
 fn parts(a: Allocator, f: *const Frame, starts: []const u32) Error![]const Part {
@@ -71,6 +84,7 @@ fn parts(a: Allocator, f: *const Frame, starts: []const u32) Error![]const Part 
             pt.lo = pt.prev;
         }
         if (k + 1 < starts.len) {
+            pt.last = prevElement(f, starts[k + 1]);
             pt.next = starts[k + 1];
             const after = f.dom.at(pt.next).next;
             pt.hi = if (after == none) max else after;
@@ -148,7 +162,7 @@ fn forced(b: style.computed.BreakBetween) bool {
 /// A child of the flow a part may start or end at: an in-flow block-level element.
 fn blockChild(f: *const Frame, i: u32) bool {
     const e = f.dom.at(i);
-    if (e.kind == .text or e.run or e.generated) return false;
+    if (bareText(f, i) or e.generated) return false;
     const cs = e.cs;
     if (cs.position != .static and cs.position != .relative) return false;
     if (cs.float != .none) return false;
@@ -160,7 +174,7 @@ fn blockChild(f: *const Frame, i: u32) bool {
 
 fn blankText(f: *const Frame, i: u32) bool {
     const e = f.dom.at(i);
-    if (!(e.kind == .text or e.run)) return false;
+    if (!bareText(f, i)) return false;
     return std.mem.trim(u8, e.text, " \t\r\n\x0c").len == 0;
 }
 
@@ -190,7 +204,7 @@ pub fn plan(a: Allocator, f: *const Frame, min_elements: u32) Error!?Plan {
     }
     // the elements of the document: nothing that repeats, floats or escapes its part
     for (d.els.items, 0..) |*e, idx| {
-        if (e.kind == .text or e.run) continue;
+        if (bareText(f, @intCast(idx))) continue;
         const cs = e.cs;
         if (cs.display == .none) continue;
         if (cs.position == .fixed) return no("a fixed box");
@@ -204,7 +218,7 @@ pub fn plan(a: Allocator, f: *const Frame, min_elements: u32) Error!?Plan {
     while (c != none) : (c = d.at(c).next) {
         if (blankText(f, c)) continue;
         const e = d.at(c);
-        if (e.kind != .text and !e.run and e.cs.display == .none) continue;
+        if (hidden(f, c)) continue;
         if (!blockChild(f, c)) {
             prev = none;
             if (starts.items.len == 0) try starts.append(a, c);
@@ -300,12 +314,14 @@ fn partOf(f: *const Frame, p: *const Plan, i: u32) ?usize {
 
 fn joinForwardLinks(a: Allocator, f: *const Frame, p: *Plan, starts: *std.ArrayList(u32)) Error!void {
     const d = &f.dom;
-    // element ids, first one wins (interactive.zig: the first box with the id)
-    var ids: std.StringHashMapUnmanaged(u32) = .empty;
+    // per element id, the last part holding an element with it (interactive.zig takes the first
+    // box with the id: an earlier element may have no box, so any of them may be the anchor)
+    var ids: std.StringHashMapUnmanaged(usize) = .empty;
     for (d.els.items, 0..) |*e, idx| {
         if (e.run or e.id.len == 0) continue;
+        const part = partOf(f, p, @intCast(idx)) orelse continue;
         const gop = try ids.getOrPut(a, e.id);
-        if (!gop.found_existing) gop.value_ptr.* = @intCast(idx);
+        if (!gop.found_existing or part > gop.value_ptr.*) gop.value_ptr.* = part;
     }
     // per part: the last part a link in it reaches
     const reach = try a.alloc(usize, p.starts.len);
@@ -315,9 +331,8 @@ fn joinForwardLinks(a: Allocator, f: *const Frame, p: *Plan, starts: *std.ArrayL
         const href = d.attr(@intCast(idx), "href") orelse continue;
         if (href.len < 2 or href[0] != '#') continue;
         const id = try counters.percentDecode(a, href[1..]);
-        const target = ids.get(id) orelse continue;
+        const to = ids.get(id) orelse continue;
         const from = partOf(f, p, @intCast(idx)) orelse continue;
-        const to = partOf(f, p, target) orelse continue;
         if (to > reach[from]) reach[from] = to;
     }
     // keep a start only when no earlier part links past it

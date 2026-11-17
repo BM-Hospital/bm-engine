@@ -84,7 +84,9 @@ pub const PageLinks = struct {
 
 const TextKey = struct { f: usize, id: u32, x: u32, y: u32 };
 
-const HrefMap = struct { f: *const Frame, map: std.AutoHashMapUnmanaged(usize, u32) = .empty };
+/// The href map of an element model (`Frame.dom`, shared by the frames laying out parts of one
+/// document), keyed by its element array.
+const HrefMap = struct { dom: usize, map: std.AutoHashMapUnmanaged(usize, u32) = .empty };
 
 /// A page's links in tree order: a link, or the place of a box (content) the emitter queued for
 /// its context's content phase, whose links land there when it is painted (`Collector.reserve`).
@@ -243,7 +245,6 @@ pub const Collector = struct {
 
     /// The frames of the part of the document drawn so far go: forgets what refers to them.
     pub fn endChunk(c: *Collector) void {
-        c.href_maps.clearRetainingCapacity();
         c.text_seen.clearRetainingCapacity();
         c.run_frame = null;
     }
@@ -367,8 +368,9 @@ pub const Collector = struct {
     }
 
     fn hrefMap(c: *Collector, f: *const Frame) Error!*const std.AutoHashMapUnmanaged(usize, u32) {
-        for (c.href_maps.items) |*m| if (m.f == f) return &m.map;
-        var m: HrefMap = .{ .f = f };
+        const key = @intFromPtr(f.dom.els.items.ptr);
+        for (c.href_maps.items) |*m| if (m.dom == key) return &m.map;
+        var m: HrefMap = .{ .dom = key };
         for (f.dom.els.items, 0..) |*el, i| {
             if (el.run) continue;
             const h = f.dom.attr(@intCast(i), "href") orelse continue;

@@ -11,7 +11,7 @@
 //
 // With the native addon the number of parts each render was drawn in is reported (memory checkpoints), and a case
 // marked `parts: true` fails when it was not drawn in parts. Exit code 1 on any difference.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,8 +29,12 @@ const mod = await import(url("js/node-pdf.mjs"));
 if (mod.backend !== backend) throw new Error(`backend ${backend} unavailable (loaded ${mod.backend})`);
 let addon = null;
 if (backend === "native") {
-  const dist = path.join(ROOT, "native", "dist", `${process.platform}-${process.arch}-msvc`, `bm-render.${process.platform}-${process.arch}-msvc.node`);
-  try { addon = createRequire(import.meta.url)(dist); if (!addon.memoryTrace) addon = null; } catch { addon = null; }
+  // (the addon js/native.mjs loaded: native/dist/<platform>-<arch>[-libc]/bm-render.*.node)
+  const dir = path.join(ROOT, "native", "dist");
+  const name = existsSync(dir) ? readdirSync(dir).find((d) => d.startsWith(`${process.platform}-${process.arch}`)) : null;
+  const file = name ? path.join(dir, name, `bm-render.${name}.node`) : null;
+  try { addon = file ? createRequire(import.meta.url)(file) : null; if (addon && !addon.memoryTrace) addon = null; } catch { addon = null; }
+  if (!addon) console.log("(native memory checkpoints unavailable: part counts are not checked)");
 }
 
 const fonts = INTER.map((f) => ({ name: f.name, data: new Uint8Array(readFileSync(f.path)), weight: f.weight, style: f.style }));
@@ -59,13 +63,20 @@ const CASES = [
   { id: "toc-forward-all", source: `<div style="font:12px Inter"><nav style="break-after:page">${[0, 1, 2, 3].map((k) => `<a href="#p${k}">p${k}</a>`).join(" ")}</nav>${[0, 1, 2, 3].map((k) => `<section style="break-after:page"><h2 id="p${k}">P${k}</h2>${para(2)}</section>`).join("")}</div>` },
   { id: "outline-ua1", source: sections(5, (k) => `<h1>Chapter ${k}</h1><h2>Sub</h2>${para(2)}<h3>Deep</h3>`), options: { size: "A5", tagged: "ua1", outline: true, lang: "en", metadata: { title: "T" } }, parts: true },
   { id: "outline-ua2-dests", source: sections(4, (k) => `<h1 id="c${k}">Chapter ${k}</h1>${k ? `<a href="#c${k - 1}">prev</a>` : ""}${para(2)}`), options: { size: "A5", tagged: "ua2", outline: true, lang: "en", metadata: { title: "T" } }, parts: true },
+  { id: "dropped-part-anchors", source: sections(5, (k) => `<h2 id="p${k}">Part ${k + 1}</h2>${k ? `<a href="#p0">first</a> <a href="#p${k - 1}">back</a>` : ""}${para(2)}`), options: { size: "A5", outline: true, pageRanges: [1, 3, 4, 5] }, parts: true },
+  { id: "hidden-first-id", source: `<div style="font:12px Inter"><section style="break-after:page"><a href="#x">to x</a><div id="x" style="display:none">hidden</div>${para(2)}</section><section style="break-after:page">${para(2)}</section><section><h2 id="x">X</h2>${para(2)}</section></div>`, options: { size: "A5" } },
+  { id: "flat-text-children", source: `<div style="font:12px Inter">${[0, 1, 2, 3].map((k) => `<h1 style="break-before:page">Title ${k}</h1><p>${LOREM}</p><p>${LOREM}</p>`).join("")}</div>`, options: { size: "A5" }, parts: true },
+  { id: "float-in-text-element", source: `<div style="font:12px Inter">${[0, 1, 2].map((k) => `<section style="break-after:page"><p style="float:left;width:80px">f${k}</p>${para(2)}</section>`).join("")}</div>`, options: { size: "A5" } },
+  { id: "relative-reaches-back", source: sections(4, (k) => `<h2>P${k}</h2>${para(2)}<div style="position:relative;top:-900px;color:red">up</div>`), options: { size: "A5" } },
+  { id: "hidden-between-parts", source: `<div style="font:12px Inter">${[0, 1, 2, 3].map((k) => `<section style="break-after:page"><h2>P${k}</h2>${para(2)}</section><template>t</template><div style="display:none">h</div>`).join("")}</div>`, options: { size: "A5" }, parts: true },
   { id: "untagged", source: sections(5), options: { size: "A5", tagged: false }, parts: true },
   { id: "page-ranges", source: sections(6), options: { size: "A5", pageRanges: [{ from: 2, to: 4 }, 6] }, parts: true },
   { id: "first-page-rule", source: `<style>@page:first{margin-top:120px} @page:left{margin-bottom:80px}</style>` + sections(5, (k) => `<h2>P${k}</h2>${para(6)}`), options: { size: "A5", margin: 30 }, parts: true },
   { id: "named-pages", source: `<style>@page wide{margin-top:10px;margin-bottom:60px} .w{page:wide}</style>` + sections(5, (k) => `<h2>P${k}</h2>${para(4)}`, (k) => `class="${k % 2 ? "w" : ""}" style="break-after:page"`), options: { size: "A5", margin: 40 }, parts: true },
   { id: "bands-counters", source: sections(6, (k) => `<h2>P${k}</h2>${para(5)}`), options: { size: "A5", header: `<div style="font:9px Inter">H <span class="pageNumber"></span>/<span class="totalPages"></span></div>`, footer: `<div style="font:9px Inter">F</div>` }, parts: true },
   { id: "images", source: sections(4, (k) => `<img src="icon.png" style="width:${40 + k * 10}px">${para(2)}`), options: { size: "A5", images: stressOpts.images }, parts: true },
-  { id: "transforms-inside", source: sections(4, (k) => `<div style="transform:rotate(${k * 10}deg);width:100px;height:40px;background:#cde"></div><div style="position:relative;top:10px"><span style="position:absolute;left:5px">abs</span>rel</div>${para(2)}`), options: { size: "A5" }, parts: true },
+  { id: "transforms-inside", source: sections(4, (k) => `<div style="transform:translate(${k * 10}px, 4px);width:100px;height:40px;background:#cde"></div><div style="position:relative;top:10px"><span style="position:absolute;left:5px">abs</span>rel</div>${para(2)}`), options: { size: "A5" }, parts: true },
+  { id: "rotations-whole", source: sections(4, (k) => `<div style="transform:rotate(${k * 10}deg);width:100px;height:40px;background:#cde"></div>${para(2)}`), options: { size: "A5" } },
   { id: "shadow-at-top", source: sections(4, (k) => `<div style="box-shadow:0 -20px 10px #000;height:30px;margin-top:0">s</div>${para(2)}`), options: { size: "A5" } },
   { id: "full-html-body-margin", source: `<!doctype html><html><body>${sections(4)}</body></html>`, options: { size: "A5" } },
   { id: "full-html-body-zero", source: `<!doctype html><html><body style="margin:0">${sections(4)}</body></html>`, options: { size: "A5" }, parts: true },
@@ -109,10 +120,10 @@ for (const c of CASES) {
   if (addon) addon.memoryTrace(1);
   const parted = await r.render(c.source, { ...(c.options || {}), chunks: c.chunks ?? 1 });
   const trace = addon ? JSON.parse(addon.memoryTrace(0)) : [];
-  const parts = addon ? trace.filter(([l]) => l === "part: start").length : null;
+  const parts = addon ? trace.filter(([l]) => l === "part: drawn").length : null;
   const why = trace.map(([l]) => l).filter((l) => l.startsWith("chunks: whole: ")).map((l) => l.slice(15));
   const problems = [];
-  if (c.parts && addon && parts < 2) problems.push(`drawn in ${parts} part(s), expected parts`);
+  if (c.parts && addon && (parts < 2 || why.length)) problems.push(`drawn in ${parts} part(s)${why.length ? " then whole" : ""}, expected parts`);
   const A = describe(whole); const B = describe(parted);
   if (A.pages.length !== B.pages.length) problems.push(`page count ${A.pages.length} vs ${B.pages.length}`);
   if (JSON.stringify(A.pages.map((p) => p.media)) !== JSON.stringify(B.pages.map((p) => p.media))) problems.push("page boxes differ");

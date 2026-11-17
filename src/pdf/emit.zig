@@ -3127,7 +3127,13 @@ pub fn writeDocument(a: Allocator, f: *Frame, pages: []const PageBox, windows: [
     defer dw.deinit();
     _ = try dw.beginChunk(f);
     try dw.drawPages(f, pages, windows, a, null);
-    _ = try dw.endChunk(a, null);
+    {
+        // (the structure tree's working memory: what it keeps is copied to `a`)
+        var scratch = bump.Bump.init(f.r.gpa);
+        defer scratch.deinit();
+        scratch.release_freed = true;
+        _ = try dw.endChunk(scratch.allocator(), null);
+    }
     return dw.finish();
 }
 
@@ -3369,6 +3375,8 @@ pub const DocWriter = struct {
             dw.r.setErr(msg, e.fail_arg);
             return error.Invalid;
         }
+        // (their pages are dropped: no destination; nothing refers to `f` afterwards)
+        links.resolve(f, &.{}, &.{}, @intCast(dw.outs.items.len), dw.popts.tagged == .ua2);
     }
 
     /// Writes the document-level objects and the pages, and returns the file (in `a`).
