@@ -1,30 +1,30 @@
 {
   "package": "bm-render",
-  "version": "0.1.1",
-  "date": "2026-11-17T06:29:51.073Z",
-  "git": "v0.1.1-2-g25d96ad-dirty",
+  "version": "0.1.2",
+  "date": "2026-11-17T06:46:11.670Z",
+  "git": "v0.1.1-5-gbf4dea4-dirty",
   "zig": "0.17.0",
   "files": {
     "core": {
       "file": "js/bm_render.core.wasm",
-      "bytes": 643304,
-      "sha256": "e281e3341a69294867fbb10cbebe6c973c59ca3252a10ffd2feb9456ad663760",
+      "bytes": 643336,
+      "sha256": "cd07c04dc8d69b2bcf739e75256ea1a491af7416d3c047a47bf5ffec886cfdd0",
       "profile": "core",
       "features": "0x0",
       "custom": false
     },
     "standard": {
       "file": "js/bm_render.standard.wasm",
-      "bytes": 1104143,
-      "sha256": "71c99666ec0f66f15972eba20f3bb9e4eeeceeafe4e36505e93e3e1a63869644",
+      "bytes": 1104542,
+      "sha256": "c58b25f1210686a816e0fa3cdf4911b1cee7088bf6640b1c6f15eb67074106e9",
       "profile": "standard",
       "features": "0x1fff",
       "custom": false
     },
     "full": {
       "file": "js/bm_render.wasm",
-      "bytes": 1306032,
-      "sha256": "313be1922a302b201b042679254d65b969b4885c8fc7dbc9dd1dd8ce441118e4",
+      "bytes": 1306140,
+      "sha256": "2c97713aacca7ce6210efc9d3c28268b82404e79ec04741f5a958202f05cf45e",
       "profile": "full",
       "features": "0x3ffff",
       "custom": false

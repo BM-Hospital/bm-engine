@@ -12,7 +12,7 @@ import { backend } from "bm-render";
 console.log(backend); // "native" when this package is installed and loads, else "wasm"
 ```
 
-It is released together with `bm-render` at the same version (0.1.1), which pins it exactly; an
+It is released together with `bm-render` at the same version (0.1.2), which pins it exactly; an
 addon whose internal interface version does not match the installed `bm-render` is ignored (wasm is used).
 Requires Node-API 6 (`engines.node`: `>=10.20.0 <11 || >=12.17.0 <13 || >=14.0.0`); `bm-render` itself requires Node.js 18+.
 
