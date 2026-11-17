@@ -1,24 +1,55 @@
 /* bm-render docs theme tweaks */
+
+/* ---------------------------------------------------------------- palette
+   Two cool hues that sit next to each other on the colour wheel, so the two products read as one family:
+     brand / Image  teal    light #0f766e on #ffffff 5.5:1 · dark #2dd4bf on #1b1b1f 10.4:1
+     PDF            indigo  light #4f46e5 on #ffffff 6.3:1 · dark #a5b4fc on #1b1b1f 9.3:1
+   Buttons: white text on #0f766e (5.5:1) / #4f46e5 (6.3:1). */
 :root {
-  --vp-c-brand-1: #008046;
-  --vp-c-brand-2: #00693a;
-  --vp-c-brand-3: #008046;
-  --vp-c-brand-soft: rgba(0, 128, 70, 0.14);
+  --bm-teal: #0f766e;
+  --bm-teal-strong: #115e59;
+  --bm-teal-bright: #14b8a6;
+  --bm-indigo: #4f46e5;
+  --bm-indigo-strong: #4338ca;
+  --bm-indigo-bright: #818cf8;
+
+  --bm-image: var(--bm-teal);
+  --bm-pdf: var(--bm-indigo);
+
+  --vp-c-brand-1: var(--bm-teal);
+  --vp-c-brand-2: var(--bm-teal-strong);
+  --vp-c-brand-3: var(--bm-teal);
+  --vp-c-brand-soft: rgba(13, 148, 136, 0.14);
+
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #008046 20%, #2fbf7a);
+  --vp-home-hero-name-background: linear-gradient(110deg, var(--bm-teal) 15%, var(--bm-teal-bright) 55%, var(--bm-indigo-bright));
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(20, 184, 166, 0.55) 50%, rgba(99, 102, 241, 0.55) 50%);
+  --vp-home-hero-image-filter: blur(64px);
 }
 .dark {
-  --vp-c-brand-1: #3fcf8e;
-  --vp-c-brand-2: #63dba5;
-  --vp-c-brand-3: #008046;
-  --vp-c-brand-soft: rgba(63, 207, 142, 0.16);
-  --vp-home-hero-name-background: linear-gradient(120deg, #3fcf8e 20%, #a6f0cb);
+  --bm-image: #2dd4bf;
+  --bm-pdf: #a5b4fc;
+
+  --vp-c-brand-1: #2dd4bf;
+  --vp-c-brand-2: #5eead4;
+  --vp-c-brand-3: var(--bm-teal);
+  --vp-c-brand-soft: rgba(45, 212, 191, 0.16);
+
+  --vp-home-hero-name-background: linear-gradient(110deg, #2dd4bf 15%, #5eead4 50%, #a5b4fc);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(20, 184, 166, 0.35) 50%, rgba(99, 102, 241, 0.4) 50%);
+  --vp-home-hero-image-filter: blur(72px);
 }
 
+/* ---------------------------------------------------------------- reading comfort */
+.vp-doc p, .vp-doc li { line-height: 1.75; }
+.vp-doc :not(pre) > code { border-radius: 5px; }
+.vp-doc blockquote { border-left-color: var(--vp-c-brand-1); }
+
 /* Wide benchmark tables: scroll inside the table, never widen the page. */
-.vp-doc table { display: block; max-width: 100%; overflow-x: auto; }
+.vp-doc table { display: block; max-width: 100%; overflow-x: auto; font-size: 14px; }
 .vp-doc table th, .vp-doc table td { white-space: nowrap; }
 .vp-doc table td:last-child { white-space: normal; min-width: 14em; }
+.vp-doc table th { background: var(--vp-c-bg-soft); }
 /* Pages made of wide tables use the full content width (aside disabled via transformPageData). */
 @media (min-width: 960px) {
   .wide-page .VPDoc:not(.has-sidebar) .container,
@@ -27,45 +58,51 @@
   .wide-page .VPDoc.has-sidebar .container { max-width: none; }
 }
 
-/* Playground page: full width, no sidebar / outline, tall iframe. */
-.playground-page .VPDoc .container,
+/* ---------------------------------------------------------------- playground pages
+   Same width and left/right edges as the top navigation bar (its container is --vp-layout-max-width - 64px wide
+   inside 32px of padding), so the logo, the page title and the app line up. */
 .playground-page .VPDoc .content,
 .playground-page .VPDoc .content-container { max-width: none !important; }
-@media (min-width: 960px) { .playground-page .VPDoc { padding-left: 32px !important; padding-right: 32px !important; } }
+.playground-page .VPDoc .container { max-width: calc(var(--vp-layout-max-width) - 64px) !important; margin: 0 auto; }
+@media (min-width: 768px) { .playground-page .VPDoc { padding-left: 32px !important; padding-right: 32px !important; } }
+@media (min-width: 960px) { .playground-page .VPDoc .content { padding-left: 0 !important; padding-right: 0 !important; } }
 .playground-page .vp-doc > div > p,
 .playground-page .vp-doc > div > ul,
 .playground-page .vp-doc > div > h1,
 .playground-page .vp-doc > div > h2,
 .playground-page .vp-doc > div > div[class*="language-"] { max-width: 820px; }
 .pg-embed { margin: 16px 0 24px; }
-.pg-embed-bar { display: flex; justify-content: flex-end; font-size: 14px; margin-bottom: 6px; }
+.pg-embed-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.pg-embed-bar a {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--vp-c-divider);
+  border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--vp-c-text-2); text-decoration: none;
+  transition: color 0.2s, border-color 0.2s;
+}
+.pg-embed-bar a:hover { color: var(--vp-c-brand-1); border-color: var(--vp-c-brand-1); }
 .pg-embed-frame {
   display: block; width: 100%;
   height: calc(100vh - var(--vp-nav-height) - 2rem); min-height: 720px;
-  border: 1px solid var(--vp-c-divider); border-radius: 10px; background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider); border-radius: 12px; background: var(--vp-c-bg-alt);
+  box-shadow: var(--vp-shadow-2);
 }
 
-/* Home feature cards: keep the numbers readable. */
-.VPFeature .details strong { color: var(--vp-c-text-1); }
-
 /* ---------------------------------------------------------------- products: per-product accent
-   Image keeps the brand green; the PDF section (/pdf/..., /vi/pdf/...) uses crimson. Link text contrast:
-   #be123c on #ffffff 6.2:1, #fb7185 on #1b1b1f 7.0:1 (both >= 4.5). */
-/* --vp-code-color is resolved on :root (green); restate it so inline code follows the PDF accent too */
+   Image keeps the brand teal; the PDF section (/pdf/..., /vi/pdf/...) uses indigo. */
+/* --vp-code-color is resolved on :root (teal); restate it so inline code follows the PDF accent too */
 .product-pdf {
   --vp-code-color: var(--vp-c-brand-1);
   --vp-code-link-color: var(--vp-c-brand-1);
   --vp-code-link-hover-color: var(--vp-c-brand-2);
-  --vp-c-brand-1: #be123c;
-  --vp-c-brand-2: #9f1239;
-  --vp-c-brand-3: #be123c;
-  --vp-c-brand-soft: rgba(190, 18, 60, 0.12);
+  --vp-c-brand-1: var(--bm-indigo);
+  --vp-c-brand-2: var(--bm-indigo-strong);
+  --vp-c-brand-3: var(--bm-indigo);
+  --vp-c-brand-soft: rgba(79, 70, 229, 0.12);
 }
 .dark .product-pdf {
-  --vp-c-brand-1: #fb7185;
-  --vp-c-brand-2: #fda4af;
-  --vp-c-brand-3: #be123c;
-  --vp-c-brand-soft: rgba(251, 113, 133, 0.16);
+  --vp-c-brand-1: #a5b4fc;
+  --vp-c-brand-2: #c7d2fe;
+  --vp-c-brand-3: var(--bm-indigo);
+  --vp-c-brand-soft: rgba(129, 140, 248, 0.18);
 }
 
 /* ---------------------------------------------------------------- product switcher (top of the sidebar) */
@@ -83,8 +120,8 @@
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px; border-radius: 8px; color: #fff;
 }
-.bm-switcher-icon.is-image { background: #008046; }
-.bm-switcher-icon.is-pdf { background: #be123c; }
+.bm-switcher-icon.is-image { background: linear-gradient(135deg, var(--bm-teal), var(--bm-teal-bright)); }
+.bm-switcher-icon.is-pdf { background: linear-gradient(135deg, var(--bm-indigo), var(--bm-indigo-bright)); }
 .bm-switcher-icon svg, .bm-switcher-chevron, .bm-switcher-check {
   width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
@@ -107,37 +144,83 @@
 /* the sidebar's own top padding sits above the switcher on desktop */
 @media (min-width: 960px) { .VPSidebar .nav > .bm-switcher:first-child { margin-top: 0; } }
 
+/* ---------------------------------------------------------------- home: hero */
+/* the visual (real bm-render outputs) only fits beside the text; on narrow screens the text comes first, alone */
+@media (max-width: 959px) {
+  .VPHome .VPHero .image { display: none; }
+  .VPHome .VPHero.has-image .container { text-align: left; }
+  .VPHome .VPHero.has-image .actions { justify-content: flex-start; }
+}
+.VPHome .VPHero .tagline { max-width: 560px; }
+
+.bm-hero-visual { position: relative; width: 440px; height: 380px; transform: translate(32px, 24px); }
+.bm-hero-shot {
+  position: absolute; margin: 0; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--vp-c-divider); background: var(--vp-c-bg);
+  box-shadow: 0 18px 40px -12px rgba(15, 23, 42, 0.35), 0 4px 10px -4px rgba(15, 23, 42, 0.2);
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bm-hero-shot img { display: block; width: 100%; height: auto; }
+.bm-hero-shot.is-pdf { top: 0; right: 8px; width: 200px; transform: rotate(4deg); }
+.bm-hero-shot.is-image { left: 0; bottom: 28px; width: 320px; transform: rotate(-3deg); }
+.bm-hero-visual:hover .bm-hero-shot.is-pdf { transform: rotate(2deg) translateY(-4px); }
+.bm-hero-visual:hover .bm-hero-shot.is-image { transform: rotate(-1.5deg) translateY(-4px); }
+.bm-hero-tag {
+  position: absolute; left: 10px; bottom: 10px; padding: 2px 8px; border-radius: 999px;
+  font: 600 11px/1.6 var(--vp-font-family-mono); letter-spacing: 0.02em; color: #fff;
+}
+.bm-hero-shot.is-image .bm-hero-tag { background: var(--bm-teal); }
+.bm-hero-shot.is-pdf .bm-hero-tag { background: var(--bm-indigo); left: auto; right: 10px; }
+.bm-hero-caption {
+  position: absolute; right: 8px; bottom: 0; margin: 0; font-size: 12px; color: var(--vp-c-text-3);
+}
+@media (prefers-reduced-motion: reduce) { .bm-hero-shot { transition: none; } }
+
+/* hero buttons: one primary action, the two products as secondary actions */
+.VPHome .VPHero .actions { gap: 12px; }
+
 /* ---------------------------------------------------------------- home: product entry cards (under the hero) */
-.bm-products { padding: 0 24px; margin-top: 8px; }
+.bm-products { padding: 0 24px; margin: 8px 0 56px; }
 @media (min-width: 640px) { .bm-products { padding: 0 48px; } }
 @media (min-width: 960px) { .bm-products { padding: 0 64px; } }
-.bm-products-inner { max-width: 1152px; margin: 0 auto; display: grid; gap: 16px; grid-template-columns: 1fr; }
+.bm-products-inner { max-width: 1152px; margin: 0 auto; display: grid; gap: 20px; grid-template-columns: 1fr; }
 @media (min-width: 768px) { .bm-products-inner { grid-template-columns: 1fr 1fr; } }
 .bm-product-card {
-  border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 20px 22px; background: var(--vp-c-bg-soft);
-  border-top: 3px solid #008046;
+  --bm-accent: var(--bm-image);
+  position: relative; display: flex; flex-direction: column;
+  border: 1px solid var(--vp-c-divider); border-radius: 14px; padding: 22px 24px 20px; background: var(--vp-c-bg-soft);
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
-.bm-product-card.is-pdf { border-top-color: #be123c; }
+.bm-product-card.is-pdf { --bm-accent: var(--bm-pdf); }
+.bm-product-card:hover { border-color: var(--bm-accent); box-shadow: var(--vp-shadow-2); }
 .bm-product-head {
-  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 12px;
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 14px;
   align-items: center; color: var(--vp-c-text-1); text-decoration: none;
 }
-.bm-product-head .bm-switcher-icon { grid-row: 1 / 3; width: 40px; height: 40px; border-radius: 10px; }
+.bm-product-head .bm-switcher-icon { grid-row: 1 / 3; width: 44px; height: 44px; border-radius: 11px; }
 .bm-product-head .bm-switcher-icon svg { width: 22px; height: 22px; }
-.bm-product-name { font-size: 20px; font-weight: 700; line-height: 1.2; }
-.bm-product-desc { font-size: 14px; color: var(--vp-c-text-2); }
-.bm-product-head:hover .bm-product-name { text-decoration: underline; }
-.bm-product-lead { margin: 12px 0 8px; font-size: 14px; line-height: 1.6; color: var(--vp-c-text-2); }
-.bm-product-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; list-style: none; font-size: 14px; font-weight: 500; }
-.bm-product-links a { color: #008046; text-decoration: none; }
-.dark .bm-product-links a { color: #3fcf8e; }
-.bm-product-card.is-pdf .bm-product-links a { color: #be123c; }
-.dark .bm-product-card.is-pdf .bm-product-links a { color: #fb7185; }
-.bm-product-links a:hover { text-decoration: underline; }
+.bm-product-name { font-size: 20px; font-weight: 700; line-height: 1.25; }
+.bm-product-desc { font-size: 13px; color: var(--vp-c-text-2); }
+.bm-product-head:hover .bm-product-name { color: var(--bm-accent); }
+.bm-product-lead { flex: 1; margin: 14px 0 16px; font-size: 15px; line-height: 1.65; color: var(--vp-c-text-2); }
+.bm-product-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.bm-product-links a {
+  display: inline-flex; align-items: center; padding: 5px 12px; border: 1px solid var(--vp-c-divider); border-radius: 999px;
+  background: var(--vp-c-bg); color: var(--vp-c-text-1); font-size: 13px; font-weight: 500; line-height: 1.4; text-decoration: none;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+}
+.bm-product-links a:hover { color: var(--bm-accent); border-color: var(--bm-accent); }
+.bm-product-links a:focus-visible { outline: 2px solid var(--bm-accent); outline-offset: 2px; }
 
-/* home hero: the "PDF docs" button (second action) in the PDF accent */
-.VPHome .VPHero .actions .action:nth-child(2) .VPButton.brand { border-color: #be123c; background-color: #be123c; color: #fff; }
-.VPHome .VPHero .actions .action:nth-child(2) .VPButton.brand:hover { border-color: #9f1239; background-color: #9f1239; }
+/* ---------------------------------------------------------------- home: feature grid */
+.VPHome .VPFeature .icon { background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); }
+.VPHome .VPFeature .icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.VPHome .VPFeature .details { line-height: 1.65; }
+.VPFeature .details strong { color: var(--vp-c-text-1); }
+
+/* home: markdown content under the features */
+.VPHome .vp-doc h2 { border-top: 0; margin-top: 56px; padding-top: 0; }
+.VPHome .vp-doc h2:first-child { margin-top: 24px; }
 
 /* ---------------------------------------------------------------- playground pages: compact Image | PDF switcher
    (doc-before slot; the pages have no sidebar, so the sidebar switcher is not there) */
@@ -153,4 +236,7 @@
 .bm-pg-switcher-item:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 2px; }
 .bm-pg-switcher-item .bm-switcher-icon { width: 26px; height: 26px; border-radius: 6px; }
 .bm-pg-switcher-item .bm-switcher-icon svg { width: 16px; height: 16px; }
-.bm-pg-switcher-item:not(.active) .bm-switcher-icon { opacity: 0.6; }
+.bm-pg-switcher-item:not(.active) .bm-switcher-icon { opacity: 0.55; filter: saturate(0.6); }
+
+/* wide metric tables: the long label column wraps so the numbers fit without scrolling sideways */
+.wide-page .vp-doc table td:first-child { white-space: normal; min-width: 12em; max-width: 24em; }

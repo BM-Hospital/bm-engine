@@ -64,6 +64,21 @@ function siteLinks(md: any) {
       if (toks[i].type === "paragraph_open" && toks[i + 1].type === "inline" &&
           /^\[English\]\([^)]*\) · \[Tiếng Việt\]\([^)]*\)$/.test(toks[i + 1].content.trim())) { toks.splice(i, 3); break; }
     }
+    // The hand-written table of contents under the intro (a list of #anchor links before the first h2) is for GitHub;
+    // on the site the "On this page" outline shows the same, so it is dropped where the outline is shown.
+    if (!WIDE.has(rel) && state.env?.frontmatter?.aside !== false) {
+      const firstH2 = toks.findIndex((t: any) => t.type === "heading_open" && t.tag === "h2");
+      const start = toks.findIndex((t: any, i: number) => t.type === "bullet_list_open" && t.level === 0 && (firstH2 < 0 || i < firstH2));
+      if (start >= 0) {
+        const end = toks.findIndex((t: any, i: number) => i > start && t.type === "bullet_list_close" && t.level === 0);
+        const inlines = toks.slice(start, end).filter((t: any) => t.type === "inline");
+        const onlyAnchors = inlines.length >= 3 && inlines.every((t: any) => {
+          const kids = (t.children ?? []).filter((c: any) => !(c.type === "text" && !c.content.trim()));
+          return kids[0]?.type === "link_open" && /^#/.test(kids[0].attrGet("href") ?? "") && kids[kids.length - 1]?.type === "link_close";
+        });
+        if (end > start && onlyAnchors) toks.splice(start, end - start + 1);
+      }
+    }
     const dir = path.posix.dirname(orig);
     const fix = (href: string): string => {
       if (!href || /^(#|[a-z][a-z0-9+.-]*:|\/)/i.test(href)) return href;
@@ -239,7 +254,7 @@ export default defineConfig({
   ignoreDeadLinks: [/^https?:\/\/(localhost|127\.0\.0\.1)/],
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
-    ["meta", { name: "theme-color", content: "#008046" }],
+    ["meta", { name: "theme-color", content: "#0f766e" }],
   ],
   markdown: {
     anchor: { slugify: githubSlug },

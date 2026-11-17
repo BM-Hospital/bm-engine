@@ -1,6 +1,6 @@
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --text: #16191f; --muted: #5d6675; --border: #d8dce3;
-  --accent: #008046; --accent-text: #ffffff; --accent-soft: rgba(0,128,70,.12); --code-bg: #fbfbfd; --warn-bg: #fff4e0; --warn-text: #7a4a00;
+  --accent: #0f766e; --accent-text: #ffffff; --accent-soft: rgba(13,148,136,.12); --code-bg: #fbfbfd; --warn-bg: #fff4e0; --warn-text: #7a4a00;
   --err-bg: #fdecec; --err-text: #8a1c1c; --check-a: #e9ebef; --check-b: #f6f7f9; --shadow: 0 1px 3px rgba(0,0,0,.08);
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -8,21 +8,21 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1115; --panel: #181b21; --text: #e6e8ec; --muted: #9aa3b2; --border: #2c313b;
-    --accent: #3fcf8e; --accent-text: #0f1115; --accent-soft: rgba(63,207,142,.14); --code-bg: #12151a; --warn-bg: #3a2c10; --warn-text: #f3c77a;
+    --accent: #2dd4bf; --accent-text: #0f1115; --accent-soft: rgba(45,212,191,.14); --code-bg: #12151a; --warn-bg: #3a2c10; --warn-text: #f3c77a;
     --err-bg: #3a1618; --err-text: #ffb4b4; --check-a: #1f232b; --check-b: #181b21; --shadow: 0 1px 3px rgba(0,0,0,.5);
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1115; --panel: #181b21; --text: #e6e8ec; --muted: #9aa3b2; --border: #2c313b;
-  --accent: #3fcf8e; --accent-text: #0f1115; --accent-soft: rgba(63,207,142,.14); --code-bg: #12151a; --warn-bg: #3a2c10; --warn-text: #f3c77a;
+  --accent: #2dd4bf; --accent-text: #0f1115; --accent-soft: rgba(45,212,191,.14); --code-bg: #12151a; --warn-bg: #3a2c10; --warn-text: #f3c77a;
   --err-bg: #3a1618; --err-text: #ffb4b4; --check-a: #1f232b; --check-b: #181b21; --shadow: 0 1px 3px rgba(0,0,0,.5);
 }
-/* PDF mode: the docs site's PDF accent (crimson; #be123c on white 6.2:1, #fb7185 on #181b21 6.4:1) */
-:root[data-mode="pdf"] { --accent: #be123c; --accent-soft: rgba(190,18,60,.1); }
+/* PDF mode: the docs site's PDF accent (indigo; #4f46e5 on white 6.3:1, #a5b4fc on #181b21 9.0:1) */
+:root[data-mode="pdf"] { --accent: #4f46e5; --accent-soft: rgba(79,70,229,.1); }
 @media (prefers-color-scheme: dark) {
-  :root[data-mode="pdf"]:not([data-theme="light"]) { --accent: #fb7185; --accent-soft: rgba(251,113,133,.14); }
+  :root[data-mode="pdf"]:not([data-theme="light"]) { --accent: #a5b4fc; --accent-soft: rgba(129,140,248,.16); }
 }
-:root[data-mode="pdf"][data-theme="dark"] { --accent: #fb7185; --accent-soft: rgba(251,113,133,.14); }
+:root[data-mode="pdf"][data-theme="dark"] { --accent: #a5b4fc; --accent-soft: rgba(129,140,248,.16); }
 :root { --pdf-h: max(420px, calc(100vh - 260px)); }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -106,8 +106,8 @@ summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
 .modes button[aria-checked=true] { background: var(--panel); color: var(--text); border-color: var(--border); box-shadow: var(--shadow); }
 .modes button:hover:not([aria-checked=true]) { color: var(--text); border-color: transparent; }
 .mode-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: #fff; }
-.mode-icon.is-image { background: #008046; }
-.mode-icon.is-pdf { background: #be123c; }
+.mode-icon.is-image { background: linear-gradient(135deg, #0f766e, #14b8a6); }
+.mode-icon.is-pdf { background: linear-gradient(135deg, #4f46e5, #818cf8); }
 .modes button[aria-checked=false] .mode-icon { opacity: .6; }
 .mode-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 body.embedded .modes { display: none; }
