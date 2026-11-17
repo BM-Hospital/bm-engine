@@ -206,6 +206,7 @@
     "verify": "node scripts/npm-platform-packages.mjs --check && node scripts/build.mjs --verify",
     "test": "node scripts/build.mjs --test",
     "test:pdf": "node scripts/pdf-test.mjs",
+    "test:pdf:chunks": "node scripts/pdf-chunks-check.mjs",
     "test:pdf:takumi": "node scripts/pdf-compare.mjs",
     "test:pdf:takumi:fetch": "node scripts/fetch-takumi-tests.mjs",
     "test:takumi:verify": "node scripts/takumi-test-corpus.mjs",

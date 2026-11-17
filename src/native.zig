@@ -14,6 +14,11 @@
 //!       input / options: string | Uint8Array | null; attachments: null or a flat array of
 //!       [key: string, data: Uint8Array, flags, width, height] groups (ops.zig `Attachment`).
 //!   memoryBytes() -> number      bytes currently allocated by the addon in this process
+//!   memoryPeak(reset) -> number  test hook: the highest live byte count since the last reset
+//!                                (a non-zero `reset` resets it to the current count)
+//!   memoryTrace(on) -> string?   test hook: records the engine's memory checkpoints
+//!                                (src/memtrace.zig) from `memoryTrace(1)`; `memoryTrace(0)`
+//!                                returns them as JSON [[label, live, peak], ...] (sync calls)
 //!   tune(stackMode, stackBytes, maxBytes)  test hook (0 keeps a value), see `Instance`
 //!
 //! Threading: `run` executes on the calling thread; `runAsync` snapshots its inputs (strings and
@@ -39,6 +44,7 @@ comptime {
     _ = @import("native/libm.zig"); // floor / ceil / trunc / round / fmod: never the platform libm's
 }
 const render = @import("render.zig");
+const memtrace = @import("memtrace.zig");
 /// Feature switches, visible to modules as `@import("root").bm_config` (see src/font/ttf.zig).
 pub const bm_config = @import("config.zig");
 
@@ -78,6 +84,15 @@ fn panicImpl(msg: []const u8, _: ?usize) noreturn {
 
 /// Bytes currently allocated through the addon (every environment of the process).
 var live_bytes: std.atomic.Value(usize) = .init(0);
+/// The highest `live_bytes` since the last `memoryPeak(true)` (memory tests: live bytes, not RSS).
+var peak_bytes: std.atomic.Value(usize) = .init(0);
+
+/// Adds `delta` (two's complement for a decrease) to `live_bytes`, raising `peak_bytes`.
+fn addLive(delta: usize) void {
+    const now = live_bytes.fetchAdd(delta, .monotonic) +% delta;
+    var peak = peak_bytes.load(.monotonic);
+    while (now > peak and now < 1 << 62) peak = peak_bytes.cmpxchgWeak(peak, now, .monotonic, .monotonic) orelse return;
+}
 
 /// The process allocator plus the `live_bytes` counter (inputs / results of async jobs, handles).
 const counted: Allocator = .{ .ptr = undefined, .vtable = &counted_vtable };
@@ -85,17 +100,17 @@ const counted_vtable: Allocator.VTable = .{ .alloc = countedAlloc, .resize = cou
 
 fn countedAlloc(_: *anyopaque, len: usize, alignment: Alignment, ra: usize) ?[*]u8 {
     const p = os.allocator.rawAlloc(len, alignment, ra) orelse return null;
-    _ = live_bytes.fetchAdd(len, .monotonic);
+    addLive(len);
     return p;
 }
 fn countedResize(_: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ra: usize) bool {
     if (!os.allocator.rawResize(memory, alignment, new_len, ra)) return false;
-    _ = live_bytes.fetchAdd(new_len -% memory.len, .monotonic);
+    addLive(new_len -% memory.len);
     return true;
 }
 fn countedRemap(_: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ra: usize) ?[*]u8 {
     const p = os.allocator.rawRemap(memory, alignment, new_len, ra) orelse return null;
-    _ = live_bytes.fetchAdd(new_len -% memory.len, .monotonic);
+    addLive(new_len -% memory.len);
     return p;
 }
 fn countedFree(_: *anyopaque, memory: []u8, alignment: Alignment, ra: usize) void {
@@ -405,7 +420,7 @@ const Exec = struct {
             if (len > h.limit -| h.used) return null;
         }
         const p = os.allocZeroed(len) orelse return null;
-        _ = live_bytes.fetchAdd(len, .monotonic);
+        addLive(len);
         x.out = p[0..len];
         return p;
     }
@@ -753,6 +768,62 @@ fn jsRunAsync(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
     return promise;
 }
 
+/// memoryPeak(reset): test hook; the highest live byte count since the last reset, then resets
+/// it to the current count when `reset` is a non-zero number.
+fn jsMemoryPeak(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
+    var argc: usize = 1;
+    var argv: [1]Value = .{null};
+    _ = api.napi_get_cb_info(env, info, &argc, &argv, null, null);
+    var reset: f64 = 0;
+    if (argc > 0) _ = api.napi_get_value_double(env, argv[0], &reset);
+    const peak = peak_bytes.load(.monotonic);
+    if (reset != 0) peak_bytes.store(live_bytes.load(.monotonic), .monotonic);
+    var v: Value = null;
+    _ = api.napi_create_double(env, @floatFromInt(peak), &v);
+    return v;
+}
+
+/// The checkpoints `memtrace.mark` reached since `memoryTrace(1)`: label and live bytes.
+const TracePoint = struct { label: []const u8, live: usize, peak: usize };
+var trace_points: [16384]TracePoint = undefined;
+var trace_len: usize = 0;
+
+fn traceMark(label: []const u8) void {
+    if (trace_len == trace_points.len) return;
+    trace_points[trace_len] = .{ .label = label, .live = live_bytes.load(.monotonic), .peak = peak_bytes.load(.monotonic) };
+    trace_len += 1;
+}
+
+/// memoryTrace(on): test hook; with a non-zero number starts recording the engine's memory
+/// checkpoints (src/memtrace.zig), with 0 stops and returns them as JSON
+/// `[[label, liveBytes, peakBytes], ...]`. Use with the sync calls only (one thread).
+fn jsMemoryTrace(env: Env, info: napi.CallbackInfo) callconv(.c) Value {
+    var argc: usize = 1;
+    var argv: [1]Value = .{null};
+    _ = api.napi_get_cb_info(env, info, &argc, &argv, null, null);
+    var on: f64 = 0;
+    if (argc > 0) _ = api.napi_get_value_double(env, argv[0], &on);
+    var v: Value = null;
+    if (on != 0) {
+        trace_len = 0;
+        memtrace.hook = traceMark;
+        _ = api.napi_get_undefined(env, &v);
+        return v;
+    }
+    memtrace.hook = null;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(counted);
+    out.append(counted, '[') catch {};
+    for (trace_points[0..trace_len], 0..) |p, i| {
+        if (i > 0) out.append(counted, ',') catch {};
+        out.print(counted, "[\"{s}\",{d},{d}]", .{ p.label, p.live, p.peak }) catch {};
+    }
+    out.append(counted, ']') catch {};
+    trace_len = 0;
+    _ = api.napi_create_string_utf8(env, out.items.ptr, out.items.len, &v);
+    return v;
+}
+
 fn jsMemoryBytes(env: Env, _: napi.CallbackInfo) callconv(.c) Value {
     var v: Value = null;
     _ = api.napi_create_double(env, @floatFromInt(live_bytes.load(.monotonic)), &v);
@@ -854,6 +925,8 @@ export fn napi_register_module_v1(env: Env, exports: Value) callconv(.c) Value {
     ok = ok and addFunction(env, exports, "run", jsRun, inst);
     ok = ok and addFunction(env, exports, "runAsync", jsRunAsync, inst);
     ok = ok and addFunction(env, exports, "memoryBytes", jsMemoryBytes, inst);
+    ok = ok and addFunction(env, exports, "memoryPeak", jsMemoryPeak, inst);
+    ok = ok and addFunction(env, exports, "memoryTrace", jsMemoryTrace, inst);
     ok = ok and addFunction(env, exports, "tune", jsTune, inst);
     return if (ok) exports else null;
 }

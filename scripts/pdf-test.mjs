@@ -823,8 +823,9 @@ await rejects(() => r.render(node, { signal: AbortSignal.abort() }), /abort/i, "
     const mem = [];
     const rr = new pdfMod.Renderer();
     rr.registerFont({ name: "Inter", data: inter });
-    for (let k = 0; k < 3; k++) { await rr.renderPdf(doc(60), { size: "a4", margin: 40, footer }); mem.push(rr.memoryBytes()); }
-    check(mem[2] <= mem[0] * 1.1, `memory plateaus over renders (${mem.map((m) => Math.round(m / 2 ** 20)).join(" / ")} MiB)`);
+    // (the first render may still grow the memory the 500-page document left fragmented: a warm-up)
+    for (let k = 0; k < 4; k++) { await rr.renderPdf(doc(60), { size: "a4", margin: 40, footer }); mem.push(rr.memoryBytes()); }
+    check(mem[3] <= mem[1] * 1.1, `memory plateaus over renders (${mem.map((m) => Math.round(m / 2 ** 20)).join(" / ")} MiB)`);
   }
 }
 

@@ -80,8 +80,48 @@ There are three distinct lifetimes:
 3. Page paint: paths, temporary masks/patterns, paint queues and content builders.
 
 The existing emitter resets page paint scratch, and counter/band re-layout frees a
-replaced pass. It still retains the complete final layout. That is **not** bounded
-live-layout memory or emission before whole-document layout completes.
+replaced pass. A document laid out whole still retains the complete final layout.
+
+**Parts at forced page breaks (2026-11-17).** `paged.writeChunked` lays out and draws a
+document a part at a time when `chunks.plan` can cut it: a chain of plain blocks from the root
+(no decoration, size, offset, effect, generated content, role or anchor) down to the flow, cut
+between two of the flow's block children where a page is forced, with no fixed box, no float,
+no absolute box escaping its child, no counter in the content, uniform page width, and parts of
+at least `chunk_elements` (2048) source elements. Anything else, or any check failing on the
+way, draws the document whole (memory checkpoint `chunks: whole: <why>`). The document's element
+model and styles are built once (`Frame.prepareDocument`) and shared, read only, by every part's
+frame (`Frame.initChunk`, `PagedState.chunk` filtering the flow's children); a part's frame lives
+in its own arena, freed once its pages are drawn (`emit.DocWriter`: `beginChunk`, `drawPages`,
+`endChunk`, then `finish`).
+
+Each part's frame also lays out the last child of the part before and the first child of the
+part after: a box a forced break starts a page with has an empty fragment at the bottom of the
+page before, where its content regions open (takumi does the same), and its content paints as a
+continued fragment. Only the part's own pages are drawn, the neighbouring pages of its frame
+taking part as `prev_win` / `next_win`. The frame is placed where the whole document has it: its
+pages start at the document page top of the seam (`Options.origin`), and its root moves so its
+first child sits at that child's top in the part before (`Options.root_shift`), so page tops
+are the same float sums and boxes snap to the same device pixels. Structure records of the
+part after's first child carry over (`tags.Carry`: element plus child path), links and anchors
+resolve to destinations when the part ends, the structure tree is built per part and copied
+compactly, and a part whose pages `pageRanges` drops still collects its anchors and headings
+(`DocWriter.collect`). A link to a later part joins the parts between. Bands with page counters
+are measured after a counting pass over the parts.
+
+`scripts/pdf-chunks-check.mjs` (`npm run test:pdf:chunks`) renders 26 documents both ways and
+compares page count, page boxes, device-space draw lists, extracted text, structure and parent
+trees, annotations and outline: all equivalent, and byte-identical up to about 30 pages. Further
+down, positions summed in another order differ by a few float steps; page assignment and window
+exclusion accept such a difference at a page edge (`Pages.pageAt`, `Window.excludes`; far below
+the 1/64 px grid, no golden changes).
+
+Measured on the stress document (native, fresh process, page counter footer): peak 153 → 61 MiB
+at 500 pages and 297 → 119 MiB at 1000 pages, 10–25 % more time (the counting pass). Live bytes
+after each part grow by about 20 KiB per page (encoded page content, structure tree); the live
+bytes after page ~200 are within 1.06× of those after page ~50. Still linear: the shared element
+model and styles (about 55 KiB per page of this document) and the final assembly of the file.
+The upstream memory test's document (700 sections without forced breaks) is laid out whole: cutting
+at any page boundary needs continuation tokens keyed by source element, not render node.
 
 A page is releasable only when no pending layout decision can change its break,
 no later transform/positioned descendant can paint into it, repeated content has a

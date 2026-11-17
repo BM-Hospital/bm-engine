@@ -66,11 +66,17 @@ pub const Link = struct {
 };
 
 /// `top`: in the coordinates of `frame` (null: the document's), the `run`-th frame of the document
-/// (pages laid out at different widths: paged.zig)
-pub const Anchor = struct { top: f32, node: u32, el: u32, frame: ?*const Frame = null, run: u32 = 0 };
-pub const Heading = struct { level: u8, text: []const u8, top: f32, el: u32, node: u32 = none, frame: ?*const Frame = null, run: u32 = 0 };
+/// (pages laid out at different widths: paged.zig). `Collector.resolve` turns it into `dest` (null:
+/// its page is dropped) once the pages showing that frame are drawn, so nothing needs the frame
+/// after that (`frame` is cleared then). `chunk`: the part of the document laid out on its own
+/// whose render nodes `node` numbers (paged.zig).
+pub const Anchor = struct { top: f32, node: u32, el: u32, frame: ?*const Frame = null, run: u32 = 0, chunk: u32 = 0, dest: ?Dest = null, resolved: bool = false };
+pub const Heading = struct { level: u8, text: []const u8, top: f32, el: u32, node: u32 = none, frame: ?*const Frame = null, run: u32 = 0, chunk: u32 = 0, dest: ?Dest = null, resolved: bool = false };
 
-const PageLinks = struct {
+/// A written link: its destination (null: a URI action).
+pub const LinkTarget = struct { dest: ?Dest };
+
+pub const PageLinks = struct {
     content: std.ArrayList(Link) = .empty,
     /// repeated `position: fixed` boxes (annotated after the page's own links)
     fixed: std.ArrayList(Link) = .empty,
@@ -89,7 +95,8 @@ pub const Collector = struct {
     a: Allocator,
     /// the document's frame (anchors and headings come from it)
     f: *Frame,
-    pages: []PageLinks,
+    /// per output page drawn so far
+    pages: std.ArrayList(PageLinks) = .empty,
     cur: usize = 0,
     page: emit.PageBox = undefined,
     win: emit.Window = .{},
@@ -121,16 +128,19 @@ pub const Collector = struct {
     run_hi: f32 = std.math.inf(f32),
     run_first: bool = false,
     run_begun: bool = false,
+    /// the part of the document whose frames are being drawn (see `Anchor.chunk`)
+    chunk: u32 = 0,
+    /// a walk that only collects anchors and headings (`emit.DocWriter.collect`): no link
+    collect_only: bool = false,
 
-    pub fn init(a: Allocator, f: *Frame, page_count: usize) Error!Collector {
-        const pages = try a.alloc(PageLinks, page_count);
-        @memset(pages, .{});
-        return .{ .a = a, .f = f, .pages = pages };
+    pub fn init(a: Allocator, f: *Frame) Collector {
+        return .{ .a = a, .f = f };
     }
 
-    /// Starts output page `i` (painted with `page` / `win`).
-    pub fn beginPage(c: *Collector, i: usize, page: emit.PageBox, win: emit.Window) void {
+    /// Starts output page `i` (painted with `page` / `win`), the pages before it started already.
+    pub fn beginPage(c: *Collector, i: usize, page: emit.PageBox, win: emit.Window) Error!void {
         c.endPage();
+        while (c.pages.items.len <= i) try c.pages.append(c.a, .{});
         c.run_first = c.run_begun;
         c.run_begun = false;
         c.cur = i;
@@ -163,7 +173,7 @@ pub const Collector = struct {
 
     fn flatten(c: *Collector, g: u32) Error!void {
         for (c.groups.items[g].items) |en| switch (en) {
-            .link => |lk| try c.pages[c.cur].content.append(c.a, lk),
+            .link => |lk| try c.pages.items[c.cur].content.append(c.a, lk),
             .group => |sub| try c.flatten(sub),
         };
     }
@@ -199,6 +209,43 @@ pub const Collector = struct {
 
     pub fn leave(c: *Collector, prev: u32) void {
         c.group = prev;
+    }
+
+    /// Turns the anchors and headings found so far into destinations: the frames they were found in
+    /// are shown by output pages `pages` / `windows` (the drawn pages since the last call), which
+    /// are output pages `offset`.. of the document. `f`: the frame of an anchor without one.
+    pub fn resolve(c: *Collector, f: *const Frame, pages: []const emit.PageBox, windows: []const emit.Window, offset: u32, structural: bool) void {
+        const place: Place = .{ .f = f, .pages = pages, .windows = windows };
+        var it = c.anchors.valueIterator();
+        while (it.next()) |an| if (!an.resolved) {
+            an.dest = place.destination(an.frame, an.top);
+            if (an.dest) |*d| d.place(offset, an.chunk, an.node, structural);
+            an.resolved = true;
+            an.frame = null;
+        };
+        for (c.headings.items) |*h| if (!h.resolved) {
+            h.dest = place.destination(h.frame, h.top);
+            if (h.dest) |*d| d.place(offset, h.chunk, h.node, structural);
+            h.resolved = true;
+            h.frame = null;
+        };
+    }
+
+    /// Whether link `lk` is written as an annotation, and its destination (null: a URI action): a
+    /// `#fragment` naming no anchor, or one whose page is dropped, writes nothing. The anchors must
+    /// be resolved.
+    pub fn linkTarget(c: *const Collector, a: Allocator, lk: Link) Error!?LinkTarget {
+        if (lk.uri[0] != '#') return .{ .dest = null };
+        const id = try counters.percentDecode(a, lk.uri[1..]);
+        const an = c.anchor(id) orelse return null;
+        return .{ .dest = an.dest orelse return null };
+    }
+
+    /// The frames of the part of the document drawn so far go: forgets what refers to them.
+    pub fn endChunk(c: *Collector) void {
+        c.href_maps.clearRetainingCapacity();
+        c.text_seen.clearRetainingCapacity();
+        c.run_frame = null;
     }
 
     /// The anchor `id` names (first box wins), from the first page's walk.
@@ -273,6 +320,7 @@ pub const Collector = struct {
     }
 
     fn add(c: *Collector, e: *const emit.Emitter, r: [4]f32, uri: []const u8, node: u32, el: u32) Error!void {
+        if (c.collect_only) return;
         const page = c.page;
         const fixed = c.inFixed(e);
         var y0: f32 = 0;
@@ -296,7 +344,7 @@ pub const Collector = struct {
         if (!(rr >= l) or !std.math.isFinite(l + t + rr + b)) return;
         const h = page.height * pt_per_px;
         const link: Link = .{ .rect = .{ l, h - b, rr, h - t }, .uri = uri, .node = node, .el = el, .frame = e.f, .repeated = e.in_repeat };
-        if (fixed) return c.pages[c.cur].fixed.append(c.a, link);
+        if (fixed) return c.pages.items[c.cur].fixed.append(c.a, link);
         try (try c.current()).append(c.groupMem(), .{ .link = link });
     }
 
@@ -305,7 +353,7 @@ pub const Collector = struct {
         const id = f.dom.at(el).id;
         if (id.len > 0) {
             const gop = try c.anchors.getOrPut(c.a, id);
-            if (!gop.found_existing) gop.value_ptr.* = .{ .top = top, .node = node, .el = el, .frame = c.run_frame, .run = c.run };
+            if (!gop.found_existing) gop.value_ptr.* = .{ .top = top, .node = node, .el = el, .frame = c.run_frame, .run = c.run, .chunk = c.chunk };
         }
         // the nearest heading at or above the element
         var cur = el;
@@ -313,7 +361,7 @@ pub const Collector = struct {
             const lvl = headingLevel(f.dom.at(cur).tag) orelse continue;
             if ((try c.heading_els.getOrPut(c.a, cur)).found_existing) return;
             const t = try textContent(c.a, f, cur);
-            if (t.len > 0) try c.headings.append(c.a, .{ .level = lvl, .text = t, .top = top, .el = cur, .node = if (cur == el) node else nodeOf(f, cur), .frame = c.run_frame, .run = c.run });
+            if (t.len > 0) try c.headings.append(c.a, .{ .level = lvl, .text = t, .top = top, .el = cur, .node = if (cur == el) node else nodeOf(f, cur), .frame = c.run_frame, .run = c.run, .chunk = c.chunk });
             return;
         }
     }
@@ -468,19 +516,36 @@ pub const DocHook = struct {
     run: ?*const fn (ctx: *anyopaque, d: *w.Doc, parts: *meta.Parts, annots: []const AnnotRecord) Error!void = null,
     /// [tagging] after the annotations, before the destinations are written: the structure tree
     tree: ?*const fn (ctx: *anyopaque, d: *w.Doc) Error!void = null,
-    /// [tagging] the structure element a destination at render node `node` names (PDF/UA-2)
-    dest: ?*const fn (ctx: *anyopaque, node: u32) ?w.Ref = null,
+    /// [tagging] the structure element a destination at render node `node` (of part `chunk` of the
+    /// document) names (PDF/UA-2)
+    dest: ?*const fn (ctx: *anyopaque, chunk: u32, node: u32) ?w.Ref = null,
 };
 
 /// A destination in output coordinates (pt, y up).
-const Dest = struct { page: u32, x: f32, y: f32, node: u32 = none };
+/// An XYZ destination on output page `page`; `node` / `chunk`: the render node (of that part of
+/// the document) whose structure element a PDF/UA-2 destination names (`none`: the page).
+pub const Dest = struct {
+    page: u32,
+    x: f32,
+    y: f32,
+    node: u32 = none,
+    chunk: u32 = 0,
+
+    fn place(d: *Dest, offset: u32, chunk: u32, node: u32, structural: bool) void {
+        d.page += offset;
+        if (structural) {
+            d.node = node;
+            d.chunk = chunk;
+        }
+    }
+};
 
 const Dests = struct {
     items: std.ArrayList(struct { d: Dest, ref: w.Ref }) = .empty,
 
     fn register(ds: *Dests, a: Allocator, doc: *w.Doc, d: Dest) Error!w.Ref {
         for (ds.items.items) |it| {
-            if (it.d.page == d.page and it.d.node == d.node and @as(u32, @bitCast(it.d.x)) == @as(u32, @bitCast(d.x)) and @as(u32, @bitCast(it.d.y)) == @as(u32, @bitCast(d.y))) return it.ref;
+            if (it.d.page == d.page and it.d.node == d.node and it.d.chunk == d.chunk and @as(u32, @bitCast(it.d.x)) == @as(u32, @bitCast(d.x)) and @as(u32, @bitCast(it.d.y)) == @as(u32, @bitCast(d.y))) return it.ref;
         }
         const r = doc.alloc();
         try ds.items.append(a, .{ .d = d, .ref = r });
@@ -493,8 +558,6 @@ const Place = struct {
     f: *const Frame,
     pages: []const emit.PageBox,
     windows: []const emit.Window,
-    /// [tagging] destinations name structure elements (PDF/UA-2)
-    structural: bool = false,
 
     /// takumi `Destinations::destination` / `SinglePage::destination`: null when the page holding
     /// `top` is dropped by `pageRanges`.
@@ -525,16 +588,14 @@ const OutlineNode = struct { text: []const u8, dest: Dest, children: []OutlineNo
 
 /// takumi `PageSummary::outline`: nests the sorted headings, a heading without a destination
 /// yielding its place to its children.
-fn take(a: Allocator, hs: []const Heading, idx: *usize, level: u8, place: Place) Error![]OutlineNode {
+fn take(a: Allocator, hs: []const Heading, idx: *usize, level: u8) Error![]OutlineNode {
     var nodes: std.ArrayList(OutlineNode) = .empty;
     while (idx.* < hs.len) {
         const h = hs[idx.*];
         if (h.level < level) break;
         idx.* += 1;
-        const children = try take(a, hs, idx, h.level + 1, place);
-        if (place.destination(h.frame, h.top)) |d0| {
-            var d = d0;
-            if (place.structural) d.node = h.node;
+        const children = try take(a, hs, idx, h.level + 1);
+        if (h.dest) |d| {
             try nodes.append(a, .{ .text = h.text, .dest = d, .children = children });
         } else try nodes.appendSlice(a, children);
     }
@@ -577,10 +638,10 @@ pub const Finished = struct {
 
 /// Writes the outline, the annotations, their destinations and the attachments, and assembles the
 /// catalog / Info / XMP parts. `page_refs`: the page objects, in output order.
-pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const emit.PageBox, windows: []const emit.Window, page_refs: []const w.Ref, o: *const opt.PdfOptions, producer: []const u8, hook: ?DocHook) Error!Finished {
+/// The anchors and headings must be resolved (`Collector.resolve`).
+pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, page_count: usize, page_refs: []const w.Ref, o: *const opt.PdfOptions, producer: []const u8, hook: ?DocHook) Error!Finished {
     c.endPage();
     if (c.failed) return error.OutOfMemory;
-    const place: Place = .{ .f = c.f, .pages = pages, .windows = windows, .structural = o.tagged == .ua2 };
     var dests: Dests = .{};
     var parts: meta.Parts = .{ .producer = producer, .metadata = meta.Metadata.forOptions(o) };
     if (parts.metadata) |m| parts.catalog.lang = m.language;
@@ -595,7 +656,7 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
             }
         }.lt);
         var idx: usize = 0;
-        const tree = try take(a, hs, &idx, 1, place);
+        const tree = try take(a, hs, &idx, 1);
         if (tree.len > 0) {
             const root = doc.alloc();
             const kids = try writeOutlineChildren(a, doc, &dests, tree, root);
@@ -612,20 +673,14 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
     }
 
     // annotations, page by page: the page's own links, then the repeated boxes'
-    const annots = try a.alloc([]const w.Ref, pages.len);
+    const annots = try a.alloc([]const w.Ref, page_count);
     var records: std.ArrayList(AnnotRecord) = .empty;
-    for (c.pages, 0..) |*pl, pi| {
+    for (c.pages.items, 0..) |*pl, pi| {
         var refs: std.ArrayList(w.Ref) = .empty;
         for ([_][]const Link{ pl.content.items, pl.fixed.items }, 0..) |list, which| {
             for (list) |lk| {
-                var dref: ?w.Ref = null;
-                if (lk.uri[0] == '#') {
-                    const id = try counters.percentDecode(a, lk.uri[1..]);
-                    const an = c.anchor(id) orelse continue;
-                    var d = place.destination(an.frame, an.top) orelse continue;
-                    if (place.structural) d.node = an.node;
-                    dref = try dests.register(a, doc, d);
-                }
+                const target = try c.linkTarget(a, lk) orelse continue;
+                const dref: ?w.Ref = if (target.dest) |d| try dests.register(a, doc, d) else null;
                 const ref = doc.alloc();
                 const rec: AnnotRecord = .{ .ref = ref, .page = @intCast(pi), .node = lk.node, .el = lk.el, .uri = lk.uri, .repeated = which == 1 or lk.repeated };
                 const b = doc.beginDict(ref, .annotations);
@@ -661,7 +716,7 @@ pub fn finishDocument(c: *Collector, doc: *w.Doc, a: Allocator, pages: []const e
     for (dests.items.items) |it| {
         const b = doc.begin(it.ref, .destinations);
         b.arr();
-        const se: ?w.Ref = if (hook) |hk| (if (hk.dest) |f| f(hk.ctx, it.d.node) else null) else null;
+        const se: ?w.Ref = if (hook) |hk| (if (hk.dest) |f| f(hk.ctx, it.d.chunk, it.d.node) else null) else null;
         b.ref(se orelse page_refs[it.d.page]);
         b.name("XYZ");
         b.real(it.d.x);

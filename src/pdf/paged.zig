@@ -44,6 +44,8 @@ const counters = @import("counters.zig");
 const layout = @import("../layout/layout.zig");
 const page_rules = @import("page_rules.zig");
 const bump = @import("../bump.zig");
+const memtrace = @import("../memtrace.zig");
+const chunks = @import("chunks.zig");
 
 const Allocator = std.mem.Allocator;
 const Frame = rt.Frame;
@@ -205,9 +207,11 @@ fn layPass(cx: *const Ctx, geo: *const Geo, texts: []const ?[]const u8, fixed_ho
         const varies = !geo.uniformHeight();
         const pages = try f.paginate(.{ .page_height = geo.area(0, null)[1], .page_height_fn = if (varies) Geo.heightOf else null, .ctx = @ptrCast(g) });
         try segs.append(a, .{ .frame = f, .first = 0, .local0 = 0, .count = @intCast(pages.pages.len) });
+        memtrace.mark("pass: paginated");
     } else try laySegments(cx, a, g, &subst, &segs);
     // (laid out and paginated: the layout is only read from now on)
     for (segs.items) |s| s.frame.tree.dropCaches();
+    memtrace.mark("pass: caches dropped");
     const f = segs.items[0].frame;
     const fixed = try emit.repeatingFixed(a, f);
     const mask = try counters.fixedMask(a, f, fixed);
@@ -702,6 +706,7 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
     for (content.hooks, content.fixed_hooks) |h, fx| {
         if (fx and h.kind != .target) fixed_counters = true;
     }
+    memtrace.mark("paged: content settled");
     var sel = opt.PageSelection.init(o.page_ranges);
     // (the bands of a single page are laid out when it is drawn, from this copy)
     const band_doc = try a.create(bands.Doc);
@@ -787,6 +792,338 @@ fn layOutRules(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.V
         return error.Invalid;
     };
     return .{ .frame = content.frame, .pages = pages.items, .windows = windows.items, .count = n, .mem = content.mem };
+}
+
+/// The page area heights of a part of the document (chunks.zig) whose first page is page `base`.
+const PartHeights = struct {
+    g: *const Geo,
+    /// the document page index of the frame's page 0 (may be before the document's first page:
+    /// the part before's pages, laid out with this one, are not drawn)
+    base: i64,
+
+    fn height(ctx: *anyopaque, i: u32, name: u32) f32 {
+        const c: *const PartHeights = @ptrCast(@alignCast(ctx));
+        const gi: usize = @intCast(@max(0, c.base + @as(i64, i)));
+        return c.g.area(gi, c.g.nameOf(name))[1];
+    }
+};
+
+/// A part of the document laid out (chunks.zig): its frame and the frame's pages that are the
+/// part's, [`s`, `e`) (the pages before / after hold the children of the parts around it).
+const LaidPart = struct {
+    f: *Frame,
+    s: u32,
+    e: u32,
+    /// the render node of the flow (`tags.Skip.parent`)
+    flow: u32,
+};
+
+/// The top of source element `el`'s box in frame `f` (laid out and paginated), null: no box.
+fn elementTop(f: *const Frame, el: u32) ?f32 {
+    for (f.nodes.items) |n| {
+        if (n.el != el or n.kind != .container or n.lid == rt.none) continue;
+        var y = f.tree.layout(n.lid).y;
+        var parent = f.tree.nodes.items[n.lid].parent;
+        var guard: u32 = 0;
+        while (parent < f.tree.nodes.items.len and guard < 4096) : (guard += 1) {
+            y += f.tree.layout(parent).y;
+            parent = f.tree.nodes.items[parent].parent;
+        }
+        return y;
+    }
+    return null;
+}
+
+fn nodeOfElement(f: *const Frame, el: u32) u32 {
+    for (f.nodes.items, 0..) |n, k| if (n.el == el and n.kind == .container) return @intCast(k);
+    return rt.none;
+}
+
+/// Null, after a memory checkpoint naming why the document is not drawn a part at a time.
+fn refuse(comptime T: type, comptime why: []const u8) ?T {
+    memtrace.mark("chunks: whole: " ++ why);
+    return null;
+}
+
+/// `rootContext` read from a document's element model and styles (`bands.buildDocument`), as the
+/// root render node and its `body` child carry them.
+fn docRootContext(doc: *const Frame) page_rules.Context {
+    const d = &doc.dom;
+    var el = d.root;
+    var props = true;
+    const tag = d.at(el).tag;
+    if (std.ascii.eqlIgnoreCase(tag, "html")) {
+        var c = d.at(el).first;
+        while (c != rt.none) : (c = d.at(c).next) {
+            const ce = d.at(c);
+            if (!ce.run and ce.cs.display != .none and std.ascii.eqlIgnoreCase(ce.tag, "body")) {
+                el = c;
+                break;
+            }
+        }
+    } else if (tag.len == 0) props = false;
+    const cs = d.at(el).cs;
+    var ex: f32 = 0.5;
+    var ch: f32 = 0.5;
+    var font_ids: [64]@import("../font/collection.zig").FaceId = undefined;
+    const matched = doc.r.fonts.match(cs.font_family, cs.font_weight, cs.font_style != .normal, &font_ids);
+    if (matched.len > 0) {
+        const face = doc.r.fonts.font(matched[0]);
+        const upem = @max(face.unitsPerEm(), 1);
+        const xh = face.xHeight();
+        if (xh > 0) ex = @as(f32, @floatFromInt(xh)) / @as(f32, @floatFromInt(upem));
+        ch = @as(f32, @floatFromInt(face.advanceWidth(face.glyphIndex('0')))) / @as(f32, @floatFromInt(upem));
+    }
+    const Get = struct {
+        fn custom(ctx: *const anyopaque, name: []const u8) ?[]const u8 {
+            const c: *const style.ComputedStyle = @ptrCast(@alignCast(ctx));
+            return c.customProperty(name);
+        }
+    };
+    return .{ .rtl = cs.direction == .rtl, .font_size = cs.font_size, .rem = d.at(d.root).cs.font_size, .ex = ex, .ch = ch, .ctx = @ptrCast(cs), .custom = if (props) Get.custom else null };
+}
+
+/// How far below a page's top a box may be computed and still start that page (`layPart`).
+const seam_eps: f32 = 1.0 / 16.0;
+
+/// Where the part before's last child, the first child a part's frame lays out, is in the
+/// document: its top, and the document page it starts on (index and top).
+const Seam = struct { y: f32, page: usize, top: f32 };
+
+/// Part `k` of `doc`'s document laid out in `a` and paginated, its pages and boxes where the whole
+/// document has them: the frame's first child (the part before's last one) at `seam`. Null: its
+/// pages cannot be told apart from its neighbours'.
+fn layPart(a: Allocator, doc: *const Frame, plan: chunks.Plan, k: usize, geo: *const Geo, seam: ?Seam, blank: bool) Error!?LaidPart {
+    const pt = plan.parts[k];
+    const f = try a.create(Frame);
+    f.* = try Frame.initChunk(doc, a);
+    f.tree.paged.chunk = .{ .parent = plan.parent, .lo = pt.lo, .hi = pt.hi };
+    try f.prepareLayout();
+    try @import("text.zig").requireFont(f, blank);
+    var base: i64 = 0;
+    var origin: f32 = 0;
+    var shift: f32 = 0;
+    if (seam) |sm| {
+        const y0 = elementTop(f, pt.prev) orelse return refuse(LaidPart, "no seam box");
+        base = @intCast(sm.page);
+        origin = sm.top;
+        shift = sm.y - y0;
+    }
+    const hc = try a.create(PartHeights);
+    hc.* = .{ .g = geo, .base = base };
+    const first_h = geo.area(@intCast(base), null)[1];
+    const pages = try f.paginate(.{ .page_height = first_h, .page_height_fn = if (geo.uniformHeight()) null else PartHeights.height, .ctx = @ptrCast(hc), .origin = origin, .root_shift = shift });
+    f.tree.dropCaches();
+    // the part's pages: from the page its first child starts on to the page the next part's
+    // first child starts on
+    var s: u32 = 0;
+    // (a box a forced break starts a page with sits at the page's top, give or take the rounding
+    // of the sums that place it)
+    if (pt.prev != rt.none) s = pages.pageAt((elementTop(f, pt.own_lo) orelse return refuse(LaidPart, "no first box")) + seam_eps);
+    var e: u32 = @intCast(pages.pages.len);
+    if (pt.next != rt.none) e = pages.pageAt((elementTop(f, pt.next) orelse return refuse(LaidPart, "no next box")) + seam_eps);
+    if (pt.prev != rt.none and s == 0) return refuse(LaidPart, "part starts on the seam's page");
+    if (!(s < e)) return refuse(LaidPart, "part has no page");
+    const flow = nodeOfElement(f, plan.parent);
+    if (flow == rt.none) return refuse(LaidPart, "no flow box");
+    // (the part starts on the page after the seam's: where the document has it)
+    if (seam != null and base + s < 1) return refuse(LaidPart, "part before page 1");
+    return .{ .f = f, .s = s, .e = e, .flow = flow };
+}
+
+/// Where the next part's frame starts: part `k`'s last child (laid out as `lp`, whose page `s` is
+/// document page `first`).
+fn seamAfter(lp: LaidPart, plan: chunks.Plan, k: usize, first: usize) ?Seam {
+    if (k + 1 >= plan.parts.len) return null;
+    const y = elementTop(lp.f, plan.parts[k + 1].prev) orelse return refuse(Seam, "no last box");
+    const pages = lp.f.paginated().?;
+    const at = pages.pageAt(y);
+    if (at < lp.s or at >= lp.e) return refuse(Seam, "last box outside the part");
+    return .{ .y = y, .page = first + (at - lp.s), .top = pages.pages[at].top };
+}
+
+/// The page count of `doc`'s document laid out a part at a time (each part released at once).
+/// Null: the parts cannot be laid out apart.
+fn countParts(r: *rt.Renderer, doc: *const Frame, plan: chunks.Plan, geo: *const Geo, blank: bool) Error!?usize {
+    var n: usize = 0;
+    var seam: ?Seam = null;
+    for (0..plan.parts.len) |k| {
+        const mem = try newMem(r);
+        defer freeMem(r, mem);
+        const lp = try layPart(mem.allocator(), doc, plan, k, geo, seam, blank) orelse return null;
+        if (seam) |sm| if (sm.page + lp.s != n) return refuse(usize, "pages moved at a seam");
+        if (k + 1 < plan.parts.len) seam = seamAfter(lp, plan, k, n) orelse return null;
+        n += lp.e - lp.s;
+    }
+    return n;
+}
+
+/// The paged document `o_in` (geometry `p_in`) laid out and drawn a part at a time when it can be
+/// cut at forced page breaks (chunks.zig): the same file as `layOut` + `emit.writeDocument`, with
+/// one part's layout in memory at a time. Null: it cannot be (the caller lays it out whole).
+pub fn writeChunked(r: *rt.Renderer, a: Allocator, o_in: opt.PdfOptions, css: ?json.Value, kind: rt.SourceKind, source: []const u8, p_in: opt.Page, background: ?style.Color, policy: emit.DocOptions) Error!?[]const u8 {
+    if (comptime !layout.fragment.enabled) return null;
+    if (!o_in.chunks) return null;
+    var rules = try pageRules(a, o_in, kind, source, p_in, .{});
+    var o = o_in;
+    o.geometry = .{ .page = rules.rest };
+    var cx: Ctx = .{ .doc = .{ .r = r, .a = a, .o = o, .css = css }, .kind = kind, .source = source };
+    var header = try bands.Slot.init(a, o, true);
+    var footer = try bands.Slot.init(a, o, false);
+    if (header) |*s| try bands.measure(&cx.doc, s, 1);
+    if (footer) |*s| try bands.measure(&cx.doc, s, 1);
+    var geo = try Geo.resolve(r, a, rules, heights(header), heights(footer));
+    if (!geo.uniformWidth()) return refuse([]const u8, "page widths differ");
+    // the document, shared by its parts; page counters in the content lay it out whole
+    var subst: counters.Subst = .{ .a = a, .mode = .{ .flow = .{ .texts = &.{}, .fixed = &.{} } } };
+    // (the element model and styles in memory of their own, freed once the file is written: the
+    // file is in `a`)
+    const dmem = try newMem(r);
+    defer freeMem(r, dmem);
+    const da = dmem.allocator();
+    var doc = try bands.buildDocument(r, da, o, css, kind, source, geo.area(0, null), &subst);
+    if (subst.hooks.items.len > 0) return refuse([]const u8, "page counters in the content");
+    if (rules.contextual) {
+        // page rules that read the root element (`layOut`): read again with the document's root;
+        // other rules lay the document out with them
+        const again = try pageRules(a, o_in, kind, source, p_in, docRootContext(doc));
+        if (!(std.meta.eql(again.first, rules.first) and std.meta.eql(again.left, rules.left) and std.meta.eql(again.right, rules.right) and again.rtl == rules.rtl)) {
+            rules = again;
+            o.geometry = .{ .page = rules.rest };
+            cx.doc.o = o;
+            header = try bands.Slot.init(a, o, true);
+            footer = try bands.Slot.init(a, o, false);
+            if (header) |*s| try bands.measure(&cx.doc, s, 1);
+            if (footer) |*s| try bands.measure(&cx.doc, s, 1);
+            geo = try Geo.resolve(r, a, rules, heights(header), heights(footer));
+            if (!geo.uniformWidth()) return refuse([]const u8, "page widths differ");
+            subst = .{ .a = a, .mode = .{ .flow = .{ .texts = &.{}, .fixed = &.{} } } };
+            doc = try bands.buildDocument(r, da, o, css, kind, source, geo.area(0, null), &subst);
+            if (subst.hooks.items.len > 0) return refuse([]const u8, "page counters in the content");
+        }
+    }
+    const plan = try chunks.plan(a, doc, o.chunk_elements) orelse return refuse([]const u8, "no cut");
+    const names = doc.tree.paged.page_names;
+    geo.names = names;
+    const blank = o.uncovered_text == .blank;
+
+    // A band that depends on the page count (its counters, or a rule for the last page) needs the
+    // count first: the parts are laid out once to count their pages. A counter band is measured
+    // again until its height settles, as `layOutRules` does.
+    const dynamic = (if (header) |s| s.dynamic else false) or (if (footer) |s| s.dynamic else false);
+    const varies = (if (header) |s| s.varies else false) or (if (footer) |s| s.varies else false);
+    var n: usize = 0;
+    if (dynamic or varies) {
+        n = try countParts(r, doc, plan, &geo, blank) orelse return null;
+        if (dynamic) {
+            var follows = rules.first.margin.followBands() or rules.left.margin.followBands() or rules.right.margin.followBands();
+            for (rules.named) |e| follows = follows or e.first.margin.followBands() or e.left.margin.followBands() or e.right.margin.followBands();
+            var k: usize = 0;
+            while (k < band_passes) : (k += 1) {
+                const before = .{ heights(header), heights(footer) };
+                if (header) |*s| try bands.measure(&cx.doc, s, n);
+                if (footer) |*s| try bands.measure(&cx.doc, s, n);
+                if (same(before[0], heights(header)) and same(before[1], heights(footer))) break;
+                var geo2 = try Geo.resolve(r, a, rules, heights(header), heights(footer));
+                if (geo.sameMargins(&geo2)) break;
+                if (!follows) break;
+                geo2.names = names;
+                geo = geo2;
+                n = try countParts(r, doc, plan, &geo, blank) orelse return null;
+            }
+        }
+    }
+
+    const dw = try emit.DocWriter.init(a, doc, policy);
+    defer dw.deinit();
+    var sel = opt.PageSelection.init(o.page_ranges);
+    // (the bands of a single page are laid out when it is drawn, from this copy)
+    const band_doc = try a.create(bands.Doc);
+    band_doc.* = cx.doc;
+    const own = struct {
+        fn win(p: layout.fragment.Page) emit.Window {
+            return .{ .top = p.top, .bottom = p.top + p.height, .lines_top = p.top, .lines_bottom = p.top + p.height };
+        }
+    };
+    var i: usize = 0;
+    var seam: ?Seam = null;
+    for (0..plan.parts.len) |k| {
+        memtrace.mark("part: start");
+        const mem = try newMem(r);
+        defer freeMem(r, mem);
+        const pa = mem.allocator();
+        const lp = try layPart(pa, doc, plan, k, &geo, seam, blank) orelse return null;
+        if (seam) |sm| if (sm.page + lp.s != i) return refuse([]const u8, "pages moved at a seam");
+        if (k + 1 < plan.parts.len) seam = seamAfter(lp, plan, k, i) orelse return null;
+        memtrace.mark("part: laid out");
+        const f = lp.f;
+        const paged = f.paginated().?;
+        const last_part = k + 1 == plan.parts.len;
+        var boxes: std.ArrayList(emit.PageBox) = .empty;
+        var windows: std.ArrayList(emit.Window) = .empty;
+        var local: usize = lp.s;
+        while (local < lp.e) : (local += 1) {
+            const pg = paged.pages[local];
+            const gi = i + (local - lp.s);
+            const kept = try sel.pushPage(a);
+            if (kept == null) continue;
+            const name = geo.nameOf(if (local < paged.names.len) paged.names[local] else 0);
+            const pp = geo.page(gi, name);
+            const m = geo.margins(gi, name);
+            const area = geo.area(gi, name);
+            var box: emit.PageBox = .{
+                .width = pp.width,
+                .height = pp.height,
+                .content = .{ .x = m.left, .y = m.top, .w = area[0], .h = area[1] },
+                .background = background,
+                .clip = true,
+                .repeats = paged.repeatsOf(@intCast(local)),
+                .fixed = &.{},
+            };
+            // (the frame's own pages around the part's take part as neighbouring passes)
+            if (local == lp.s and lp.s > 0) box.prev_win = own.win(paged.pages[lp.s - 1]);
+            if (local + 1 == lp.e and lp.e < paged.pages.len) box.next_win = own.win(paged.pages[lp.e]);
+            if (header) |*s| box.header = try bands.forPage(band_doc, s, gi, n, pp.width, pp.height);
+            if (footer) |*s| box.footer = try bands.forPage(band_doc, s, gi, n, pp.width, pp.height);
+            try boxes.append(pa, box);
+            // takumi `PageSlice::lines`: the first page also owns the lines above it, the last the
+            // lines below it
+            try windows.append(pa, .{
+                .top = pg.top,
+                .bottom = pg.top + pg.height,
+                .lines_top = if (gi == 0) -std.math.inf(f32) else pg.top,
+                .lines_bottom = if (last_part and local + 1 == lp.e) std.math.inf(f32) else pg.top + pg.height,
+            });
+        }
+        i += lp.e - lp.s;
+        if (!try dw.beginChunk(f)) return refuse([]const u8, "carried structure has no box");
+        // (the part's anchors and headings: those whose box starts between its first page's top and
+        // the next part's first page's, as the whole document's first page collects them all)
+        const bounds: [2]f32 = .{ if (k == 0) -std.math.inf(f32) else paged.pages[lp.s].top - seam_eps, if (last_part) std.math.inf(f32) else paged.pages[lp.e].top - seam_eps };
+        if (boxes.items.len > 0) {
+            try dw.drawPages(f, boxes.items, windows.items, pa, bounds);
+        } else {
+            // every page of the part dropped: its anchors and headings are still the document's
+            const pg = paged.pages[lp.s];
+            const gi = i - (lp.e - lp.s);
+            const name = geo.nameOf(if (lp.s < paged.names.len) paged.names[lp.s] else 0);
+            const pp = geo.page(gi, name);
+            const m = geo.margins(gi, name);
+            const area = geo.area(gi, name);
+            _ = pg;
+            try dw.collect(f, .{ .width = pp.width, .height = pp.height, .content = .{ .x = m.left, .y = m.top, .w = area[0], .h = area[1] }, .clip = true }, bounds);
+        }
+        const pt = plan.parts[k];
+        if (!chunks.ownsCollected(doc, plan, pt, dw.links.anchors, dw.links.headings.items, dw.links.chunk)) return refuse([]const u8, "an anchor or heading outside its part");
+        if (!try dw.endChunk(pa, .{ .parent = lp.flow, .lo = pt.own_lo, .hi = pt.own_hi })) return refuse([]const u8, "structure crosses a seam");
+        memtrace.mark("part: drawn");
+    }
+    var diag: opt.Diag = .{};
+    sel.finish(&diag) catch {
+        r.setErr(diag.message(), "");
+        return error.Invalid;
+    };
+    return try dw.finish();
 }
 
 /// takumi `measure` with page options: the tree laid out like a band (the full page width, an

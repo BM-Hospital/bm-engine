@@ -1,0 +1,135 @@
+#!/usr/bin/env node
+// Checks that a document drawn a part at a time (src/pdf/chunks.zig, paged.zig `writeChunked`) is the document
+// drawn whole: every case renders with `chunks: false` and in parts (`chunks: 1`, the smallest parts, unless the case
+// names a size), and the two files must show the same
+// pages (count, boxes), the same marks on each page (the audit's device-space draw lists: paths, text, images, paints,
+// clips, transparency, marked content, numbers within 0.011), the same extracted text, structure tree, parent tree,
+// link annotations, destinations and outline. Coordinates inside the content streams may differ (a part's frame has
+// its own origin), so files are not compared byte for byte.
+//
+//   node scripts/pdf-chunks-check.mjs [--backend=native|wasm] [filter ...]
+//
+// With the native addon the number of parts each render was drawn in is reported (memory checkpoints), and a case
+// marked `parts: true` fails when it was not drawn in parts. Exit code 1 on any difference.
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const argv = process.argv.slice(2);
+const backend = argv.find((a) => a.startsWith("--backend="))?.slice(10) ?? "native";
+const filters = argv.filter((a) => !a.startsWith("--"));
+process.env.BM_RENDER_BACKEND = backend;
+const url = (p) => pathToFileURL(path.join(ROOT, p)).href;
+const { describe } = await import(url("scripts/pdf-audit/lib.mjs"));
+const { canonPages, flatten, firstDiff } = await import(url("scripts/pdf-audit/paint.probe.mjs"));
+const { stressHtml, stressCorpus, INTER } = await import(url("bench/pdf/corpus/docs.mjs"));
+const mod = await import(url("js/node-pdf.mjs"));
+if (mod.backend !== backend) throw new Error(`backend ${backend} unavailable (loaded ${mod.backend})`);
+let addon = null;
+if (backend === "native") {
+  const dist = path.join(ROOT, "native", "dist", `${process.platform}-${process.arch}-msvc`, `bm-render.${process.platform}-${process.arch}-msvc.node`);
+  try { addon = createRequire(import.meta.url)(dist); if (!addon.memoryTrace) addon = null; } catch { addon = null; }
+}
+
+const fonts = INTER.map((f) => ({ name: f.name, data: new Uint8Array(readFileSync(f.path)), weight: f.weight, style: f.style }));
+const r = new mod.PdfRenderer();
+for (const f of fonts) r.registerFont(f);
+const stressOpts = stressCorpus([1])[0].options();
+const LOREM = "Paged output flows content across pages the way a browser prints: text wraps at the page width, a line that does not fit moves to the next page.";
+const para = (n) => Array.from({ length: n }, () => `<p>${LOREM}</p>`).join("");
+const sections = (n, body = (k) => `<h2>Part ${k + 1}</h2>${para(3)}`, attrs = (k) => `style="break-after:page"`) =>
+  `<div style="font:12px Inter">${Array.from({ length: n }, (_, k) => `<section ${attrs(k)}>${body(k)}</section>`).join("")}</div>`;
+const table = (rows) => `<table style="width:100%;border-collapse:collapse"><thead><tr><th style="border:1px solid #333">A</th><th style="border:1px solid #333">B</th></tr></thead><tbody>${Array.from({ length: rows }, (_, i) => `<tr><td style="border:1px solid #999">r${i}</td><td style="border:1px solid #999">${i * 7}</td></tr>`).join("")}</tbody></table>`;
+
+const CASES = [
+  { id: "stress-3", source: stressHtml(3), options: stressOpts, parts: true },
+  { id: "stress-12", source: stressHtml(12), options: stressOpts, parts: true },
+  { id: "stress-120-default", source: stressHtml(120), options: stressOpts, chunks: 2048, parts: true },
+  { id: "stress-400-default", source: stressHtml(400), options: stressOpts, chunks: 2048, parts: true },
+  { id: "sections-plain", source: sections(6), options: { size: "A5", margin: 30 }, parts: true },
+  { id: "sections-long", source: sections(5, (k) => `<h2>Part ${k + 1}</h2>${para(14)}`), options: { size: "A5", margin: 30 }, parts: true },
+  { id: "sections-break-before", source: sections(5, undefined, (k) => (k ? `style="break-before:page"` : "")), options: { size: "A5" }, parts: true },
+  { id: "tables-across-pages", source: sections(4, (k) => `<h3>T${k}</h3>${table(45)}`), options: { size: "A5", margin: 30 }, parts: true },
+  { id: "lists", source: sections(4, (k) => `<ol start="${k * 3 + 1}"><li>one</li><li>two</li><li>three</li></ol><ul><li>x</li></ul>`), options: { size: "A5" }, parts: true },
+  { id: "counters", source: `<style>body{counter-reset:s} section{counter-increment:s} h2::before{content:counter(s) ". "}</style>` + sections(5), options: { size: "A5" }, parts: true },
+  { id: "backward-links", source: sections(5, (k) => `<h2 id="p${k}">Part ${k + 1}</h2>${k ? `<a href="#p${k - 1}">back</a> <a href="#p0">top</a>` : ""} <a href="https://example.com/${k}">ext</a>${para(2)}`), options: { size: "A5" }, parts: true },
+  { id: "forward-links-join", source: sections(5, (k) => `<h2 id="p${k}">Part ${k + 1}</h2>${k === 1 ? `<a href="#p3">ahead</a>` : ""}${para(2)}`), options: { size: "A5" }, parts: true },
+  { id: "toc-forward-all", source: `<div style="font:12px Inter"><nav style="break-after:page">${[0, 1, 2, 3].map((k) => `<a href="#p${k}">p${k}</a>`).join(" ")}</nav>${[0, 1, 2, 3].map((k) => `<section style="break-after:page"><h2 id="p${k}">P${k}</h2>${para(2)}</section>`).join("")}</div>` },
+  { id: "outline-ua1", source: sections(5, (k) => `<h1>Chapter ${k}</h1><h2>Sub</h2>${para(2)}<h3>Deep</h3>`), options: { size: "A5", tagged: "ua1", outline: true, lang: "en", metadata: { title: "T" } }, parts: true },
+  { id: "outline-ua2-dests", source: sections(4, (k) => `<h1 id="c${k}">Chapter ${k}</h1>${k ? `<a href="#c${k - 1}">prev</a>` : ""}${para(2)}`), options: { size: "A5", tagged: "ua2", outline: true, lang: "en", metadata: { title: "T" } }, parts: true },
+  { id: "untagged", source: sections(5), options: { size: "A5", tagged: false }, parts: true },
+  { id: "page-ranges", source: sections(6), options: { size: "A5", pageRanges: [{ from: 2, to: 4 }, 6] }, parts: true },
+  { id: "first-page-rule", source: `<style>@page:first{margin-top:120px} @page:left{margin-bottom:80px}</style>` + sections(5, (k) => `<h2>P${k}</h2>${para(6)}`), options: { size: "A5", margin: 30 }, parts: true },
+  { id: "named-pages", source: `<style>@page wide{margin-top:10px;margin-bottom:60px} .w{page:wide}</style>` + sections(5, (k) => `<h2>P${k}</h2>${para(4)}`, (k) => `class="${k % 2 ? "w" : ""}" style="break-after:page"`), options: { size: "A5", margin: 40 }, parts: true },
+  { id: "bands-counters", source: sections(6, (k) => `<h2>P${k}</h2>${para(5)}`), options: { size: "A5", header: `<div style="font:9px Inter">H <span class="pageNumber"></span>/<span class="totalPages"></span></div>`, footer: `<div style="font:9px Inter">F</div>` }, parts: true },
+  { id: "images", source: sections(4, (k) => `<img src="icon.png" style="width:${40 + k * 10}px">${para(2)}`), options: { size: "A5", images: stressOpts.images }, parts: true },
+  { id: "transforms-inside", source: sections(4, (k) => `<div style="transform:rotate(${k * 10}deg);width:100px;height:40px;background:#cde"></div><div style="position:relative;top:10px"><span style="position:absolute;left:5px">abs</span>rel</div>${para(2)}`), options: { size: "A5" }, parts: true },
+  { id: "shadow-at-top", source: sections(4, (k) => `<div style="box-shadow:0 -20px 10px #000;height:30px;margin-top:0">s</div>${para(2)}`), options: { size: "A5" } },
+  { id: "full-html-body-margin", source: `<!doctype html><html><body>${sections(4)}</body></html>`, options: { size: "A5" } },
+  { id: "full-html-body-zero", source: `<!doctype html><html><body style="margin:0">${sections(4)}</body></html>`, options: { size: "A5" }, parts: true },
+  { id: "no-forced-breaks", source: sections(6, undefined, () => ""), options: { size: "A5" } },
+];
+
+const round = (v, k = 100) => Math.round(v * k) / k;
+function interactive(d) {
+  const pdf = d.pdf;
+  const pageIndex = new Map(pdf.pages.map((p, i) => [p.ref?.n ?? i, i]));
+  const dest = (v) => {
+    const x = pdf.resolve(v);
+    if (!Array.isArray(x)) return String(x);
+    const pg = x[0] && x[0].n !== undefined ? pageIndex.get(x[0].n) ?? "elem" : String(x[0]);
+    return [pg, ...x.slice(1).map((y) => (typeof y === "number" ? round(y) : String(y)))].join(" ");
+  };
+  const annots = pdf.pages.map((p) => (pdf.resolve(p.dict.Annots) || []).map((a) => {
+    const o = pdf.resolve(a);
+    const act = pdf.resolve(o.A);
+    return [(pdf.resolve(o.Rect) || []).map((v) => round(v)).join(" "), o.Dest ? "D:" + dest(o.Dest) : act ? "URI:" + String(act.URI?.str ?? act.URI) : "", o.StructParent ?? ""].join(" | ");
+  }));
+  const outline = [];
+  const walk = (ref, depth) => {
+    let cur = ref; let guard = 0;
+    while (cur && guard++ < 10000) {
+      const o = pdf.resolve(cur);
+      outline.push(`${"  ".repeat(depth)}${o.Title?.str ?? o.Title} -> ${o.Dest ? dest(o.Dest) : ""} ${o.Count ?? ""}`);
+      if (o.First) walk(o.First, depth + 1);
+      cur = o.Next;
+    }
+  };
+  const ol = pdf.resolve(pdf.catalog.Outlines);
+  if (ol && ol.First) walk(ol.First, 0);
+  return { annots, outline };
+}
+
+let failed = 0;
+for (const c of CASES) {
+  if (filters.length && !filters.some((f) => c.id.includes(f))) continue;
+  const whole = await r.render(c.source, { ...(c.options || {}), chunks: false });
+  if (addon) addon.memoryTrace(1);
+  const parted = await r.render(c.source, { ...(c.options || {}), chunks: c.chunks ?? 1 });
+  const trace = addon ? JSON.parse(addon.memoryTrace(0)) : [];
+  const parts = addon ? trace.filter(([l]) => l === "part: start").length : null;
+  const why = trace.map(([l]) => l).filter((l) => l.startsWith("chunks: whole: ")).map((l) => l.slice(15));
+  const problems = [];
+  if (c.parts && addon && parts < 2) problems.push(`drawn in ${parts} part(s), expected parts`);
+  const A = describe(whole); const B = describe(parted);
+  if (A.pages.length !== B.pages.length) problems.push(`page count ${A.pages.length} vs ${B.pages.length}`);
+  if (JSON.stringify(A.pages.map((p) => p.media)) !== JSON.stringify(B.pages.map((p) => p.media))) problems.push("page boxes differ");
+  const ca = canonPages(A); const cb = canonPages(B);
+  for (let i = 0; i < Math.min(ca.length, cb.length) && problems.length < 4; i++) {
+    const d = firstDiff(flatten(ca[i]), flatten(cb[i]));
+    if (d) problems.push(`page ${i + 1} draw list at ${d.at}:\n      whole:  ${d.bm}\n      parted: ${d.ref}`);
+  }
+  if (A.text !== B.text) problems.push("extracted text differs");
+  for (const k of ["tree", "parents", "roots"]) if (A.structure[k] !== B.structure[k]) problems.push(`structure ${k} differs`);
+  const ia = interactive(A); const ib = interactive(B);
+  if (JSON.stringify(ia.annots) !== JSON.stringify(ib.annots)) problems.push(`annotations differ:\n      whole:  ${JSON.stringify(ia.annots).slice(0, 300)}\n      parted: ${JSON.stringify(ib.annots).slice(0, 300)}`);
+  if (JSON.stringify(ia.outline) !== JSON.stringify(ib.outline)) problems.push(`outline differs:\n      whole:  ${ia.outline.join(" ; ").slice(0, 300)}\n      parted: ${ib.outline.join(" ; ").slice(0, 300)}`);
+  const bytesSame = Buffer.compare(Buffer.from(whole), Buffer.from(parted)) === 0;
+  if (problems.length) failed++;
+  console.log(`${problems.length ? "FAIL" : "PASS"}  ${c.id.padEnd(24)} ${A.pages.length} pages, parts ${parts ?? "?"}${bytesSame ? ", byte-identical" : ""}${why.length ? " (whole: " + why.join("; ") + ")" : ""}`);
+  for (const p of problems) console.log("      - " + p);
+}
+console.log(failed ? `\n${failed} case(s) differ` : "\nall cases equivalent");
+process.exitCode = failed ? 1 : 0;

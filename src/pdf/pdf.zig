@@ -344,7 +344,10 @@ fn emit(a: Allocator, input: Input) Error![]const u8 {
             // bands, margins, pagination and page counters (paged.zig / bands.zig / counters.zig);
             // `doc.frame` is the content, paginated (`counters.anchor` / `anchorPage`: the page an
             // element with an `id` landed on)
+            // (a long document cut at forced page breaks: a part at a time, chunks.zig)
+            if (try paged.writeChunked(r, a, o, try cssWithVariables(a, o), input.kind, input.source, p, background, policy)) |bytes| return bytes;
             const doc = try paged.layOut(r, a, o, try cssWithVariables(a, o), input.kind, input.source, p, background);
+            @import("../memtrace.zig").mark("pdf: laid out, pages listed");
             // (the layout is freed once the file is written: the result is in `a`)
             defer doc.release(r);
             return emitter.writeDocument(a, doc.frame, doc.pages, doc.windows, policy);

@@ -16,7 +16,7 @@ Use `bm-render/pdf` to create PDFs. On Node.js this entry uses the native backen
 - **Grid:** grid rows do not have separate fragments; check `align-items: end` items that break before their row.
 - **Floats, transforms and clips:** nested combinations, especially with links across pages, need separate checks.
 - **Lists:** a split item’s marker stays on the item’s first line.
-- **Long documents:** the final layout stays in memory until PDF writing finishes. Settled-page emission with bounded live-layout memory is not implemented.
+- **Long documents:** a document cut by forced page breaks (`break-before` / `break-after: page` between the blocks of its body, such as one record per page in batch printing) is laid out and drawn a part at a time, so only one part's layout is in memory; the file is the same as when the document is laid out whole. A document without such breaks, or with fixed boxes, floats, counters in the content or pages of different widths, is laid out whole, and its final layout stays in memory until the file is written. The parsed document and styles are kept for the whole render in both cases.
 - **Invalid input:** oversized pages, truncated fonts and fonts without `cmap` can be rejected. `margin: NaN` becomes JSON `null` and uses the default margin.
 
 ## Resources and file validation

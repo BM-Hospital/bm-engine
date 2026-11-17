@@ -11,7 +11,7 @@
 // "unverified" instead of pass / fail, and the bm-only checks still run.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -222,6 +222,7 @@ export function pdftotext(bytes, name = "probe", args = []) {
   writeFileSync(file, bytes);
   const executable = findBin("poppler", "pdftotext") || "pdftotext";
   const r = spawnSync(executable, [...args, file, "-"], { encoding: "utf8", windowsHide: true });
+  rmSync(file, { force: true });
   if (r.error && r.error.code === "ENOENT") { pdftotextMissing = true; return { skipped: true, text: "" }; }
   const stderr = r.stderr?.trim() || "";
   // Poppler's bbox exporter reports this for genuinely blank pages. The
@@ -300,6 +301,7 @@ export async function runProbes(filter = []) {
       differs(what) { row.notes.push("differs: " + what); },
       note(text) { row.notes.push(text); },
     };
+    if (process.env.PDF_AUDIT_TRACE) process.stderr.write(`start ${p.id}\n`);
     try { await p.fn(t); } catch (e) { row.fail++; row.failures.push("probe threw: " + ((e && e.stack) || e)); }
     row.status = row.fail ? "FAIL" : row.unverified ? "UNVERIFIED" : "PASS";
     rows.push(row);

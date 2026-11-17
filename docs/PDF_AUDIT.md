@@ -228,7 +228,7 @@ All 136 golden fixtures of `ref/takumi/takumi-pdf/tests/fixtures-generated` are 
 | Feature | Status | Notes / evidence |
 |:--|:--|:--|
 | Font embedding as CID Type0 (TrueType / CFF / CFF2, variable instances), subsetting, ToUnicode, `/W` | ported+equivalent | font programs are not byte-identical (different subsetter) but draw the same glyphs; 71/136 goldens byte-identical fonts |
-| Glyph subset closure | ported+differs | an nbsp-only paragraph is drawn (takumi skips it); one extra glyph for all printable ASCII |
+| Glyph subset closure | ported+differs | an nbsp-only paragraph is drawn (takumi skips it); for all printable ASCII bm-render shapes `@` before a capital and `J` with Inter's contextual alternates where takumi keeps the default glyphs, and keeps the default `@` in the subset too: one extra glyph (`fonts.subset.glyph-closure`) |
 | TTC face selection with a family override; TTC `FontBBox` | ported+differs | takumi picks the last face and writes −220 as the descender bound |
 | WOFF1 fonts | extension | takumi-pdf rejects them |
 | WOFF2 | ported+equivalent | |
