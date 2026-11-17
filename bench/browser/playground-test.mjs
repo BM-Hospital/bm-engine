@@ -382,7 +382,7 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     let s = await pdfSnap(page);
     const after = await page.evaluate(() => ({ kind: window.pg.state.kind, src: document.getElementById("src").value, css: document.getElementById("css").value, url: location.search, accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
     const kept = after.kind === before.kind && after.src === before.src && after.css === before.css;
-    const okSwitch = kept && s.mode === "pdf" && s.status === "ok" && s.head.startsWith("%PDF-") && /mode=pdf/.test(after.url) && /bm_render\.pdf\.wasm - 1\.\d+ MiB/.test(s.bin) && after.accent.toLowerCase() === "#be123c";
+    const okSwitch = kept && s.mode === "pdf" && s.status === "ok" && s.head.startsWith("%PDF-") && /mode=pdf/.test(after.url) && /bm_render\.pdf\.wasm - 1\.\d+ MiB/.test(s.bin) && after.accent.toLowerCase() === "#4f46e5";
     R.extra["Image -> PDF keeps the editor, loads the pdf wasm, ?mode=pdf"] = okSwitch ? `pass (${s.bin}; OG card JSON -> ${s.pages}-page PDF)` : "FAIL";
     check(okSwitch, `${tag}: switch to PDF: ${JSON.stringify({ kept, s, after })}`);
     check(reqs.some((u) => /bm_render\.pdf\.wasm/.test(u)) && !reqs.some((u) => PDFJS.test(u)), `${tag}: after the switch: pdf wasm requested and pdf.js not (viewer preview)`);
@@ -507,7 +507,7 @@ async function pdfSuite(base, tag, { full = true } = {}) {
     await pd.goto(`${base}?mode=pdf`, { waitUntil: "load" });
     await pd.waitForFunction("document.body.dataset.ready === '1' && document.body.dataset.previewReady", { timeout: 60000 });
     { const a = await pd.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().toLowerCase());
-      R.extra["dark theme (PDF accent #fb7185)"] = a === "#fb7185" ? "pass" : "FAIL"; check(a === "#fb7185", `${tag}: dark accent ${a}`); }
+      R.extra["dark theme (PDF accent #a5b4fc)"] = a === "#a5b4fc" ? "pass" : "FAIL"; check(a === "#a5b4fc", `${tag}: dark accent ${a}`); }
     await pd.close();
     const pm = await ctx.newPage(); watch(pm, tag + "-mobile", sink);
     await pm.setUserAgent(IPHONE_UA);

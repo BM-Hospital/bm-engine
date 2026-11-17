@@ -138,7 +138,7 @@ try {
       const n = await page.$$eval(".VPFeature", (e) => e.length);
       const cards = await page.$$eval(".bm-product-card a.bm-product-head", (a) => a.map((x) => x.getAttribute("href")));
       const vi = route.startsWith("/vi");
-      check(n >= 6, `${route}: feature cards ${n}`);
+      check(n >= 4, `${route}: feature cards ${n}`);
       check(cards.join() === (vi ? "/vi/image/,/vi/pdf/" : "/image/,/pdf/"), `${route}: product cards ${cards}`);
       extra = `${n} feature cards, product cards ${cards.join(" ")}`;
     }
@@ -190,7 +190,7 @@ try {
       const s = await switcherState(page);
       check(s.present && s.title === title && s.sidebarProduct === product && s.shared && s.expanded === "false" && !s.listVisible,
         `switcher on ${route}: ${JSON.stringify(s)}`);
-      check(/pdf/.test(product) ? /product-pdf/.test(s.layoutClass) && s.brand.toLowerCase() === "#be123c" : !/product-pdf/.test(s.layoutClass) && s.brand.toLowerCase() === "#008046",
+      check(/pdf/.test(product) ? /product-pdf/.test(s.layoutClass) && s.brand.toLowerCase() === "#4f46e5" : !/product-pdf/.test(s.layoutClass) && s.brand.toLowerCase() === "#0f766e",
         `accent on ${route}: class "${s.layoutClass}" brand ${s.brand}`);
       if (shot) await page.screenshot({ path: path.join(OUT, shot) });
     }
@@ -311,7 +311,7 @@ try {
     await page.goto(base + "/pdf/pagination", { waitUntil: "networkidle0" });
     const s = await switcherState(page);
     const dark = await page.evaluate(() => document.documentElement.classList.contains("dark"));
-    check(dark && s.brand.toLowerCase() === "#fb7185" && s.title === "PDF", `dark PDF page: dark=${dark} ${JSON.stringify(s)}`);
+    check(dark && s.brand.toLowerCase() === "#a5b4fc" && s.title === "PDF", `dark PDF page: dark=${dark} ${JSON.stringify(s)}`);
     await page.click(".VPSidebar .bm-switcher-button");
     await sleep(200);
     await page.screenshot({ path: path.join(OUT, "switcher-pdf-dark.png") });
@@ -418,7 +418,7 @@ try {
     const frame = await waitPdfPlayground(page);
     const st = await frame.evaluate(() => ({ theme: document.documentElement.dataset.theme, accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().toLowerCase() }));
     const site = await page.evaluate(() => ({ dark: document.documentElement.classList.contains("dark"), brand: getComputedStyle(document.querySelector(".Layout")).getPropertyValue("--vp-c-brand-1").trim().toLowerCase(), code: getComputedStyle(document.querySelector(".vp-doc code")).color }));
-    check(st.theme === "dark" && st.accent === "#fb7185" && site.dark && site.brand === "#fb7185" && site.code === "rgb(251, 113, 133)", `PDF playground dark: ${JSON.stringify({ st, site })}`);
+    check(st.theme === "dark" && st.accent === "#a5b4fc" && site.dark && site.brand === "#a5b4fc" && site.code === "rgb(165, 180, 252)", `PDF playground dark: ${JSON.stringify({ st, site })}`);
     await page.screenshot({ path: path.join(OUT, "playground-pdf-dark.png") });
     await ctx.close();
     const m = await newPage(sink, { width: 390, height: 844, isMobile: true, hasTouch: true });

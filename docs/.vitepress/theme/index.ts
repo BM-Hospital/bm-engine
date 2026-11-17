@@ -5,6 +5,7 @@ import PlaygroundFrame from "./PlaygroundFrame.vue";
 import ProductSwitcher from "./ProductSwitcher.vue";
 import ProductCards from "./ProductCards.vue";
 import PlaygroundSwitcher from "./PlaygroundSwitcher.vue";
+import HeroVisual from "./HeroVisual.vue";
 import { installProductSidebar, loadRemembered, productOfPath, saveRemembered, type Product } from "./product";
 import { CROSS_LOCALE, redirectFor, movedAnchor } from "../redirects.mjs";
 import "./custom.css";
@@ -27,8 +28,8 @@ if (inBrowser) {
 
 let mounted = false;
 
-/** Default layout + product switcher at the top of the sidebar (and a compact one above the playground) + product
- *  cards under the home hero + a per-product accent class on the layout root. */
+/** Default layout + product switcher at the top of the sidebar (and a compact one above the playground) + real
+ *  outputs beside the home hero text + product cards under the home hero + a per-product accent class on the layout root. */
 const Layout = defineComponent({
   setup() {
     const route = useRoute();
@@ -46,6 +47,7 @@ const Layout = defineComponent({
     });
     return () => h(DefaultTheme.Layout, { class: section.value === "pdf" ? "product-pdf" : section.value === "image" ? "product-image" : "product-shared", "data-product": product.value }, {
       "sidebar-nav-before": () => h(ProductSwitcher),
+      "home-hero-image": () => h(HeroVisual),
       "home-hero-after": () => h(ProductCards),
       "doc-before": () => (playground.value ? h(PlaygroundSwitcher, { product: playground.value }) : null),
     });

@@ -10,17 +10,17 @@ const info = computed(() => (theme.value as any).products);
 const cards = computed(() => [
   {
     key: "image", href: withBase(p.value + "image/"),
-    lead: vi.value ? "Thẻ OG, ảnh mạng xã hội, biểu đồ, ảnh động từ cây node, HTML và Tailwind." : "OG cards, social images, charts and animations from node trees, HTML and Tailwind.",
+    lead: vi.value ? "Thẻ OG, ảnh chia sẻ mạng xã hội, biểu đồ và ảnh động. Đầu vào là cây node, HTML hoặc Tailwind; đầu ra là PNG, JPEG, WebP, SVG hoặc ảnh động WebP / APNG / GIF." : "OG cards, social images, charts and animations. Input a node tree, HTML or Tailwind; get PNG, JPEG, WebP, SVG or animated WebP / APNG / GIF.",
     links: vi.value
       ? [["Bắt đầu nhanh", "image/"], ["Tham chiếu API", "image/api"], ["Hỗ trợ CSS", "image/css-support"], ["Framework", "image/frameworks/"]]
       : [["Quick start", "image/"], ["API reference", "image/api"], ["CSS support", "image/css-support"], ["Frameworks", "image/frameworks/"]],
   },
   {
     key: "pdf", href: withBase(p.value + "pdf/"),
-    lead: vi.value ? "Hoá đơn, báo cáo, vé: chữ bôi chọn được, phân trang, header và footer, PDF/UA và PDF/A." : "Invoices, reports and tickets: selectable text, pagination, headers and footers, PDF/UA and PDF/A.",
+    lead: vi.value ? "Hoá đơn, báo cáo và vé từ cùng HTML + CSS: chữ vector bôi chọn được, tự phân trang, header và footer, liên kết, bookmark, PDF/UA và PDF/A." : "Invoices, reports and tickets from the same HTML + CSS: selectable vector text, automatic pagination, headers and footers, links, bookmarks, PDF/UA and PDF/A.",
     links: vi.value
-      ? [["Bắt đầu nhanh", "pdf/"], ["Phân trang", "pdf/pagination"], ["Tham chiếu API", "pdf/api"], ["Công thức", "pdf/recipes"]]
-      : [["Quick start", "pdf/"], ["Pagination", "pdf/pagination"], ["API reference", "pdf/api"], ["Recipes", "pdf/recipes"]],
+      ? [["Bắt đầu nhanh", "pdf/"], ["Phân trang", "pdf/pagination"], ["Header và footer", "pdf/headers-footers"], ["Tham chiếu API", "pdf/api"]]
+      : [["Quick start", "pdf/"], ["Pagination", "pdf/pagination"], ["Headers & footers", "pdf/headers-footers"], ["API reference", "pdf/api"]],
   },
 ]);
 </script>
